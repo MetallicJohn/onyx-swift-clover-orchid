@@ -4,7 +4,7 @@ import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { addRouter, listRouters } from "@/lib/isp/server";
-import { getRouterApi, previewRouterCommand, queueRouterCommand, runRouterApi, saveRouterApi } from "@/lib/isp/server-mikrotik";
+import { approveRouterCommand, getRouterApi, previewRouterCommand, queueRouterCommand, runRouterApi, saveRouterApi } from "@/lib/isp/server-mikrotik";
 import { copyRouterScript, updateRouter } from "@/lib/isp/server-routers";
 import { listAgentQueue, simulateAgentPull } from "@/lib/isp/server-ops";
 import type { RouterRow } from "@/lib/isp/types";
@@ -484,12 +484,26 @@ function RoutersPage() {
         <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
           {commands.length === 0 ? <li className="px-4 py-6 text-sm text-muted">No commands yet. Provision or suspend a service.</li> : null}
           {commands.map((c) => (
-            <li key={c.id} className="flex items-center justify-between bg-surface px-4 py-3 text-sm">
+            <li key={c.id} className="flex items-center justify-between gap-3 bg-surface px-4 py-3 text-sm">
               <div>
                 <span className="font-mono text-xs">{c.kind}</span>
                 <div className="text-xs text-muted">{c.router_name}</div>
               </div>
-              <Badge tone={statusTone(c.status === "acked" ? "active" : "pending")}>{c.status}</Badge>
+              <div className="flex items-center gap-2">
+                {c.status === "proposed" ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={async () => {
+                      await approveRouterCommand({ data: { id: c.id } });
+                      await load();
+                    }}
+                  >
+                    Approve
+                  </Button>
+                ) : null}
+                <Badge tone={statusTone(c.status === "acked" ? "active" : "pending")}>{c.status}</Badge>
+              </div>
             </li>
           ))}
         </ul>

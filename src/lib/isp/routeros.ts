@@ -98,6 +98,10 @@ export function commandRosScript(kind: string, payload: Record<string, unknown>)
 
   if (kind.startsWith("pppoe.")) {
     if (!user) return "# missing pppoe username";
+    if (kind.endsWith("disconnect")) {
+      return `${localBlock({ user })}
+:do { /ppp active remove [find where name=\$user] } on-error={};`;
+    }
     if (kind.endsWith("disable") || disabled) {
       return `${localBlock({ user })}
 :if ([:len [/ppp secret find where name=\$user]] > 0) do={

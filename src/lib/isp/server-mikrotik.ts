@@ -71,7 +71,22 @@ export const queueRouterCommand = createServerFn({ method: "POST" })
     assertPermission(role, "routers.manage");
     const [r] = await sql<{ id: string }>`select id from routers where id = ${data.router_id} and tenant_id = ${tenantId}`;
     if (!r) throw new Error("Router not found");
-    return queueCompiledCommand(sql, tenantId, r.id, data.kind, data.payload);
+    return queueCompiledCommand(sql, tenantId, r.id, data.kind, data.payload, context.userId);
+  });
+
+export const approveRouterCommand = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
+    const [cmd] = await sql<{ id: string; status: string }>`
+      select id, status from agent_commands where id = ${data.id} and tenant_id = ${tenantId}`;
+    if (!cmd) throw new Error("Command not found");
+    if (cmd.status !== "proposed") throw new Error("Only proposed commands can be approved");
+    await sql`update agent_commands set status = 'queued', approved_by = ${context.userId}
+      where id = ${cmd.id} and tenant_id = ${tenantId}`;
+    return { ok: true };
   });
 
 export const previewRouterCommand = createServerFn({ method: "POST" })

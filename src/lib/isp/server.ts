@@ -8,6 +8,7 @@ import {
   runBillingCycle,
 } from "./notifications";
 import { provisionServiceAccess, seedOpsForTenant } from "./access";
+import { allocateStaticIp, disconnectSession, rotateServicePassword } from "./access-service";
 import { agentPullUrl, agentScript, enrollFields, wgAddressForIndex } from "./agent";
 import { applyConfirmedPayment } from "./payments";
 import { assertPermission } from "./rbac";
@@ -452,6 +453,9 @@ export const createService = createServerFn({ method: "POST" })
     const id = nid("svc");
     await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status)
       values (${id}, ${tid}, ${data.customer_id}, ${data.package_id}, ${pkg.access_method}, ${data.username || null}, ${data.static_ip || null}, 'active')`;
+    if (pkg.access_method === "static" && !data.static_ip) {
+      await allocateStaticIp(sql, tid, id, data.customer_id);
+    }
     const radius = await provisionServiceAccess(sql, tid, id);
     await audit(sql, tid, context.userId, "service.created", "service", id);
     return { id, username: radius?.username, password: radius?.password };
@@ -487,6 +491,28 @@ export const setServiceStatus = createServerFn({ method: "POST" })
     await provisionServiceAccess(sql, workspace.tenantId, data.id);
     await audit(sql, workspace.tenantId, context.userId, `service.${data.status}`, "service", data.id);
     return { ok: true };
+  });
+
+export const rotateServiceSecret = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "services.manage");
+    const out = await rotateServicePassword(sql, workspace.tenantId, data.id);
+    await audit(sql, workspace.tenantId, context.userId, "service.password", "service", data.id);
+    return out;
+  });
+
+export const disconnectService = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "services.manage");
+    const out = await disconnectSession(sql, workspace.tenantId, data.id);
+    await audit(sql, workspace.tenantId, context.userId, "service.disconnect", "service", data.id);
+    return out;
   });
 
 export const listBilling = createServerFn({ method: "GET" })

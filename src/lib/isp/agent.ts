@@ -1,4 +1,5 @@
 import { nid } from "@/lib/utils";
+import { initialCommandStatus } from "./command-policy";
 import { ensureOpsSchema } from "./ops-schema";
 import { enrollRosScript } from "./routeros";
 import { generateWireGuardKeypair } from "./wireguard";
@@ -32,13 +33,15 @@ export async function enqueueAgentCommand(
   kind: string,
   payload: Record<string, unknown>,
   routerId?: string | null,
+  requestedBy = "",
 ) {
   await ensureOpsSchema(sql);
   const rid = routerId ?? (await pickRouter(sql, tenantId));
   if (!rid) return null;
   const id = nid("cmd");
-  await sql`insert into agent_commands (id, tenant_id, router_id, kind, payload, status)
-    values (${id}, ${tenantId}, ${rid}, ${kind}, ${JSON.stringify(payload)}, 'queued')`;
+  const status = initialCommandStatus(kind);
+  await sql`insert into agent_commands (id, tenant_id, router_id, kind, payload, status, requested_by)
+    values (${id}, ${tenantId}, ${rid}, ${kind}, ${JSON.stringify(payload)}, ${status}, ${requestedBy})`;
   return id;
 }
 

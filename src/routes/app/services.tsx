@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
-import { createService, listServices, setServiceStatus } from "@/lib/isp/server";
+import { createService, disconnectService, listServices, rotateServiceSecret, setServiceStatus } from "@/lib/isp/server";
 import type { PackageRow, ServiceRow, ServiceStatus } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app/services")({ component: ServicesPage });
@@ -14,6 +14,7 @@ function ServicesPage() {
   const [packages, setPackages] = useState<PackageRow[]>([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", package_id: "", username: "", static_ip: "" });
+  const [secretNote, setSecretNote] = useState<string | null>(null);
 
   async function load() {
     const res = await listServices();
@@ -75,7 +76,7 @@ function ServicesPage() {
           <Field label="PPPoE / voucher username">
             <Input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
           </Field>
-          <Field label="Static IP">
+          <Field label="Static IP (blank = auto from pool)">
             <Input value={form.static_ip} onChange={(e) => setForm({ ...form, static_ip: e.target.value })} />
           </Field>
           <div className="flex gap-2">
@@ -86,6 +87,8 @@ function ServicesPage() {
           </div>
         </form>
       ) : null}
+
+      {secretNote ? <p className="text-sm text-accent">{secretNote}</p> : null}
 
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full min-w-[44rem] text-left text-sm">
@@ -123,6 +126,28 @@ function ServicesPage() {
                     {s.status === "active" ? (
                       <Button size="sm" variant="ghost" onClick={() => setStatus(s.id, "grace")}>
                         Grace
+                      </Button>
+                    ) : null}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={async () => {
+                        await disconnectService({ data: { id: s.id } });
+                        setSecretNote(`Disconnect queued for ${s.username || s.static_ip || s.id}`);
+                      }}
+                    >
+                      Disconnect
+                    </Button>
+                    {s.access_method === "pppoe" ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          const r = await rotateServiceSecret({ data: { id: s.id } });
+                          setSecretNote(`New PPPoE password for ${r.username}: ${r.password}`);
+                        }}
+                      >
+                        New password
                       </Button>
                     ) : null}
                   </div>

@@ -7,6 +7,6 @@ Protocol (token = enroll_token):
 - `POST /api/agent/ack`
 - `GET|POST /api/agent/heartbeat`
 
-Command statuses: `queued → sent → acked|failed`. Service upserts auto-queue. Destructive/raw scripts should move through propose/approve later; columns `requested_by`, `approved_by`, `result` exist.
+Command statuses: `proposed → queued → sent → acked|failed`. Service upserts auto-queue. `raw.script` and reboot start as **proposed** and need Approve before the agent can pull them.
 
 Agent scripts are RouterOS v7 (`:local`, `:if`, `find where`).

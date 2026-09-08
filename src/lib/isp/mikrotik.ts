@@ -1,4 +1,5 @@
 import { nid } from "@/lib/utils";
+import { initialCommandStatus } from "./command-policy";
 import { ensureOpsSchema } from "./ops-schema";
 import { commandRosScript, wrapPullRosScript } from "./routeros";
 
@@ -42,6 +43,9 @@ export function compileMikrotik(kind: string, payload: Record<string, unknown>):
 
   if (kind.startsWith("pppoe.")) {
     if (!user) return { rest: [], script };
+    if (kind.endsWith("disconnect")) {
+      return { rest: [{ method: "DELETE", path: `/rest/ppp/active/${encodeURIComponent(user)}` }], script };
+    }
     if (kind.endsWith("disable") || disabled) {
       return {
         rest: [
@@ -100,6 +104,9 @@ export function compileMikrotik(kind: string, payload: Record<string, unknown>):
 
   if (kind.startsWith("hotspot.")) {
     if (!user) return { rest: [], script };
+    if (kind.endsWith("disconnect")) {
+      return { rest: [{ method: "DELETE", path: `/rest/ip/hotspot/active/${encodeURIComponent(user)}` }], script };
+    }
     if (kind.endsWith("disable") || disabled) {
       return {
         rest: [{ method: "PATCH", path: `/rest/ip/hotspot/user/${encodeURIComponent(user)}`, body: { disabled: "true" } }],
@@ -270,10 +277,12 @@ export async function queueCompiledCommand(
   routerId: string,
   kind: string,
   payload: Record<string, unknown>,
+  requestedBy = "",
 ) {
   await ensureOpsSchema(sql);
   const id = nid("cmd");
-  await sql`insert into agent_commands (id, tenant_id, router_id, kind, payload, status)
-    values (${id}, ${tenantId}, ${routerId}, ${kind}, ${JSON.stringify(payload)}, 'queued')`;
-  return { id, ...compileMikrotik(kind, payload) };
+  const status = initialCommandStatus(kind);
+  await sql`insert into agent_commands (id, tenant_id, router_id, kind, payload, status, requested_by)
+    values (${id}, ${tenantId}, ${routerId}, ${kind}, ${JSON.stringify(payload)}, ${status}, ${requestedBy})`;
+  return { id, status, ...compileMikrotik(kind, payload) };
 }

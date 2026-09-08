@@ -24,6 +24,7 @@ export async function syncRadiusAccount(
     status: string;
     download_mbps?: number;
     upload_mbps?: number;
+    password?: string;
   },
 ) {
   const username =
@@ -35,12 +36,13 @@ export async function syncRadiusAccount(
   const existing = await sql<{ id: string; password: string }>`
     select id, password from radius_accounts where tenant_id = ${tenantId} and service_id = ${service.id}`;
   if (existing[0]) {
+    const password = service.password || existing[0].password;
     await sql`update radius_accounts
-      set username = ${username}, framed_ip = ${service.static_ip ?? ""}, group_name = ${group}, enabled = ${enabled}, rate_limit = ${rate}
+      set username = ${username}, framed_ip = ${service.static_ip ?? ""}, group_name = ${group}, enabled = ${enabled}, rate_limit = ${rate}, password = ${password}
       where id = ${existing[0].id}`;
-    return { username, password: existing[0].password, enabled, rate_limit: rate };
+    return { username, password, enabled, rate_limit: rate };
   }
-  const password = secret();
+  const password = service.password || secret();
   await sql`insert into radius_accounts (id, tenant_id, service_id, username, password, framed_ip, group_name, enabled, rate_limit)
     values (${nid("rad")}, ${tenantId}, ${service.id}, ${username}, ${password}, ${service.static_ip ?? ""}, ${group}, ${enabled}, ${rate})`;
   return { username, password, enabled, rate_limit: rate };
