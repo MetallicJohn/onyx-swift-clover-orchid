@@ -4,6 +4,7 @@ import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { addReferral, addReseller, listPartners } from "@/lib/isp/server-ops";
+import { linkReseller, redeemPoints } from "@/lib/isp/server-more";
 
 export const Route = createFileRoute("/app/partners")({ component: PartnersPage });
 
@@ -47,7 +48,19 @@ function PartnersPage() {
                 <div className="font-medium">{l.customer_name}</div>
                 <div className="text-xs text-muted">{l.phone}</div>
               </div>
-              <div className="font-mono">{l.points} pts</div>
+              <div className="flex items-center gap-2">
+                <div className="font-mono">{l.points} pts</div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={async () => {
+                    await redeemPoints({ data: { customer_id: l.customer_id, points: Math.min(100, l.points) } });
+                    await load();
+                  }}
+                >
+                  Redeem 100
+                </Button>
+              </div>
             </li>
           ))}
           {data.loyalty.length === 0 ? <li className="px-4 py-6 text-sm text-muted">Points appear after confirmed payments.</li> : null}
@@ -122,7 +135,7 @@ function PartnersPage() {
             {data.resellers.map((r) => (
               <article key={r.id} className="rounded-xl border border-border bg-surface p-4">
                 <div className="font-medium">{r.name}</div>
-                <p className="text-sm text-muted">{r.phone} · {r.commission_pct}% commission</p>
+                <p className="text-sm text-muted">{r.phone} · {r.commission_pct}% · wallet KES {r.balance_kes ?? 0}</p>
                 <Badge tone={statusTone(r.status)}>{r.status}</Badge>
               </article>
             ))}

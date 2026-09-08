@@ -10,9 +10,12 @@ import {
 import { provisionServiceAccess, seedOpsForTenant } from "./access";
 import { allocateStaticIp, disconnectSession, rotateServicePassword } from "./access-service";
 import { agentPullUrl, agentScript, enrollFields, wgAddressForIndex } from "./agent";
+import { emit } from "./events";
 import { applyConfirmedPayment } from "./payments";
 import { assertPermission } from "./rbac";
+import { assertCustomerQuota } from "./saas";
 import { resolveActiveTenant, setActiveTenant } from "./tenant-context";
+import { openTicket } from "./tickets";
 import type {
   AccessMethod,
   CustomerRow,
@@ -336,9 +339,15 @@ export const createCustomer = createServerFn({ method: "POST" })
     const { sql, workspace } = await requireTenant(context.userId);
     const name = data.name.trim();
     if (!name) throw new Error("Name is required");
+    await assertCustomerQuota(sql, workspace.tenantId);
     const id = nid("cus");
     await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status)
       values (${id}, ${workspace.tenantId}, ${data.type || "individual"}, ${name}, ${data.phone.trim()}, ${data.email.trim()}, ${data.address.trim()}, 'active')`;
+    await emit(sql, {
+      type: "customer.created",
+      tenantId: workspace.tenantId,
+      payload: { customer_id: id, phone: data.phone, name },
+    });
     await audit(sql, workspace.tenantId, context.userId, "customer.created", "customer", id);
     return { id };
   });
@@ -620,7 +629,7 @@ export const listTickets = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     const tickets = await sql<TicketRow>`
-      select t.id, t.customer_id, c.name as customer_name, t.title, t.category, t.priority, t.status, t.created_at::text as created_at
+      select t.id, t.customer_id, c.name as customer_name, t.title, t.category, t.priority, t.status, t.assigned_to, t.created_at::text as created_at
       from tickets t left join customers c on c.id = t.customer_id
       where t.tenant_id = ${workspace.tenantId}
       order by t.created_at desc`;
@@ -633,12 +642,11 @@ export const createTicket = createServerFn({ method: "POST" })
   .validator((d: { title: string; category: string; priority: string; customer_id?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "tickets.manage");
     if (!data.title.trim()) throw new Error("Title is required");
-    const id = nid("tkt");
-    await sql`insert into tickets (id, tenant_id, customer_id, title, category, priority, status)
-      values (${id}, ${workspace.tenantId}, ${data.customer_id || null}, ${data.title.trim()}, ${data.category}, ${data.priority}, 'new')`;
-    await audit(sql, workspace.tenantId, context.userId, "ticket.created", "ticket", id);
-    return { id };
+    const opened = await openTicket(sql, workspace.tenantId, data);
+    await audit(sql, workspace.tenantId, context.userId, "ticket.created", "ticket", opened.id);
+    return opened;
   });
 
 export const setTicketStatus = createServerFn({ method: "POST" })
@@ -646,6 +654,12 @@ export const setTicketStatus = createServerFn({ method: "POST" })
   .validator((d: { id: string; status: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, workspace.role === "technician" ? "jobs.update" : "tickets.manage");
+    if (workspace.role === "technician") {
+      const [t] = await sql<{ assigned_to: string }>`
+        select assigned_to from tickets where id = ${data.id} and tenant_id = ${workspace.tenantId}`;
+      if (t && t.assigned_to && t.assigned_to !== context.userId) throw new Error("Not assigned to you");
+    }
     await sql`update tickets set status = ${data.status} where id = ${data.id} and tenant_id = ${workspace.tenantId}`;
     return { ok: true };
   });

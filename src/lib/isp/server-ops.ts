@@ -13,10 +13,11 @@ import {
   webfamBalance,
 } from "./messaging";
 import { activateVoucher, expireDueVouchers, generateVouchers, revokeVoucher } from "./hotspot";
-import { applyConfirmedPayment, createStkIntent, settleStkIntent } from "./payments";
+import { createStkIntent, settleStkIntent } from "./payments";
 import { disconnectRadiusUser, publicRadiusAccount, renderFreeRadiusUsers } from "./radius";
 import { assertPermission } from "./rbac";
 import { issuePortalOtp, portalContext, verifyPortalOtp } from "./portal";
+import { openTicket } from "./tickets";
 import { requireWorkspace as requireWs } from "./workspace";
 
 export const listRadius = createServerFn({ method: "GET" })
@@ -234,18 +235,37 @@ export const confirmStk = createServerFn({ method: "POST" })
 export const listField = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
-    const tickets = await sql<{
-      id: string;
-      title: string;
-      category: string;
-      priority: string;
-      status: string;
-      customer_name: string | null;
-      phone: string | null;
-      address: string | null;
-      created_at: string;
-    }>`select t.id, t.title, t.category, t.priority, t.status, c.name as customer_name, c.phone, c.address, t.created_at::text as created_at
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    const tickets =
+      role === "technician"
+        ? await sql<{
+            id: string;
+            title: string;
+            category: string;
+            priority: string;
+            status: string;
+            assigned_to: string;
+            customer_name: string | null;
+            phone: string | null;
+            address: string | null;
+            created_at: string;
+          }>`select t.id, t.title, t.category, t.priority, t.status, t.assigned_to, c.name as customer_name, c.phone, c.address, t.created_at::text as created_at
+       from tickets t left join customers c on c.id = t.customer_id
+       where t.tenant_id = ${tenantId} and t.status not in ('closed','resolved')
+         and (t.assigned_to = ${context.userId} or t.assigned_to = '')
+       order by case t.priority when 'urgent' then 0 when 'high' then 1 else 2 end, t.created_at`
+        : await sql<{
+            id: string;
+            title: string;
+            category: string;
+            priority: string;
+            status: string;
+            assigned_to: string;
+            customer_name: string | null;
+            phone: string | null;
+            address: string | null;
+            created_at: string;
+          }>`select t.id, t.title, t.category, t.priority, t.status, t.assigned_to, c.name as customer_name, c.phone, c.address, t.created_at::text as created_at
        from tickets t left join customers c on c.id = t.customer_id
        where t.tenant_id = ${tenantId} and t.status not in ('closed','resolved')
        order by case t.priority when 'urgent' then 0 when 'high' then 1 else 2 end, t.created_at`;
@@ -295,8 +315,8 @@ export const listPartners = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, tenantId } = await requireWs(context.userId);
-    const loyalty = await sql<{ customer_name: string; phone: string; points: number }>`
-      select c.name as customer_name, c.phone, l.points
+    const loyalty = await sql<{ customer_id: string; customer_name: string; phone: string; points: number }>`
+      select c.id as customer_id, c.name as customer_name, c.phone, l.points
       from loyalty_accounts l join customers c on c.id = l.customer_id
       where l.tenant_id = ${tenantId} order by l.points desc`;
     const referrals = await sql<{
@@ -315,7 +335,11 @@ export const listPartners = createServerFn({ method: "GET" })
       phone: string;
       commission_pct: number;
       status: string;
-    }>`select id, name, phone, commission_pct, status from resellers where tenant_id = ${tenantId} order by name`;
+      balance_kes: number;
+    }>`select r.id, r.name, r.phone, r.commission_pct, r.status, coalesce(w.balance_kes, 0)::int as balance_kes
+       from resellers r
+       left join reseller_wallets w on w.reseller_id = r.id and w.tenant_id = r.tenant_id
+       where r.tenant_id = ${tenantId} order by r.name`;
     const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${tenantId} order by name`;
     return { loyalty, referrals, resellers, customers };
   });
@@ -401,15 +425,19 @@ export const portalPay = createServerFn({ method: "POST" })
       invoiceId: data.invoice_id,
       provider: "mpesa",
     });
-    const pay = await applyConfirmedPayment(sql, {
-      tenantId: ctx.tenantId,
-      ispName: ctx.isp.name,
-      invoiceId: data.invoice_id,
-      provider: "mpesa",
-      reference: intent.checkout_id,
-    });
-    await sql`update payment_intents set status = 'confirmed' where checkout_id = ${intent.checkout_id}`;
-    return { ...intent, paid: pay.id };
+    if (!intent.checkout_id.startsWith("ws_")) {
+      return { ...intent, paid: false, note: "Complete the M-Pesa prompt on your phone." };
+    }
+    try {
+      const pay = await settleStkIntent(sql, {
+        tenantId: ctx.tenantId,
+        ispName: ctx.isp.name,
+        checkoutId: intent.checkout_id,
+      });
+      return { ...intent, paid: true, payment_id: pay.id, note: "Sandbox payment confirmed." };
+    } catch (e) {
+      return { ...intent, paid: false, note: e instanceof Error ? e.message : "Waiting for payment" };
+    }
   });
 
 export const portalOpenTicket = createServerFn({ method: "POST" })
@@ -417,11 +445,13 @@ export const portalOpenTicket = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const sql = await getSql();
     const ctx = await portalContext(sql, data.token);
-    if (!data.title.trim()) throw new Error("Describe the issue");
-    const id = nid("tkt");
-    await sql`insert into tickets (id, tenant_id, customer_id, title, category, priority, status)
-      values (${id}, ${ctx.tenantId}, ${ctx.customer.id}, ${data.title.trim()}, 'support', 'normal', 'new')`;
-    return { id };
+    const opened = await openTicket(sql, ctx.tenantId, {
+      title: data.title.trim(),
+      category: "support",
+      priority: "normal",
+      customer_id: ctx.customer.id,
+    });
+    return opened;
   });
 
 export const getMessaging = createServerFn({ method: "GET" })

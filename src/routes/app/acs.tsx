@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
+import { listCpeTasks, queueCpeTask } from "@/lib/isp/server-more";
 import { addCpe, informCpe, listAcs } from "@/lib/isp/server-ops";
 
 export const Route = createFileRoute("/app/acs")({ component: AcsPage });
@@ -10,12 +11,14 @@ export const Route = createFileRoute("/app/acs")({ component: AcsPage });
 function AcsPage() {
   const [devices, setDevices] = useState<Awaited<ReturnType<typeof listAcs>>["devices"]>([]);
   const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
+  const [tasks, setTasks] = useState<Awaited<ReturnType<typeof listCpeTasks>>["tasks"]>([]);
   const [form, setForm] = useState({ serial: "", product_class: "F670L", ssid: "", customer_id: "" });
 
   async function load() {
-    const r = await listAcs();
+    const [r, t] = await Promise.all([listAcs(), listCpeTasks()]);
     setDevices(r.devices);
     setCustomers(r.customers);
+    setTasks(t.tasks);
   }
   useEffect(() => {
     load().catch(console.error);
@@ -26,7 +29,7 @@ function AcsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">GenieACS</h1>
         <p className="text-sm text-muted">
-          CPE inventory for a separate ACS service. Informs are recorded here; TR-069 sessions stay on GenieACS.
+          Desired-state inventory. Tasks queue here for an external GenieACS worker — this app does not speak TR-069.
         </p>
       </div>
 
@@ -84,15 +87,45 @@ function AcsPage() {
                   <Badge tone={statusTone(d.status)}>{d.status}</Badge>
                 </td>
                 <td className="px-4 py-3">
-                  <Button size="sm" variant="ghost" onClick={async () => { await informCpe({ data: { id: d.id } }); await load(); }}>
-                    Inform
-                  </Button>
+                  <div className="flex flex-wrap gap-1">
+                    <Button size="sm" variant="ghost" onClick={async () => { await informCpe({ data: { id: d.id } }); await load(); }}>
+                      Inform
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={async () => { await queueCpeTask({ data: { cpe_id: d.id, kind: "reboot" } }); await load(); }}>
+                      Queue reboot
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={async () => {
+                        const ssid = window.prompt("SSID", d.ssid) || "";
+                        if (!ssid) return;
+                        await queueCpeTask({ data: { cpe_id: d.id, kind: "setSsid", ssid } });
+                        await load();
+                      }}
+                    >
+                      Queue SSID
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      <section>
+        <h2 className="mb-3 font-medium">ACS task queue</h2>
+        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
+          {tasks.length === 0 ? <li className="px-4 py-6 text-sm text-muted">No tasks. Queue reboot or SSID for a CPE.</li> : null}
+          {tasks.map((t) => (
+            <li key={t.id} className="flex items-center justify-between bg-surface px-4 py-3 text-sm">
+              <span className="font-mono text-xs">{t.serial} · {t.kind}</span>
+              <Badge tone={statusTone(t.status === "queued" ? "pending" : "active")}>{t.status}</Badge>
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   );
 }

@@ -6,7 +6,10 @@ export type Sql = {
 export type DomainEvent = {
   type:
     | "payment.confirmed"
-    | "service.changed";
+    | "service.changed"
+    | "customer.created"
+    | "ticket.created"
+    | "ticket.updated";
   tenantId: string;
   payload: Record<string, unknown>;
 };

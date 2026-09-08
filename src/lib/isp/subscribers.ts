@@ -4,6 +4,8 @@ import { on, type DomainEvent, type Sql } from "./events";
 import { awardLoyalty } from "./loyalty";
 import { notifyCustomerEvent } from "./notifications";
 import { syncRadiusAccount } from "./radius";
+import { convertReferral } from "./referrals";
+import { creditReseller } from "./resellers";
 
 let wired = false;
 
@@ -19,7 +21,12 @@ export function wireModules() {
     const payId = String(p.payment_id || "");
     const amount = Number(p.amount_kes || 0);
     await restoreCustomerAccess(sql, tenantId, customerId);
-    await awardLoyalty(sql, tenantId, customerId, amount);
+    await awardLoyalty(sql, tenantId, customerId, amount, "payment", payId);
+    try {
+      await creditReseller(sql, tenantId, customerId, amount, payId);
+    } catch {
+      /* reseller wallet is optional */
+    }
     try {
       await notifyCustomerEvent(sql, tenantId, ispName, customerId, "payment.received", payId, {
         customer_name: "",
@@ -48,12 +55,21 @@ export function wireModules() {
       package_name: String(p.package_name || ""),
       download_mbps: Number(p.download_mbps || 10),
       upload_mbps: Number(p.upload_mbps || 10),
+      password: p.password ? String(p.password) : undefined,
     };
     const radius = await syncRadiusAccount(sql, event.tenantId, service);
     await enqueueServiceCommand(sql, event.tenantId, {
       ...service,
       username: radius.username,
-      password: radius.password,
+      password: service.password || radius.password,
     });
+  });
+
+  on("customer.created", async (sql, event) => {
+    try {
+      await convertReferral(sql, event.tenantId, String(event.payload.phone || ""));
+    } catch {
+      /* referral convert is best-effort */
+    }
   });
 }

@@ -124,6 +124,7 @@ export type TicketRow = {
   category: string;
   priority: string;
   status: string;
+  assigned_to?: string;
   created_at: string;
 };
 

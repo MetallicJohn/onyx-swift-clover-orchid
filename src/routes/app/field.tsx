@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { commentOpenTicket } from "@/lib/isp/server-more";
 import { listField } from "@/lib/isp/server-ops";
 import { setTicketStatus } from "@/lib/isp/server";
 
@@ -21,7 +22,7 @@ function FieldPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Field</h1>
-        <p className="text-sm text-muted">Technician dispatch. Update status as you travel, arrive, and close the job.</p>
+        <p className="text-sm text-muted">Technician jobs assigned to you. Accept, travel, arrive, close.</p>
       </div>
       <div className="grid gap-3">
         {tickets.map((t) => (
@@ -40,7 +41,7 @@ function FieldPage() {
               </div>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              {(["travelling", "on_site", "resolved"] as const).map((s) => (
+              {(["accepted", "travelling", "on_site", "resolved"] as const).map((s) => (
                 <Button
                   key={s}
                   size="sm"
@@ -53,6 +54,15 @@ function FieldPage() {
                   {s.replace("_", " ")}
                 </Button>
               ))}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  await commentOpenTicket({ data: { id: t.id, body: "On site check-in" } });
+                }}
+              >
+                Check-in note
+              </Button>
             </div>
           </article>
         ))}

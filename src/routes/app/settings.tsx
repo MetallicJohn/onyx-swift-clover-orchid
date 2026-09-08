@@ -5,18 +5,20 @@ import { Field, Input, Select } from "@/components/ui/input";
 import { getDashboard, renameTenant } from "@/lib/isp/server";
 import { getKopokopo, saveKopokopo, testKopokopo } from "@/lib/isp/server-kopo";
 import { getMpesa, saveMpesa, savePublicBase, testMpesa } from "@/lib/isp/server-mpesa";
+import { getPlan, setPlan } from "@/lib/isp/server-more";
 import { checkSmsAccount, getMessaging, listProviders, saveMessaging, testMessaging, toggleProvider, workspaceSlug } from "@/lib/isp/server-ops";
 import { cn } from "@/lib/utils";
 import type { Workspace } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app/settings")({ component: SettingsPage });
 
-type TabId = "company" | "sms" | "payment";
+type TabId = "company" | "sms" | "payment" | "plan";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "company", label: "Company info" },
   { id: "sms", label: "SMS" },
   { id: "payment", label: "Payment" },
+  { id: "plan", label: "Plan" },
 ];
 
 type MsgForm = {
@@ -106,15 +108,17 @@ function SettingsPage() {
   const [publicBase, setPublicBase] = useState("");
   const [mpesaCallback, setMpesaCallback] = useState("");
   const [kopoCallback, setKopoCallback] = useState("");
+  const [plan, setPlanState] = useState<{ plan: string; status: string; max_customers: number; max_routers: number; monthly_kes: number; period_end: string | null } | null>(null);
 
   async function load() {
-    const [d, s, p, m, k, daraja] = await Promise.all([
+    const [d, s, p, m, k, daraja, sub] = await Promise.all([
       getDashboard(),
       workspaceSlug(),
       listProviders(),
       getMessaging(),
       getKopokopo(),
       getMpesa(),
+      getPlan(),
     ]);
     setWs(d.workspace);
     setSlug(s.slug);
@@ -165,6 +169,7 @@ function SettingsPage() {
     setPublicBase(daraja.public_base_url || (typeof window !== "undefined" ? window.location.origin : ""));
     setMpesaCallback(daraja.callback_url);
     setKopoCallback(daraja.kopokopo_callback_url);
+    setPlanState(sub);
   }
   useEffect(() => {
     load().catch(console.error);
@@ -556,6 +561,35 @@ function SettingsPage() {
               </Button>
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {tab === "plan" ? (
+        <div className="grid gap-3 rounded-xl border border-border bg-surface p-4">
+          <p className="text-sm text-muted">
+            Platform subscription for this ISP tenant. Customer billing stays on the Billing page.
+          </p>
+          {plan ? (
+            <p className="text-sm">
+              Current: <strong>{plan.plan}</strong> ({plan.status}) · {plan.max_customers} customers · {plan.max_routers}{" "}
+              routers · KES {plan.monthly_kes}/mo
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {(["trial", "starter", "growth"] as const).map((p) => (
+              <Button
+                key={p}
+                variant={plan?.plan === p ? "default" : "secondary"}
+                onClick={async () => {
+                  const r = await setPlan({ data: { plan: p } });
+                  setPlanState(r);
+                  setSaved(`Plan set to ${p}`);
+                }}
+              >
+                {p}
+              </Button>
+            ))}
+          </div>
         </div>
       ) : null}
     </div>
