@@ -13,6 +13,7 @@ import {
   webfamBalance,
 } from "./messaging";
 import { activateVoucher, expireDueVouchers, generateVouchers, revokeVoucher } from "./hotspot";
+import { listCustomerInbox } from "./inbox";
 import { createStkIntent, settleStkIntent } from "./payments";
 import { disconnectRadiusUser, publicRadiusAccount, renderFreeRadiusUsers } from "./radius";
 import { assertPermission } from "./rbac";
@@ -412,7 +413,8 @@ export const getPortalHome = createServerFn({ method: "POST" })
        order by issued_at desc`;
     const [loy] = await sql<{ points: number }>`
       select points from loyalty_accounts where tenant_id = ${ctx.tenantId} and customer_id = ${ctx.customer.id}`;
-    return { ...ctx, services, invoices, points: loy?.points ?? 0 };
+    const inbox = await listCustomerInbox(sql, ctx.tenantId, ctx.customer.id);
+    return { ...ctx, services, invoices, points: loy?.points ?? 0, inbox };
   });
 
 export const portalPay = createServerFn({ method: "POST" })

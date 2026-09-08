@@ -30,7 +30,7 @@ function PortalHome() {
           <Activity className="size-4 text-accent" /> Gridline customer portal
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Pay bills & check your line</h1>
-        <p className="mt-2 text-sm text-muted">Use your ISP slug and the phone on the account. Sandbox OTP is 000000.</p>
+        <p className="mt-2 text-sm text-muted">Use your ISP slug and the phone on the account. Sandbox SMS uses code 000000; live SMS is sent to the phone.</p>
         <form
           className="mt-6 grid gap-3"
           onSubmit={async (e) => {
@@ -130,6 +130,20 @@ function PortalHome() {
             </div>
           </div>
         ))}
+      </section>
+
+      <section className="mt-8 space-y-3">
+        <h2 className="font-medium">Messages</h2>
+        {home.inbox?.length
+          ? home.inbox.map((m) => (
+              <div key={m.id} className="rounded-xl border border-border bg-surface px-4 py-3">
+                <div className="font-medium">{m.subject}</div>
+                <p className="mt-1 text-sm text-muted">{m.body}</p>
+              </div>
+            ))
+          : (
+            <p className="text-sm text-muted">No messages yet.</p>
+          )}
       </section>
 
       <form

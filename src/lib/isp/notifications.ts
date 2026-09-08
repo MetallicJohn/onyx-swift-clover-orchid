@@ -1,4 +1,5 @@
 import { nid } from "@/lib/utils";
+import { queueEmail, writeInbox } from "./inbox";
 import { channelAllowed, deliverChannel, getMessagingSettings } from "./messaging";
 import type { BillingEvent, NotifyChannel } from "./types";
 
@@ -66,6 +67,12 @@ const DEFAULTS: Array<{
   },
   {
     event_code: "payment.received",
+    channel: "in_app",
+    subject: "Payment received",
+    body: "We received {amount} (ref {payment_reference}) for {invoice_number}. Your service is active.",
+  },
+  {
+    event_code: "payment.received",
     channel: "whatsapp",
     subject: "Payment received",
     body: "Hi {customer_name}, we received {amount} (ref {payment_reference}) for {invoice_number}. Your service is active. — {isp_name}",
@@ -105,12 +112,6 @@ const DEFAULTS: Array<{
     channel: "in_app",
     subject: "Invoice issued",
     body: "{invoice_number} for {customer_name} ({amount}) issued, due {due_date}.",
-  },
-  {
-    event_code: "payment.received",
-    channel: "in_app",
-    subject: "Payment received",
-    body: "{customer_name} paid {amount} via {payment_reference}.",
   },
   {
     event_code: "service.suspended",
@@ -183,7 +184,15 @@ export async function dispatchNotification(
       select id from notification_logs
       where tenant_id = ${opts.tenantId} and event_code = ${opts.event} and entity_id = ${opts.entityId} and channel = ${tpl.channel}`;
     if (dup[0]) continue;
-    const delivery = await deliverChannel(settings, tpl.channel, dest, body);
+    let delivery = { status: "sent", detail: dest };
+    if (tpl.channel === "sms" || tpl.channel === "whatsapp") {
+      delivery = await deliverChannel(settings, tpl.channel, dest, body);
+    } else if (tpl.channel === "email") {
+      delivery = await queueEmail(sql, opts.tenantId, dest, subject, body);
+    } else if (tpl.channel === "in_app" && opts.customerId) {
+      await writeInbox(sql, opts.tenantId, opts.customerId, subject, body, opts.event);
+      delivery = { status: "sent", detail: "inbox" };
+    }
     await sql`insert into notification_logs (id, tenant_id, customer_id, event_code, channel, entity_id, subject, body, destination, status)
       values (${nid("ntf")}, ${opts.tenantId}, ${opts.customerId}, ${opts.event}, ${tpl.channel}, ${opts.entityId}, ${subject}, ${body}, ${delivery.detail || dest}, ${delivery.status})`;
     sent += 1;

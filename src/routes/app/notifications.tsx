@@ -16,7 +16,8 @@ export const Route = createFileRoute("/app/notifications")({ component: Notifica
 function NotificationsPage() {
   const [logs, setLogs] = useState<NotificationLogRow[]>([]);
   const [templates, setTemplates] = useState<NotificationTemplateRow[]>([]);
-  const [tab, setTab] = useState<"log" | "templates">("log");
+  const [inbox, setInbox] = useState<Array<{ id: string; subject: string; body: string; event_code: string; customer_name?: string | null }>>([]);
+  const [tab, setTab] = useState<"log" | "templates" | "inbox">("log");
   const [cycle, setCycle] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState<NotificationTemplateRow | null>(null);
@@ -25,6 +26,7 @@ function NotificationsPage() {
     const res = await listNotifications();
     setLogs(res.logs);
     setTemplates(res.templates);
+    setInbox(res.inbox);
   }
 
   useEffect(() => {
@@ -70,6 +72,9 @@ function NotificationsPage() {
         <Button size="sm" variant={tab === "templates" ? "default" : "secondary"} onClick={() => setTab("templates")}>
           Templates
         </Button>
+        <Button size="sm" variant={tab === "inbox" ? "default" : "secondary"} onClick={() => setTab("inbox")}>
+          In-app inbox
+        </Button>
       </div>
 
       {tab === "log" ? (
@@ -90,7 +95,7 @@ function NotificationsPage() {
             </li>
           ))}
         </ul>
-      ) : (
+      ) : tab === "templates" ? (
         <div className="space-y-3">
           <p className="text-xs text-subtle">
             Variables: {"{customer_name}"} {"{invoice_number}"} {"{amount}"} {"{due_date}"} {"{service_name}"}{" "}
@@ -151,6 +156,17 @@ function NotificationsPage() {
             </article>
           ))}
         </div>
+      ) : (
+        <ul className="space-y-3">
+          {inbox.length === 0 ? <p className="text-sm text-muted">No in-app messages yet.</p> : null}
+          {inbox.map((n) => (
+            <li key={n.id} className="rounded-xl border border-border bg-surface p-4">
+              <div className="font-medium">{n.subject}</div>
+              <div className="mt-1 text-xs text-muted">{n.customer_name ?? "customer"} · {n.event_code}</div>
+              <p className="mt-2 text-sm text-muted">{n.body}</p>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

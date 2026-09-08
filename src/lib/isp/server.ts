@@ -11,6 +11,7 @@ import { provisionServiceAccess, seedOpsForTenant } from "./access";
 import { allocateStaticIp, disconnectSession, rotateServicePassword } from "./access-service";
 import { agentPullUrl, agentScript, enrollFields, wgAddressForIndex } from "./agent";
 import { emit } from "./events";
+import { listInbox } from "./inbox";
 import { applyConfirmedPayment } from "./payments";
 import { assertPermission } from "./rbac";
 import { assertCustomerQuota } from "./saas";
@@ -811,7 +812,8 @@ export const listNotifications = createServerFn({ method: "GET" })
       select id, event_code, channel, subject, body, enabled
       from notification_templates where tenant_id = ${workspace.tenantId}
       order by event_code, channel`;
-    return { workspace, logs, templates };
+    const inbox = await listInbox(sql, workspace.tenantId);
+    return { workspace, logs, templates, inbox };
   });
 
 export const updateNotificationTemplate = createServerFn({ method: "POST" })

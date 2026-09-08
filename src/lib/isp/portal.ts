@@ -1,15 +1,15 @@
 import { nid } from "@/lib/utils";
-import { ensureOpsSchema } from "./ops-schema";
+import { deliverSms, getMessagingSettings } from "./messaging";
+import { newOtp } from "./otp";
+
+export { newOtp } from "./otp";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
 };
 
-const SANDBOX_OTP = "000000";
-
 export async function issuePortalOtp(sql: Sql, slug: string, phone: string) {
-  await ensureOpsSchema(sql);
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 9) throw new Error("Enter a valid phone number");
   const [ten] = await sql<{ id: string; name: string }>`select id, name from tenants where slug = ${slug.trim()}`;
@@ -18,14 +18,23 @@ export async function issuePortalOtp(sql: Sql, slug: string, phone: string) {
     select id, phone from customers where tenant_id = ${ten.id}`;
   const customer = customers.find((c) => c.phone.replace(/\D/g, "").endsWith(digits.slice(-9)));
   if (!customer) throw new Error("No customer with that phone on this network");
+  const settings = await getMessagingSettings(sql, ten.id);
+  const code = newOtp(settings.sms_sandbox);
   const id = nid("otp");
   await sql`insert into portal_otps (id, tenant_id, customer_id, phone, code, expires_at, used)
-    values (${id}, ${ten.id}, ${customer.id}, ${phone}, ${SANDBOX_OTP}, now() + interval '15 minutes', false)`;
-  return { sent: true, hint: SANDBOX_OTP, isp: ten.name };
+    values (${id}, ${ten.id}, ${customer.id}, ${phone}, ${code}, now() + interval '15 minutes', false)`;
+  if (!settings.sms_sandbox) {
+    await deliverSms(settings, phone, `${ten.name} portal code: ${code}. Expires in 15 minutes.`);
+  }
+  return {
+    sent: true,
+    hint: settings.sms_sandbox ? code : "sent to your phone",
+    isp: ten.name,
+    sandbox: settings.sms_sandbox,
+  };
 }
 
 export async function verifyPortalOtp(sql: Sql, slug: string, phone: string, code: string) {
-  await ensureOpsSchema(sql);
   const digits = phone.replace(/\D/g, "");
   const [ten] = await sql<{ id: string; name: string }>`select id, name from tenants where slug = ${slug.trim()}`;
   if (!ten) throw new Error("Unknown network");
@@ -47,7 +56,6 @@ export async function verifyPortalOtp(sql: Sql, slug: string, phone: string, cod
 }
 
 export async function portalContext(sql: Sql, token: string) {
-  await ensureOpsSchema(sql);
   const [ses] = await sql<{ tenant_id: string; customer_id: string }>`
     select tenant_id, customer_id from portal_sessions where token = ${token}`;
   if (!ses) throw new Error("Session expired. Sign in again.");

@@ -11,9 +11,8 @@
 | WireGuard keys | Implemented and tested — handshake not verified in lab |
 | PPPoE / static / IPAM | Implemented and tested |
 | Hotspot vouchers | Implemented and tested — no captive portal |
-| Notifications SMS/WA | Implemented and tested — email mocked |
-| Tickets + field | Implemented and tested — not a native mobile app |
-| Customer portal | Implemented and tested — OTP sandbox 000000 |
+| Notifications SMS/WA | Implemented and tested — email queued (Resend if key set) |
+| Customer portal | Implemented and tested — sandbox OTP 000000; live SMS OTP |
 | GenieACS | Inventory + task queue — TR-069 architecture only |
 | Loyalty / referrals / resellers | Implemented and tested |
 | SaaS platform plans | Implemented (local plans, not Stripe) |

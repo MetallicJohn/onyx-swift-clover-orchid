@@ -13,11 +13,15 @@ function PartnersPage() {
   const [data, setData] = useState<Awaited<ReturnType<typeof listPartners>> | null>(null);
   const [ref, setRef] = useState({ referrer_id: "", referee_name: "", referee_phone: "" });
   const [rs, setRs] = useState({ name: "", phone: "", commission_pct: 10 });
+  const [link, setLink] = useState({ customer_id: "", reseller_id: "" });
 
   async function load() {
     const r = await listPartners();
     setData(r);
     if (!ref.referrer_id && r.customers[0]) setRef((f) => ({ ...f, referrer_id: r.customers[0].id }));
+    if (!link.customer_id && r.customers[0]) {
+      setLink({ customer_id: r.customers[0].id, reseller_id: r.resellers[0]?.id ?? "" });
+    }
   }
   useEffect(() => {
     load().catch(console.error);
@@ -130,6 +134,37 @@ function PartnersPage() {
               <Input type="number" value={rs.commission_pct} onChange={(e) => setRs({ ...rs, commission_pct: Number(e.target.value) })} />
             </Field>
             <Button type="submit">Add reseller</Button>
+          </form>
+          <form
+            className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-3"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!link.customer_id || !link.reseller_id) return;
+              await linkReseller({ data: link });
+              await load();
+            }}
+          >
+            <Field label="Customer">
+              <Select value={link.customer_id} onChange={(e) => setLink({ ...link, customer_id: e.target.value })}>
+                {data.customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Reseller">
+              <Select value={link.reseller_id} onChange={(e) => setLink({ ...link, reseller_id: e.target.value })}>
+                {data.resellers.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <div className="flex items-end">
+              <Button type="submit">Attach for commission</Button>
+            </div>
           </form>
           <div className="grid gap-3 md:grid-cols-2">
             {data.resellers.map((r) => (
