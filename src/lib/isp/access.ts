@@ -1,8 +1,11 @@
 import { nid } from "@/lib/utils";
-import { enqueueServiceCommand } from "./agent";
+import { enrollFields, wgAddressForIndex } from "./agent";
+import { emit } from "./events";
 import { getMessagingSettings } from "./messaging";
 import { ensureOpsSchema } from "./ops-schema";
-import { seedRadiusSessions, syncRadiusAccount } from "./radius";
+import { seedRadiusSessions } from "./radius";
+
+export { awardLoyalty } from "./loyalty";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -24,32 +27,17 @@ export async function provisionServiceAccess(sql: Sql, tenantId: string, service
      from services s join packages p on p.id = s.package_id
      where s.id = ${serviceId} and s.tenant_id = ${tenantId}`;
   if (!svc) return null;
-  const radius = await syncRadiusAccount(sql, tenantId, svc);
-  await enqueueServiceCommand(sql, tenantId, {
-    ...svc,
-    username: radius.username,
-    password: radius.password,
-  });
-  return radius;
+  await emit(sql, { type: "service.changed", tenantId, payload: { ...svc } });
+  const [radius] = await sql<{ username: string; password: string; enabled: boolean }>`
+    select username, password, enabled from radius_accounts
+    where tenant_id = ${tenantId} and service_id = ${svc.id}`;
+  return radius ?? null;
 }
 
 export async function restoreCustomerAccess(sql: Sql, tenantId: string, customerId: string) {
   await sql`update services set status = 'active' where customer_id = ${customerId} and tenant_id = ${tenantId} and status in ('grace','suspended','pending')`;
   const svcs = await sql<{ id: string }>`select id from services where tenant_id = ${tenantId} and customer_id = ${customerId}`;
   for (const s of svcs) await provisionServiceAccess(sql, tenantId, s.id);
-}
-
-export async function awardLoyalty(sql: Sql, tenantId: string, customerId: string, amountKes: number) {
-  await ensureOpsSchema(sql);
-  const points = Math.floor(amountKes / 10);
-  const existing = await sql<{ id: string; points: number }>`
-    select id, points from loyalty_accounts where tenant_id = ${tenantId} and customer_id = ${customerId}`;
-  if (existing[0]) {
-    await sql`update loyalty_accounts set points = ${existing[0].points + points} where id = ${existing[0].id}`;
-  } else {
-    await sql`insert into loyalty_accounts (id, tenant_id, customer_id, points)
-      values (${nid("loy")}, ${tenantId}, ${customerId}, ${points})`;
-  }
 }
 
 export async function seedOpsForTenant(sql: Sql, tenantId: string) {
@@ -86,9 +74,8 @@ export async function seedOpsForTenant(sql: Sql, tenantId: string) {
   for (const r of routers) {
     i += 1;
     if (!r.enroll_token) {
-      const token = `agt_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
-      const wgPublic = Buffer.from(r.name + token).toString("base64").slice(0, 44);
-      await sql`update routers set enroll_token = ${token}, wg_public = ${wgPublic}, wg_address = ${`10.200.0.${i + 1}/32`}, agent_version = '0.1.0'
+      const enroll = enrollFields(r.name);
+      await sql`update routers set enroll_token = ${enroll.token}, wg_public = ${enroll.wg_public}, wg_private_ref = ${enroll.wg_private_sealed}, wg_address = ${wgAddressForIndex(i)}, agent_version = '0.2.0'
         where id = ${r.id}`;
     }
   }

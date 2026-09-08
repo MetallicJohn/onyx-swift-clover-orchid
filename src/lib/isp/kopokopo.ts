@@ -1,3 +1,5 @@
+import { open } from "./secrets";
+
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
@@ -28,7 +30,9 @@ export async function loadKopo(sql: Sql, tenantId: string): Promise<KopoConfig |
   const rows = await sql<KopoConfig>`
     select client_id, client_secret, till_number, sandbox, enabled
     from payment_providers where tenant_id = ${tenantId} and kind = 'kopokopo'`;
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  return { ...row, client_secret: open(row.client_secret) };
 }
 
 export async function kopoAccessToken(cfg: KopoConfig) {

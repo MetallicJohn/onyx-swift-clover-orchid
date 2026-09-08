@@ -1,17 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { getSql } from "@/lib/db";
 import { compileMikrotik, compileRow, curlForOps, executeRestOps, queueCompiledCommand } from "./mikrotik";
-import { ensureOpsSchema } from "./ops-schema";
-
-async function requireWs(userId: string) {
-  const sql = await getSql();
-  await ensureOpsSchema(sql);
-  const members = await sql<{ tenant_id: string }>`
-    select tenant_id from tenant_members where user_id = ${userId} order by created_at asc limit 1`;
-  if (!members[0]) throw new Error("No workspace");
-  return { sql, tenantId: members[0].tenant_id };
-}
+import { assertPermission } from "./rbac";
+import { requireWorkspace as requireWs } from "./workspace";
 
 function hint(secret: string) {
   if (!secret) return "";
@@ -76,7 +67,8 @@ export const queueRouterCommand = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { router_id: string; kind: string; payload: Record<string, unknown> }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
     const [r] = await sql<{ id: string }>`select id from routers where id = ${data.router_id} and tenant_id = ${tenantId}`;
     if (!r) throw new Error("Router not found");
     return queueCompiledCommand(sql, tenantId, r.id, data.kind, data.payload);
@@ -97,7 +89,8 @@ export const runRouterApi = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { router_id: string; command_id?: string; kind?: string; payload?: Record<string, unknown> }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
     const [r] = await sql<{
       id: string;
       api_user: string;

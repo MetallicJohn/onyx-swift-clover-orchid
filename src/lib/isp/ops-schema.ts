@@ -153,12 +153,6 @@ const STATEMENTS = [
   )`,
 ];
 
-export async function ensureOpsSchema(sql: Sql) {
-  for (const stmt of STATEMENTS) {
-    try {
-      await sql.query(stmt);
-    } catch {
-      /* already applied or table not ready */
-    }
-  }
+export async function ensureOpsSchema(_sql: Sql) {
+  /* M0.5: schema is applied only via versioned migrations (0001–0006). */
 }

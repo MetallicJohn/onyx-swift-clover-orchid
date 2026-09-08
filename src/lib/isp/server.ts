@@ -9,8 +9,9 @@ import {
 } from "./notifications";
 import { provisionServiceAccess, seedOpsForTenant } from "./access";
 import { agentPullUrl, agentScript, enrollFields, wgAddressForIndex } from "./agent";
-import { ensureOpsSchema } from "./ops-schema";
 import { applyConfirmedPayment } from "./payments";
+import { assertPermission } from "./rbac";
+import { resolveActiveTenant, setActiveTenant } from "./tenant-context";
 import type {
   AccessMethod,
   CustomerRow,
@@ -193,38 +194,13 @@ async function ensureWorkspace(
   displayName: string | null,
   email: string | null,
 ): Promise<Workspace> {
-  const existing = await sql<{
-    tenant_id: string;
-    name: string;
-    slug: string;
-    status: string;
-    currency: string;
-    role: TenantRole;
-    support_email: string;
-    support_phone: string;
-    demo_seeded: boolean;
-  }>`select t.id as tenant_id, t.name, t.slug, t.status, t.currency, m.role, t.support_email, t.support_phone, t.demo_seeded
-     from tenant_members m
-     join tenants t on t.id = m.tenant_id
-     where m.user_id = ${userId}
-     order by m.created_at asc
-     limit 1`;
-
-  if (existing[0]) {
-    const row = existing[0];
-    if (!row.demo_seeded) await seedDemo(sql, row.tenant_id);
-    await ensureDefaultTemplates(sql, row.tenant_id);
-    await seedOpsForTenant(sql, row.tenant_id);
-    return {
-      tenantId: row.tenant_id,
-      tenantName: row.name,
-      slug: row.slug,
-      status: row.status,
-      currency: row.currency,
-      role: row.role,
-      supportEmail: row.support_email,
-      supportPhone: row.support_phone,
-    };
+  const active = await resolveActiveTenant(sql, userId);
+  if (active) {
+    const [row] = await sql<{ demo_seeded: boolean }>`select demo_seeded from tenants where id = ${active.tenantId}`;
+    if (!row?.demo_seeded) await seedDemo(sql, active.tenantId);
+    await ensureDefaultTemplates(sql, active.tenantId);
+    await seedOpsForTenant(sql, active.tenantId);
+    return active;
   }
 
   const tenantId = nid("ten");
@@ -235,6 +211,7 @@ async function ensureWorkspace(
     values (${tenantId}, ${name}, ${slug}, 'trial', 'KES', 'Africa/Nairobi', ${email ?? ""})`;
   await sql`insert into tenant_members (id, tenant_id, user_id, role)
     values (${nid("mem")}, ${tenantId}, ${userId}, 'isp_owner')`;
+  await setActiveTenant(sql, userId, tenantId);
   await seedDemo(sql, tenantId);
   await ensureDefaultTemplates(sql, tenantId);
   await seedOpsForTenant(sql, tenantId);
@@ -249,6 +226,7 @@ async function ensureWorkspace(
     role: "isp_owner",
     supportEmail: email ?? "",
     supportPhone: "",
+    permissions: ["*"],
   };
 }
 
@@ -257,6 +235,29 @@ async function requireTenant(userId: string, displayName?: string | null, email?
   const workspace = await ensureWorkspace(sql, userId, displayName ?? null, email ?? null);
   return { sql, workspace };
 }
+
+export const listMyTenants = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const sql = await getSql();
+    const { listMemberships } = await import("./tenant-context");
+    const rows = await listMemberships(sql, context.userId);
+    const active = await resolveActiveTenant(sql, context.userId);
+    return {
+      activeId: active?.tenantId ?? "",
+      tenants: rows.map((r) => ({ id: r.tenant_id, name: r.name, role: r.role })),
+    };
+  });
+
+export const switchTenant = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { tenant_id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const ws = await setActiveTenant(sql, context.userId, data.tenant_id);
+    await audit(sql, ws.tenantId, context.userId, "tenant.switched", "tenant", ws.tenantId);
+    return ws;
+  });
 
 export const getDashboard = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
@@ -536,6 +537,7 @@ export const recordPayment = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     const tid = workspace.tenantId;
+    assertPermission(workspace.role, "payments.manage");
     const [inv] = await sql<{ id: string; customer_id: string; amount_kes: number; status: string; number: string }>`
       select id, customer_id, amount_kes, status, number from invoices where id = ${data.invoice_id} and tenant_id = ${tid}`;
     if (!inv) throw new Error("Invoice not found");
@@ -556,7 +558,7 @@ export const listRouters = createServerFn({ method: "GET" })
     const { sql, workspace } = await requireTenant(context.userId);
     const routers = await sql<RouterRow>`
       select id, name, location, identity, role, wg_status, last_seen::text as last_seen, cpu_pct, uptime_hours,
-             enroll_token, wg_public, wg_address, agent_version
+             wg_public, wg_address, agent_version
       from routers where tenant_id = ${workspace.tenantId} order by name`;
     return { workspace, routers };
   });
@@ -567,13 +569,13 @@ export const addRouter = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     if (!data.name.trim()) throw new Error("Name is required");
-    await ensureOpsSchema(sql);
+    assertPermission(workspace.role, "routers.manage");
     const id = nid("rtr");
     const count = await sql<{ n: number }>`select count(*)::int as n from routers where tenant_id = ${workspace.tenantId}`;
     const enroll = enrollFields(data.name);
     const wgAddress = wgAddressForIndex((count[0]?.n ?? 0) + 1);
-    await sql`insert into routers (id, tenant_id, name, location, identity, role, wg_status, last_seen, cpu_pct, uptime_hours, enroll_token, wg_public, wg_address, agent_version)
-      values (${id}, ${workspace.tenantId}, ${data.name.trim()}, ${data.location.trim()}, ${data.identity.trim() || data.name.trim().toLowerCase()}, ${data.role || "access"}, 'pending', now(), 0, 0, ${enroll.token}, ${enroll.wg_public}, ${wgAddress}, '0.1.0')`;
+    await sql`insert into routers (id, tenant_id, name, location, identity, role, wg_status, last_seen, cpu_pct, uptime_hours, enroll_token, wg_public, wg_address, agent_version, wg_private_ref)
+      values (${id}, ${workspace.tenantId}, ${data.name.trim()}, ${data.location.trim()}, ${data.identity.trim() || data.name.trim().toLowerCase()}, ${data.role || "access"}, 'pending', now(), 0, 0, ${enroll.token}, ${enroll.wg_public}, ${wgAddress}, '0.2.0', ${enroll.wg_private_sealed})`;
     await audit(sql, workspace.tenantId, context.userId, "router.created", "router", id);
     const [ten] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${workspace.tenantId}`;
     const script = agentScript({

@@ -1,9 +1,8 @@
 import { nid } from "@/lib/utils";
-import { restoreCustomerAccess, awardLoyalty } from "./access";
-import { kopoIncomingPayment, kopoPaymentStatus, loadKopo } from "./kopokopo";
-import { loadMpesa, mpesaStkPush, mpesaStkQuery } from "./mpesa";
-import { notifyCustomerEvent } from "./notifications";
+import { emit } from "./events";
+import { allocatePayment, recordLedger } from "./ledger";
 import { ensureOpsSchema } from "./ops-schema";
+import { stkAdapter } from "./providers";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -38,18 +37,38 @@ export async function applyConfirmedPayment(
   await sql`insert into payments (id, tenant_id, customer_id, invoice_id, provider, amount_kes, reference, status)
     values (${payId}, ${opts.tenantId}, ${inv.customer_id}, ${inv.id}, ${opts.provider || "mpesa"}, ${inv.amount_kes}, ${ref}, 'confirmed')`;
   await sql`update invoices set status = 'paid' where id = ${inv.id} and tenant_id = ${opts.tenantId}`;
-  await restoreCustomerAccess(sql, opts.tenantId, inv.customer_id);
-  await awardLoyalty(sql, opts.tenantId, inv.customer_id, inv.amount_kes);
-  await notifyCustomerEvent(sql, opts.tenantId, opts.ispName, inv.customer_id, "payment.received", payId, {
-    customer_name: "",
-    invoice_number: inv.number,
-    amount: `KES ${inv.amount_kes}`,
-    payment_reference: ref,
-  });
-  await notifyCustomerEvent(sql, opts.tenantId, opts.ispName, inv.customer_id, "service.restored", `${payId}-restore`, {
-    customer_name: "",
-    payment_reference: ref,
-    service_name: "Internet",
+  try {
+    await recordLedger(sql, {
+      tenantId: opts.tenantId,
+      customerId: inv.customer_id,
+      entryType: "payment",
+      creditKes: inv.amount_kes,
+      refType: "payment",
+      refId: payId,
+      memo: `${opts.provider} ${ref}`,
+    });
+    await allocatePayment(sql, {
+      tenantId: opts.tenantId,
+      paymentId: payId,
+      invoiceId: inv.id,
+      amountKes: inv.amount_kes,
+    });
+  } catch {
+    /* ledger tables apply via 0006; ignore if a preview has not migrated yet */
+  }
+  await emit(sql, {
+    type: "payment.confirmed",
+    tenantId: opts.tenantId,
+    payload: {
+      payment_id: payId,
+      customer_id: inv.customer_id,
+      invoice_id: inv.id,
+      invoice_number: inv.number,
+      amount_kes: inv.amount_kes,
+      reference: ref,
+      provider: opts.provider,
+      isp_name: opts.ispName,
+    },
   });
   return { id: payId, amount: inv.amount_kes };
 }
@@ -71,67 +90,27 @@ export async function createStkIntent(
   const [ten] = await sql<{ slug: string; public_base_url: string }>`
     select slug, public_base_url from tenants where id = ${opts.tenantId}`;
   const origin = (ten?.public_base_url || "").replace(/\/$/, "");
-  const mpesaCb = origin && ten?.slug ? `${origin}/api/webhooks/mpesa/${ten.slug}` : "";
-  const kopoCb = origin && ten?.slug ? `${origin}/api/webhooks/kopokopo/${ten.slug}` : "";
+  const callbackUrl = origin && ten?.slug ? `${origin}/api/webhooks/${opts.provider}/${ten.slug}` : "";
   let checkout = `ws_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
   let note = "queued";
 
-  if (opts.provider === "kopokopo") {
-    const cfg = await loadKopo(sql, opts.tenantId);
-    if (!cfg || !cfg.enabled) throw new Error("Kopo Kopo is disabled");
-    if (!cfg.sandbox && !kopoCb) {
-      throw new Error("Set the public site URL in Settings — Kopo Kopo needs a callback URL");
-    }
-    if (cfg.client_id && cfg.client_secret) {
-      try {
-        const [invFull] = await sql<{ number: string }>`select number from invoices where id = ${inv.id}`;
-        const parts = (cus?.name || "Customer").trim().split(/\s+/);
-        const pushed = await kopoIncomingPayment(cfg, {
-          phone: cus?.phone ?? "",
-          amount: inv.amount_kes,
-          firstName: parts[0] || "Customer",
-          lastName: parts.slice(1).join(" ") || "Pay",
-          email: cus?.email,
-          invoiceId: inv.id,
-          invoiceNumber: invFull?.number || inv.id,
-          callbackUrl: kopoCb || undefined,
-        });
-        checkout = pushed.id || pushed.location || checkout;
-        note = cfg.sandbox ? "kopokopo sandbox STK sent" : "kopokopo STK sent";
-      } catch (e) {
-        if (!cfg.sandbox) throw e;
-        note = e instanceof Error ? `sandbox fallback: ${e.message}` : "sandbox fallback";
-      }
-    } else {
-      note = "kopokopo sandbox (no keys) — simulated STK";
-    }
-  }
-
-  if (opts.provider === "mpesa") {
-    const cfg = await loadMpesa(sql, opts.tenantId);
-    if (cfg && !cfg.enabled) throw new Error("M-Pesa is disabled");
-    if (cfg && !cfg.sandbox && !mpesaCb) {
-      throw new Error("Set the public site URL in Settings — Daraja needs a callback URL");
-    }
-    if (cfg?.client_id && cfg.client_secret && cfg.passkey) {
-      try {
-        const [invFull] = await sql<{ number: string }>`select number from invoices where id = ${inv.id}`;
-        const pushed = await mpesaStkPush(cfg, {
-          phone: cus?.phone ?? "",
-          amount: inv.amount_kes,
-          account: invFull?.number || "BILL",
-          description: "Internet bill",
-          callbackUrl: mpesaCb || undefined,
-        });
-        checkout = pushed.checkout_id;
-        note = pushed.message;
-      } catch (e) {
-        if (!cfg.sandbox) throw e;
-        note = e instanceof Error ? `sandbox fallback: ${e.message}` : "sandbox fallback";
-      }
-    } else {
-      note = "M-Pesa sandbox (no keys) — simulated STK";
-    }
+  const adapter = stkAdapter(opts.provider);
+  if (adapter) {
+    const [invFull] = await sql<{ number: string }>`select number from invoices where id = ${inv.id}`;
+    const parts = (cus?.name || "Customer").trim().split(/\s+/);
+    const started = await adapter.start(sql, {
+      tenantId: opts.tenantId,
+      phone: cus?.phone ?? "",
+      amount: inv.amount_kes,
+      invoiceId: inv.id,
+      invoiceNumber: invFull?.number || inv.id,
+      firstName: parts[0] || "Customer",
+      lastName: parts.slice(1).join(" ") || "Pay",
+      email: cus?.email,
+      callbackUrl,
+    });
+    if (started.checkout_id) checkout = started.checkout_id;
+    note = started.note;
   }
 
   const id = nid("int");
@@ -156,23 +135,19 @@ export async function settleStkIntent(
   if (intent.status === "confirmed") throw new Error("Already confirmed");
 
   let reference = intent.checkout_id;
-  if (intent.provider === "kopokopo") {
-    const cfg = await loadKopo(sql, opts.tenantId);
-    if (cfg?.client_id && cfg.client_secret) {
-      const st = await kopoPaymentStatus(cfg, intent.checkout_id);
-      if (st.status && st.status !== "Success" && st.status !== "Received") {
-        throw new Error(`Kopo Kopo status: ${st.status}`);
-      }
-      if (st.reference) reference = st.reference;
-    }
+  const [prov] = await sql<{ sandbox: boolean }>`
+    select sandbox from payment_providers where tenant_id = ${opts.tenantId} and kind = ${intent.provider}`;
+  const simulated = intent.checkout_id.startsWith("ws_");
+  if (simulated && prov && !prov.sandbox) {
+    throw new Error("Cannot confirm a simulated STK on a live provider. Wait for the Daraja/Kopo Kopo callback.");
   }
-
-  if (intent.provider === "mpesa") {
-    const cfg = await loadMpesa(sql, opts.tenantId);
-    if (cfg?.client_id && cfg.client_secret && cfg.passkey && !intent.checkout_id.startsWith("ws_")) {
-      const q = await mpesaStkQuery(cfg, intent.checkout_id);
-      if (!q.ok) throw new Error(q.resultDesc || `M-Pesa ResultCode ${q.resultCode}`);
-    }
+  const adapter = stkAdapter(intent.provider);
+  if (adapter && !simulated) {
+    const q = await adapter.query(sql, { tenantId: opts.tenantId, checkoutId: intent.checkout_id });
+    if (!q.ok) throw new Error(q.error || "STK not confirmed by provider");
+    if (q.reference) reference = q.reference;
+  } else if (simulated && !prov?.sandbox) {
+    throw new Error("Cannot confirm a simulated STK on a live provider");
   }
 
   const pay = await applyConfirmedPayment(sql, {

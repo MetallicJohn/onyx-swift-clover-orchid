@@ -2,7 +2,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import { nid } from "@/lib/utils";
-import { seedOpsForTenant } from "./access";
 import { agentScript } from "./agent";
 import { pullCommands } from "./mikrotik";
 import {
@@ -14,21 +13,9 @@ import {
   webfamBalance,
 } from "./messaging";
 import { applyConfirmedPayment, createStkIntent, settleStkIntent } from "./payments";
+import { assertPermission } from "./rbac";
 import { issuePortalOtp, portalContext, verifyPortalOtp } from "./portal";
-import { ensureOpsSchema } from "./ops-schema";
-
-async function requireWs(userId: string) {
-  const sql = await getSql();
-  await ensureOpsSchema(sql);
-  const members = await sql<{ tenant_id: string; name: string }>`
-    select t.id as tenant_id, t.name
-    from tenant_members m join tenants t on t.id = m.tenant_id
-    where m.user_id = ${userId}
-    order by m.created_at asc limit 1`;
-  if (!members[0]) throw new Error("No workspace");
-  await seedOpsForTenant(sql, members[0].tenant_id);
-  return { sql, tenantId: members[0].tenant_id, tenantName: members[0].name };
-}
+import { requireWorkspace as requireWs } from "./workspace";
 
 export const listRadius = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
@@ -179,7 +166,8 @@ export const sendStk = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { invoice_id: string; provider: string }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "payments.manage");
     return createStkIntent(sql, { tenantId, invoiceId: data.invoice_id, provider: data.provider || "mpesa" });
   });
 
@@ -187,7 +175,8 @@ export const confirmStk = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { checkout_id: string }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId, tenantName } = await requireWs(context.userId);
+    const { sql, tenantId, tenantName, role } = await requireWs(context.userId);
+    assertPermission(role, "payments.manage");
     return settleStkIntent(sql, { tenantId, ispName: tenantName, checkoutId: data.checkout_id });
   });
 

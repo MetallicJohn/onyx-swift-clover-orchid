@@ -34,6 +34,7 @@ import { Route as ApiAgentHeartbeatRouteImport } from './routes/api/agent/heartb
 import { Route as ApiAgentPullRouteImport } from './routes/api/agent/pull'
 import { Route as ApiAgentScriptRouteImport } from './routes/api/agent/script'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiV1HealthRouteImport } from './routes/api/v1/health'
 import { Route as ApiWebhooksKopokopoSlugRouteImport } from './routes/api/webhooks/kopokopo/$slug'
 import { Route as ApiWebhooksMpesaSlugRouteImport } from './routes/api/webhooks/mpesa/$slug'
 
@@ -162,6 +163,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1HealthRoute = ApiV1HealthRouteImport.update({
+  id: '/api/v1/health',
+  path: '/api/v1/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWebhooksKopokopoSlugRoute = ApiWebhooksKopokopoSlugRouteImport.update({
   id: '/api/webhooks/kopokopo/$slug',
   path: '/api/webhooks/kopokopo/$slug',
@@ -199,6 +205,7 @@ export interface FileRoutesByFullPath {
   '/api/agent/pull': typeof ApiAgentPullRoute
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/v1/health': typeof ApiV1HealthRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
 }
@@ -226,6 +233,7 @@ export interface FileRoutesByTo {
   '/api/agent/pull': typeof ApiAgentPullRoute
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/v1/health': typeof ApiV1HealthRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
 }
@@ -256,6 +264,7 @@ export interface FileRoutesById {
   '/api/agent/pull': typeof ApiAgentPullRoute
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/v1/health': typeof ApiV1HealthRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
 }
@@ -287,6 +296,7 @@ export interface FileRouteTypes {
     | '/api/agent/pull'
     | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/v1/health'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
   fileRoutesByTo: FileRoutesByTo
@@ -314,6 +324,7 @@ export interface FileRouteTypes {
     | '/api/agent/pull'
     | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/v1/health'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
   id:
@@ -343,6 +354,7 @@ export interface FileRouteTypes {
     | '/api/agent/pull'
     | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/v1/health'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
   fileRoutesById: FileRoutesById
@@ -357,6 +369,7 @@ export interface RootRouteChildren {
   ApiAgentPullRoute: typeof ApiAgentPullRoute
   ApiAgentScriptRoute: typeof ApiAgentScriptRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiV1HealthRoute: typeof ApiV1HealthRoute
   ApiWebhooksKopokopoSlugRoute: typeof ApiWebhooksKopokopoSlugRoute
   ApiWebhooksMpesaSlugRoute: typeof ApiWebhooksMpesaSlugRoute
 }
@@ -538,6 +551,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/health': {
+      id: '/api/v1/health'
+      path: '/api/v1/health'
+      fullPath: '/api/v1/health'
+      preLoaderRoute: typeof ApiV1HealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/webhooks/kopokopo/$slug': {
       id: '/api/webhooks/kopokopo/$slug'
       path: '/api/webhooks/kopokopo/$slug'
@@ -614,6 +634,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAgentPullRoute: ApiAgentPullRoute,
   ApiAgentScriptRoute: ApiAgentScriptRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiV1HealthRoute: ApiV1HealthRoute,
   ApiWebhooksKopokopoSlugRoute: ApiWebhooksKopokopoSlugRoute,
   ApiWebhooksMpesaSlugRoute: ApiWebhooksMpesaSlugRoute,
 }

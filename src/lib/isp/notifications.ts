@@ -1,5 +1,8 @@
 import { nid } from "@/lib/utils";
 import { channelAllowed, deliverChannel, getMessagingSettings } from "./messaging";
+import type { BillingEvent, NotifyChannel } from "./types";
+
+export type { BillingEvent, NotifyChannel };
 
 type Sql = {
   <T = Record<string, unknown>>(
@@ -8,17 +11,6 @@ type Sql = {
   ): Promise<T[]>;
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
 };
-
-export type NotifyChannel = "sms" | "whatsapp" | "email" | "in_app";
-
-export type BillingEvent =
-  | "invoice.created"
-  | "invoice.due"
-  | "invoice.overdue"
-  | "payment.received"
-  | "grace.started"
-  | "service.suspended"
-  | "service.restored";
 
 export type NotifyVars = {
   customer_name: string;
@@ -132,44 +124,8 @@ function render(template: string, vars: NotifyVars) {
   return template.replace(/\{([a-z_]+)\}/g, (_, key: keyof NotifyVars) => vars[key] ?? "");
 }
 
-export async function ensureNotificationSchema(sql: Sql) {
-  await sql.query(
-    `create table if not exists notification_templates (
-      id text primary key,
-      tenant_id text not null references tenants(id) on delete cascade,
-      event_code text not null,
-      channel text not null,
-      subject text not null default '',
-      body text not null,
-      enabled boolean not null default true,
-      unique (tenant_id, event_code, channel)
-    )`,
-  );
-  await sql.query(
-    `create table if not exists notification_logs (
-      id text primary key,
-      tenant_id text not null references tenants(id) on delete cascade,
-      customer_id text,
-      event_code text not null,
-      channel text not null,
-      entity_id text not null default '',
-      subject text not null default '',
-      body text not null,
-      destination text not null default '',
-      status text not null default 'sent',
-      created_at timestamptz not null default now()
-    )`,
-  );
-  await sql.query(
-    `create index if not exists notification_templates_tenant_idx on notification_templates (tenant_id)`,
-  );
-  await sql.query(
-    `create index if not exists notification_logs_tenant_idx on notification_logs (tenant_id, created_at desc)`,
-  );
-  await sql.query(
-    `create unique index if not exists notification_logs_dedupe_idx
-      on notification_logs (tenant_id, event_code, entity_id, channel)`,
-  );
+export async function ensureNotificationSchema(_sql: Sql) {
+  /* schema: migrations/0003_notifications.sql */
 }
 
 export async function ensureDefaultTemplates(sql: Sql, tenantId: string) {

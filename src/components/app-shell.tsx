@@ -39,7 +39,19 @@ const NAV = [
   { to: "/app/settings", label: "Settings", icon: Settings },
 ];
 
-export function AppShell({ tenantName, role }: { tenantName?: string; role?: string }) {
+export function AppShell({
+  tenantName,
+  role,
+  tenants,
+  activeTenantId,
+  onSwitchTenant,
+}: {
+  tenantName?: string;
+  role?: string;
+  tenants?: { id: string; name: string }[];
+  activeTenantId?: string;
+  onSwitchTenant?: (id: string) => void;
+}) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [open, setOpen] = useState(false);
 
@@ -78,6 +90,19 @@ export function AppShell({ tenantName, role }: { tenantName?: string; role?: str
             <div className="max-w-36 truncate text-[11px] text-muted">{tenantName ?? "ISP console"}</div>
           </div>
         </Link>
+        {tenants && tenants.length > 1 && onSwitchTenant ? (
+          <select
+            className="mb-4 h-11 w-full rounded-md border border-border bg-bg px-2 text-sm"
+            value={activeTenantId}
+            onChange={(e) => onSwitchTenant(e.target.value)}
+          >
+            {tenants.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <Nav />
         <div className="mt-auto border-t border-border pt-3 text-[11px] uppercase tracking-wider text-subtle">
           {role?.replace("_", " ")}

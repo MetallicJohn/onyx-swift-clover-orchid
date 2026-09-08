@@ -1,24 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { getSql } from "@/lib/db";
 import { nid } from "@/lib/utils";
 import { loadMpesa, mpesaAccessToken } from "./mpesa";
-import { ensureOpsSchema } from "./ops-schema";
+import { hint, seal } from "./secrets";
 import { tenantPayUrls } from "./webhooks";
-
-async function requireWs(userId: string) {
-  const sql = await getSql();
-  await ensureOpsSchema(sql);
-  const members = await sql<{ tenant_id: string }>`
-    select tenant_id from tenant_members where user_id = ${userId} order by created_at asc limit 1`;
-  if (!members[0]) throw new Error("No workspace");
-  return { sql, tenantId: members[0].tenant_id };
-}
-
-function hint(secret: string) {
-  if (!secret) return "";
-  return secret.length <= 4 ? "••••" : `••••${secret.slice(-4)}`;
-}
+import { requireWorkspace as requireWs } from "./workspace";
 
 export const getMpesa = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
@@ -82,8 +68,8 @@ export const saveMpesa = createServerFn({ method: "POST" })
       select id, client_secret, passkey from payment_providers where tenant_id = ${tenantId} and kind = 'mpesa'`;
     const keep = (incoming: string, existing: string) =>
       !incoming || incoming.startsWith("••••") ? existing : incoming;
-    const secret = keep(data.client_secret, row?.client_secret ?? "");
-    const passkey = keep(data.passkey, row?.passkey ?? "");
+    const secret = seal(keep(data.client_secret, row?.client_secret ?? ""));
+    const passkey = seal(keep(data.passkey, row?.passkey ?? ""));
     const stk = data.stk_type === "till" ? "till" : "paybill";
     if (!row) {
       await sql`insert into payment_providers (id, tenant_id, kind, label, enabled, sandbox, client_id, client_secret, till_number, passkey, stk_type)

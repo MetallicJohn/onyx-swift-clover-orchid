@@ -8,6 +8,17 @@ export type TenantRole =
 
 export type AccessMethod = "pppoe" | "static" | "hotspot";
 
+export type NotifyChannel = "sms" | "whatsapp" | "email" | "in_app";
+
+export type BillingEvent =
+  | "invoice.created"
+  | "invoice.due"
+  | "invoice.overdue"
+  | "payment.received"
+  | "grace.started"
+  | "service.suspended"
+  | "service.restored";
+
 export type ServiceStatus =
   | "pending"
   | "active"
@@ -24,6 +35,7 @@ export type Workspace = {
   role: TenantRole;
   supportEmail: string;
   supportPhone: string;
+  permissions?: string[];
 };
 
 export type PackageRow = {

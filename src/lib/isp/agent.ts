@@ -1,6 +1,7 @@
 import { nid } from "@/lib/utils";
 import { ensureOpsSchema } from "./ops-schema";
 import { enrollRosScript } from "./routeros";
+import { generateWireGuardKeypair } from "./wireguard";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -11,10 +12,10 @@ export function wgAddressForIndex(i: number) {
   return `10.200.0.${(i % 250) + 2}/32`;
 }
 
-export function enrollFields(name: string) {
+export function enrollFields(_name: string) {
   const token = `agt_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
-  const wg_public = Buffer.from(name + token).toString("base64").slice(0, 44);
-  return { token, wg_public };
+  const keys = generateWireGuardKeypair();
+  return { token, wg_public: keys.publicKey, wg_private_sealed: keys.privateKeySealed };
 }
 
 export async function pickRouter(sql: Sql, tenantId: string) {

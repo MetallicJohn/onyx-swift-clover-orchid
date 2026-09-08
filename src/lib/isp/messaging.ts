@@ -1,4 +1,5 @@
-import type { BillingEvent, NotifyChannel } from "./notifications";
+import type { BillingEvent, NotifyChannel } from "./types";
+import { open, seal } from "./secrets";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -46,26 +47,8 @@ const DEFAULTS: MessagingSettings = {
   wa_sandbox: true,
 };
 
-export async function ensureMessagingSchema(sql: Sql) {
-  await sql.query(`
-    create table if not exists messaging_settings (
-      tenant_id text primary key references tenants(id) on delete cascade,
-      payment_sms boolean not null default true,
-      payment_whatsapp boolean not null default true,
-      billing_sms boolean not null default true,
-      billing_whatsapp boolean not null default false,
-      sms_provider text not null default 'africastalking',
-      sms_sender_id text not null default '',
-      sms_username text not null default '',
-      sms_api_key text not null default '',
-      sms_sandbox boolean not null default true,
-      wa_provider text not null default 'meta',
-      wa_phone_id text not null default '',
-      wa_access_token text not null default '',
-      wa_business_id text not null default '',
-      wa_sandbox boolean not null default true,
-      updated_at timestamptz not null default now()
-    )`);
+export async function ensureMessagingSchema(_sql: Sql) {
+  /* schema: migrations/0005_messaging.sql */
 }
 
 export async function getMessagingSettings(sql: Sql, tenantId: string): Promise<MessagingSettings> {
@@ -75,7 +58,13 @@ export async function getMessagingSettings(sql: Sql, tenantId: string): Promise<
            sms_provider, sms_sender_id, sms_username, sms_api_key, sms_sandbox,
            wa_provider, wa_phone_id, wa_access_token, wa_business_id, wa_sandbox
     from messaging_settings where tenant_id = ${tenantId}`;
-  if (rows[0]) return rows[0];
+  if (rows[0]) {
+    return {
+      ...rows[0],
+      sms_api_key: open(rows[0].sms_api_key),
+      wa_access_token: open(rows[0].wa_access_token),
+    };
+  }
   await sql`insert into messaging_settings (tenant_id) values (${tenantId})`;
   return { ...DEFAULTS };
 }
@@ -343,11 +332,11 @@ export async function saveMessagingSettings(
     sms_provider: patch.sms_provider ?? current.sms_provider,
     sms_sender_id: patch.sms_sender_id ?? current.sms_sender_id,
     sms_username: patch.sms_username ?? current.sms_username,
-    sms_api_key: keepSecret(patch.sms_api_key, current.sms_api_key),
+    sms_api_key: seal(keepSecret(patch.sms_api_key, current.sms_api_key)),
     sms_sandbox: patch.sms_sandbox ?? current.sms_sandbox,
     wa_provider: patch.wa_provider ?? current.wa_provider,
     wa_phone_id: patch.wa_phone_id ?? current.wa_phone_id,
-    wa_access_token: keepSecret(patch.wa_access_token, current.wa_access_token),
+    wa_access_token: seal(keepSecret(patch.wa_access_token, current.wa_access_token)),
     wa_business_id: patch.wa_business_id ?? current.wa_business_id,
     wa_sandbox: patch.wa_sandbox ?? current.wa_sandbox,
   };

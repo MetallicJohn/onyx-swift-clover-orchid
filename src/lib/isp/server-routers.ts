@@ -1,17 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { getSql } from "@/lib/db";
 import { agentPullUrl, agentScript, enrollFields } from "./agent";
-import { ensureOpsSchema } from "./ops-schema";
-
-async function requireWs(userId: string) {
-  const sql = await getSql();
-  await ensureOpsSchema(sql);
-  const members = await sql<{ tenant_id: string }>`
-    select tenant_id from tenant_members where user_id = ${userId} order by created_at asc limit 1`;
-  if (!members[0]) throw new Error("No workspace");
-  return { sql, tenantId: members[0].tenant_id };
-}
+import { requireWorkspace as requireWs } from "./workspace";
 
 type RouterEnroll = {
   id: string;
@@ -74,14 +64,14 @@ export const copyRouterScript = createServerFn({ method: "POST" })
     const r = await loadRouter(sql, tenantId, data.id);
     if (data.rotate) {
       const enroll = enrollFields(r.name);
-      await sql`update routers set enroll_token = ${enroll.token}, wg_public = ${enroll.wg_public}, wg_status = 'pending'
+      await sql`update routers set enroll_token = ${enroll.token}, wg_public = ${enroll.wg_public}, wg_private_ref = ${enroll.wg_private_sealed}, wg_status = 'pending'
         where id = ${r.id} and tenant_id = ${tenantId}`;
       const next = await loadRouter(sql, tenantId, r.id);
       return { script: await scriptFor(sql, tenantId, next), token: next.enroll_token, rotated: true };
     }
     if (!r.enroll_token) {
       const enroll = enrollFields(r.name);
-      await sql`update routers set enroll_token = ${enroll.token}, wg_public = ${enroll.wg_public}
+      await sql`update routers set enroll_token = ${enroll.token}, wg_public = ${enroll.wg_public}, wg_private_ref = ${enroll.wg_private_sealed}
         where id = ${r.id} and tenant_id = ${tenantId}`;
       const next = await loadRouter(sql, tenantId, r.id);
       return { script: await scriptFor(sql, tenantId, next), token: next.enroll_token, rotated: true };

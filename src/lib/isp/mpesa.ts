@@ -1,3 +1,5 @@
+import { open } from "./secrets";
+
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
@@ -45,7 +47,9 @@ export async function loadMpesa(sql: Sql, tenantId: string): Promise<MpesaConfig
   const rows = await sql<MpesaConfig>`
     select client_id, client_secret, till_number, passkey, stk_type, sandbox, enabled
     from payment_providers where tenant_id = ${tenantId} and kind = 'mpesa'`;
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  return { ...row, client_secret: open(row.client_secret), passkey: open(row.passkey) };
 }
 
 function password(shortcode: string, passkey: string, timestamp: string) {
