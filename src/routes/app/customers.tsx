@@ -94,6 +94,7 @@ function CustomersPage() {
               <th className="px-4 py-3 font-medium">Services</th>
               <th className="px-4 py-3 font-medium">Balance</th>
               <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 font-medium" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -111,6 +112,11 @@ function CustomersPage() {
                 <td className="px-4 py-3 font-mono tabular-nums">{kes(c.balance_kes)}</td>
                 <td className="px-4 py-3">
                   <Badge tone={statusTone(c.status)}>{c.status}</Badge>
+                </td>
+                <td className="px-4 py-3">
+                  <a href={`/app/statements?customer=${c.id}`} className="text-sm text-accent hover:underline">
+                    Statement
+                  </a>
                 </td>
               </tr>
             ))}

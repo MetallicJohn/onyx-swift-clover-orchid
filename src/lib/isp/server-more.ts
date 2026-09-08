@@ -7,6 +7,7 @@ import { assertPermission } from "./rbac";
 import { attachCustomerReseller } from "./resellers";
 import { changePlan, ensureSubscription, type PlanCode } from "./saas";
 import { assignTicket, commentTicket, listStaff } from "./tickets";
+import { loadAudit, loadReports, loadStatement } from "./reports";
 import { requireWorkspace as requireWs } from "./workspace";
 
 export const assignOpenTicket = createServerFn({ method: "POST" })
@@ -104,3 +105,28 @@ export const askRouterOs = createServerFn({ method: "POST" })
     assertPermission(role, "routers.manage");
     return generateMikrotikScript(sql, tenantId, data.prompt);
   });
+
+export const getReports = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenantId } = await requireWs(context.userId);
+    return loadReports(sql, tenantId);
+  });
+
+export const getAuditLog = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "audit.read");
+    return { rows: await loadAudit(sql, tenantId) };
+  });
+
+export const getStatement = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { customer_id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "invoices.read");
+    return loadStatement(sql, tenantId, data.customer_id);
+  });
+

@@ -5,20 +5,21 @@ import { Field, Input, Select } from "@/components/ui/input";
 import { getDashboard, renameTenant } from "@/lib/isp/server";
 import { getKopokopo, saveKopokopo, testKopokopo } from "@/lib/isp/server-kopo";
 import { getMpesa, saveMpesa, savePublicBase, testMpesa } from "@/lib/isp/server-mpesa";
-import { getPlan, setPlan } from "@/lib/isp/server-more";
+import { getPlan, listTicketStaff, setPlan } from "@/lib/isp/server-more";
 import { checkSmsAccount, getMessaging, listProviders, saveMessaging, testMessaging, toggleProvider, workspaceSlug } from "@/lib/isp/server-ops";
 import { cn } from "@/lib/utils";
 import type { Workspace } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app/settings")({ component: SettingsPage });
 
-type TabId = "company" | "sms" | "payment" | "plan";
+type TabId = "company" | "sms" | "payment" | "plan" | "staff";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "company", label: "Company info" },
   { id: "sms", label: "SMS" },
   { id: "payment", label: "Payment" },
   { id: "plan", label: "Plan" },
+  { id: "staff", label: "Staff" },
 ];
 
 type MsgForm = {
@@ -109,9 +110,10 @@ function SettingsPage() {
   const [mpesaCallback, setMpesaCallback] = useState("");
   const [kopoCallback, setKopoCallback] = useState("");
   const [plan, setPlanState] = useState<{ plan: string; status: string; max_customers: number; max_routers: number; monthly_kes: number; period_end: string | null } | null>(null);
+  const [staff, setStaff] = useState<{ user_id: string; role: string; name: string }[]>([]);
 
   async function load() {
-    const [d, s, p, m, k, daraja, sub] = await Promise.all([
+    const [d, s, p, m, k, daraja, sub, st] = await Promise.all([
       getDashboard(),
       workspaceSlug(),
       listProviders(),
@@ -119,6 +121,7 @@ function SettingsPage() {
       getKopokopo(),
       getMpesa(),
       getPlan(),
+      listTicketStaff(),
     ]);
     setWs(d.workspace);
     setSlug(s.slug);
@@ -170,6 +173,7 @@ function SettingsPage() {
     setMpesaCallback(daraja.callback_url);
     setKopoCallback(daraja.kopokopo_callback_url);
     setPlanState(sub);
+    setStaff(st.staff);
   }
   useEffect(() => {
     load().catch(console.error);
@@ -591,6 +595,21 @@ function SettingsPage() {
             ))}
           </div>
         </div>
+      ) : null}
+
+      {tab === "staff" ? (
+        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
+          {staff.map((s) => (
+            <li key={s.user_id} className="flex items-center justify-between bg-surface px-4 py-3">
+              <div>
+                <div className="font-medium">{s.name}</div>
+                <div className="text-xs text-muted">{s.user_id}</div>
+              </div>
+              <span className="text-sm text-muted">{s.role}</span>
+            </li>
+          ))}
+          {staff.length === 0 ? <li className="px-4 py-6 text-sm text-muted">No members yet.</li> : null}
+        </ul>
       ) : null}
     </div>
   );

@@ -10,7 +10,7 @@ test("overdue buckets by days past due", () => {
   const today = new Date("2026-09-09");
   assert.equal(invoiceAging("due", "2026-09-20", today), "current");
   assert.equal(invoiceAging("overdue", "2026-08-20", today), "1-30");
-  assert.equal(invoiceAging("overdue", "2026-07-01", today), "31-60");
+  assert.equal(invoiceAging("overdue", "2026-08-01", today), "31-60");
   assert.equal(invoiceAging("overdue", "2026-01-01", today), "60+");
 });
 

@@ -1,6 +1,6 @@
 # Gridline architecture (living)
 
-Last updated: 2026-09-09 — CR-006 inbox, OTP, rate limits.
+Last updated: 2026-09-09 — CR-007 reports/statements. Product complete except skipped items.
 
 ## Authoritative backend
 

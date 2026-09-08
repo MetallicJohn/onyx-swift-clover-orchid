@@ -5,23 +5,41 @@ type Sql = {
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
 };
 
+function groupDaily(rows: Array<{ paid_at: string; amount_kes: number }>) {
+  const map = new Map<string, { day: string; amount: number; n: number }>();
+  for (const r of rows) {
+    const day = r.paid_at.slice(0, 10);
+    const cur = map.get(day) ?? { day, amount: 0, n: 0 };
+    cur.amount += r.amount_kes;
+    cur.n += 1;
+    map.set(day, cur);
+  }
+  return [...map.values()].sort((a, b) => b.day.localeCompare(a.day)).slice(0, 14);
+}
+
 export async function loadReports(sql: Sql, tenantId: string) {
   const invoices = await sql<{ status: string; due_date: string; amount_kes: number }>`
     select status, due_date::text as due_date, amount_kes from invoices where tenant_id = ${tenantId}`;
   const aging = tallyAging(invoices);
-  const daily = await sql<{ day: string; amount: number; n: number }>`
-    select paid_at::date::text as day, coalesce(sum(amount_kes),0)::int as amount, count(*)::int as n
-    from payments where tenant_id = ${tenantId} and status = 'confirmed'
-    group by paid_at::date order by day desc limit 14`;
-  const methods = await sql<{ access_method: string; n: number; active: number }>`
-    select access_method, count(*)::int as n,
-           count(*) filter (where status = 'active')::int as active
-    from services where tenant_id = ${tenantId} group by access_method`;
+  const pays = await sql<{ paid_at: string; amount_kes: number }>`
+    select paid_at::text as paid_at, amount_kes from payments
+    where tenant_id = ${tenantId} and status = 'confirmed'`;
+  const daily = groupDaily(pays);
+  const services = await sql<{ access_method: string; status: string; n: number }>`
+    select access_method, status, count(*)::int as n from services
+    where tenant_id = ${tenantId} group by access_method, status`;
+  const methods = new Map<string, { access_method: string; n: number; active: number }>();
+  for (const s of services) {
+    const cur = methods.get(s.access_method) ?? { access_method: s.access_method, n: 0, active: 0 };
+    cur.n += s.n;
+    if (s.status === "active") cur.active += s.n;
+    methods.set(s.access_method, cur);
+  }
   const tickets = await sql<{ status: string; n: number }>`
     select status, count(*)::int as n from tickets where tenant_id = ${tenantId} group by status`;
   const routers = await sql<{ wg_status: string; n: number }>`
     select wg_status, count(*)::int as n from routers where tenant_id = ${tenantId} group by wg_status`;
-  return { aging, daily, methods, tickets, routers };
+  return { aging, daily, methods: [...methods.values()], tickets, routers };
 }
 
 export async function loadAudit(sql: Sql, tenantId: string) {

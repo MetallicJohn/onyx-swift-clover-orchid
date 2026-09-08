@@ -1,6 +1,7 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   Activity,
+  BarChart3,
   Bell,
   Boxes,
   CreditCard,
@@ -30,6 +31,8 @@ const NAV = [
   { to: "/app/radius", label: "RADIUS", icon: Radio },
   { to: "/app/hotspot", label: "Hotspot", icon: Wifi },
   { to: "/app/billing", label: "Billing", icon: CreditCard },
+  { to: "/app/reports", label: "Reports", icon: BarChart3 },
+  { to: "/app/statements", label: "Statements", icon: CreditCard },
   { to: "/app/notifications", label: "Notifications", icon: Bell },
   { to: "/app/routers", label: "Routers", icon: Router },
   { to: "/app/acs", label: "GenieACS", icon: Activity },
