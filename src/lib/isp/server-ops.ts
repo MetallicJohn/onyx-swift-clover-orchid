@@ -12,6 +12,7 @@ import {
   toPublic,
   webfamBalance,
 } from "./messaging";
+import { activateVoucher, expireDueVouchers, generateVouchers, revokeVoucher } from "./hotspot";
 import { applyConfirmedPayment, createStkIntent, settleStkIntent } from "./payments";
 import { disconnectRadiusUser, publicRadiusAccount, renderFreeRadiusUsers } from "./radius";
 import { assertPermission } from "./rbac";
@@ -84,6 +85,7 @@ export const listHotspot = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, tenantId } = await requireWs(context.userId);
+    await expireDueVouchers(sql, tenantId);
     const vouchers = await sql<{
       id: string;
       code: string;
@@ -91,30 +93,51 @@ export const listHotspot = createServerFn({ method: "GET" })
       status: string;
       package_name: string;
       created_at: string;
-    }>`select v.id, v.code, v.hours, v.status, p.name as package_name, v.created_at::text as created_at
+      expires_at: string | null;
+    }>`select v.id, v.code, v.hours, v.status, p.name as package_name, v.created_at::text as created_at, v.expires_at::text as expires_at
        from hotspot_vouchers v join packages p on p.id = v.package_id
        where v.tenant_id = ${tenantId} order by v.created_at desc`;
     const packages = await sql<{ id: string; name: string }>`
       select id, name from packages where tenant_id = ${tenantId} and access_method = 'hotspot'`;
-    return { vouchers, packages };
+    const sessions = await sql<{
+      id: string;
+      username: string;
+      framed_ip: string;
+      nas_ip: string;
+      started_at: string;
+      stopped_at: string | null;
+    }>`select id, username, framed_ip, nas_ip, started_at::text as started_at, stopped_at::text as stopped_at
+       from radius_sessions
+       where tenant_id = ${tenantId} and username in (select code from hotspot_vouchers where tenant_id = ${tenantId})
+       order by started_at desc limit 20`;
+    return { vouchers, packages, sessions };
+  });
+
+export const activateHotspotVoucher = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "services.manage");
+    return activateVoucher(sql, tenantId, data.id);
+  });
+
+export const revokeHotspotVoucher = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "services.manage");
+    return revokeVoucher(sql, tenantId, data.id);
   });
 
 export const createVouchers = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { package_id: string; count: number; hours: number }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
-    const [pkg] = await sql<{ id: string }>`select id from packages where id = ${data.package_id} and tenant_id = ${tenantId}`;
-    if (!pkg) throw new Error("Package not found");
-    const n = Math.min(Math.max(data.count, 1), 50);
-    const codes: string[] = [];
-    for (let i = 0; i < n; i++) {
-      const code = `HS-${crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
-      await sql`insert into hotspot_vouchers (id, tenant_id, package_id, code, hours, status)
-        values (${nid("vch")}, ${tenantId}, ${pkg.id}, ${code}, ${data.hours || 24}, 'unused')`;
-      codes.push(code);
-    }
-    return { codes };
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "services.manage");
+    return generateVouchers(sql, tenantId, data.package_id, data.count, data.hours);
   });
 
 export const listAgentQueue = createServerFn({ method: "GET" })
