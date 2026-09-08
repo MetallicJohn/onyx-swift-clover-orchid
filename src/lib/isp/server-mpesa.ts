@@ -1,0 +1,128 @@
+import { createServerFn } from "@tanstack/react-start";
+import { authMiddleware } from "@/lib/auth/middleware";
+import { getSql } from "@/lib/db";
+import { nid } from "@/lib/utils";
+import { loadMpesa, mpesaAccessToken } from "./mpesa";
+import { ensureOpsSchema } from "./ops-schema";
+import { tenantPayUrls } from "./webhooks";
+
+async function requireWs(userId: string) {
+  const sql = await getSql();
+  await ensureOpsSchema(sql);
+  const members = await sql<{ tenant_id: string }>`
+    select tenant_id from tenant_members where user_id = ${userId} order by created_at asc limit 1`;
+  if (!members[0]) throw new Error("No workspace");
+  return { sql, tenantId: members[0].tenant_id };
+}
+
+function hint(secret: string) {
+  if (!secret) return "";
+  return secret.length <= 4 ? "••••" : `••••${secret.slice(-4)}`;
+}
+
+export const getMpesa = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenantId } = await requireWs(context.userId);
+    const [row] = await sql<{
+      enabled: boolean;
+      sandbox: boolean;
+      client_id: string;
+      client_secret: string;
+      till_number: string;
+      passkey: string;
+      stk_type: string;
+    }>`select enabled, sandbox, client_id, client_secret, till_number, passkey, stk_type
+       from payment_providers where tenant_id = ${tenantId} and kind = 'mpesa'`;
+    if (!row) {
+      await sql`insert into payment_providers (id, tenant_id, kind, label, enabled, sandbox, stk_type)
+        values (${nid("prv")}, ${tenantId}, 'mpesa', 'M-Pesa Daraja', true, true, 'paybill')`;
+    }
+    const cfg = row ?? {
+      enabled: true,
+      sandbox: true,
+      client_id: "",
+      client_secret: "",
+      till_number: "",
+      passkey: "",
+      stk_type: "paybill",
+    };
+    const urls = await tenantPayUrls(sql, tenantId);
+    return {
+      enabled: cfg.enabled,
+      sandbox: cfg.sandbox,
+      client_id: cfg.client_id,
+      till_number: cfg.till_number,
+      stk_type: cfg.stk_type || "paybill",
+      client_secret_set: Boolean(cfg.client_secret),
+      client_secret_hint: hint(cfg.client_secret),
+      passkey_set: Boolean(cfg.passkey),
+      passkey_hint: hint(cfg.passkey),
+      public_base_url: urls.public_base_url,
+      callback_url: urls.mpesa,
+      kopokopo_callback_url: urls.kopokopo,
+      slug: urls.slug,
+    };
+  });
+
+export const saveMpesa = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: {
+    enabled: boolean;
+    sandbox: boolean;
+    client_id: string;
+    client_secret: string;
+    till_number: string;
+    passkey: string;
+    stk_type: string;
+  }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId } = await requireWs(context.userId);
+    const [row] = await sql<{ id: string; client_secret: string; passkey: string }>`
+      select id, client_secret, passkey from payment_providers where tenant_id = ${tenantId} and kind = 'mpesa'`;
+    const keep = (incoming: string, existing: string) =>
+      !incoming || incoming.startsWith("••••") ? existing : incoming;
+    const secret = keep(data.client_secret, row?.client_secret ?? "");
+    const passkey = keep(data.passkey, row?.passkey ?? "");
+    const stk = data.stk_type === "till" ? "till" : "paybill";
+    if (!row) {
+      await sql`insert into payment_providers (id, tenant_id, kind, label, enabled, sandbox, client_id, client_secret, till_number, passkey, stk_type)
+        values (${nid("prv")}, ${tenantId}, 'mpesa', 'M-Pesa Daraja', ${data.enabled}, ${data.sandbox}, ${data.client_id.trim()}, ${secret}, ${data.till_number.trim()}, ${passkey}, ${stk})`;
+    } else {
+      await sql`update payment_providers set
+        enabled = ${data.enabled},
+        sandbox = ${data.sandbox},
+        client_id = ${data.client_id.trim()},
+        client_secret = ${secret},
+        till_number = ${data.till_number.trim()},
+        passkey = ${passkey},
+        stk_type = ${stk}
+        where id = ${row.id}`;
+    }
+    return { ok: true };
+  });
+
+export const testMpesa = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenantId } = await requireWs(context.userId);
+    const cfg = await loadMpesa(sql, tenantId);
+    if (!cfg?.client_id || !cfg.client_secret) throw new Error("Save consumer key and secret first");
+    const token = await mpesaAccessToken(cfg);
+    return {
+      ok: true,
+      host: cfg.sandbox ? "sandbox.safaricom.co.ke" : "api.safaricom.co.ke",
+      token_prefix: token.slice(0, 8),
+    };
+  });
+
+export const savePublicBase = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { public_base_url: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId } = await requireWs(context.userId);
+    const url = data.public_base_url.trim().replace(/\/$/, "");
+    if (url && !/^https:\/\//i.test(url)) throw new Error("Public site URL must start with https://");
+    await sql`update tenants set public_base_url = ${url} where id = ${tenantId}`;
+    return tenantPayUrls(sql, tenantId);
+  });

@@ -98,6 +98,10 @@ export type RouterRow = {
   last_seen: string | null;
   cpu_pct: number;
   uptime_hours: number;
+  enroll_token?: string;
+  wg_public?: string;
+  wg_address?: string;
+  agent_version?: string;
 };
 
 export type TicketRow = {

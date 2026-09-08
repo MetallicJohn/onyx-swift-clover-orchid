@@ -7,6 +7,10 @@ import {
   notifyCustomerEvent,
   runBillingCycle,
 } from "./notifications";
+import { provisionServiceAccess, seedOpsForTenant } from "./access";
+import { agentPullUrl, agentScript, enrollFields, wgAddressForIndex } from "./agent";
+import { ensureOpsSchema } from "./ops-schema";
+import { applyConfirmedPayment } from "./payments";
 import type {
   AccessMethod,
   CustomerRow,
@@ -180,6 +184,7 @@ async function seedDemo(sql: Sql, tenantId: string) {
     values (${nid("tkt")}, ${tenantId}, ${null}, 'Fibre cut along Thika Road', 'network', 'urgent', 'travelling')`;
 
   await sql`update tenants set demo_seeded = true where id = ${tenantId}`;
+  await seedOpsForTenant(sql, tenantId);
 }
 
 async function ensureWorkspace(
@@ -209,6 +214,7 @@ async function ensureWorkspace(
     const row = existing[0];
     if (!row.demo_seeded) await seedDemo(sql, row.tenant_id);
     await ensureDefaultTemplates(sql, row.tenant_id);
+    await seedOpsForTenant(sql, row.tenant_id);
     return {
       tenantId: row.tenant_id,
       tenantName: row.name,
@@ -231,6 +237,7 @@ async function ensureWorkspace(
     values (${nid("mem")}, ${tenantId}, ${userId}, 'isp_owner')`;
   await seedDemo(sql, tenantId);
   await ensureDefaultTemplates(sql, tenantId);
+  await seedOpsForTenant(sql, tenantId);
   await audit(sql, tenantId, userId, "tenant.created", "tenant", tenantId);
 
   return {
@@ -444,8 +451,9 @@ export const createService = createServerFn({ method: "POST" })
     const id = nid("svc");
     await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status)
       values (${id}, ${tid}, ${data.customer_id}, ${data.package_id}, ${pkg.access_method}, ${data.username || null}, ${data.static_ip || null}, 'active')`;
+    const radius = await provisionServiceAccess(sql, tid, id);
     await audit(sql, tid, context.userId, "service.created", "service", id);
-    return { id };
+    return { id, username: radius?.username, password: radius?.password };
   });
 
 export const setServiceStatus = createServerFn({ method: "POST" })
@@ -475,6 +483,7 @@ export const setServiceStatus = createServerFn({ method: "POST" })
         service_name: svc.name,
       });
     }
+    await provisionServiceAccess(sql, workspace.tenantId, data.id);
     await audit(sql, workspace.tenantId, context.userId, `service.${data.status}`, "service", data.id);
     return { ok: true };
   });
@@ -530,27 +539,15 @@ export const recordPayment = createServerFn({ method: "POST" })
     const [inv] = await sql<{ id: string; customer_id: string; amount_kes: number; status: string; number: string }>`
       select id, customer_id, amount_kes, status, number from invoices where id = ${data.invoice_id} and tenant_id = ${tid}`;
     if (!inv) throw new Error("Invoice not found");
-    const ref = data.reference.trim() || `MPESA-${Date.now()}`;
-    const existing = await sql<{ id: string }>`select id from payments where tenant_id = ${tid} and reference = ${ref}`;
-    if (existing[0]) throw new Error("Duplicate payment reference");
-    const payId = nid("pay");
-    await sql`insert into payments (id, tenant_id, customer_id, invoice_id, provider, amount_kes, reference, status)
-      values (${payId}, ${tid}, ${inv.customer_id}, ${inv.id}, ${data.provider || "mpesa"}, ${inv.amount_kes}, ${ref}, 'confirmed')`;
-    await sql`update invoices set status = 'paid' where id = ${inv.id} and tenant_id = ${tid}`;
-    await sql`update services set status = 'active' where customer_id = ${inv.customer_id} and tenant_id = ${tid} and status in ('grace','suspended','pending')`;
-    await notifyCustomerEvent(sql, tid, workspace.tenantName, inv.customer_id, "payment.received", payId, {
-      customer_name: "",
-      invoice_number: inv.number,
-      amount: `KES ${inv.amount_kes}`,
-      payment_reference: ref,
+    const result = await applyConfirmedPayment(sql, {
+      tenantId: tid,
+      ispName: workspace.tenantName,
+      invoiceId: inv.id,
+      provider: data.provider || "mpesa",
+      reference: data.reference.trim() || `MPESA-${Date.now()}`,
     });
-    await notifyCustomerEvent(sql, tid, workspace.tenantName, inv.customer_id, "service.restored", `${payId}-restore`, {
-      customer_name: "",
-      payment_reference: ref,
-      service_name: "Internet",
-    });
-    await audit(sql, tid, context.userId, "payment.received", "payment", payId);
-    return { id: payId };
+    await audit(sql, tid, context.userId, "payment.received", "payment", result.id);
+    return { id: result.id };
   });
 
 export const listRouters = createServerFn({ method: "GET" })
@@ -558,7 +555,8 @@ export const listRouters = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     const routers = await sql<RouterRow>`
-      select id, name, location, identity, role, wg_status, last_seen::text as last_seen, cpu_pct, uptime_hours
+      select id, name, location, identity, role, wg_status, last_seen::text as last_seen, cpu_pct, uptime_hours,
+             enroll_token, wg_public, wg_address, agent_version
       from routers where tenant_id = ${workspace.tenantId} order by name`;
     return { workspace, routers };
   });
@@ -569,11 +567,24 @@ export const addRouter = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     if (!data.name.trim()) throw new Error("Name is required");
+    await ensureOpsSchema(sql);
     const id = nid("rtr");
-    await sql`insert into routers (id, tenant_id, name, location, identity, role, wg_status, last_seen, cpu_pct, uptime_hours)
-      values (${id}, ${workspace.tenantId}, ${data.name.trim()}, ${data.location.trim()}, ${data.identity.trim() || data.name.trim().toLowerCase()}, ${data.role || "access"}, 'pending', now(), 0, 0)`;
+    const count = await sql<{ n: number }>`select count(*)::int as n from routers where tenant_id = ${workspace.tenantId}`;
+    const enroll = enrollFields(data.name);
+    const wgAddress = wgAddressForIndex((count[0]?.n ?? 0) + 1);
+    await sql`insert into routers (id, tenant_id, name, location, identity, role, wg_status, last_seen, cpu_pct, uptime_hours, enroll_token, wg_public, wg_address, agent_version)
+      values (${id}, ${workspace.tenantId}, ${data.name.trim()}, ${data.location.trim()}, ${data.identity.trim() || data.name.trim().toLowerCase()}, ${data.role || "access"}, 'pending', now(), 0, 0, ${enroll.token}, ${enroll.wg_public}, ${wgAddress}, '0.1.0')`;
     await audit(sql, workspace.tenantId, context.userId, "router.created", "router", id);
-    return { id };
+    const [ten] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${workspace.tenantId}`;
+    const script = agentScript({
+      name: data.name.trim(),
+      identity: data.identity.trim() || data.name.trim().toLowerCase(),
+      token: enroll.token,
+      wgPublic: enroll.wg_public,
+      wgAddress,
+      pullUrl: agentPullUrl(ten?.public_base_url || "", enroll.token),
+    });
+    return { id, script, token: enroll.token };
   });
 
 export const listTickets = createServerFn({ method: "GET" })
@@ -677,8 +688,10 @@ export const importCustomers = createServerFn({ method: "POST" })
       const cid = nid("cus");
       await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status)
         values (${cid}, ${tid}, 'individual', ${row.name.trim()}, ${row.phone || ""}, ${row.email || ""}, ${row.address || ""}, 'active')`;
+      const sid = nid("svc");
       await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status)
-        values (${nid("svc")}, ${tid}, ${cid}, ${pkg.id}, ${method}, ${row.username || null}, ${row.static_ip || null}, 'pending')`;
+        values (${sid}, ${tid}, ${cid}, ${pkg.id}, ${method}, ${row.username || null}, ${row.static_ip || null}, 'pending')`;
+      await provisionServiceAccess(sql, tid, sid);
       created += 1;
     }
     await audit(sql, tid, context.userId, "customers.imported", "customer", String(created));

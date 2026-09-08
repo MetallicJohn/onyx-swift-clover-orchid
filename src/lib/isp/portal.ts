@@ -1,0 +1,60 @@
+import { nid } from "@/lib/utils";
+import { ensureOpsSchema } from "./ops-schema";
+
+type Sql = {
+  <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
+  query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
+};
+
+const SANDBOX_OTP = "000000";
+
+export async function issuePortalOtp(sql: Sql, slug: string, phone: string) {
+  await ensureOpsSchema(sql);
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 9) throw new Error("Enter a valid phone number");
+  const [ten] = await sql<{ id: string; name: string }>`select id, name from tenants where slug = ${slug.trim()}`;
+  if (!ten) throw new Error("Unknown network. Check the ISP slug.");
+  const customers = await sql<{ id: string; phone: string }>`
+    select id, phone from customers where tenant_id = ${ten.id}`;
+  const customer = customers.find((c) => c.phone.replace(/\D/g, "").endsWith(digits.slice(-9)));
+  if (!customer) throw new Error("No customer with that phone on this network");
+  const id = nid("otp");
+  await sql`insert into portal_otps (id, tenant_id, customer_id, phone, code, expires_at, used)
+    values (${id}, ${ten.id}, ${customer.id}, ${phone}, ${SANDBOX_OTP}, now() + interval '15 minutes', false)`;
+  return { sent: true, hint: SANDBOX_OTP, isp: ten.name };
+}
+
+export async function verifyPortalOtp(sql: Sql, slug: string, phone: string, code: string) {
+  await ensureOpsSchema(sql);
+  const digits = phone.replace(/\D/g, "");
+  const [ten] = await sql<{ id: string; name: string }>`select id, name from tenants where slug = ${slug.trim()}`;
+  if (!ten) throw new Error("Unknown network");
+  const rows = await sql<{ id: string; customer_id: string }>`
+    select id, customer_id from portal_otps
+    where tenant_id = ${ten.id} and code = ${code.trim()} and used = false and expires_at > now()
+    order by expires_at desc limit 8`;
+  const customers = await sql<{ id: string; phone: string }>`select id, phone from customers where tenant_id = ${ten.id}`;
+  const match = rows.find((r) => {
+    const c = customers.find((x) => x.id === r.customer_id);
+    return c && c.phone.replace(/\D/g, "").endsWith(digits.slice(-9));
+  });
+  if (!match) throw new Error("Invalid or expired code");
+  await sql`update portal_otps set used = true where id = ${match.id}`;
+  const token = `prt_${crypto.randomUUID().replace(/-/g, "")}`;
+  await sql`insert into portal_sessions (id, tenant_id, customer_id, token)
+    values (${nid("psn")}, ${ten.id}, ${match.customer_id}, ${token})`;
+  return { token, tenantId: ten.id, customerId: match.customer_id, isp: ten.name };
+}
+
+export async function portalContext(sql: Sql, token: string) {
+  await ensureOpsSchema(sql);
+  const [ses] = await sql<{ tenant_id: string; customer_id: string }>`
+    select tenant_id, customer_id from portal_sessions where token = ${token}`;
+  if (!ses) throw new Error("Session expired. Sign in again.");
+  const [isp] = await sql<{ name: string; slug: string; support_phone: string }>`
+    select name, slug, support_phone from tenants where id = ${ses.tenant_id}`;
+  const [customer] = await sql<{ id: string; name: string; phone: string; email: string }>`
+    select id, name, phone, email from customers where id = ${ses.customer_id}`;
+  if (!customer || !isp) throw new Error("Account not found");
+  return { tenantId: ses.tenant_id, customer, isp };
+}

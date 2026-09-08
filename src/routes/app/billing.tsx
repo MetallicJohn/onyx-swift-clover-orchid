@@ -5,6 +5,7 @@ import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { createInvoice, listBilling, recordPayment } from "@/lib/isp/server";
+import { confirmStk, sendStk } from "@/lib/isp/server-ops";
 import type { InvoiceRow, PaymentRow } from "@/lib/isp/types";
 import { kes } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ function BillingPage() {
   const [form, setForm] = useState({ customer_id: "", amount_kes: 2500, due_date: "" });
   const [pay, setPay] = useState({ invoice_id: "", provider: "mpesa", reference: "" });
   const [err, setErr] = useState<string | null>(null);
+  const [stk, setStk] = useState<string | null>(null);
 
   async function load() {
     const res = await listBilling();
@@ -114,7 +116,8 @@ function BillingPage() {
           </Field>
           <Field label="Provider">
             <Select value={pay.provider} onChange={(e) => setPay({ ...pay, provider: e.target.value })}>
-              <option value="mpesa">M-Pesa</option>
+              <option value="mpesa">M-Pesa Daraja</option>
+              <option value="kopokopo">Kopo Kopo</option>
               <option value="airtel">Airtel Money</option>
               <option value="bank">Bank</option>
               <option value="cash">Cash</option>
@@ -129,8 +132,42 @@ function BillingPage() {
             />
           </Field>
           <Button type="submit">Confirm payment</Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={async () => {
+              setErr(null);
+              try {
+                const r = await sendStk({ data: { invoice_id: pay.invoice_id, provider: pay.provider } });
+                setStk(r.checkout_id);
+                if (r.note) setErr(r.note);
+              } catch (ex) {
+                setErr(ex instanceof Error ? ex.message : "STK failed");
+              }
+            }}
+          >
+            Send STK push
+          </Button>
         </form>
       </div>
+
+      {stk ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-4 text-sm">
+          <span>
+            STK sent · checkout <span className="font-mono">{stk}</span>
+          </span>
+          <Button
+            size="sm"
+            onClick={async () => {
+              await confirmStk({ data: { checkout_id: stk } });
+              setStk(null);
+              await load();
+            }}
+          >
+            Simulate Daraja callback
+          </Button>
+        </div>
+      ) : null}
 
       <div className="flex gap-2">
         <Button variant={tab === "invoices" ? "default" : "secondary"} size="sm" onClick={() => setTab("invoices")}>

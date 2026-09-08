@@ -1,4 +1,5 @@
 import { nid } from "@/lib/utils";
+import { channelAllowed, deliverChannel, getMessagingSettings } from "./messaging";
 
 type Sql = {
   <T = Record<string, unknown>>(
@@ -70,6 +71,18 @@ const DEFAULTS: Array<{
     channel: "sms",
     subject: "Payment received",
     body: "Payment {payment_reference} of {amount} received. Thank you {customer_name}. Service is active. — {isp_name}",
+  },
+  {
+    event_code: "payment.received",
+    channel: "whatsapp",
+    subject: "Payment received",
+    body: "Hi {customer_name}, we received {amount} (ref {payment_reference}) for {invoice_number}. Your service is active. — {isp_name}",
+  },
+  {
+    event_code: "service.restored",
+    channel: "whatsapp",
+    subject: "Service restored",
+    body: "{customer_name}, {service_name} is back online after payment {payment_reference}. — {isp_name}",
   },
   {
     event_code: "payment.received",
@@ -192,6 +205,7 @@ export async function dispatchNotification(
   },
 ) {
   await ensureDefaultTemplates(sql, opts.tenantId);
+  const settings = await getMessagingSettings(sql, opts.tenantId);
   const templates = await sql<{
     id: string;
     channel: NotifyChannel;
@@ -205,6 +219,7 @@ export async function dispatchNotification(
   let sent = 0;
 
   for (const tpl of templates) {
+    if (!channelAllowed(opts.event, tpl.channel, settings)) continue;
     const subject = render(tpl.subject, vars);
     const body = render(tpl.body, vars);
     const dest = destinationFor(tpl.channel, opts.phone ?? "", opts.email ?? "");
@@ -212,8 +227,9 @@ export async function dispatchNotification(
       select id from notification_logs
       where tenant_id = ${opts.tenantId} and event_code = ${opts.event} and entity_id = ${opts.entityId} and channel = ${tpl.channel}`;
     if (dup[0]) continue;
+    const delivery = await deliverChannel(settings, tpl.channel, dest, body);
     await sql`insert into notification_logs (id, tenant_id, customer_id, event_code, channel, entity_id, subject, body, destination, status)
-      values (${nid("ntf")}, ${opts.tenantId}, ${opts.customerId}, ${opts.event}, ${tpl.channel}, ${opts.entityId}, ${subject}, ${body}, ${dest}, 'sent')`;
+      values (${nid("ntf")}, ${opts.tenantId}, ${opts.customerId}, ${opts.event}, ${tpl.channel}, ${opts.entityId}, ${subject}, ${body}, ${delivery.detail || dest}, ${delivery.status})`;
     sent += 1;
   }
   return sent;

@@ -12,17 +12,30 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as PortalRouteImport } from './routes/portal'
 import { Route as AppIndexRouteImport } from './routes/app/index'
+import { Route as AppAcsRouteImport } from './routes/app/acs'
 import { Route as AppBillingRouteImport } from './routes/app/billing'
 import { Route as AppCustomersRouteImport } from './routes/app/customers'
+import { Route as AppFieldRouteImport } from './routes/app/field'
+import { Route as AppHotspotRouteImport } from './routes/app/hotspot'
 import { Route as AppImportRouteImport } from './routes/app/import'
 import { Route as AppNotificationsRouteImport } from './routes/app/notifications'
 import { Route as AppPackagesRouteImport } from './routes/app/packages'
+import { Route as AppPartnersRouteImport } from './routes/app/partners'
+import { Route as AppRadiusRouteImport } from './routes/app/radius'
 import { Route as AppRoutersRouteImport } from './routes/app/routers'
 import { Route as AppServicesRouteImport } from './routes/app/services'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppTicketsRouteImport } from './routes/app/tickets'
+import { Route as PortalIndexRouteImport } from './routes/portal/index'
+import { Route as ApiAgentAckRouteImport } from './routes/api/agent/ack'
+import { Route as ApiAgentHeartbeatRouteImport } from './routes/api/agent/heartbeat'
+import { Route as ApiAgentPullRouteImport } from './routes/api/agent/pull'
+import { Route as ApiAgentScriptRouteImport } from './routes/api/agent/script'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiWebhooksKopokopoSlugRouteImport } from './routes/api/webhooks/kopokopo/$slug'
+import { Route as ApiWebhooksMpesaSlugRouteImport } from './routes/api/webhooks/mpesa/$slug'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -39,9 +52,19 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PortalRoute = PortalRouteImport.update({
+  id: '/portal',
+  path: '/portal',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAcsRoute = AppAcsRouteImport.update({
+  id: '/acs',
+  path: '/acs',
   getParentRoute: () => AppRoute,
 } as any)
 const AppBillingRoute = AppBillingRouteImport.update({
@@ -52,6 +75,16 @@ const AppBillingRoute = AppBillingRouteImport.update({
 const AppCustomersRoute = AppCustomersRouteImport.update({
   id: '/customers',
   path: '/customers',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFieldRoute = AppFieldRouteImport.update({
+  id: '/field',
+  path: '/field',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppHotspotRoute = AppHotspotRouteImport.update({
+  id: '/hotspot',
+  path: '/hotspot',
   getParentRoute: () => AppRoute,
 } as any)
 const AppImportRoute = AppImportRouteImport.update({
@@ -67,6 +100,16 @@ const AppNotificationsRoute = AppNotificationsRouteImport.update({
 const AppPackagesRoute = AppPackagesRouteImport.update({
   id: '/packages',
   path: '/packages',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPartnersRoute = AppPartnersRouteImport.update({
+  id: '/partners',
+  path: '/partners',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppRadiusRoute = AppRadiusRouteImport.update({
+  id: '/radius',
+  path: '/radius',
   getParentRoute: () => AppRoute,
 } as any)
 const AppRoutersRoute = AppRoutersRouteImport.update({
@@ -89,9 +132,44 @@ const AppTicketsRoute = AppTicketsRouteImport.update({
   path: '/tickets',
   getParentRoute: () => AppRoute,
 } as any)
+const PortalIndexRoute = PortalIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PortalRoute,
+} as any)
+const ApiAgentAckRoute = ApiAgentAckRouteImport.update({
+  id: '/api/agent/ack',
+  path: '/api/agent/ack',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAgentHeartbeatRoute = ApiAgentHeartbeatRouteImport.update({
+  id: '/api/agent/heartbeat',
+  path: '/api/agent/heartbeat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAgentPullRoute = ApiAgentPullRouteImport.update({
+  id: '/api/agent/pull',
+  path: '/api/agent/pull',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAgentScriptRoute = ApiAgentScriptRouteImport.update({
+  id: '/api/agent/script',
+  path: '/api/agent/script',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWebhooksKopokopoSlugRoute = ApiWebhooksKopokopoSlugRouteImport.update({
+  id: '/api/webhooks/kopokopo/$slug',
+  path: '/api/webhooks/kopokopo/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWebhooksMpesaSlugRoute = ApiWebhooksMpesaSlugRouteImport.update({
+  id: '/api/webhooks/mpesa/$slug',
+  path: '/api/webhooks/mpesa/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -99,49 +177,87 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/portal': typeof PortalRouteWithChildren
+  '/app/acs': typeof AppAcsRoute
   '/app/billing': typeof AppBillingRoute
   '/app/customers': typeof AppCustomersRoute
+  '/app/field': typeof AppFieldRoute
+  '/app/hotspot': typeof AppHotspotRoute
   '/app/import': typeof AppImportRoute
   '/app/notifications': typeof AppNotificationsRoute
   '/app/packages': typeof AppPackagesRoute
+  '/app/partners': typeof AppPartnersRoute
+  '/app/radius': typeof AppRadiusRoute
   '/app/routers': typeof AppRoutersRoute
   '/app/services': typeof AppServicesRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/tickets': typeof AppTicketsRoute
   '/app/': typeof AppIndexRoute
+  '/portal/': typeof PortalIndexRoute
+  '/api/agent/ack': typeof ApiAgentAckRoute
+  '/api/agent/heartbeat': typeof ApiAgentHeartbeatRoute
+  '/api/agent/pull': typeof ApiAgentPullRoute
+  '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
+  '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/app/acs': typeof AppAcsRoute
   '/app/billing': typeof AppBillingRoute
   '/app/customers': typeof AppCustomersRoute
+  '/app/field': typeof AppFieldRoute
+  '/app/hotspot': typeof AppHotspotRoute
   '/app/import': typeof AppImportRoute
   '/app/notifications': typeof AppNotificationsRoute
   '/app/packages': typeof AppPackagesRoute
+  '/app/partners': typeof AppPartnersRoute
+  '/app/radius': typeof AppRadiusRoute
   '/app/routers': typeof AppRoutersRoute
   '/app/services': typeof AppServicesRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/tickets': typeof AppTicketsRoute
   '/app': typeof AppIndexRoute
+  '/portal': typeof PortalIndexRoute
+  '/api/agent/ack': typeof ApiAgentAckRoute
+  '/api/agent/heartbeat': typeof ApiAgentHeartbeatRoute
+  '/api/agent/pull': typeof ApiAgentPullRoute
+  '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
+  '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/portal': typeof PortalRouteWithChildren
+  '/app/acs': typeof AppAcsRoute
   '/app/billing': typeof AppBillingRoute
   '/app/customers': typeof AppCustomersRoute
+  '/app/field': typeof AppFieldRoute
+  '/app/hotspot': typeof AppHotspotRoute
   '/app/import': typeof AppImportRoute
   '/app/notifications': typeof AppNotificationsRoute
   '/app/packages': typeof AppPackagesRoute
+  '/app/partners': typeof AppPartnersRoute
+  '/app/radius': typeof AppRadiusRoute
   '/app/routers': typeof AppRoutersRoute
   '/app/services': typeof AppServicesRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/tickets': typeof AppTicketsRoute
   '/app/': typeof AppIndexRoute
+  '/portal/': typeof PortalIndexRoute
+  '/api/agent/ack': typeof ApiAgentAckRoute
+  '/api/agent/heartbeat': typeof ApiAgentHeartbeatRoute
+  '/api/agent/pull': typeof ApiAgentPullRoute
+  '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
+  '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -149,55 +265,100 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/login'
+    | '/portal'
+    | '/app/acs'
     | '/app/billing'
     | '/app/customers'
+    | '/app/field'
+    | '/app/hotspot'
     | '/app/import'
     | '/app/notifications'
     | '/app/packages'
+    | '/app/partners'
+    | '/app/radius'
     | '/app/routers'
     | '/app/services'
     | '/app/settings'
     | '/app/tickets'
     | '/app/'
+    | '/portal/'
+    | '/api/agent/ack'
+    | '/api/agent/heartbeat'
+    | '/api/agent/pull'
+    | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/webhooks/kopokopo/$slug'
+    | '/api/webhooks/mpesa/$slug'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
+    | '/app/acs'
     | '/app/billing'
     | '/app/customers'
+    | '/app/field'
+    | '/app/hotspot'
     | '/app/import'
     | '/app/notifications'
     | '/app/packages'
+    | '/app/partners'
+    | '/app/radius'
     | '/app/routers'
     | '/app/services'
     | '/app/settings'
     | '/app/tickets'
     | '/app'
+    | '/portal'
+    | '/api/agent/ack'
+    | '/api/agent/heartbeat'
+    | '/api/agent/pull'
+    | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/webhooks/kopokopo/$slug'
+    | '/api/webhooks/mpesa/$slug'
   id:
     | '__root__'
     | '/'
     | '/app'
     | '/login'
+    | '/portal'
+    | '/app/acs'
     | '/app/billing'
     | '/app/customers'
+    | '/app/field'
+    | '/app/hotspot'
     | '/app/import'
     | '/app/notifications'
     | '/app/packages'
+    | '/app/partners'
+    | '/app/radius'
     | '/app/routers'
     | '/app/services'
     | '/app/settings'
     | '/app/tickets'
     | '/app/'
+    | '/portal/'
+    | '/api/agent/ack'
+    | '/api/agent/heartbeat'
+    | '/api/agent/pull'
+    | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/webhooks/kopokopo/$slug'
+    | '/api/webhooks/mpesa/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
+  PortalRoute: typeof PortalRouteWithChildren
+  ApiAgentAckRoute: typeof ApiAgentAckRoute
+  ApiAgentHeartbeatRoute: typeof ApiAgentHeartbeatRoute
+  ApiAgentPullRoute: typeof ApiAgentPullRoute
+  ApiAgentScriptRoute: typeof ApiAgentScriptRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiWebhooksKopokopoSlugRoute: typeof ApiWebhooksKopokopoSlugRoute
+  ApiWebhooksMpesaSlugRoute: typeof ApiWebhooksMpesaSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -223,11 +384,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/portal': {
+      id: '/portal'
+      path: '/portal'
+      fullPath: '/portal'
+      preLoaderRoute: typeof PortalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app/': {
       id: '/app/'
       path: '/'
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/acs': {
+      id: '/app/acs'
+      path: '/acs'
+      fullPath: '/app/acs'
+      preLoaderRoute: typeof AppAcsRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/billing': {
@@ -242,6 +417,20 @@ declare module '@tanstack/react-router' {
       path: '/customers'
       fullPath: '/app/customers'
       preLoaderRoute: typeof AppCustomersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/field': {
+      id: '/app/field'
+      path: '/field'
+      fullPath: '/app/field'
+      preLoaderRoute: typeof AppFieldRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/hotspot': {
+      id: '/app/hotspot'
+      path: '/hotspot'
+      fullPath: '/app/hotspot'
+      preLoaderRoute: typeof AppHotspotRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/import': {
@@ -263,6 +452,20 @@ declare module '@tanstack/react-router' {
       path: '/packages'
       fullPath: '/app/packages'
       preLoaderRoute: typeof AppPackagesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/partners': {
+      id: '/app/partners'
+      path: '/partners'
+      fullPath: '/app/partners'
+      preLoaderRoute: typeof AppPartnersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/radius': {
+      id: '/app/radius'
+      path: '/radius'
+      fullPath: '/app/radius'
+      preLoaderRoute: typeof AppRadiusRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/routers': {
@@ -293,6 +496,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTicketsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/portal/': {
+      id: '/portal/'
+      path: '/'
+      fullPath: '/portal/'
+      preLoaderRoute: typeof PortalIndexRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/api/agent/ack': {
+      id: '/api/agent/ack'
+      path: '/api/agent/ack'
+      fullPath: '/api/agent/ack'
+      preLoaderRoute: typeof ApiAgentAckRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/agent/heartbeat': {
+      id: '/api/agent/heartbeat'
+      path: '/api/agent/heartbeat'
+      fullPath: '/api/agent/heartbeat'
+      preLoaderRoute: typeof ApiAgentHeartbeatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/agent/pull': {
+      id: '/api/agent/pull'
+      path: '/api/agent/pull'
+      fullPath: '/api/agent/pull'
+      preLoaderRoute: typeof ApiAgentPullRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/agent/script': {
+      id: '/api/agent/script'
+      path: '/api/agent/script'
+      fullPath: '/api/agent/script'
+      preLoaderRoute: typeof ApiAgentScriptRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -300,15 +538,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/webhooks/kopokopo/$slug': {
+      id: '/api/webhooks/kopokopo/$slug'
+      path: '/api/webhooks/kopokopo/$slug'
+      fullPath: '/api/webhooks/kopokopo/$slug'
+      preLoaderRoute: typeof ApiWebhooksKopokopoSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/mpesa/$slug': {
+      id: '/api/webhooks/mpesa/$slug'
+      path: '/api/webhooks/mpesa/$slug'
+      fullPath: '/api/webhooks/mpesa/$slug'
+      preLoaderRoute: typeof ApiWebhooksMpesaSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppAcsRoute: typeof AppAcsRoute
   AppBillingRoute: typeof AppBillingRoute
   AppCustomersRoute: typeof AppCustomersRoute
+  AppFieldRoute: typeof AppFieldRoute
+  AppHotspotRoute: typeof AppHotspotRoute
   AppImportRoute: typeof AppImportRoute
   AppNotificationsRoute: typeof AppNotificationsRoute
   AppPackagesRoute: typeof AppPackagesRoute
+  AppPartnersRoute: typeof AppPartnersRoute
+  AppRadiusRoute: typeof AppRadiusRoute
   AppRoutersRoute: typeof AppRoutersRoute
   AppServicesRoute: typeof AppServicesRoute
   AppSettingsRoute: typeof AppSettingsRoute
@@ -317,11 +574,16 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAcsRoute: AppAcsRoute,
   AppBillingRoute: AppBillingRoute,
   AppCustomersRoute: AppCustomersRoute,
+  AppFieldRoute: AppFieldRoute,
+  AppHotspotRoute: AppHotspotRoute,
   AppImportRoute: AppImportRoute,
   AppNotificationsRoute: AppNotificationsRoute,
   AppPackagesRoute: AppPackagesRoute,
+  AppPartnersRoute: AppPartnersRoute,
+  AppRadiusRoute: AppRadiusRoute,
   AppRoutersRoute: AppRoutersRoute,
   AppServicesRoute: AppServicesRoute,
   AppSettingsRoute: AppSettingsRoute,
@@ -331,11 +593,29 @@ const AppRouteChildren: AppRouteChildren = {
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
+interface PortalRouteChildren {
+  PortalIndexRoute: typeof PortalIndexRoute
+}
+
+const PortalRouteChildren: PortalRouteChildren = {
+  PortalIndexRoute: PortalIndexRoute,
+}
+
+const PortalRouteWithChildren =
+  PortalRoute._addFileChildren(PortalRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
+  PortalRoute: PortalRouteWithChildren,
+  ApiAgentAckRoute: ApiAgentAckRoute,
+  ApiAgentHeartbeatRoute: ApiAgentHeartbeatRoute,
+  ApiAgentPullRoute: ApiAgentPullRoute,
+  ApiAgentScriptRoute: ApiAgentScriptRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiWebhooksKopokopoSlugRoute: ApiWebhooksKopokopoSlugRoute,
+  ApiWebhooksMpesaSlugRoute: ApiWebhooksMpesaSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

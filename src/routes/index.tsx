@@ -58,6 +58,9 @@ function Home() {
               Continue to console <ArrowRight className="size-4" />
             </Link>
           </SignedIn>
+          <Link to="/portal" className="inline-flex h-12 items-center rounded-md border border-border px-5 font-medium">
+            Customer portal
+          </Link>
         </div>
 
         <div className="mt-16 grid gap-4 md:grid-cols-3">
