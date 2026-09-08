@@ -1,6 +1,6 @@
 # Gridline architecture (living)
 
-Last updated: 2026-09-09 — M0.5 consolidation.
+Last updated: 2026-09-09 — CR-002 payments validation + RADIUS AAA.
 
 ## Authoritative backend
 

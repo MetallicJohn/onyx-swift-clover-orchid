@@ -1,7 +1,7 @@
 import { getSql } from "@/lib/db";
 import { nid } from "@/lib/utils";
+import { evaluateStkCallback, parseKopokopoCallback, parseMpesaCallback } from "./callback-validate";
 import { applyConfirmedPayment } from "./payments";
-import { ensureOpsSchema } from "./ops-schema";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -35,91 +35,94 @@ async function logWebhook(
     values (${nid("wh")}, ${tenantId}, ${provider}, ${checkoutId}, ${JSON.stringify(payload).slice(0, 8000)}, ${status})`;
 }
 
-function metaItem(body: Record<string, unknown>, name: string) {
-  const stk = (body.Body as Record<string, unknown> | undefined)?.stkCallback as Record<string, unknown> | undefined;
-  const meta = stk?.CallbackMetadata as { Item?: Array<{ Name?: string; Value?: unknown }> } | undefined;
-  const hit = meta?.Item?.find((i) => i.Name === name);
-  return hit?.Value;
+async function loadIntent(sql: Sql, tenantId: string, checkout: string) {
+  const [intent] = await sql<{
+    id: string;
+    invoice_id: string;
+    status: string;
+    checkout_id: string;
+    amount_kes: number;
+  }>`select id, invoice_id, status, checkout_id, amount_kes from payment_intents
+     where tenant_id = ${tenantId} and checkout_id = ${checkout}`;
+  return intent ?? null;
+}
+
+async function settleFromDecision(
+  sql: Sql,
+  tenant: { id: string; name: string },
+  provider: string,
+  intent: { id: string; invoice_id: string; status: string; checkout_id: string; amount_kes: number },
+  parsed: { checkout: string; resultCode: number; resultDesc: string; receipt: string; amount?: number },
+) {
+  const decision = evaluateStkCallback(intent, parsed);
+  if (decision.action === "idempotent") return "idempotent";
+  if (decision.action === "ignore") return decision.reason;
+  if (decision.action === "fail") {
+    await sql`update payment_intents set status = ${decision.intentStatus}, fail_reason = ${decision.reason}
+      where id = ${intent.id} and tenant_id = ${tenant.id} and status = 'pending'`;
+    return decision.intentStatus;
+  }
+  if (decision.action === "reconcile") {
+    await sql`update payment_intents set status = 'reconciliation_required', fail_reason = ${decision.reason}
+      where id = ${intent.id} and tenant_id = ${tenant.id} and status = 'pending'`;
+    return "reconciliation_required";
+  }
+  try {
+    await applyConfirmedPayment(sql, {
+      tenantId: tenant.id,
+      ispName: tenant.name,
+      invoiceId: intent.invoice_id,
+      provider,
+      reference: decision.reference,
+    });
+    await sql`update payment_intents set status = 'confirmed', fail_reason = ''
+      where id = ${intent.id} and tenant_id = ${tenant.id}`;
+    return "confirmed";
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "confirm failed";
+    if (/Duplicate/i.test(msg)) {
+      await sql`update payment_intents set status = 'confirmed' where id = ${intent.id}`;
+      return "idempotent";
+    }
+    throw e;
+  }
 }
 
 export async function handleMpesaCallback(slug: string, body: Record<string, unknown>) {
   const sql = await getSql();
-  await ensureOpsSchema(sql);
   const tenant = await tenantBySlug(sql, slug);
+  const parsed = parseMpesaCallback(body);
   if (!tenant) return { ResultCode: 0, ResultDesc: "Unknown tenant" };
-
-  const stk = (body.Body as Record<string, unknown> | undefined)?.stkCallback as
-    | {
-        CheckoutRequestID?: string;
-        ResultCode?: number;
-        ResultDesc?: string;
-      }
-    | undefined;
-  const checkout = stk?.CheckoutRequestID || "";
-  await logWebhook(sql, tenant.id, "mpesa", checkout, body, String(stk?.ResultCode ?? "received"));
-
-  if (!checkout) return { ResultCode: 0, ResultDesc: "Accepted" };
-  if (stk?.ResultCode !== 0) return { ResultCode: 0, ResultDesc: "Recorded failure" };
-
-  const receipt = String(metaItem(body, "MpesaReceiptNumber") || checkout);
-  const [intent] = await sql<{ id: string; invoice_id: string; status: string }>`
-    select id, invoice_id, status from payment_intents
-    where tenant_id = ${tenant.id} and checkout_id = ${checkout}`;
+  await logWebhook(sql, tenant.id, "mpesa", parsed.checkout, body, String(parsed.resultCode));
+  if (!parsed.checkout) return { ResultCode: 0, ResultDesc: "Accepted" };
+  const intent = await loadIntent(sql, tenant.id, parsed.checkout);
   if (!intent) return { ResultCode: 0, ResultDesc: "Unknown checkout" };
-  if (intent.status === "confirmed") return { ResultCode: 0, ResultDesc: "Already confirmed" };
-
-  try {
-    await applyConfirmedPayment(sql, {
-      tenantId: tenant.id,
-      ispName: tenant.name,
-      invoiceId: intent.invoice_id,
-      provider: "mpesa",
-      reference: receipt,
-    });
-    await sql`update payment_intents set status = 'confirmed' where id = ${intent.id}`;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "confirm failed";
-    if (!/Duplicate/i.test(msg)) throw e;
-  }
-  return { ResultCode: 0, ResultDesc: "Accepted" };
+  const result = await settleFromDecision(sql, tenant, "mpesa", intent, parsed);
+  return { ResultCode: 0, ResultDesc: result };
 }
 
 export async function handleKopokopoCallback(slug: string, body: Record<string, unknown>) {
   const sql = await getSql();
-  await ensureOpsSchema(sql);
   const tenant = await tenantBySlug(sql, slug);
   if (!tenant) return { ok: false };
-
-  const data = body.data as Record<string, unknown> | undefined;
-  const attrs = data?.attributes as Record<string, unknown> | undefined;
-  const event = (body.event as Record<string, unknown> | undefined) || (attrs?.event as Record<string, unknown> | undefined);
-  const resource = (event?.resource as Record<string, unknown> | undefined) || {};
-  const checkout = String(data?.id || body.id || resource.id || "");
-  const status = String(attrs?.status || resource.status || "");
-  const reference = String(resource.reference || checkout);
-  await logWebhook(sql, tenant.id, "kopokopo", checkout, body, status || "received");
-
-  const ok = /success|received/i.test(status) || status === "";
-  if (!ok || !checkout) return { ok: true };
-
-  const [intent] = await sql<{ id: string; invoice_id: string; status: string }>`
-    select id, invoice_id, status from payment_intents
-    where tenant_id = ${tenant.id} and (checkout_id = ${checkout} or checkout_id like ${"%" + checkout})`;
-  if (!intent || intent.status === "confirmed") return { ok: true };
-
-  try {
-    await applyConfirmedPayment(sql, {
-      tenantId: tenant.id,
-      ispName: tenant.name,
-      invoiceId: intent.invoice_id,
-      provider: "kopokopo",
-      reference,
-    });
-    await sql`update payment_intents set status = 'confirmed' where id = ${intent.id}`;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "";
-    if (!/Duplicate/i.test(msg)) throw e;
-  }
+  const parsed = parseKopokopoCallback(body);
+  await logWebhook(sql, tenant.id, "kopokopo", parsed.checkout, body, parsed.resultDesc || "received");
+  if (!parsed.checkout) return { ok: true };
+  const intent =
+    (await loadIntent(sql, tenant.id, parsed.checkout)) ||
+    (
+      await sql<{
+        id: string;
+        invoice_id: string;
+        status: string;
+        checkout_id: string;
+        amount_kes: number;
+      }>`select id, invoice_id, status, checkout_id, amount_kes from payment_intents
+         where tenant_id = ${tenant.id} and checkout_id like ${"%" + parsed.checkout} limit 1`
+    )[0];
+  if (!intent) return { ok: true };
+  const aligned = { ...parsed, checkout: intent.checkout_id };
+  await settleFromDecision(sql, tenant, "kopokopo", intent, aligned);
   return { ok: true };
 }
 

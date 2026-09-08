@@ -3,12 +3,14 @@
 This SaaS is **not** a RADIUS server.
 
 ```
-SaaS radius_accounts (desired state)
-  → FreeRADIUS (future adapter / SQL or REST)
+SaaS radius_accounts (desired state + Mikrotik-Rate-Limit)
+  → FreeRADIUS (users file export or SQL view)
     → MikroTik NAS
       → subscriber
 ```
 
-`radius_accounts` holds username, password, framed IP, group, enabled. Session rows are accounting snapshots. CoA/disconnect will call FreeRADIUS; until that adapter ships, disconnect is a MikroTik agent command (`pppoe.disable` kicks `/ppp active`).
+Disconnect queues `pppoe.disable` / `hotspot.disable` on the agent (kick active session). That is CoA-equivalent on RouterOS until a FreeRADIUS `radclient` adapter exists.
 
-**Status:** desired-state store **implemented**; FreeRADIUS process integration **architecture only**.
+List APIs return password **hints** only. Full secrets appear only on FreeRADIUS export, which requires `radius.manage`.
+
+**Status:** desired-state + export + disconnect **implemented and tested**. FreeRADIUS daemon **architecture only**.

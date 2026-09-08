@@ -13,6 +13,7 @@ import {
   webfamBalance,
 } from "./messaging";
 import { applyConfirmedPayment, createStkIntent, settleStkIntent } from "./payments";
+import { disconnectRadiusUser, publicRadiusAccount, renderFreeRadiusUsers } from "./radius";
 import { assertPermission } from "./rbac";
 import { issuePortalOtp, portalContext, verifyPortalOtp } from "./portal";
 import { requireWorkspace as requireWs } from "./workspace";
@@ -28,10 +29,11 @@ export const listRadius = createServerFn({ method: "GET" })
       framed_ip: string;
       group_name: string;
       enabled: boolean;
+      rate_limit: string;
       customer_name: string;
       status: string;
       access_method: string;
-    }>`select a.id, a.username, a.password, a.framed_ip, a.group_name, a.enabled,
+    }>`select a.id, a.username, a.password, a.framed_ip, a.group_name, a.enabled, a.rate_limit,
               c.name as customer_name, s.status, s.access_method
        from radius_accounts a
        join services s on s.id = a.service_id
@@ -49,7 +51,33 @@ export const listRadius = createServerFn({ method: "GET" })
       stopped_at: string | null;
     }>`select id, username, framed_ip, nas_ip, bytes_in, bytes_out, started_at::text as started_at, stopped_at::text as stopped_at
        from radius_sessions where tenant_id = ${tenantId} order by started_at desc limit 40`;
-    return { accounts, sessions };
+    return { accounts: accounts.map(publicRadiusAccount), sessions };
+  });
+
+export const disconnectRadius = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { username: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "radius.manage");
+    return disconnectRadiusUser(sql, tenantId, data.username.trim());
+  });
+
+export const exportRadiusUsers = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "radius.manage");
+    const accounts = await sql<{
+      username: string;
+      password: string;
+      framed_ip: string;
+      group_name: string;
+      enabled: boolean;
+      rate_limit: string;
+    }>`select username, password, framed_ip, group_name, enabled, rate_limit
+       from radius_accounts where tenant_id = ${tenantId} order by username`;
+    return { users: renderFreeRadiusUsers(accounts) };
   });
 
 export const listHotspot = createServerFn({ method: "GET" })

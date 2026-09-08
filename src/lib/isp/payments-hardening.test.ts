@@ -15,6 +15,6 @@ test("applyConfirmedPayment is idempotent on duplicate reference", async () => {
 
 test("webhooks skip already confirmed intents", () => {
   const src = readFileSync(new URL("./webhooks.ts", import.meta.url), "utf8");
-  assert.match(src, /intent.status === "confirmed"/);
-  assert.match(src, /ResultCode !== 0/);
+  assert.match(src, /evaluateStkCallback/);
+  assert.match(src, /decision.action === "idempotent"/);
 });

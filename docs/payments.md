@@ -18,4 +18,7 @@ Sandbox `ws_*` checkouts may be settled only while the provider row is `sandbox=
 
 Staff `recordPayment` is a finance permission for cash/bank with a unique reference — not an STK fake-confirm.
 
+Callback evaluation (`callback-validate.ts`): matching amount + receipt confirms; 1032 cancels; other ResultCodes fail; amount mismatch goes to `reconciliation_required`; replays are idempotent.
+
+
 Ledger: `customer_ledger`, `payment_allocations`. Statement should be derived from these, not a mutable balance column.
