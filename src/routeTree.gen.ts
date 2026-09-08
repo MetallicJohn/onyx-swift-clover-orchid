@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as PortalRouteImport } from './routes/portal'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAcsRouteImport } from './routes/app/acs'
+import { Route as AppAiRouteImport } from './routes/app/ai'
 import { Route as AppBillingRouteImport } from './routes/app/billing'
 import { Route as AppCustomersRouteImport } from './routes/app/customers'
 import { Route as AppFieldRouteImport } from './routes/app/field'
@@ -66,6 +67,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppAcsRoute = AppAcsRouteImport.update({
   id: '/acs',
   path: '/acs',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAiRoute = AppAiRouteImport.update({
+  id: '/ai',
+  path: '/ai',
   getParentRoute: () => AppRoute,
 } as any)
 const AppBillingRoute = AppBillingRouteImport.update({
@@ -185,6 +191,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/portal': typeof PortalRouteWithChildren
   '/app/acs': typeof AppAcsRoute
+  '/app/ai': typeof AppAiRoute
   '/app/billing': typeof AppBillingRoute
   '/app/customers': typeof AppCustomersRoute
   '/app/field': typeof AppFieldRoute
@@ -213,6 +220,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/app/acs': typeof AppAcsRoute
+  '/app/ai': typeof AppAiRoute
   '/app/billing': typeof AppBillingRoute
   '/app/customers': typeof AppCustomersRoute
   '/app/field': typeof AppFieldRoute
@@ -244,6 +252,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/portal': typeof PortalRouteWithChildren
   '/app/acs': typeof AppAcsRoute
+  '/app/ai': typeof AppAiRoute
   '/app/billing': typeof AppBillingRoute
   '/app/customers': typeof AppCustomersRoute
   '/app/field': typeof AppFieldRoute
@@ -276,6 +285,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/portal'
     | '/app/acs'
+    | '/app/ai'
     | '/app/billing'
     | '/app/customers'
     | '/app/field'
@@ -304,6 +314,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/app/acs'
+    | '/app/ai'
     | '/app/billing'
     | '/app/customers'
     | '/app/field'
@@ -334,6 +345,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/portal'
     | '/app/acs'
+    | '/app/ai'
     | '/app/billing'
     | '/app/customers'
     | '/app/field'
@@ -416,6 +428,13 @@ declare module '@tanstack/react-router' {
       path: '/acs'
       fullPath: '/app/acs'
       preLoaderRoute: typeof AppAcsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/ai': {
+      id: '/app/ai'
+      path: '/ai'
+      fullPath: '/app/ai'
+      preLoaderRoute: typeof AppAiRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/billing': {
@@ -577,6 +596,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppAcsRoute: typeof AppAcsRoute
+  AppAiRoute: typeof AppAiRoute
   AppBillingRoute: typeof AppBillingRoute
   AppCustomersRoute: typeof AppCustomersRoute
   AppFieldRoute: typeof AppFieldRoute
@@ -595,6 +615,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppAcsRoute: AppAcsRoute,
+  AppAiRoute: AppAiRoute,
   AppBillingRoute: AppBillingRoute,
   AppCustomersRoute: AppCustomersRoute,
   AppFieldRoute: AppFieldRoute,
