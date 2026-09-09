@@ -12,6 +12,7 @@
 | FreeRADIUS REST | Authorize / authenticate / accounting over HTTPS with a per-tenant API key. rlm_rest JSON. Suspended, expired, and FUP users are Access-Reject. The daemon is not in this app. |
 | Churn score | Logistic scoring from service state, invoices, payments, and tickets. Reasons are listed. Not a trained neural net. |
 | Password reset | Operator/superadmin email reset (hashed token, 30 min). Portal password + SMS reset. Admin/staff can set a password. Email sends only with Resend; otherwise the link is shown. |
+| Custom domain login | Same-origin Origin/Host match plus tenant `public_base_url`. CSRF stays on. Proven in `auth-origins.test.ts`. |
 | Invoice / statement PDFs | pdfkit A4 from live billing + ledger. Tenant-branded. View/download/print/email. |
 | Secrets | No published `gridline-dev-secret-change-me`. Production or any `DATABASE_URL` requires `APP_SECRET`. |
 

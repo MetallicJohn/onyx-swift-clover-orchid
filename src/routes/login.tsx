@@ -13,6 +13,14 @@ export const Route = createFileRoute("/login")({ component: Login });
 
 const subscribeToNothing = () => () => {};
 
+function signInErrorMessage(err: unknown) {
+  const raw = err instanceof Error ? err.message : "Sign-in failed";
+  if (/invalid origin/i.test(raw)) {
+    return "This address is not yet allowed for sign-in. Open Gridline at your public HTTPS URL (the same one under Settings → Callback URLs).";
+  }
+  return raw;
+}
+
 function Login() {
   const { user, isPending } = useCurrentUserState();
   const gateSession = useSyncExternalStore(
@@ -70,7 +78,7 @@ function Login() {
       }
       window.location.assign("/app");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed");
+      setError(signInErrorMessage(err));
     } finally {
       setBusy(false);
     }

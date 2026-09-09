@@ -5,6 +5,9 @@ Better Auth sessions. Server functions use `authMiddleware`. Authorization is pe
 
 Technician: tickets/jobs only. Finance: invoices/payments. Network engineer: routers/RADIUS. Owner/admin: all.
 
+Sign-in CSRF uses Better Auth `trustedOrigins`. Custom domains are allowed when the browser Origin matches the request host (or a saved tenant `public_base_url`). Cross-site Origins are still rejected. Do not set `disableCSRFCheck`.
+
+
 ## Secrets
 Sealed at rest (`enc:v1:`). Never returned to the browser. Redacted in API DTOs.
 `APP_SECRET` or `BETTER_AUTH_SECRET` is required in production and whenever `DATABASE_URL` is set. There is no published development default.

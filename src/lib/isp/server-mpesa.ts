@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { nid } from "@/lib/utils";
+import { clearTenantOriginCache } from "./auth-origins";
 import { loadMpesa, mpesaAccessToken } from "./mpesa";
 import { hint, seal } from "./secrets";
 import { tenantPayUrls } from "./webhooks";
@@ -110,5 +111,6 @@ export const savePublicBase = createServerFn({ method: "POST" })
     const url = data.public_base_url.trim().replace(/\/$/, "");
     if (url && !/^https:\/\//i.test(url)) throw new Error("Public site URL must start with https://");
     await sql`update tenants set public_base_url = ${url} where id = ${tenantId}`;
+    clearTenantOriginCache();
     return tenantPayUrls(sql, tenantId);
   });

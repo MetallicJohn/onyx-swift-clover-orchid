@@ -591,8 +591,11 @@ function SettingsPage() {
               setPublicBase(urls.public_base_url);
             }}
           >
-            <h2 className="font-medium">Callback URLs</h2>
-            <p className="text-sm text-muted">Public HTTPS origin Daraja and Kopo Kopo POST to after STK.</p>
+            <h2 className="font-medium">Public URL</h2>
+            <p className="text-sm text-muted">
+              HTTPS origin of this console. Daraja and Kopo Kopo POST here after STK, and operator
+              sign-in on this custom domain is allowed.
+            </p>
             <Field label="Public site URL">
               <Input
                 placeholder="https://ops.yourisp.co.ke"

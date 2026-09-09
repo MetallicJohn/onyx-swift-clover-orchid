@@ -12,6 +12,7 @@ import { allocateStaticIp, disconnectSession, rotateServicePassword } from "./ac
 import { issueInvoice } from "./billing";
 import { loadChurnScores } from "./churn";
 import { loadDashboard } from "./dashboard";
+import { requestPublicOrigin } from "./auth-origins";
 import { completeOperatorReset, requestOperatorReset } from "./password-reset";
 import { agentPullUrl, agentScript, enrollFields, wgAddressForIndex } from "./agent";
 import { emit } from "./events";
@@ -269,8 +270,7 @@ export const requestPasswordReset = createServerFn({ method: "POST" })
     let origin = "http://localhost:8080";
     try {
       const { getRequest } = await import("@tanstack/react-start/server");
-      const req = getRequest();
-      if (req?.url) origin = new URL(req.url).origin;
+      origin = requestPublicOrigin(getRequest() ?? null, origin);
     } catch {
       /* unit tests have no request */
     }

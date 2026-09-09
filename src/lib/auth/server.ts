@@ -46,6 +46,7 @@ import {
   PREVIEW_CLIENT_ID,
   PREVIEW_CLIENT_SECRET,
 } from "./preview";
+import { resolveAuthTrustedOrigins } from "../isp/auth-origins";
 
 // Kick (and share) PGLite bootstrap as soon as the auth server module loads.
 void ensureDbReady();
@@ -114,8 +115,10 @@ const baseURL = explicitBaseURL ?? {
 };
 
 // Origins Better Auth accepts on credentialed POSTs (sign-up/sign-in, etc.).
-// Missing entries here surface as FORBIDDEN "Invalid origin".
-const trustedOrigins: string[] = explicitBaseURL
+// Missing entries here surface as FORBIDDEN "Invalid origin". Custom domains
+// (tenant public_base_url, Vercel production host, same-origin Host match) are
+// resolved per request — CSRF still rejects cross-site Origins.
+const staticTrustedOrigins: string[] = explicitBaseURL
   ? [explicitBaseURL, ...LOCAL_DEV_ORIGINS]
   : [
       // Host wildcards (matched against Origin's host)
@@ -124,6 +127,11 @@ const trustedOrigins: string[] = explicitBaseURL
       ...previewAllowedHosts.flatMap((host) => [`https://${host}`, `http://${host}`]),
       ...LOCAL_DEV_ORIGINS,
     ];
+
+async function trustedOrigins(request?: Request) {
+  const extra = await resolveAuthTrustedOrigins(request);
+  return [...staticTrustedOrigins, ...extra];
+}
 
 const databaseUrl = env("DATABASE_URL");
 
