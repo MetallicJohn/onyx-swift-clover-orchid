@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { nid } from "../utils.ts";
 import { recordAccounting } from "./access-policy.ts";
 import { applyRls } from "./rls.ts";
@@ -34,6 +34,48 @@ function safeEq(a: string, b: string) {
   const right = Buffer.from(b);
   if (left.length !== right.length) return false;
   return timingSafeEqual(left, right);
+}
+
+export function newNasSecret() {
+  return randomBytes(16).toString("hex");
+}
+
+export async function ensureRadiusNasSecret(sql: Sql, tenantId: string) {
+  const [row] = await sql<{ radius_nas_secret: string }>`select radius_nas_secret from tenants where id = ${tenantId}`;
+  const existing = open(row?.radius_nas_secret || "");
+  if (existing) return existing;
+  const secret = newNasSecret();
+  await sql`update tenants set radius_nas_secret = ${seal(secret)} where id = ${tenantId}`;
+  return secret;
+}
+
+export function defaultNasClients(secret: string, routers: Array<{ name: string; ip: string; secret: string }>) {
+  const shared = secret || "change-me-on-the-router";
+  const base = [
+    { name: "wg-overlay", ip: "10.200.0.0/16", secret: shared },
+    { name: "rfc1918-10", ip: "10.0.0.0/8", secret: shared },
+    { name: "rfc1918-172", ip: "172.16.0.0/12", secret: shared },
+  ];
+  const extra = routers
+    .filter((r) => r.ip)
+    .map((r) => ({ name: r.name, ip: r.ip, secret: r.secret || shared }));
+  return [...base, ...extra];
+}
+
+export function internalRadiusBaseUrl(publicBase = "") {
+  const fromEnv = (process.env.GRIDLINE_INTERNAL_URL || "").trim().replace(/\/+$/, "");
+  if (fromEnv) return fromEnv;
+  const pub = (publicBase || "").trim().replace(/\/+$/, "");
+  return pub || "http://web:3000";
+}
+
+export function radiusVpsEnv(opts: { slug: string; apiKey: string; nasSecret: string }) {
+  return [
+    `GRIDLINE_URL=http://web:3000`,
+    `GRIDLINE_SLUG=${opts.slug || "your-isp"}`,
+    `RADIUS_API_KEY=${opts.apiKey || "frk_replace_me"}`,
+    `RADIUS_NAS_SECRET=${opts.nasSecret || ""}`,
+  ].join("\n");
 }
 
 export function newRadiusApiKey() {
@@ -244,9 +286,11 @@ export function radiusConfigBundle(opts: {
   slug: string;
   apiKey: string;
   nas: Array<{ name: string; ip: string; secret: string }>;
+  radiusHost?: string;
 }) {
-  const base = (opts.baseUrl || "https://gridline.example").replace(/\/$/, "");
+  const base = (opts.baseUrl || "http://web:3000").replace(/\/+$/, "");
   const revealed = opts.apiKey && !opts.apiKey.startsWith("••••");
+  const nas = opts.nas;
   return {
     rest: renderFreeRadiusRestMod({
       baseUrl: base,
@@ -254,12 +298,38 @@ export function radiusConfigBundle(opts: {
       apiKey: revealed ? opts.apiKey : "frk_replace_me",
     }),
     site: renderFreeRadiusSite(),
-    clients: renderRadiusClientsConf(opts.nas),
+    clients: renderRadiusClientsConf(nas),
     mikrotik: renderMikrotikRadiusSnippet({
-      radiusHost: "10.200.0.1",
-      secret: opts.nas[0]?.secret || "change-me-on-the-router",
+      radiusHost: opts.radiusHost || "10.200.0.1",
+      secret: nas.find((c) => c.secret)?.secret || "change-me-on-the-router",
     }),
   };
+}
+
+export async function bootstrapRadius(
+  sql: Sql,
+  tenantId: string,
+  opts: { slug: string; apiKey: string; publicBase?: string; radiusHost?: string },
+) {
+  const nasSecret = await ensureRadiusNasSecret(sql, tenantId);
+  const routers = await sql<{ name: string; nas_ip: string; radius_secret: string }>`
+    select name, nas_ip, radius_secret from routers where tenant_id = ${tenantId} order by name`;
+  const nas = defaultNasClients(
+    nasSecret,
+    routers.map((r) => ({
+      name: r.name,
+      ip: r.nas_ip,
+      secret: open(r.radius_secret) || nasSecret,
+    })),
+  );
+  const bundle = radiusConfigBundle({
+    baseUrl: internalRadiusBaseUrl(opts.publicBase || ""),
+    slug: opts.slug,
+    apiKey: opts.apiKey,
+    nas,
+    radiusHost: opts.radiusHost,
+  });
+  return { ok: true as const, slug: opts.slug, nas_secret: nasSecret, ...bundle };
 }
 
 export async function handleRadiusHttp(
@@ -275,6 +345,14 @@ export async function handleRadiusHttp(
   }
   const tenantId = resolved.tenant.id;
   const kind = action.trim().toLowerCase();
+  if (kind === "bootstrap") {
+    const pack = await bootstrapRadius(sql, tenantId, {
+      slug: resolved.tenant.slug,
+      apiKey: presented,
+      publicBase: resolved.tenant.public_base_url,
+    });
+    return { status: 200, json: pack };
+  }
   if (kind === "authorize") {
     const decision = await authorizeRadius(sql, tenantId, {
       username: attrValue(body, "User-Name"),

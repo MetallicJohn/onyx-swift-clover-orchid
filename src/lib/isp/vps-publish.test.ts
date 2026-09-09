@@ -27,5 +27,6 @@ test("publish pack names docker compose, health, and WireGuard", () => {
   assert.match(compose, /drumsergio\/genieacs/);
   assert.match(compose, /mongo:7/);
   assert.match(dockerfile, /NITRO_PRESET=node-server/);
+  assert.match(compose, /1812:1812\/udp/);
   assert.match(dockerfile, /entrypoint\.sh/);
 });

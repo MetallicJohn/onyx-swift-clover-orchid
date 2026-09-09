@@ -30,6 +30,7 @@ services:
       PORT: "3000"
       NODE_ENV: production
       GENIEACS_NBI_URL: ${GENIEACS_NBI_URL:-http://genieacs:7557}
+      GRIDLINE_INTERNAL_URL: http://web:3000
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,6 +64,21 @@ services:
     expose:
       - "7557"
       - "3000"
+
+  freeradius:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/freeradius/Dockerfile
+    restart: unless-stopped
+    environment:
+      GRIDLINE_URL: ${GRIDLINE_URL:-http://web:3000}
+      GRIDLINE_SLUG: ${GRIDLINE_SLUG:-}
+      RADIUS_API_KEY: ${RADIUS_API_KEY:-}
+    depends_on:
+      - web
+    ports:
+      - "1812:1812/udp"
+      - "1813:1813/udp"
 
   caddy:
     image: caddy:2-alpine

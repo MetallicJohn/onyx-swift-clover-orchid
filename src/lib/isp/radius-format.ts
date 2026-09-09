@@ -86,6 +86,7 @@ export function renderFreeRadiusRestMod(opts: { baseUrl: string; slug: string; a
   const key = opts.apiKey || "frk_replace_me";
   return `rest {
     connect_uri = "${root}"
+    connect_timeout = 4.0
     username = "gridline"
     password = "${key}"
 

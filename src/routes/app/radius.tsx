@@ -26,6 +26,8 @@ function RadiusPage() {
   const [keyHint, setKeyHint] = useState("");
   const [revealedKey, setRevealedKey] = useState("");
   const [exportText, setExportText] = useState("");
+  const [nasSecret, setNasSecret] = useState("");
+  const [vpsEnv, setVpsEnv] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [snippet, setSnippet] = useState<"rest" | "site" | "clients" | "mikrotik" | "users" | "">("");
 
@@ -38,6 +40,8 @@ function RadiusPage() {
     setSlug(r.slug);
     setKeyHint(r.api_key_hint);
     if (r.api_key) setRevealedKey(r.api_key);
+    setNasSecret(r.nas_secret);
+    setVpsEnv(r.vps_env);
   }
 
   useEffect(() => {
@@ -67,8 +71,8 @@ function RadiusPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">RADIUS</h1>
           <p className="text-sm text-muted">
-            Gridline is the source of truth. FreeRADIUS (own host) authorizes against REST. Suspend rejects auth;
-            Disconnect kicks the session on the router.
+            Gridline is the source of truth. FreeRADIUS beside this app (UDP 1812/1813) authorizes over REST.
+            Suspend rejects the next Access-Request; Disconnect kicks the session on the router.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -87,8 +91,9 @@ function RadiusPage() {
         <div>
           <h2 className="font-medium">FreeRADIUS REST</h2>
           <p className="mt-1 text-sm text-muted">
-            Point the NAS at your FreeRADIUS box. FreeRADIUS calls Gridline with this key. Tenant slug{" "}
-            <span className="font-mono text-fg">{slug || "—"}</span>.
+            On the VPS the FreeRADIUS container pulls this config. Tenant slug{" "}
+            <span className="font-mono text-fg">{slug || "—"}</span>. NAS secret{" "}
+            <span className="font-mono text-fg">{nasSecret || "—"}</span>.
           </p>
           <p className="mt-3 font-mono text-xs text-muted">
             Key {revealedKey || keyHint || "not issued"}
@@ -117,14 +122,25 @@ function RadiusPage() {
             <Button size="sm" variant="ghost" onClick={() => void show("mikrotik")}>
               MikroTik snippet
             </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={async () => {
+                if (!vpsEnv) return;
+                setExportText(vpsEnv);
+                await copyText(vpsEnv);
+                setNote("VPS RADIUS env copied — paste into gridline.env and restart freeradius");
+              }}
+            >
+              Copy VPS env
+            </Button>
           </div>
         </div>
         <div className="text-sm text-muted">
           <ol className="list-decimal space-y-1 pl-4">
-            <li>Install FreeRADIUS 3 on a host the routers can reach (UDP 1812/1813).</li>
-            <li>Paste the REST module and site. The API key is the REST password (or a Bearer token).</li>
-            <li>Add each MikroTik as a client, then enable PPP AAA / hotspot RADIUS on the router.</li>
-            <li>Accounting POSTs update usage. A full data cap or suspend rejects the next Access-Request.</li>
+            <li>VPS compose already starts FreeRADIUS. Copy VPS env (slug + API key + NAS secret) into gridline.env and restart the freeradius container.</li>
+            <li>Point each MikroTik at this VPS UDP 1812/1813 with the NAS secret. Paste the MikroTik snippet.</li>
+            <li>Accounting POSTs update usage. A data cap or suspend rejects the next Access-Request.</li>
           </ol>
         </div>
       </section>

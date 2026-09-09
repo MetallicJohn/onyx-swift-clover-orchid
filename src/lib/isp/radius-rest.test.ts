@@ -125,6 +125,24 @@ test("REST key is required and tenant B cannot authorize tenant A", async () => 
   }
 });
 
+test("bootstrap returns rest site and CIDR NAS clients", async () => {
+  const { sql, bypass, close } = await openTestDb();
+  try {
+    await bypass();
+    await seedRadius(sql);
+    const http = await handleRadiusHttp(sql, "fibre", "bootstrap", "frk_live_secret", {});
+    assert.equal(http.status, 200);
+    const pack = http.json as { rest: string; site: string; clients: string; nas_secret: string; slug: string };
+    assert.equal(pack.slug, "fibre");
+    assert.match(pack.rest, /\/api\/v1\/radius\/authorize\/fibre/);
+    assert.match(pack.site, /port = 1812/);
+    assert.match(pack.clients, /10\.200\.0\.0\/16/);
+    assert.ok(pack.nas_secret.length >= 16);
+  } finally {
+    await close();
+  }
+});
+
 test("API keys are unique enough for issuance", () => {
   assert.notEqual(newRadiusApiKey(), newRadiusApiKey());
   assert.match(newRadiusApiKey(), /^frk_/);

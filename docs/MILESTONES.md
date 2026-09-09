@@ -8,7 +8,7 @@ Product milestones are complete except the items you asked to skip.
 | Customers / packages / services | Implemented and tested |
 | Billing / invoices / ledger / statements | Implemented and tested — line items, optional VAT, partials, auto suspend/restore |
 | Payments Daraja/Kopo | Implemented and tested (live needs real till + callback URL) |
-| RADIUS desired state + REST adapter | Implemented and tested — **daemon stays external** |
+| RADIUS desired state + REST adapter | Implemented and tested — **daemon is the compose sidecar (UDP 1812/1813)** |
 | MikroTik agent + approve | Implemented and tested |
 | WireGuard hub + client script | Implemented and tested — hub conf + enroll `.rsc` with endpoint; kernel handshake not verified in lab |
 | VPS self-host | Docker + Caddy + Postgres installer — WireGuard on the host kernel |

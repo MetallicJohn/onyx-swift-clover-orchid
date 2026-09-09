@@ -79,6 +79,11 @@ BETTER_AUTH_URL=https://$DOMAIN
 BETTER_AUTH_TRUSTED_ORIGINS=https://$DOMAIN,https://www.$DOMAIN
 GENIEACS_NBI_URL=http://genieacs:7557
 GENIEACS_UI_JWT_SECRET=$(openssl rand -hex 32)
+GRIDLINE_URL=http://web:3000
+GRIDLINE_INTERNAL_URL=http://web:3000
+GRIDLINE_SLUG=
+RADIUS_API_KEY=
+RADIUS_NAS_SECRET=$(openssl rand -hex 16)
 EOF
   chmod 600 "$ENV_FILE"
 else
@@ -89,6 +94,13 @@ else
   if ! grep -q '^GENIEACS_UI_JWT_SECRET=' "$ENV_FILE"; then
     echo "GENIEACS_UI_JWT_SECRET=$(openssl rand -hex 32)" >>"$ENV_FILE"
   fi
+  if ! grep -q '^GRIDLINE_URL=' "$ENV_FILE"; then
+    echo "GRIDLINE_URL=http://web:3000" >>"$ENV_FILE"
+    echo "GRIDLINE_INTERNAL_URL=http://web:3000" >>"$ENV_FILE"
+    echo "GRIDLINE_SLUG=" >>"$ENV_FILE"
+    echo "RADIUS_API_KEY=" >>"$ENV_FILE"
+    echo "RADIUS_NAS_SECRET=$(openssl rand -hex 16)" >>"$ENV_FILE"
+  fi
 fi
 
 if command -v ufw >/dev/null 2>&1; then
@@ -98,6 +110,8 @@ if command -v ufw >/dev/null 2>&1; then
   ufw allow 51820/udp || true
   ufw allow 7547/tcp || true
   ufw allow 7567/tcp || true
+  ufw allow 1812/udp || true
+  ufw allow 1813/udp || true
   ufw --force enable || true
 fi
 
@@ -115,6 +129,7 @@ echo "  3. Settings → Network: hub endpoint = this VPS public IP or $DOMAIN, t
 echo "  4. Routers → Copy script onto each MikroTik"
 echo "  5. Point acs.$DOMAIN at this VPS. CPE ACS URL = http://$DOMAIN:7547/"
 echo "  6. Gridline → GenieACS → Save NBI (http://genieacs:7557) → Sync from ACS"
+echo "  7. RADIUS → Copy VPS env into gridline.env, then restart the freeradius container"
 echo
 echo "Health: curl -fsS https://$DOMAIN/api/v1/health"
 echo "Logs:   docker compose -f $INSTALL_DIR/deploy/vps/docker-compose.yml logs -f web"

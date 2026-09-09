@@ -1,52 +1,46 @@
 # RADIUS
 
-This SaaS is **not** a RADIUS server. FreeRADIUS stays a separate process. Gridline is the source of truth.
+This SaaS is **not** a RADIUS server. FreeRADIUS is a **sidecar** on the VPS. Gridline is the source of truth.
 
 ```
-MikroTik NAS  --UDP 1812/1813-->  FreeRADIUS (operator host)
+MikroTik NAS  --UDP 1812/1813-->  FreeRADIUS (compose)
                                       |
-                                      | HTTPS rlm_rest
+                                      | HTTP rlm_rest
                                       v
                                   Gridline
-                     authorize / authenticate / accounting
+                     authorize / authenticate / accounting / bootstrap
                      radius_accounts + services + packages
 ```
 
-## Live path (recommended)
+## VPS (recommended)
 
-FreeRADIUS `rlm_rest` calls:
+`deploy/vps` starts `freeradius/freeradius-server:3.2.10`. The container waits for Gridline, then:
+
+`GET /api/v1/radius/bootstrap/{slug}` (HTTP Basic, password = tenant RADIUS API key)
+
+That writes `mods-available/rest`, `sites-enabled/gridline`, and `clients.conf` (WireGuard overlay + RFC1918 + each router NAS).
+
+1. Sign in → **RADIUS → Copy VPS env** into `/opt/gridline/gridline.env`
+2. `docker compose -f deploy/vps/docker-compose.yml up -d freeradius`
+3. Point MikroTik at the VPS **UDP 1812/1813** with the NAS secret (MikroTik snippet on the same page)
+
+## REST (also used by an external FreeRADIUS)
 
 - `POST /api/v1/radius/authorize/{slug}`
-- `POST /api/v1/radius/authenticate/{slug}` (optional; PAP/CHAP can use the cleartext from authorize)
+- `POST /api/v1/radius/authenticate/{slug}`
 - `POST /api/v1/radius/accounting/{slug}`
+- `GET  /api/v1/radius/bootstrap/{slug}`
 
-Auth: HTTP Basic (`username=gridline`, password = tenant RADIUS API key), `Authorization: Bearer <key>`, or `X-Radius-Key`.
+Auth: HTTP Basic (`username=gridline`, password = API key), Bearer, or `X-Radius-Key`.
 
-Authorize returns rlm_rest JSON:
-
-- Accept: `control:Cleartext-Password`, `Mikrotik-Rate-Limit`, `Framed-IP-Address`, `Session-Timeout`, `Acct-Interim-Interval`
-- Reject (HTTP 200): `control:Auth-Type = Reject` for unknown, suspended, expired, or bundle-exhausted users
-
-Copy the REST module, site, and `clients.conf` from **RADIUS** in the console. Rotate the key there; it is sealed at rest.
+Authorize returns rlm_rest JSON (`control:Cleartext-Password`, `Mikrotik-Rate-Limit`, framed IP, session timeout). Rejects unknown, suspended, expired, and bundle-exhausted users (HTTP 200 + Auth-Type Reject).
 
 ## Users file (offline)
 
-`Copy users file` still exports `raddb/users`. Suspended users are `Auth-Type := Reject`. This does **not** pick up a suspend until you re-export.
-
-## Accounting
-
-rlm_rest JSON (nested `{ value: [...] }`) and the simple `{ username, bytes_in, bytes_out, session_id }` body are both accepted. `Acct-Status-Type = Stop` closes the session. Octets + gigawords update `bundle_used_mb`; hitting the package cap suspends immediately.
-
-Lookup is `radius_accounts.username` first, then `services.username`.
+`Copy users file` still exports `raddb/users`. It does **not** pick up a suspend until you re-export. Prefer REST.
 
 ## Disconnect
 
-Disconnect still queues `pppoe.disable` / `hotspot.disable` on the MikroTik agent (kick + disable secret). That is CoA-equivalent on RouterOS. A `radclient` CoA adapter is not shipped.
+Queues `pppoe.disable` / `hotspot.disable` on the MikroTik agent. A `radclient` CoA packet is not shipped.
 
-## Not in this product
-
-- FreeRADIUS daemon in the web container
-- UDP 1812/1813 on Gridline
-- Shared SQL views across tenants (would leak). Per-ISP FreeRADIUS + REST is the multi-tenant path.
-
-**Status:** REST adapter + users export + disconnect **implemented and tested**. FreeRADIUS **daemon** remains operator-run.
+**Status:** REST adapter + bootstrap + compose daemon **implemented**. Live UDP handshake needs the VPS container + a NAS.

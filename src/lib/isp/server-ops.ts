@@ -17,7 +17,7 @@ import { activateVoucher, expireDueVouchers, generateVouchers, revokeVoucher } f
 import { listCustomerInbox } from "./inbox";
 import { createStkIntent, settleStkIntent } from "./payments";
 import { disconnectRadiusUser, publicRadiusAccount, renderFreeRadiusUsers } from "./radius";
-import { ensureRadiusApiKey, radiusConfigBundle, rotateRadiusApiKey } from "./radius-rest";
+import { ensureRadiusApiKey, radiusConfigBundle, rotateRadiusApiKey, defaultNasClients, ensureRadiusNasSecret, radiusVpsEnv, internalRadiusBaseUrl } from "./radius-rest";
 import { open } from "./secrets";
 import { assertPermission } from "./rbac";
 import { changePortalPassword, issuePortalOtp, portalContext, portalPasswordLogin, verifyPortalOtp } from "./portal";
@@ -33,8 +33,9 @@ export const listRadius = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { sql, tenantId } = await requireWs(context.userId);
     const key = await ensureRadiusApiKey(sql, tenantId);
-    const [tenant] = await sql<{ slug: string; public_base_url: string }>`
-      select slug, public_base_url from tenants where id = ${tenantId}`;
+    const [tenant] = await sql<{ slug: string; public_base_url: string; radius_api_key: string }>`
+      select slug, public_base_url, radius_api_key from tenants where id = ${tenantId}`;
+    const nasSecret = await ensureRadiusNasSecret(sql, tenantId);
     const accounts = await sql<{
       id: string;
       username: string;
@@ -73,15 +74,32 @@ export const listRadius = createServerFn({ method: "GET" })
       created_at: string;
     }>`select id, username, nas_ip, result, reason, created_at::text as created_at
        from radius_auth_events where tenant_id = ${tenantId} order by created_at desc limit 20`;
-    const nas = await sql<{ name: string; nas_ip: string; radius_secret: string }>`
-      select name, nas_ip, radius_secret from routers where tenant_id = ${tenantId} order by name`;
+    const nas = defaultNasClients(
+      nasSecret,
+      (
+        await sql<{ name: string; nas_ip: string; radius_secret: string }>`
+        select name, nas_ip, radius_secret from routers where tenant_id = ${tenantId} order by name`
+      ).map((r) => ({
+        name: r.name,
+        ip: r.nas_ip,
+        secret: r.radius_secret ? open(r.radius_secret) || nasSecret : nasSecret,
+      })),
+    );
+    const apiKey = open(tenant?.radius_api_key || "") || key.key;
+    let radiusHost = "10.200.0.1";
+    try {
+      const raw = tenant?.public_base_url || "";
+      radiusHost = new URL(raw.startsWith("http") ? raw : `https://${raw || "x"}`).hostname || radiusHost;
+      if (radiusHost === "x") radiusHost = "10.200.0.1";
+    } catch {
+      radiusHost = "10.200.0.1";
+    }
     const config = radiusConfigBundle({
       baseUrl: tenant?.public_base_url || "",
       slug: tenant?.slug || "",
-      apiKey: key.key || "frk_replace_me",
-      nas: nas
-        .filter((r) => r.nas_ip)
-        .map((r) => ({ name: r.name, ip: r.nas_ip, secret: r.radius_secret ? open(r.radius_secret) || "change-me-on-the-router" : "change-me-on-the-router" })),
+      apiKey: apiKey || "frk_replace_me",
+      nas,
+      radiusHost,
     });
     return {
       accounts: accounts.map(publicRadiusAccount),
@@ -90,6 +108,9 @@ export const listRadius = createServerFn({ method: "GET" })
       slug: tenant?.slug || "",
       api_key_hint: key.hint,
       api_key: key.key,
+      nas_secret: nasSecret,
+      internal_url: internalRadiusBaseUrl(tenant?.public_base_url || ""),
+      vps_env: radiusVpsEnv({ slug: tenant?.slug || "", apiKey: apiKey || key.key, nasSecret }),
       config,
     };
   });
