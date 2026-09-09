@@ -43,6 +43,7 @@ import { Route as ApiV1HealthRouteImport } from './routes/api/v1/health'
 import { Route as ApiV1CronBillingRouteImport } from './routes/api/v1/cron/billing'
 import { Route as ApiWebhooksKopokopoSlugRouteImport } from './routes/api/webhooks/kopokopo/$slug'
 import { Route as ApiWebhooksMpesaSlugRouteImport } from './routes/api/webhooks/mpesa/$slug'
+import { Route as ApiV1RadiusAccountingSlugRouteImport } from './routes/api/v1/radius/accounting.$slug'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -214,6 +215,12 @@ const ApiWebhooksMpesaSlugRoute = ApiWebhooksMpesaSlugRouteImport.update({
   path: '/api/webhooks/mpesa/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1RadiusAccountingSlugRoute =
+  ApiV1RadiusAccountingSlugRouteImport.update({
+    id: '/api/v1/radius/accounting/$slug',
+    path: '/api/v1/radius/accounting/$slug',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -250,6 +257,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
+  '/api/v1/radius/accounting/$slug': typeof ApiV1RadiusAccountingSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -283,6 +291,7 @@ export interface FileRoutesByTo {
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
+  '/api/v1/radius/accounting/$slug': typeof ApiV1RadiusAccountingSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -320,6 +329,7 @@ export interface FileRoutesById {
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
+  '/api/v1/radius/accounting/$slug': typeof ApiV1RadiusAccountingSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -358,6 +368,7 @@ export interface FileRouteTypes {
     | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
+    | '/api/v1/radius/accounting/$slug'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -391,6 +402,7 @@ export interface FileRouteTypes {
     | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
+    | '/api/v1/radius/accounting/$slug'
   id:
     | '__root__'
     | '/'
@@ -427,6 +439,7 @@ export interface FileRouteTypes {
     | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
+    | '/api/v1/radius/accounting/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -444,6 +457,7 @@ export interface RootRouteChildren {
   ApiV1CronBillingRoute: typeof ApiV1CronBillingRoute
   ApiWebhooksKopokopoSlugRoute: typeof ApiWebhooksKopokopoSlugRoute
   ApiWebhooksMpesaSlugRoute: typeof ApiWebhooksMpesaSlugRoute
+  ApiV1RadiusAccountingSlugRoute: typeof ApiV1RadiusAccountingSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -686,6 +700,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWebhooksMpesaSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/radius/accounting/$slug': {
+      id: '/api/v1/radius/accounting/$slug'
+      path: '/api/v1/radius/accounting/$slug'
+      fullPath: '/api/v1/radius/accounting/$slug'
+      preLoaderRoute: typeof ApiV1RadiusAccountingSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -771,6 +792,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1CronBillingRoute: ApiV1CronBillingRoute,
   ApiWebhooksKopokopoSlugRoute: ApiWebhooksKopokopoSlugRoute,
   ApiWebhooksMpesaSlugRoute: ApiWebhooksMpesaSlugRoute,
+  ApiV1RadiusAccountingSlugRoute: ApiV1RadiusAccountingSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

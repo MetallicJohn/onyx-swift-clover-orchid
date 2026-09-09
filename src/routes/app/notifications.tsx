@@ -39,7 +39,7 @@ function NotificationsPage() {
     try {
       const r = await runAutomatedBilling();
       setCycle(
-        `Due ${r.due} · overdue ${r.overdue} · grace ${r.grace} · suspended ${r.suspended} · notices ${r.notices}`,
+        `Due ${r.due} · overdue ${r.overdue} · grace ${r.grace} · suspended ${r.suspended} · time ${r.time ?? 0} · bundle ${r.bundle ?? 0}`,
       );
       await load();
     } catch (e) {

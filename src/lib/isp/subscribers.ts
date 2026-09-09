@@ -1,4 +1,4 @@
-import { restoreCustomerAccess } from "./access";
+import { restorePaidAccess } from "./access-policy";
 import { enqueueServiceCommand } from "./agent";
 import { on, type DomainEvent, type Sql } from "./events";
 import { awardLoyalty } from "./loyalty";
@@ -21,7 +21,7 @@ export function wireModules() {
     const ispName = String(p.isp_name || "");
     const payId = String(p.payment_id || "");
     const amount = Number(p.amount_kes || 0);
-    await restoreCustomerAccess(sql, tenantId, customerId);
+    await restorePaidAccess(sql, tenantId, customerId);
     await awardLoyalty(sql, tenantId, customerId, amount, "payment", payId);
     try {
       await creditReseller(sql, tenantId, customerId, amount, payId);

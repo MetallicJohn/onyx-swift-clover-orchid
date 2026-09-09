@@ -59,17 +59,21 @@ async function seedDemo(sql: Sql, tenantId: string) {
       price_kes: 2500,
       billing_interval: "monthly",
       grace_days: 5,
+      bundle_mb: 0,
+      validity_hours: 0,
     },
     {
       id: nid("pkg"),
       name: "Home 20",
-      description: "Residential 20/10 Mbps",
+      description: "Residential 20/10 Mbps · 10 GB FUP",
       access_method: "pppoe",
       download_mbps: 20,
       upload_mbps: 10,
       price_kes: 3500,
       billing_interval: "monthly",
       grace_days: 5,
+      bundle_mb: 10240,
+      validity_hours: 0,
     },
     {
       id: nid("pkg"),
@@ -81,22 +85,26 @@ async function seedDemo(sql: Sql, tenantId: string) {
       price_kes: 8500,
       billing_interval: "monthly",
       grace_days: 3,
+      bundle_mb: 0,
+      validity_hours: 0,
     },
     {
       id: nid("pkg"),
       name: "Hotspot Day",
-      description: "24-hour voucher",
+      description: "24-hour voucher · 1 GB",
       access_method: "hotspot",
       download_mbps: 8,
       upload_mbps: 4,
       price_kes: 100,
       billing_interval: "daily",
       grace_days: 0,
+      bundle_mb: 1024,
+      validity_hours: 24,
     },
   ];
   for (const p of pkgs) {
-    await sql`insert into packages (id, tenant_id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, active)
-      values (${p.id}, ${tenantId}, ${p.name}, ${p.description}, ${p.access_method}, ${p.download_mbps}, ${p.upload_mbps}, ${p.price_kes}, ${p.billing_interval}, ${p.grace_days}, true)`;
+    await sql`insert into packages (id, tenant_id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active)
+      values (${p.id}, ${tenantId}, ${p.name}, ${p.description}, ${p.access_method}, ${p.download_mbps}, ${p.upload_mbps}, ${p.price_kes}, ${p.billing_interval}, ${p.grace_days}, ${p.bundle_mb}, ${p.validity_hours}, true)`;
   }
 
   const people = [
@@ -136,8 +144,11 @@ async function seedDemo(sql: Sql, tenantId: string) {
     { ci: 7, pi: 1, method: "pppoe", username: "lillian.achieng", status: "pending" },
   ];
   for (const s of svcSpecs) {
-    await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status)
-      values (${nid("svc")}, ${tenantId}, ${customerIds[s.ci]}, ${pkgs[s.pi].id}, ${s.method}, ${s.username ?? null}, ${s.ip ?? null}, ${s.status})`;
+    const period = new Date();
+    if (s.status === "suspended") period.setDate(period.getDate() - 2);
+    else period.setDate(period.getDate() + 28);
+    await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end)
+      values (${nid("svc")}, ${tenantId}, ${customerIds[s.ci]}, ${pkgs[s.pi].id}, ${s.method}, ${s.username ?? null}, ${s.ip ?? null}, ${s.status}, ${period.toISOString()})`;
   }
 
   const today = new Date();
@@ -366,7 +377,7 @@ export const listPackages = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     const packages = await sql<PackageRow>`
-      select id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, active
+      select id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active
       from packages where tenant_id = ${workspace.tenantId} order by price_kes`;
     return { workspace, packages };
   });
@@ -382,6 +393,8 @@ export const createPackage = createServerFn({ method: "POST" })
     price_kes: number;
     billing_interval: string;
     grace_days: number;
+    bundle_mb?: number;
+    validity_hours?: number;
   }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
@@ -390,8 +403,8 @@ export const createPackage = createServerFn({ method: "POST" })
       throw new Error("Access method must be PPPoE, static, or hotspot");
     }
     const id = nid("pkg");
-    await sql`insert into packages (id, tenant_id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, active)
-      values (${id}, ${workspace.tenantId}, ${data.name.trim()}, ${data.description}, ${data.access_method}, ${data.download_mbps}, ${data.upload_mbps}, ${data.price_kes}, ${data.billing_interval}, ${data.grace_days}, true)`;
+    await sql`insert into packages (id, tenant_id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active)
+      values (${id}, ${workspace.tenantId}, ${data.name.trim()}, ${data.description}, ${data.access_method}, ${data.download_mbps}, ${data.upload_mbps}, ${data.price_kes}, ${data.billing_interval}, ${data.grace_days}, ${Math.max(0, data.bundle_mb ?? 0)}, ${Math.max(0, data.validity_hours ?? 0)}, true)`;
     await audit(sql, workspace.tenantId, context.userId, "package.created", "package", id);
     return { id };
   });
@@ -408,6 +421,8 @@ export const updatePackage = createServerFn({ method: "POST" })
     price_kes: number;
     billing_interval: string;
     grace_days: number;
+    bundle_mb?: number;
+    validity_hours?: number;
     active: boolean;
   }) => d)
   .handler(async ({ context, data }) => {
@@ -426,6 +441,8 @@ export const updatePackage = createServerFn({ method: "POST" })
           price_kes = ${data.price_kes},
           billing_interval = ${data.billing_interval},
           grace_days = ${data.grace_days},
+          bundle_mb = ${Math.max(0, data.bundle_mb ?? 0)},
+          validity_hours = ${Math.max(0, data.validity_hours ?? 0)},
           active = ${data.active}
       where id = ${data.id} and tenant_id = ${workspace.tenantId}
       returning id`;
@@ -440,7 +457,8 @@ export const listServices = createServerFn({ method: "GET" })
     const { sql, workspace } = await requireTenant(context.userId);
     const services = await sql<ServiceRow>`
       select s.id, s.customer_id, c.name as customer_name, s.package_id, p.name as package_name,
-             s.access_method, s.username, s.static_ip, s.status, s.created_at::text as created_at
+             s.access_method, s.username, s.static_ip, s.status, s.created_at::text as created_at,
+             s.period_end::text as period_end, s.bundle_used_mb, p.bundle_mb, s.suspend_reason
       from services s
       join customers c on c.id = s.customer_id
       join packages p on p.id = s.package_id
@@ -448,7 +466,7 @@ export const listServices = createServerFn({ method: "GET" })
       order by s.created_at desc`;
     const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${workspace.tenantId} order by name`;
     const packages = await sql<PackageRow>`
-      select id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, active
+      select id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active
       from packages where tenant_id = ${workspace.tenantId} and active = true`;
     return { workspace, services, customers, packages };
   });
@@ -464,14 +482,21 @@ export const createService = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     const tid = workspace.tenantId;
-    const [pkg] = await sql<{ access_method: AccessMethod; price_kes: number }>`
-      select access_method, price_kes from packages where id = ${data.package_id} and tenant_id = ${tid}`;
+    const [pkg] = await sql<{
+      access_method: AccessMethod;
+      price_kes: number;
+      billing_interval: string;
+      validity_hours: number;
+    }>`select access_method, price_kes, billing_interval, validity_hours
+       from packages where id = ${data.package_id} and tenant_id = ${tid}`;
     if (!pkg) throw new Error("Package not found");
     const [cus] = await sql<{ id: string }>`select id from customers where id = ${data.customer_id} and tenant_id = ${tid}`;
     if (!cus) throw new Error("Customer not found");
     const id = nid("svc");
-    await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status)
-      values (${id}, ${tid}, ${data.customer_id}, ${data.package_id}, ${pkg.access_method}, ${data.username || null}, ${data.static_ip || null}, 'active')`;
+    const { periodMs } = await import("./access-policy");
+    const periodEnd = new Date(Date.now() + periodMs(pkg.billing_interval, pkg.validity_hours)).toISOString();
+    await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end)
+      values (${id}, ${tid}, ${data.customer_id}, ${data.package_id}, ${pkg.access_method}, ${data.username || null}, ${data.static_ip || null}, 'active', ${periodEnd})`;
     if (pkg.access_method === "static" && !data.static_ip) {
       await allocateStaticIp(sql, tid, id, data.customer_id);
     }
@@ -504,7 +529,17 @@ export const setServiceStatus = createServerFn({ method: "POST" })
   .validator((d: { id: string; status: ServiceStatus }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
-    await sql`update services set status = ${data.status} where id = ${data.id} and tenant_id = ${workspace.tenantId}`;
+    if (data.status === "active") {
+      const [row] = await sql<{ customer_id: string }>`
+        select customer_id from services where id = ${data.id} and tenant_id = ${workspace.tenantId}`;
+      if (row) {
+        const { grantPaidPeriod } = await import("./access-policy");
+        await grantPaidPeriod(sql, workspace.tenantId, row.customer_id);
+      }
+    }
+    const reason = data.status === "suspended" ? "manual" : data.status === "active" ? "" : "invoice";
+    await sql`update services set status = ${data.status}, suspend_reason = ${reason}
+      where id = ${data.id} and tenant_id = ${workspace.tenantId}`;
     const [svc] = await sql<{ customer_id: string; name: string }>`
       select s.customer_id, p.name from services s join packages p on p.id = s.package_id
       where s.id = ${data.id} and s.tenant_id = ${workspace.tenantId}`;
@@ -761,8 +796,9 @@ export const importCustomers = createServerFn({ method: "POST" })
       await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status)
         values (${cid}, ${tid}, 'individual', ${row.name.trim()}, ${row.phone || ""}, ${row.email || ""}, ${row.address || ""}, 'active')`;
       const sid = nid("svc");
-      await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status)
-        values (${sid}, ${tid}, ${cid}, ${pkg.id}, ${method}, ${row.username || null}, ${row.static_ip || null}, 'pending')`;
+      const periodEnd = new Date(Date.now() + 30 * 86400_000).toISOString();
+      await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end)
+        values (${sid}, ${tid}, ${cid}, ${pkg.id}, ${method}, ${row.username || null}, ${row.static_ip || null}, 'pending', ${periodEnd})`;
       await provisionServiceAccess(sql, tid, sid);
       created += 1;
     }

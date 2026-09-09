@@ -48,7 +48,9 @@ function ServicesPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Services</h1>
-          <p className="text-sm text-muted">PPPoE, static IP, and hotspot access — lifecycle independent of invoices.</p>
+          <p className="text-sm text-muted">
+            Access goes offline on unpaid invoices, expired time, or a used-up data cap. A confirmed payment restores and extends the period.
+          </p>
         </div>
         <Button onClick={() => setOpen(true)}>Provision service</Button>
       </div>
@@ -91,13 +93,15 @@ function ServicesPage() {
       {secretNote ? <p className="text-sm text-accent">{secretNote}</p> : null}
 
       <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full min-w-[44rem] text-left text-sm">
+        <table className="w-full min-w-[52rem] text-left text-sm">
           <thead className="bg-surface text-xs text-muted">
             <tr>
               <th className="px-4 py-3 font-medium">Customer</th>
               <th className="px-4 py-3 font-medium">Access</th>
               <th className="px-4 py-3 font-medium">Identity</th>
               <th className="px-4 py-3 font-medium">Package</th>
+              <th className="px-4 py-3 font-medium">Paid through</th>
+              <th className="px-4 py-3 font-medium">Data</th>
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Actions</th>
             </tr>
@@ -109,8 +113,19 @@ function ServicesPage() {
                 <td className="px-4 py-3 uppercase">{s.access_method}</td>
                 <td className="px-4 py-3 font-mono text-xs">{s.username || s.static_ip || "—"}</td>
                 <td className="px-4 py-3">{s.package_name}</td>
+                <td className="px-4 py-3 font-mono text-xs">
+                  {s.period_end ? s.period_end.slice(0, 16).replace("T", " ") : "—"}
+                </td>
+                <td className="px-4 py-3 font-mono text-xs">
+                  {s.bundle_mb > 0 ? `${s.bundle_used_mb}/${s.bundle_mb} MB` : "unlimited"}
+                </td>
                 <td className="px-4 py-3">
-                  <Badge tone={statusTone(s.status)}>{s.status}</Badge>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <Badge tone={statusTone(s.status)}>{s.status}</Badge>
+                    {s.suspend_reason ? (
+                      <span className="text-xs text-muted">{s.suspend_reason}</span>
+                    ) : null}
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">

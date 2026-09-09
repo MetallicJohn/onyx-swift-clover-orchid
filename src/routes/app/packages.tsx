@@ -18,6 +18,8 @@ const EMPTY = {
   price_kes: 2500,
   billing_interval: "monthly",
   grace_days: 5,
+  bundle_mb: 0,
+  validity_hours: 0,
   active: true,
 };
 
@@ -59,6 +61,8 @@ function PackagesPage() {
       price_kes: p.price_kes,
       billing_interval: p.billing_interval,
       grace_days: p.grace_days,
+      bundle_mb: p.bundle_mb,
+      validity_hours: p.validity_hours,
       active: p.active,
     });
     setOpen(true);
@@ -98,6 +102,8 @@ function PackagesPage() {
         price_kes: p.price_kes,
         billing_interval: p.billing_interval,
         grace_days: p.grace_days,
+        bundle_mb: p.bundle_mb,
+        validity_hours: p.validity_hours,
         active: !p.active,
       },
     });
@@ -112,7 +118,7 @@ function PackagesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Packages</h1>
           <p className="text-sm text-muted">
-            Product catalog for PPPoE, static IP, and hotspot. Prices and speeds are tenant-owned — never hard-coded.
+            Product catalog for PPPoE, static IP, and hotspot. Unpaid invoices, expired time, or a used-up data cap suspend access automatically. Payment restores it.
           </p>
         </div>
         <Button onClick={startCreate}>New package</Button>
@@ -187,6 +193,22 @@ function PackagesPage() {
               onChange={(e) => setForm({ ...form, grace_days: Number(e.target.value) })}
             />
           </Field>
+          <Field label="Data cap GB (0 = unlimited)">
+            <Input
+              type="number"
+              min={0}
+              value={form.bundle_mb ? Math.round(form.bundle_mb / 1024) : 0}
+              onChange={(e) => setForm({ ...form, bundle_mb: Math.max(0, Number(e.target.value)) * 1024 })}
+            />
+          </Field>
+          <Field label="Validity hours (0 = billing interval)">
+            <Input
+              type="number"
+              min={0}
+              value={form.validity_hours}
+              onChange={(e) => setForm({ ...form, validity_hours: Number(e.target.value) })}
+            />
+          </Field>
           {editingId ? (
             <Field label="Availability">
               <Select
@@ -231,7 +253,9 @@ function PackagesPage() {
               <div className="font-mono text-sm tabular-nums">{kes(p.price_kes)}</div>
             </div>
             <p className="mt-3 text-sm text-muted">
-              {p.download_mbps}/{p.upload_mbps} Mbps · {p.billing_interval} · {p.grace_days}d grace
+              {p.download_mbps}/{p.upload_mbps} Mbps · {p.billing_interval}
+              {p.validity_hours ? ` · ${p.validity_hours}h` : ""} · {p.grace_days}d grace
+              {p.bundle_mb ? ` · ${p.bundle_mb >= 1024 ? `${Math.round(p.bundle_mb / 1024)} GB` : `${p.bundle_mb} MB`}` : " · unlimited"}
             </p>
             {p.description ? <p className="mt-1 text-sm text-subtle">{p.description}</p> : null}
             <div className="mt-4 flex flex-wrap gap-2">

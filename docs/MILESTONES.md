@@ -6,7 +6,7 @@ Product milestones are complete except the items you asked to skip.
 |---|---|
 | Foundation / RBAC / tenants | Implemented and tested |
 | Customers / packages / services | Implemented and tested |
-| Billing / invoices / ledger / statements | Implemented and tested |
+| Billing / invoices / ledger / statements | Implemented and tested — auto suspend/restore on payment, time, bundle |
 | Payments Daraja/Kopo | Implemented and tested (live needs real till + callback URL) |
 | RADIUS desired state | Implemented and tested — **daemon skipped** |
 | MikroTik agent + approve | Implemented and tested |

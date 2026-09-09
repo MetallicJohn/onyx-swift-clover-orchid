@@ -46,7 +46,7 @@ function BillingPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Billing</h1>
         <p className="text-sm text-muted">
-          Immutable invoices. Payments are idempotent by provider reference. A confirmed payment restores service.
+          Immutable invoices. A confirmed payment extends the paid-through date, resets the data bundle, and restores service unless another invoice is still overdue.
         </p>
       </div>
 

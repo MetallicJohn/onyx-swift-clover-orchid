@@ -75,8 +75,8 @@ export async function activateVoucher(sql: Sql, tenantId: string, voucherId: str
   const cid = customerId || (await walkInCustomer(sql, tenantId));
   const clock = activateVoucherClock(v.hours);
   const serviceId = nid("svc");
-  await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status)
-    values (${serviceId}, ${tenantId}, ${cid}, ${v.package_id}, 'hotspot', ${v.code}, null, 'active')`;
+  await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end)
+    values (${serviceId}, ${tenantId}, ${cid}, ${v.package_id}, 'hotspot', ${v.code}, null, 'active', ${clock.expires_at.toISOString()})`;
   await sql`update hotspot_vouchers
     set status = 'active', used_at = ${clock.used_at.toISOString()}, expires_at = ${clock.expires_at.toISOString()},
         service_id = ${serviceId}, customer_id = ${cid}

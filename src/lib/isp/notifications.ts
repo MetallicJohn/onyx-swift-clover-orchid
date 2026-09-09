@@ -1,5 +1,4 @@
 import { nid } from "../utils.ts";
-import { provisionServiceAccess } from "./access";
 import { generateRecurringInvoices, issueInvoice } from "./billing";
 import { queueEmail, writeInbox } from "./inbox";
 import { channelAllowed, deliverChannel, getMessagingSettings } from "./messaging";
@@ -237,81 +236,7 @@ export async function runBillingCycle(sql: Sql, tenantId: string, ispName: strin
       due_date: dueDate,
     });
   });
-  const invoices = await sql<{
-    id: string;
-    customer_id: string;
-    number: string;
-    amount_kes: number;
-    status: string;
-    due_date: string;
-  }>`select id, customer_id, number, amount_kes, status, due_date::text as due_date
-     from invoices where tenant_id = ${tenantId} and status in ('issued','due','overdue')`;
-
-  const today = new Date().toISOString().slice(0, 10);
-  let due = 0;
-  let overdue = 0;
-  let grace = 0;
-  let suspended = 0;
-  let notices = 0;
-
-  for (const inv of invoices) {
-    const vars: NotifyVars = {
-      customer_name: "",
-      invoice_number: inv.number,
-      amount: `KES ${inv.amount_kes}`,
-      due_date: inv.due_date,
-    };
-
-    if (inv.due_date === today && inv.status === "issued") {
-      await sql`update invoices set status = 'due' where id = ${inv.id} and tenant_id = ${tenantId}`;
-      notices += await notifyCustomerEvent(sql, tenantId, ispName, inv.customer_id, "invoice.due", inv.id, vars);
-      due += 1;
-    }
-
-    if (inv.due_date < today && inv.status !== "overdue") {
-      await sql`update invoices set status = 'overdue' where id = ${inv.id} and tenant_id = ${tenantId}`;
-      notices += await notifyCustomerEvent(sql, tenantId, ispName, inv.customer_id, "invoice.overdue", inv.id, vars);
-      overdue += 1;
-    } else if (inv.status === "overdue") {
-      notices += await notifyCustomerEvent(sql, tenantId, ispName, inv.customer_id, "invoice.overdue", inv.id, vars);
-    }
-
-    if (inv.due_date >= today) continue;
-
-    const daysPast = Math.floor((Date.parse(today) - Date.parse(inv.due_date)) / 86400000);
-    const services = await sql<{
-      id: string;
-      status: string;
-      package_id: string;
-      name: string;
-      grace_days: number;
-    }>`select s.id, s.status, s.package_id, p.name, p.grace_days
-       from services s join packages p on p.id = s.package_id
-       where s.tenant_id = ${tenantId} and s.customer_id = ${inv.customer_id} and s.status in ('active','grace')`;
-
-    for (const svc of services) {
-      const svcVars: NotifyVars = { ...vars, service_name: svc.name };
-      if (daysPast <= svc.grace_days && svc.status === "active") {
-        await sql`update services set status = 'grace' where id = ${svc.id} and tenant_id = ${tenantId}`;
-        await provisionServiceAccess(sql, tenantId, svc.id);
-        notices += await notifyCustomerEvent(sql, tenantId, ispName, inv.customer_id, "grace.started", svc.id, svcVars);
-        grace += 1;
-      } else if (daysPast > svc.grace_days && svc.status !== "suspended") {
-        await sql`update services set status = 'suspended' where id = ${svc.id} and tenant_id = ${tenantId}`;
-        await provisionServiceAccess(sql, tenantId, svc.id);
-        notices += await notifyCustomerEvent(
-          sql,
-          tenantId,
-          ispName,
-          inv.customer_id,
-          "service.suspended",
-          svc.id,
-          svcVars,
-        );
-        suspended += 1;
-      }
-    }
-  }
-
-  return { due, overdue, grace, suspended, notices, issued };
+  const { applyAccessPolicy } = await import("./access-policy.ts");
+  const access = await applyAccessPolicy(sql, tenantId, ispName);
+  return { issued, ...access };
 }

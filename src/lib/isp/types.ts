@@ -48,6 +48,8 @@ export type PackageRow = {
   price_kes: number;
   billing_interval: string;
   grace_days: number;
+  bundle_mb: number;
+  validity_hours: number;
   active: boolean;
 };
 
@@ -75,6 +77,10 @@ export type ServiceRow = {
   static_ip: string | null;
   status: ServiceStatus;
   created_at: string;
+  period_end: string | null;
+  bundle_used_mb: number;
+  bundle_mb: number;
+  suspend_reason: string;
 };
 
 export type InvoiceRow = {
