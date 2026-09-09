@@ -24,7 +24,8 @@ test("publish pack names docker compose, health, and WireGuard", () => {
   assert.match(install, /51820\/udp/);
   assert.match(install, /BETTER_AUTH_URL/);
   assert.match(compose, /postgres:16-alpine/);
-  assert.match(compose, /caddy:2-alpine/);
+  assert.match(compose, /drumsergio\/genieacs/);
+  assert.match(compose, /mongo:7/);
   assert.match(dockerfile, /NITRO_PRESET=node-server/);
   assert.match(dockerfile, /entrypoint\.sh/);
 });

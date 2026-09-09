@@ -29,10 +29,39 @@ services:
       HOST: "0.0.0.0"
       PORT: "3000"
       NODE_ENV: production
+      GENIEACS_NBI_URL: ${GENIEACS_NBI_URL:-http://genieacs:7557}
     depends_on:
       postgres:
         condition: service_healthy
     expose:
+      - "3000"
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  genieacs:
+    image: drumsergio/genieacs:1.2.16.0
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongo/genieacs
+      GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
+    ports:
+      - "7547:7547"
+      - "7567:7567"
+    expose:
+      - "7557"
       - "3000"
 
   caddy:
@@ -53,5 +82,6 @@ services:
 
 volumes:
   pgdata:
+  mongodata:
   caddy_data:
   caddy_config:

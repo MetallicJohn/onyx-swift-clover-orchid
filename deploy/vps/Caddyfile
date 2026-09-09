@@ -6,3 +6,8 @@
 	encode gzip zstd
 	reverse_proxy web:3000
 }
+
+acs.{$GRIDLINE_DOMAIN} {
+	encode gzip zstd
+	reverse_proxy genieacs:3000
+}

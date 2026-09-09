@@ -23,7 +23,7 @@
 - Live SMS (sandbox unless a provider key is set)
 - Email send (queued; Resend only if `RESEND_API_KEY` is set)
 - FreeRADIUS daemon (operator-run; Gridline REST adapter is live)
-- GenieACS / TR-069 session
+- GenieACS TR-069 on a physical CPE (NBI adapter + compose sidecar are real; sandbox has no daemon)
 - Native mobile apps
 - Stripe
 - Kernel WireGuard handshake on a real NIC

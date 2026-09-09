@@ -56,9 +56,10 @@ export const listCpeTasks = createServerFn({ method: "GET" })
       id: string;
       kind: string;
       status: string;
+      result: string;
       serial: string;
       created_at: string;
-    }>`select t.id, t.kind, t.status, d.serial, t.created_at::text as created_at
+    }>`select t.id, t.kind, t.status, t.result, d.serial, t.created_at::text as created_at
        from acs_tasks t join cpe_devices d on d.id = t.cpe_id
        where t.tenant_id = ${tenantId} order by t.created_at desc limit 30`;
     return { tasks };

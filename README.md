@@ -11,7 +11,7 @@ git clone https://github.com/MetallicJohn/onyx-swift-clover-orchid.git /opt/grid
 sudo bash /opt/gridline/deploy/vps/install.sh --domain ops.yourisp.co.ke --email you@yourisp.co.ke
 ```
 
-That starts Caddy (HTTPS), Postgres 16, and Gridline. WireGuard stays on the host kernel (UDP 51820).
+That starts Caddy (HTTPS), Postgres, Gridline, MongoDB, and GenieACS. WireGuard stays on the host kernel (UDP 51820). Use a VPS with about 4 GB RAM.
 
 After DNS and TLS:
 

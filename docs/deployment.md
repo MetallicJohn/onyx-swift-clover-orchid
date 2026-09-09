@@ -17,9 +17,9 @@ sudo bash /opt/gridline/deploy/vps/install.sh --domain ops.yourisp.co.ke --email
 
 That install:
 
-- Docker Compose: `web` (Nitro `node-server`), `postgres:16`, `caddy:2` with Let's Encrypt
+- Docker Compose: `web`, `postgres:16`, `caddy:2`, `mongo:7`, `genieacs` (CWMP 7547, FS 7567; NBI internal)
 - Writes `/opt/gridline/gridline.env` (secrets, never commit this file)
-- Opens 80/tcp, 443/tcp, 51820/udp
+- Opens 80/tcp, 443/tcp, 51820/udp, 7547/tcp, 7567/tcp
 - Installs WireGuard tools on the **host** (kernel module — not inside the web container)
 
 Health: `GET /api/v1/health`
@@ -31,10 +31,6 @@ After DNS points at the VPS:
 3. Settings → Network: hub endpoint = VPS public IP or hostname, download `wg-gridline.conf`, `wg-quick up wg-gridline`
 4. Routers → Copy script onto each MikroTik
 
-Do not put MikroTik, FreeRADIUS, or GenieACS inside the web container.
+Do not put MikroTik or FreeRADIUS inside the web container. GenieACS runs **beside** it (own container + Mongo).
 
-`DATABASE_URL` → Postgres. Unset → PGLite preview only.
-
-Django `artifacts/isp-saas` compose files are **not** the production path.
-
-VPS needs about 2 GB RAM for the first image build.
+VPS needs about 4 GB RAM once GenieACS is included.

@@ -17,7 +17,7 @@ Product milestones are complete except the items you asked to skip.
 | Notifications SMS/WA/inbox | Implemented and tested — email queued |
 | Tickets + field (console) | Implemented and tested — **native apps skipped** |
 | Customer portal | Implemented and tested |
-| GenieACS inventory + queue | Implemented — **TR-069 skipped** |
+| GenieACS inventory + NBI adapter | Implemented and tested — **daemon is the compose sidecar, not in-process TR-069** |
 | Loyalty / referrals / resellers | Implemented and tested |
 | SaaS platform plans | Implemented — invoice-and-pay via M-Pesa, **Stripe skipped** |
 | Reports + audit | Implemented and tested |

@@ -24,6 +24,8 @@ import { changePortalPassword, issuePortalOtp, portalContext, portalPasswordLogi
 import { completePortalPasswordReset } from "./password-reset";
 import { issueResellerOtp, resellerHome, verifyResellerOtp } from "./reseller-portal";
 import { openTicket } from "./tickets";
+import { acsConnection, loadAcsConfig, refreshCpeInform, saveAcsConfig, syncAcsDevices } from "./acs";
+import { genieDeviceId } from "./acs-nbi";
 import { requireWorkspace as requireWs } from "./workspace";
 
 export const listRadius = createServerFn({ method: "GET" })
@@ -347,11 +349,32 @@ export const listAcs = createServerFn({ method: "GET" })
       status: string;
       customer_name: string | null;
       last_inform: string;
-    }>`select d.id, d.serial, d.product_class, d.ssid, d.status, c.name as customer_name, d.last_inform::text as last_inform
+      acs_device_id: string;
+    }>`select d.id, d.serial, d.product_class, d.ssid, d.status, c.name as customer_name,
+              d.last_inform::text as last_inform, d.acs_device_id
        from cpe_devices d left join customers c on c.id = d.customer_id
        where d.tenant_id = ${tenantId} order by d.last_inform desc`;
     const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${tenantId} order by name`;
-    return { devices, customers };
+    const connection = await acsConnection(sql, tenantId);
+    return { devices, customers, connection };
+  });
+
+export const saveAcsSettings = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { nbiUrl: string; user: string; pass?: string; oui: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
+    await saveAcsConfig(sql, tenantId, data);
+    return acsConnection(sql, tenantId);
+  });
+
+export const syncAcsFromNbi = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
+    return syncAcsDevices(sql, tenantId);
   });
 
 export const addCpe = createServerFn({ method: "POST" })
@@ -360,8 +383,10 @@ export const addCpe = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenantId } = await requireWs(context.userId);
     if (!data.serial.trim()) throw new Error("Serial is required");
-    await sql`insert into cpe_devices (id, tenant_id, serial, product_class, ssid, status, customer_id)
-      values (${nid("cpe")}, ${tenantId}, ${data.serial.trim()}, ${data.product_class || "Router"}, ${data.ssid || ""}, 'online', ${data.customer_id || null})`;
+    const cfg = await loadAcsConfig(sql, tenantId);
+    const acsId = genieDeviceId(cfg.oui, data.product_class || "Router", data.serial.trim());
+    await sql`insert into cpe_devices (id, tenant_id, serial, product_class, ssid, status, customer_id, manufacturer_oui, acs_device_id)
+      values (${nid("cpe")}, ${tenantId}, ${data.serial.trim()}, ${data.product_class || "Router"}, ${data.ssid || ""}, 'unknown', ${data.customer_id || null}, ${cfg.oui}, ${acsId})`;
     return { ok: true };
   });
 
@@ -370,8 +395,7 @@ export const informCpe = createServerFn({ method: "POST" })
   .validator((d: { id: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId } = await requireWs(context.userId);
-    await sql`update cpe_devices set last_inform = now(), status = 'online' where id = ${data.id} and tenant_id = ${tenantId}`;
-    return { ok: true };
+    return refreshCpeInform(sql, tenantId, data.id);
   });
 
 export const listPartners = createServerFn({ method: "GET" })
