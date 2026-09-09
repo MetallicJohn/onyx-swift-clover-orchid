@@ -31,6 +31,7 @@ export function Badge({
   );
 }
 
+/** Map a domain status string onto Badge tone classes. */
 export function statusTone(status: string) {
   const s = status.toLowerCase();
   if (["active", "paid", "connected", "resolved", "closed", "confirmed"].includes(s)) return "ok";

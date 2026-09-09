@@ -1,6 +1,7 @@
-import { nid } from "@/lib/utils";
+import { nid } from "../utils.ts";
 import { initialCommandStatus } from "./command-policy";
 import { ensureOpsSchema } from "./ops-schema";
+import { applyRls } from "./rls";
 import { commandRosScript, wrapPullRosScript } from "./routeros";
 
 type Sql = {
@@ -162,6 +163,7 @@ export function compileRow(id: string, kind: string, payloadRaw: string): Compil
 async function routerByToken(sql: Sql, token: string) {
   const t = token.trim();
   if (!t) return null;
+  await applyRls(sql, { bypass: true });
   const [r] = await sql<{
     id: string;
     tenant_id: string;
@@ -175,6 +177,7 @@ async function routerByToken(sql: Sql, token: string) {
     api_host: string;
   }>`select id, tenant_id, name, identity, enroll_token, wg_address, api_user, api_password, api_port, api_host
      from routers where enroll_token = ${t}`;
+  if (r) await applyRls(sql, { tenantId: r.tenant_id, bypass: false });
   return r ?? null;
 }
 
@@ -285,4 +288,16 @@ export async function queueCompiledCommand(
   await sql`insert into agent_commands (id, tenant_id, router_id, kind, payload, status, requested_by)
     values (${id}, ${tenantId}, ${routerId}, ${kind}, ${JSON.stringify(payload)}, ${status}, ${requestedBy})`;
   return { id, status, ...compileMikrotik(kind, payload) };
+}
+
+export async function approveCommand(sql: Sql, tenantId: string, commandId: string, userId: string) {
+  const [cmd] = await sql<{ id: string; status: string; kind: string }>`
+    select id, status, kind from agent_commands where id = ${commandId} and tenant_id = ${tenantId}`;
+  if (!cmd) throw new Error("Command not found");
+  if (cmd.status !== "proposed") throw new Error("Only proposed commands can be approved");
+  await sql`update agent_commands set status = 'queued', approved_by = ${userId}
+    where id = ${cmd.id} and tenant_id = ${tenantId}`;
+  await sql`insert into audit_logs (id, tenant_id, user_id, action, entity_type, entity_id)
+    values (${nid("aud")}, ${tenantId}, ${userId}, ${`command.approved:${cmd.kind}`}, 'agent_command', ${cmd.id})`;
+  return { ok: true, id: cmd.id };
 }

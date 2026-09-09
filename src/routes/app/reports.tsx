@@ -46,7 +46,7 @@ function ReportsPage() {
           <section className="rounded-xl border border-border bg-surface p-4">
             <h2 className="mb-3 font-medium">Invoice aging</h2>
             <ul className="text-sm">
-              {Object.entries(data.aging).map(([k, v]) => (
+              {Object.entries(data.aging).map(([k, v]: [string, { count: number; amount: number }]) => (
                 <li key={k} className="flex justify-between py-1">
                   <span className="text-muted">{k}</span>
                   <span className="font-mono">

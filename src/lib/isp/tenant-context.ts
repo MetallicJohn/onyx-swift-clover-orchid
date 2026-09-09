@@ -1,4 +1,4 @@
-import { getSql } from "@/lib/db";
+import { getSql } from "../db.ts";
 import { permissionsFor, type Permission } from "./rbac";
 import type { TenantRole, Workspace } from "./types";
 

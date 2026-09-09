@@ -1,4 +1,5 @@
 /** RouterOS v7 script generation. Uses :local, :if, :do, find where — not API-style one-liners. */
+/* eslint-disable no-useless-escape -- RouterOS uses $locals; JS templates must emit a literal dollar */
 
 export function rosQuote(value: string) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;

@@ -21,4 +21,4 @@ Product milestones are complete except the items you asked to skip.
 | SaaS platform plans | Implemented — **Stripe skipped** |
 | Reports + audit | Implemented and tested |
 | AI MikroTik | Implemented (template + xAI if key present) |
-| Postgres RLS | **Skipped** |
+| Postgres RLS | Implemented and tested (SET ROLE / non-superuser). Preview PGLite is superuser. |

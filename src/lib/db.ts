@@ -150,6 +150,7 @@ async function createPgliteSql(): Promise<Sql> {
       // Apply + record atomically (parity with scripts/migrate.mjs) so a failed
       // statement can't leave a file half-applied but untracked.
       await pg.transaction(async (tx) => {
+        await tx.query("select set_config('app.bypass_rls', 'on', true)");
         await tx.exec(migrations[path]);
         await tx.query("insert into _migrations (name) values ($1)", [name]);
       });

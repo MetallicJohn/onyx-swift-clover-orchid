@@ -7,6 +7,10 @@ Technician: tickets/jobs only. Finance: invoices/payments. Network engineer: rou
 
 ## Secrets
 Sealed at rest (`enc:v1:`). Never returned to the browser. Redacted in API DTOs.
+`APP_SECRET` or `BETTER_AUTH_SECRET` is required in production and whenever `DATABASE_URL` is set. There is no published development default.
+
+## Row-level security
+Tenant-owned tables have `ENABLE` + `FORCE ROW LEVEL SECURITY`. Policies allow `app.bypass_rls=on` (migrations/bootstrap) or `tenant_id = current_setting('app.tenant_id')`. `requireWorkspace`, webhooks, and the agent set the GUC after resolving the tenant.
 
 ## Payments
 Frontend cannot confirm a live STK. Webhooks are tenant-slug addressed; duplicate callbacks are idempotent.

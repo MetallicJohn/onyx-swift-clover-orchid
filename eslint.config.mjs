@@ -15,6 +15,8 @@ export default tseslint.config(
       ".nitro/**",
       "node_modules/**",
       "src/routeTree.gen.ts",
+      "artifacts/**",
+      "screenshots/**",
     ],
   },
   js.configs.recommended,
@@ -33,7 +35,7 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": [
         "warn",
-        { allowConstantExport: true },
+        { allowConstantExport: true, allowExportNames: ["statusTone"] },
       ],
       "@typescript-eslint/no-unused-vars": [
         "warn",

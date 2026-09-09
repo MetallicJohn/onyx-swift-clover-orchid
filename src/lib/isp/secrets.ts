@@ -2,12 +2,23 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 
 const PREFIX = "enc:v1:";
 
+const globalSeal = globalThis as typeof globalThis & { __gridlineSealSecret__?: string };
+
+function configuredSecret() {
+  const fromEnv = (process.env.APP_SECRET || process.env.BETTER_AUTH_SECRET || "").trim();
+  return fromEnv || "";
+}
+
 function keyBytes() {
-  const secret =
-    process.env.APP_SECRET ||
-    process.env.BETTER_AUTH_SECRET ||
-    "gridline-dev-secret-change-me";
-  return createHash("sha256").update(secret).digest();
+  const configured = configuredSecret();
+  if (configured) return createHash("sha256").update(configured).digest();
+  const persistent = Boolean(process.env.DATABASE_URL?.trim());
+  if (persistent || process.env.NODE_ENV === "production") {
+    throw new Error("APP_SECRET or BETTER_AUTH_SECRET is required");
+  }
+  // Preview only (no DATABASE_URL, not production): random per process. Never a published default.
+  globalSeal.__gridlineSealSecret__ ??= randomBytes(32).toString("hex");
+  return createHash("sha256").update(globalSeal.__gridlineSealSecret__).digest();
 }
 
 export function seal(plain: string) {

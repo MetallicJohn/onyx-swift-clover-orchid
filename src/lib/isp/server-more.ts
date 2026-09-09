@@ -8,6 +8,7 @@ import { attachCustomerReseller } from "./resellers";
 import { changePlan, ensureSubscription, type PlanCode } from "./saas";
 import { assignTicket, commentTicket, listStaff } from "./tickets";
 import { loadAudit, loadReports, loadStatement } from "./reports";
+import { addBranch, addMemberByEmail, listBranches, setMemberRole } from "./members";
 import { requireWorkspace as requireWs } from "./workspace";
 
 export const assignOpenTicket = createServerFn({ method: "POST" })
@@ -129,4 +130,39 @@ export const getStatement = createServerFn({ method: "POST" })
     assertPermission(role, "invoices.read");
     return loadStatement(sql, tenantId, data.customer_id);
   });
+
+export const getBranches = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenantId } = await requireWs(context.userId);
+    return { branches: await listBranches(sql, tenantId) };
+  });
+
+export const createBranch = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { name: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
+    return addBranch(sql, tenantId, data.name);
+  });
+
+export const inviteMember = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { email: string; role: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
+    return addMemberByEmail(sql, tenantId, data.email, data.role);
+  });
+
+export const changeMemberRole = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { user_id: string; role: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
+    return setMemberRole(sql, tenantId, data.user_id, data.role);
+  });
+
 

@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PortalRouteImport } from './routes/portal'
+import { Route as ResellerRouteImport } from './routes/reseller'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAcsRouteImport } from './routes/app/acs'
 import { Route as AppAiRouteImport } from './routes/app/ai'
@@ -32,6 +33,7 @@ import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppStatementsRouteImport } from './routes/app/statements'
 import { Route as AppTicketsRouteImport } from './routes/app/tickets'
 import { Route as PortalIndexRouteImport } from './routes/portal/index'
+import { Route as ResellerIndexRouteImport } from './routes/reseller/index'
 import { Route as ApiAgentAckRouteImport } from './routes/api/agent/ack'
 import { Route as ApiAgentHeartbeatRouteImport } from './routes/api/agent/heartbeat'
 import { Route as ApiAgentPullRouteImport } from './routes/api/agent/pull'
@@ -60,6 +62,11 @@ const LoginRoute = LoginRouteImport.update({
 const PortalRoute = PortalRouteImport.update({
   id: '/portal',
   path: '/portal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResellerRoute = ResellerRouteImport.update({
+  id: '/reseller',
+  path: '/reseller',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -157,6 +164,11 @@ const PortalIndexRoute = PortalIndexRouteImport.update({
   path: '/',
   getParentRoute: () => PortalRoute,
 } as any)
+const ResellerIndexRoute = ResellerIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ResellerRoute,
+} as any)
 const ApiAgentAckRoute = ApiAgentAckRouteImport.update({
   id: '/api/agent/ack',
   path: '/api/agent/ack',
@@ -208,6 +220,7 @@ export interface FileRoutesByFullPath {
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/portal': typeof PortalRouteWithChildren
+  '/reseller': typeof ResellerRouteWithChildren
   '/app/acs': typeof AppAcsRoute
   '/app/ai': typeof AppAiRoute
   '/app/billing': typeof AppBillingRoute
@@ -227,6 +240,7 @@ export interface FileRoutesByFullPath {
   '/app/tickets': typeof AppTicketsRoute
   '/app/': typeof AppIndexRoute
   '/portal/': typeof PortalIndexRoute
+  '/reseller/': typeof ResellerIndexRoute
   '/api/agent/ack': typeof ApiAgentAckRoute
   '/api/agent/heartbeat': typeof ApiAgentHeartbeatRoute
   '/api/agent/pull': typeof ApiAgentPullRoute
@@ -259,6 +273,7 @@ export interface FileRoutesByTo {
   '/app/tickets': typeof AppTicketsRoute
   '/app': typeof AppIndexRoute
   '/portal': typeof PortalIndexRoute
+  '/reseller': typeof ResellerIndexRoute
   '/api/agent/ack': typeof ApiAgentAckRoute
   '/api/agent/heartbeat': typeof ApiAgentHeartbeatRoute
   '/api/agent/pull': typeof ApiAgentPullRoute
@@ -275,6 +290,7 @@ export interface FileRoutesById {
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/portal': typeof PortalRouteWithChildren
+  '/reseller': typeof ResellerRouteWithChildren
   '/app/acs': typeof AppAcsRoute
   '/app/ai': typeof AppAiRoute
   '/app/billing': typeof AppBillingRoute
@@ -294,6 +310,7 @@ export interface FileRoutesById {
   '/app/tickets': typeof AppTicketsRoute
   '/app/': typeof AppIndexRoute
   '/portal/': typeof PortalIndexRoute
+  '/reseller/': typeof ResellerIndexRoute
   '/api/agent/ack': typeof ApiAgentAckRoute
   '/api/agent/heartbeat': typeof ApiAgentHeartbeatRoute
   '/api/agent/pull': typeof ApiAgentPullRoute
@@ -311,6 +328,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/login'
     | '/portal'
+    | '/reseller'
     | '/app/acs'
     | '/app/ai'
     | '/app/billing'
@@ -330,6 +348,7 @@ export interface FileRouteTypes {
     | '/app/tickets'
     | '/app/'
     | '/portal/'
+    | '/reseller/'
     | '/api/agent/ack'
     | '/api/agent/heartbeat'
     | '/api/agent/pull'
@@ -362,6 +381,7 @@ export interface FileRouteTypes {
     | '/app/tickets'
     | '/app'
     | '/portal'
+    | '/reseller'
     | '/api/agent/ack'
     | '/api/agent/heartbeat'
     | '/api/agent/pull'
@@ -377,6 +397,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/login'
     | '/portal'
+    | '/reseller'
     | '/app/acs'
     | '/app/ai'
     | '/app/billing'
@@ -396,6 +417,7 @@ export interface FileRouteTypes {
     | '/app/tickets'
     | '/app/'
     | '/portal/'
+    | '/reseller/'
     | '/api/agent/ack'
     | '/api/agent/heartbeat'
     | '/api/agent/pull'
@@ -412,6 +434,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
   PortalRoute: typeof PortalRouteWithChildren
+  ResellerRoute: typeof ResellerRouteWithChildren
   ApiAgentAckRoute: typeof ApiAgentAckRoute
   ApiAgentHeartbeatRoute: typeof ApiAgentHeartbeatRoute
   ApiAgentPullRoute: typeof ApiAgentPullRoute
@@ -451,6 +474,13 @@ declare module '@tanstack/react-router' {
       path: '/portal'
       fullPath: '/portal'
       preLoaderRoute: typeof PortalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reseller': {
+      id: '/reseller'
+      path: '/reseller'
+      fullPath: '/reseller'
+      preLoaderRoute: typeof ResellerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/': {
@@ -586,6 +616,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalIndexRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/reseller/': {
+      id: '/reseller/'
+      path: '/'
+      fullPath: '/reseller/'
+      preLoaderRoute: typeof ResellerIndexRouteImport
+      parentRoute: typeof ResellerRoute
+    }
     '/api/agent/ack': {
       id: '/api/agent/ack'
       path: '/api/agent/ack'
@@ -707,11 +744,24 @@ const PortalRouteChildren: PortalRouteChildren = {
 const PortalRouteWithChildren =
   PortalRoute._addFileChildren(PortalRouteChildren)
 
+interface ResellerRouteChildren {
+  ResellerIndexRoute: typeof ResellerIndexRoute
+}
+
+const ResellerRouteChildren: ResellerRouteChildren = {
+  ResellerIndexRoute: ResellerIndexRoute,
+}
+
+const ResellerRouteWithChildren = ResellerRoute._addFileChildren(
+  ResellerRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
   PortalRoute: PortalRouteWithChildren,
+  ResellerRoute: ResellerRouteWithChildren,
   ApiAgentAckRoute: ApiAgentAckRoute,
   ApiAgentHeartbeatRoute: ApiAgentHeartbeatRoute,
   ApiAgentPullRoute: ApiAgentPullRoute,

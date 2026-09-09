@@ -1,4 +1,4 @@
-import { nid } from "@/lib/utils";
+import { nid } from "../utils.ts";
 import { provisionServiceAccess } from "./access";
 import { generateRecurringInvoices, issueInvoice } from "./billing";
 import { queueEmail, writeInbox } from "./inbox";

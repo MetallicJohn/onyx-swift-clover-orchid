@@ -1,5 +1,5 @@
-import { generateKeyPairSync } from "node:crypto";
-import { seal } from "./secrets";
+import { diffieHellman, generateKeyPairSync, type KeyObject } from "node:crypto";
+import { seal } from "./secrets.ts";
 
 function rawFromDer(der: Buffer, size = 32) {
   return der.subarray(der.length - size).toString("base64");
@@ -19,6 +19,16 @@ export function generateWireGuardKeypair() {
     publicKey,
     privateKeySealed: seal(privateKey),
   };
+}
+
+export function generateX25519Pair() {
+  return generateKeyPairSync("x25519");
+}
+
+export function x25519Agree(privateKey: KeyObject, publicKey: KeyObject) {
+  const secret = diffieHellman({ privateKey, publicKey });
+  if (secret.length !== 32) throw new Error("X25519 agreement did not produce 32 bytes");
+  return secret;
 }
 
 export function isWireGuardPublicKey(value: string) {

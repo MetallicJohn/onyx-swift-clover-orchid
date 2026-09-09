@@ -1,5 +1,6 @@
-import { nid } from "@/lib/utils";
+import { nid } from "../utils.ts";
 import { deliverSms, getMessagingSettings } from "./messaging";
+import { applyRls } from "./rls";
 import { newOtp } from "./otp";
 
 type Sql = {
@@ -10,8 +11,10 @@ type Sql = {
 export async function issueResellerOtp(sql: Sql, slug: string, phone: string) {
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 9) throw new Error("Enter a valid phone number");
+  await applyRls(sql, { bypass: true });
   const [ten] = await sql<{ id: string; name: string }>`select id, name from tenants where slug = ${slug.trim()}`;
   if (!ten) throw new Error("Unknown network");
+  await applyRls(sql, { tenantId: ten.id, bypass: false });
   const rows = await sql<{ id: string; phone: string; name: string }>`
     select id, phone, name from resellers where tenant_id = ${ten.id} and status = 'active'`;
   const reseller = rows.find((r) => r.phone.replace(/\D/g, "").endsWith(digits.slice(-9)));
@@ -28,8 +31,10 @@ export async function issueResellerOtp(sql: Sql, slug: string, phone: string) {
 
 export async function verifyResellerOtp(sql: Sql, slug: string, phone: string, code: string) {
   const digits = phone.replace(/\D/g, "");
+  await applyRls(sql, { bypass: true });
   const [ten] = await sql<{ id: string }>`select id from tenants where slug = ${slug.trim()}`;
   if (!ten) throw new Error("Unknown network");
+  await applyRls(sql, { tenantId: ten.id, bypass: false });
   const rows = await sql<{ id: string; reseller_id: string }>`
     select id, reseller_id from reseller_otps
     where tenant_id = ${ten.id} and code = ${code.trim()} and used = false and expires_at > now()`;
@@ -47,9 +52,11 @@ export async function verifyResellerOtp(sql: Sql, slug: string, phone: string, c
 }
 
 export async function resellerHome(sql: Sql, token: string) {
+  await applyRls(sql, { bypass: true });
   const [ses] = await sql<{ tenant_id: string; reseller_id: string }>`
     select tenant_id, reseller_id from reseller_sessions where token = ${token}`;
   if (!ses) throw new Error("Session expired. Sign in again.");
+  await applyRls(sql, { tenantId: ses.tenant_id, bypass: false });
   const [isp] = await sql<{ name: string; slug: string }>`select name, slug from tenants where id = ${ses.tenant_id}`;
   const [rs] = await sql<{ name: string; phone: string; commission_pct: number }>`
     select name, phone, commission_pct from resellers where id = ${ses.reseller_id}`;

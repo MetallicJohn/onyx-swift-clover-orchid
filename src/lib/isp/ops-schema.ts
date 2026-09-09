@@ -3,7 +3,7 @@ type Sql = {
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
 };
 
-const STATEMENTS = [
+const _STATEMENTS = [
   `alter table routers add column if not exists enroll_token text not null default ''`,
   `alter table routers add column if not exists wg_public text not null default ''`,
   `alter table routers add column if not exists wg_address text not null default ''`,

@@ -1,6 +1,7 @@
-import { nid } from "@/lib/utils";
+import { nid } from "../utils.ts";
 import { deliverSms, getMessagingSettings } from "./messaging";
 import { newOtp } from "./otp";
+import { applyRls } from "./rls";
 
 export { newOtp } from "./otp";
 
@@ -12,8 +13,10 @@ type Sql = {
 export async function issuePortalOtp(sql: Sql, slug: string, phone: string) {
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 9) throw new Error("Enter a valid phone number");
+  await applyRls(sql, { bypass: true });
   const [ten] = await sql<{ id: string; name: string }>`select id, name from tenants where slug = ${slug.trim()}`;
   if (!ten) throw new Error("Unknown network. Check the ISP slug.");
+  await applyRls(sql, { tenantId: ten.id, bypass: false });
   const customers = await sql<{ id: string; phone: string }>`
     select id, phone from customers where tenant_id = ${ten.id}`;
   const customer = customers.find((c) => c.phone.replace(/\D/g, "").endsWith(digits.slice(-9)));
@@ -36,8 +39,10 @@ export async function issuePortalOtp(sql: Sql, slug: string, phone: string) {
 
 export async function verifyPortalOtp(sql: Sql, slug: string, phone: string, code: string) {
   const digits = phone.replace(/\D/g, "");
+  await applyRls(sql, { bypass: true });
   const [ten] = await sql<{ id: string; name: string }>`select id, name from tenants where slug = ${slug.trim()}`;
   if (!ten) throw new Error("Unknown network");
+  await applyRls(sql, { tenantId: ten.id, bypass: false });
   const rows = await sql<{ id: string; customer_id: string }>`
     select id, customer_id from portal_otps
     where tenant_id = ${ten.id} and code = ${code.trim()} and used = false and expires_at > now()
@@ -56,9 +61,11 @@ export async function verifyPortalOtp(sql: Sql, slug: string, phone: string, cod
 }
 
 export async function portalContext(sql: Sql, token: string) {
+  await applyRls(sql, { bypass: true });
   const [ses] = await sql<{ tenant_id: string; customer_id: string }>`
     select tenant_id, customer_id from portal_sessions where token = ${token}`;
   if (!ses) throw new Error("Session expired. Sign in again.");
+  await applyRls(sql, { tenantId: ses.tenant_id, bypass: false });
   const [isp] = await sql<{ name: string; slug: string; support_phone: string }>`
     select name, slug, support_phone from tenants where id = ${ses.tenant_id}`;
   const [customer] = await sql<{ id: string; name: string; phone: string; email: string }>`

@@ -55,10 +55,20 @@ function RoutersPage() {
     const [res, q] = await Promise.all([listRouters(), listAgentQueue()]);
     setRows(res.routers);
     setCommands(q.commands);
-    if (!apiRouter && res.routers[0]) setApiRouter(res.routers[0].id);
+    setApiRouter((current) => current || res.routers[0]?.id || "");
   }
   useEffect(() => {
-    load().catch(console.error);
+    let cancelled = false;
+    void (async () => {
+      const [res, q] = await Promise.all([listRouters(), listAgentQueue()]);
+      if (cancelled) return;
+      setRows(res.routers);
+      setCommands(q.commands);
+      setApiRouter((current) => current || res.routers[0]?.id || "");
+    })().catch(console.error);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

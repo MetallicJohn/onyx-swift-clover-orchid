@@ -1,4 +1,4 @@
-import { nid } from "@/lib/utils";
+import { nid } from "../utils.ts";
 import { enrollFields, wgAddressForIndex } from "./agent";
 import { emit } from "./events";
 import { getMessagingSettings } from "./messaging";

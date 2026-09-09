@@ -1,4 +1,4 @@
-import { nid } from "@/lib/utils";
+import { nid } from "../utils.ts";
 import type { TenantRole } from "./types";
 
 type Sql = {

@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: gridline
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_SECRET: ci-app-secret-not-for-production
+      BETTER_AUTH_SECRET: ci-app-secret-not-for-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run check:auth
+      - run: npm test
+      - name: Apply migrations on clean Postgres
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/gridline
+        run: npm run test:db
+      - name: RLS and domain proofs on Postgres
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+          GRIDLINE_TEST_PG: "1"
+        run: npm run test:pg

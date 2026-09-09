@@ -1,4 +1,4 @@
-import { nid } from "@/lib/utils";
+import { nid } from "../utils.ts";
 import { initialCommandStatus } from "./command-policy";
 import { ensureOpsSchema } from "./ops-schema";
 import { enrollRosScript } from "./routeros";

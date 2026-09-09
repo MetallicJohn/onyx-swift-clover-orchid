@@ -18,6 +18,7 @@ import { createStkIntent, settleStkIntent } from "./payments";
 import { disconnectRadiusUser, publicRadiusAccount, renderFreeRadiusUsers } from "./radius";
 import { assertPermission } from "./rbac";
 import { issuePortalOtp, portalContext, verifyPortalOtp } from "./portal";
+import { issueResellerOtp, resellerHome, verifyResellerOtp } from "./reseller-portal";
 import { openTicket } from "./tickets";
 import { requireWorkspace as requireWs } from "./workspace";
 
@@ -387,6 +388,27 @@ export const verifyPortalLogin = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const sql = await getSql();
     return verifyPortalOtp(sql, data.slug, data.phone, data.code);
+  });
+
+export const requestResellerOtp = createServerFn({ method: "POST" })
+  .validator((d: { slug: string; phone: string }) => d)
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    return issueResellerOtp(sql, data.slug, data.phone);
+  });
+
+export const verifyResellerLogin = createServerFn({ method: "POST" })
+  .validator((d: { slug: string; phone: string; code: string }) => d)
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    return verifyResellerOtp(sql, data.slug, data.phone, data.code);
+  });
+
+export const getResellerHome = createServerFn({ method: "POST" })
+  .validator((d: { token: string }) => d)
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    return resellerHome(sql, data.token);
   });
 
 export const getPortalHome = createServerFn({ method: "POST" })

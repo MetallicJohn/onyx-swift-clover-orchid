@@ -4,8 +4,9 @@ import { on, type DomainEvent, type Sql } from "./events";
 import { awardLoyalty } from "./loyalty";
 import { notifyCustomerEvent } from "./notifications";
 import { syncRadiusAccount } from "./radius";
-import { convertReferral } from "./referrals";
 import { creditReseller } from "./resellers";
+import { convertReferral } from "./referrals";
+import { writeInbox } from "./inbox";
 
 let wired = false;
 
@@ -63,6 +64,23 @@ export function wireModules() {
       username: radius.username,
       password: service.password || radius.password,
     });
+  });
+
+  on("ticket.created", async (sql, event) => {
+    const cid = String(event.payload.customer_id || "");
+    if (!cid) return;
+    try {
+      await writeInbox(
+        sql,
+        event.tenantId,
+        cid,
+        "Support ticket opened",
+        String(event.payload.title || "A ticket was opened on your account"),
+        "ticket.created",
+      );
+    } catch {
+      /* inbox is best-effort */
+    }
   });
 
   on("customer.created", async (sql, event) => {

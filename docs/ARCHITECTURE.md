@@ -1,6 +1,6 @@
 # Gridline architecture (living)
 
-Last updated: 2026-09-09 — CR-007 reports/statements. Product complete except skipped items.
+Last updated: 2026-09-09 — CR-008 RLS, CI, production proofs.
 
 ## Authoritative backend
 
@@ -25,7 +25,7 @@ Active tenant is stored in `user_active_tenant` and **must be a membership**. Sw
 
 ## Schema
 
-Versioned SQL only: `migrations/0001_*.sql` … `0006_hardening.sql`. Request handlers do not `CREATE TABLE` / `ALTER TABLE`.
+Versioned SQL only: `migrations/0001_*.sql` … `0013_rls.sql`. Request handlers do not `CREATE TABLE` / `ALTER TABLE`.
 
 ## Secrets
 

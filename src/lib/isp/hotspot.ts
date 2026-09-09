@@ -1,4 +1,4 @@
-import { nid } from "@/lib/utils";
+import { nid } from "../utils.ts";
 import { enqueueAgentCommand } from "./agent";
 import { emit } from "./events";
 import { activateVoucherClock, canActivate, canRevoke, nextVoucherStatus } from "./voucher-lifecycle";

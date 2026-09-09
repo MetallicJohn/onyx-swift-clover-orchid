@@ -1,6 +1,6 @@
-import { getSql } from "@/lib/db";
-import { nid } from "@/lib/utils";
+import { nid } from "../utils.ts";
 import { evaluateStkCallback, parseKopokopoCallback, parseMpesaCallback } from "./callback-validate";
+import { applyRls } from "./rls";
 import { applyConfirmedPayment } from "./payments";
 
 type Sql = {
@@ -18,8 +18,10 @@ export function callbackUrls(base: string, slug: string) {
 }
 
 async function tenantBySlug(sql: Sql, slug: string) {
+  await applyRls(sql, { bypass: true });
   const [t] = await sql<{ id: string; name: string; slug: string }>`
     select id, name, slug from tenants where slug = ${slug}`;
+  if (t) await applyRls(sql, { tenantId: t.id, bypass: false });
   return t ?? null;
 }
 
@@ -88,8 +90,7 @@ async function settleFromDecision(
   }
 }
 
-export async function handleMpesaCallback(slug: string, body: Record<string, unknown>) {
-  const sql = await getSql();
+export async function processMpesaCallback(sql: Sql, slug: string, body: Record<string, unknown>) {
   const tenant = await tenantBySlug(sql, slug);
   const parsed = parseMpesaCallback(body);
   if (!tenant) return { ResultCode: 0, ResultDesc: "Unknown tenant" };
@@ -101,7 +102,13 @@ export async function handleMpesaCallback(slug: string, body: Record<string, unk
   return { ResultCode: 0, ResultDesc: result };
 }
 
+export async function handleMpesaCallback(slug: string, body: Record<string, unknown>) {
+  const { getSql } = await import("../db.ts");
+  return processMpesaCallback(await getSql(), slug, body);
+}
+
 export async function handleKopokopoCallback(slug: string, body: Record<string, unknown>) {
+  const { getSql } = await import("../db.ts");
   const sql = await getSql();
   const tenant = await tenantBySlug(sql, slug);
   if (!tenant) return { ok: false };

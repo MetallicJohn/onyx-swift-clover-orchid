@@ -9,12 +9,14 @@ import {
 } from "./notifications";
 import { provisionServiceAccess, seedOpsForTenant } from "./access";
 import { allocateStaticIp, disconnectSession, rotateServicePassword } from "./access-service";
+import { issueInvoice } from "./billing";
 import { agentPullUrl, agentScript, enrollFields, wgAddressForIndex } from "./agent";
 import { emit } from "./events";
 import { listInbox } from "./inbox";
 import { applyConfirmedPayment } from "./payments";
 import { assertPermission } from "./rbac";
 import { assertCustomerQuota } from "./saas";
+import { applyRls } from "./rls";
 import { resolveActiveTenant, setActiveTenant } from "./tenant-context";
 import { openTicket } from "./tickets";
 import type {
@@ -27,7 +29,6 @@ import type {
   RouterRow,
   ServiceRow,
   ServiceStatus,
-  TenantRole,
   TicketRow,
   Workspace,
 } from "./types";
@@ -199,10 +200,16 @@ async function ensureWorkspace(
   displayName: string | null,
   email: string | null,
 ): Promise<Workspace> {
+  await applyRls(sql, { bypass: true });
   const active = await resolveActiveTenant(sql, userId);
   if (active) {
+    await applyRls(sql, { tenantId: active.tenantId, bypass: false });
     const [row] = await sql<{ demo_seeded: boolean }>`select demo_seeded from tenants where id = ${active.tenantId}`;
-    if (!row?.demo_seeded) await seedDemo(sql, active.tenantId);
+    if (!row?.demo_seeded) {
+      await applyRls(sql, { bypass: true });
+      await seedDemo(sql, active.tenantId);
+      await applyRls(sql, { tenantId: active.tenantId, bypass: false });
+    }
     await ensureDefaultTemplates(sql, active.tenantId);
     await seedOpsForTenant(sql, active.tenantId);
     return active;
@@ -218,6 +225,7 @@ async function ensureWorkspace(
     values (${nid("mem")}, ${tenantId}, ${userId}, 'isp_owner')`;
   await setActiveTenant(sql, userId, tenantId);
   await seedDemo(sql, tenantId);
+  await applyRls(sql, { tenantId, bypass: false });
   await ensureDefaultTemplates(sql, tenantId);
   await seedOpsForTenant(sql, tenantId);
   await audit(sql, tenantId, userId, "tenant.created", "tenant", tenantId);
@@ -456,7 +464,8 @@ export const createService = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     const tid = workspace.tenantId;
-    const [pkg] = await sql<{ access_method: AccessMethod }>`select access_method from packages where id = ${data.package_id} and tenant_id = ${tid}`;
+    const [pkg] = await sql<{ access_method: AccessMethod; price_kes: number }>`
+      select access_method, price_kes from packages where id = ${data.package_id} and tenant_id = ${tid}`;
     if (!pkg) throw new Error("Package not found");
     const [cus] = await sql<{ id: string }>`select id from customers where id = ${data.customer_id} and tenant_id = ${tid}`;
     if (!cus) throw new Error("Customer not found");
@@ -467,6 +476,25 @@ export const createService = createServerFn({ method: "POST" })
       await allocateStaticIp(sql, tid, id, data.customer_id);
     }
     const radius = await provisionServiceAccess(sql, tid, id);
+    const unpaid = await sql<{ id: string }>`
+      select id from invoices where tenant_id = ${tid} and customer_id = ${data.customer_id}
+      and status in ('issued','due','overdue') limit 1`;
+    if (!unpaid[0] && pkg.price_kes > 0) {
+      const due = new Date();
+      due.setDate(due.getDate() + 7);
+      const inv = await issueInvoice(sql, {
+        tenantId: tid,
+        customerId: data.customer_id,
+        amountKes: pkg.price_kes,
+        dueDate: due.toISOString().slice(0, 10),
+      });
+      await notifyCustomerEvent(sql, tid, workspace.tenantName, data.customer_id, "invoice.created", inv.id, {
+        customer_name: "",
+        invoice_number: inv.number,
+        amount: `KES ${pkg.price_kes}`,
+        due_date: due.toISOString().slice(0, 10),
+      });
+    }
     await audit(sql, tid, context.userId, "service.created", "service", id);
     return { id, username: radius?.username, password: radius?.password };
   });
@@ -552,19 +580,20 @@ export const createInvoice = createServerFn({ method: "POST" })
     const tid = workspace.tenantId;
     const [cus] = await sql<{ id: string }>`select id from customers where id = ${data.customer_id} and tenant_id = ${tid}`;
     if (!cus) throw new Error("Customer not found");
-    const [{ n }] = await sql<{ n: number }>`select count(*)::int as n from invoices where tenant_id = ${tid}`;
-    const number = `INV-${String(1000 + n + 1)}`;
-    const id = nid("inv");
-    await sql`insert into invoices (id, tenant_id, customer_id, number, amount_kes, status, due_date)
-      values (${id}, ${tid}, ${data.customer_id}, ${number}, ${data.amount_kes}, 'issued', ${data.due_date})`;
-    await notifyCustomerEvent(sql, tid, workspace.tenantName, data.customer_id, "invoice.created", id, {
+    const inv = await issueInvoice(sql, {
+      tenantId: tid,
+      customerId: data.customer_id,
+      amountKes: data.amount_kes,
+      dueDate: data.due_date,
+    });
+    await notifyCustomerEvent(sql, tid, workspace.tenantName, data.customer_id, "invoice.created", inv.id, {
       customer_name: "",
-      invoice_number: number,
+      invoice_number: inv.number,
       amount: `KES ${data.amount_kes}`,
       due_date: data.due_date,
     });
-    await audit(sql, tid, context.userId, "invoice.created", "invoice", id);
-    return { id, number };
+    await audit(sql, tid, context.userId, "invoice.created", "invoice", inv.id);
+    return inv;
   });
 
 export const recordPayment = createServerFn({ method: "POST" })

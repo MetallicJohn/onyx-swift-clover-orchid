@@ -1,4 +1,4 @@
-import { nid } from "@/lib/utils";
+import { nid } from "../utils.ts";
 import { emit } from "./events";
 import { allocatePayment, recordLedger } from "./ledger";
 import { ensureOpsSchema } from "./ops-schema";

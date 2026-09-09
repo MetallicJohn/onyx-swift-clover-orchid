@@ -1,4 +1,4 @@
-import { nid } from "@/lib/utils";
+import { nid } from "../utils.ts";
 import { recordLedger } from "./ledger";
 
 type Sql = {
