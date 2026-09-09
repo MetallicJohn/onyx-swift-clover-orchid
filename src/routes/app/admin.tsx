@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
-import { createIspAsAdmin, listPlatformTenants, platformStatus } from "@/lib/isp/server-more";
+import { createIspAsAdmin, listPlatformTenants, platformStatus, adminResetPassword } from "@/lib/isp/server-more";
 
 export const Route = createFileRoute("/app/admin")({ component: AdminPage });
 
@@ -17,6 +17,7 @@ function AdminPage() {
     owner_email: "",
     owner_password: "",
   });
+  const [resetForm, setResetForm] = useState({ email: "", password: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -107,6 +108,56 @@ function AdminPage() {
         <div className="sm:col-span-2">
           <Button type="submit" disabled={busy}>
             {busy ? "Creating…" : "Create ISP + owner login"}
+          </Button>
+        </div>
+      </form>
+
+      <form
+        className="grid gap-3 rounded-xl bg-surface p-5 shadow-card sm:grid-cols-2 md:p-6"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          setError(null);
+          setOk(null);
+          try {
+            const r = await adminResetPassword({ data: resetForm });
+            setOk(`Password updated for ${r.email}. They can sign in immediately.`);
+            setResetForm({ email: "", password: "" });
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not reset password");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <div className="sm:col-span-2">
+          <h2 className="font-medium">Reset an operator password</h2>
+          <p className="mt-1 text-sm text-muted">
+            Sets a new password for an ISP owner, staff login, or another superadmin. Existing sessions are signed out.
+          </p>
+        </div>
+        <Field label="Email">
+          <Input
+            type="email"
+            required
+            value={resetForm.email}
+            onChange={(e) => setResetForm({ ...resetForm, email: e.target.value })}
+            placeholder="jane@imani.ke"
+          />
+        </Field>
+        <Field label="New password">
+          <Input
+            type="password"
+            required
+            minLength={8}
+            value={resetForm.password}
+            onChange={(e) => setResetForm({ ...resetForm, password: e.target.value })}
+            autoComplete="new-password"
+          />
+        </Field>
+        <div className="sm:col-span-2">
+          <Button type="submit" disabled={busy}>
+            {busy ? "Saving…" : "Set password"}
           </Button>
         </div>
       </form>

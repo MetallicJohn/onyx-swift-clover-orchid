@@ -2,25 +2,64 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { disconnectRadius, exportRadiusUsers, listRadius } from "@/lib/isp/server-ops";
+import { disconnectRadius, exportRadiusUsers, listRadius, rotateRadiusKey } from "@/lib/isp/server-ops";
 
 export const Route = createFileRoute("/app/radius")({ component: RadiusPage });
 
+type RadiusList = Awaited<ReturnType<typeof listRadius>>;
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function RadiusPage() {
-  const [accounts, setAccounts] = useState<Awaited<ReturnType<typeof listRadius>>["accounts"]>([]);
-  const [sessions, setSessions] = useState<Awaited<ReturnType<typeof listRadius>>["sessions"]>([]);
+  const [accounts, setAccounts] = useState<RadiusList["accounts"]>([]);
+  const [sessions, setSessions] = useState<RadiusList["sessions"]>([]);
+  const [events, setEvents] = useState<RadiusList["events"]>([]);
+  const [config, setConfig] = useState<RadiusList["config"] | null>(null);
+  const [slug, setSlug] = useState("");
+  const [keyHint, setKeyHint] = useState("");
+  const [revealedKey, setRevealedKey] = useState("");
   const [exportText, setExportText] = useState("");
   const [note, setNote] = useState<string | null>(null);
+  const [snippet, setSnippet] = useState<"rest" | "site" | "clients" | "mikrotik" | "users" | "">("");
 
   async function load() {
     const r = await listRadius();
     setAccounts(r.accounts);
     setSessions(r.sessions);
+    setEvents(r.events);
+    setConfig(r.config);
+    setSlug(r.slug);
+    setKeyHint(r.api_key_hint);
+    if (r.api_key) setRevealedKey(r.api_key);
   }
 
   useEffect(() => {
     load().catch(console.error);
   }, []);
+
+  async function show(kind: "rest" | "site" | "clients" | "mikrotik" | "users") {
+    if (kind === "users") {
+      const r = await exportRadiusUsers();
+      setExportText(r.users);
+      setSnippet("users");
+      await copyText(r.users);
+      setNote("FreeRADIUS users file copied");
+      return;
+    }
+    if (!config) return;
+    const text = config[kind];
+    setExportText(text);
+    setSnippet(kind);
+    await copyText(text);
+    setNote(`${kind} config copied`);
+  }
 
   return (
     <div className="space-y-6">
@@ -28,24 +67,67 @@ function RadiusPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">RADIUS</h1>
           <p className="text-sm text-muted">
-            Desired state for FreeRADIUS. This console is not a RADIUS server. Suspend rejects auth; Disconnect queues
-            CoA/kick on the agent.
+            Gridline is the source of truth. FreeRADIUS (own host) authorizes against REST. Suspend rejects auth;
+            Disconnect kicks the session on the router.
           </p>
         </div>
-        <Button
-          variant="secondary"
-          onClick={async () => {
-            const r = await exportRadiusUsers();
-            setExportText(r.users);
-            await navigator.clipboard.writeText(r.users).catch(() => undefined);
-            setNote("FreeRADIUS users file copied");
-          }}
-        >
-          Copy FreeRADIUS users
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => void show("rest")}>
+            Copy REST module
+          </Button>
+          <Button variant="secondary" onClick={() => void show("users")}>
+            Copy users file
+          </Button>
+        </div>
       </div>
 
       {note ? <p className="text-sm text-accent">{note}</p> : null}
+
+      <section className="grid gap-4 rounded-xl border border-border bg-surface p-4 md:grid-cols-2">
+        <div>
+          <h2 className="font-medium">FreeRADIUS REST</h2>
+          <p className="mt-1 text-sm text-muted">
+            Point the NAS at your FreeRADIUS box. FreeRADIUS calls Gridline with this key. Tenant slug{" "}
+            <span className="font-mono text-fg">{slug || "—"}</span>.
+          </p>
+          <p className="mt-3 font-mono text-xs text-muted">
+            Key {revealedKey || keyHint || "not issued"}
+            {revealedKey ? " · copy now, it is not stored in the clear" : ""}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={async () => {
+                const r = await rotateRadiusKey();
+                setRevealedKey(r.key);
+                setKeyHint(r.hint);
+                await copyText(r.key);
+                setNote("New RADIUS API key copied");
+              }}
+            >
+              Rotate key
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => void show("site")}>
+              Site
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => void show("clients")}>
+              clients.conf
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => void show("mikrotik")}>
+              MikroTik snippet
+            </Button>
+          </div>
+        </div>
+        <div className="text-sm text-muted">
+          <ol className="list-decimal space-y-1 pl-4">
+            <li>Install FreeRADIUS 3 on a host the routers can reach (UDP 1812/1813).</li>
+            <li>Paste the REST module and site. The API key is the REST password (or a Bearer token).</li>
+            <li>Add each MikroTik as a client, then enable PPP AAA / hotspot RADIUS on the router.</li>
+            <li>Accounting POSTs update usage. A full data cap or suspend rejects the next Access-Request.</li>
+          </ol>
+        </div>
+      </section>
 
       <section className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full min-w-[40rem] text-left text-sm">
@@ -126,8 +208,44 @@ function RadiusPage() {
         </div>
       </section>
 
+      {events.length ? (
+        <section>
+          <h2 className="mb-3 font-medium">Recent Access-Requests</h2>
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full min-w-[28rem] text-left text-sm">
+              <thead className="bg-surface text-xs text-muted">
+                <tr>
+                  <th className="px-4 py-3 font-medium">User</th>
+                  <th className="px-4 py-3 font-medium">NAS</th>
+                  <th className="px-4 py-3 font-medium">Result</th>
+                  <th className="px-4 py-3 font-medium">When</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {events.map((e) => (
+                  <tr key={e.id}>
+                    <td className="px-4 py-3 font-mono text-xs">{e.username}</td>
+                    <td className="px-4 py-3 font-mono text-xs">{e.nas_ip || "—"}</td>
+                    <td className="px-4 py-3">
+                      <Badge tone={statusTone(e.result === "accept" ? "active" : "suspended")}>
+                        {e.result}
+                        {e.reason && e.reason !== "ok" ? ` · ${e.reason}` : ""}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted">{e.created_at.replace("T", " ").slice(0, 19)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
       {exportText ? (
-        <pre className="max-h-64 overflow-auto rounded-xl border border-border bg-surface p-4 text-xs">{exportText}</pre>
+        <pre className="max-h-64 overflow-auto rounded-xl border border-border bg-surface p-4 text-xs">
+          {snippet ? `# ${snippet}\n` : ""}
+          {exportText}
+        </pre>
       ) : null}
     </div>
   );

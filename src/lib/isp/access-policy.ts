@@ -110,11 +110,19 @@ export async function restorePaidAccess(sql: Sql, tenantId: string, customerId: 
 export async function recordAccounting(
   sql: Sql,
   tenantId: string,
-  input: { username: string; bytes_in?: number; bytes_out?: number; nas_ip?: string; session_id?: string },
+  input: {
+    username: string;
+    bytes_in?: number;
+    bytes_out?: number;
+    nas_ip?: string;
+    session_id?: string;
+    framed_ip?: string;
+    acct_status?: "start" | "stop" | "interim";
+  },
 ) {
   const username = input.username.trim();
   if (!username) throw new Error("username required");
-  const [svc] = await sql<{
+  const [viaRadius] = await sql<{
     id: string;
     status: string;
     bundle_used_mb: number;
@@ -126,13 +134,35 @@ export async function recordAccounting(
     upload_mbps: number;
   }>`select s.id, s.status, s.bundle_used_mb, p.bundle_mb, s.access_method, s.static_ip,
             p.name as package_name, p.download_mbps, p.upload_mbps
+     from radius_accounts a
+     join services s on s.id = a.service_id
+     join packages p on p.id = s.package_id
+     where a.tenant_id = ${tenantId} and a.username = ${username}
+     limit 1`;
+  const [viaService] = viaRadius
+    ? [viaRadius]
+    : await sql<{
+        id: string;
+        status: string;
+        bundle_used_mb: number;
+        bundle_mb: number;
+        access_method: string;
+        static_ip: string | null;
+        package_name: string;
+        download_mbps: number;
+        upload_mbps: number;
+      }>`select s.id, s.status, s.bundle_used_mb, p.bundle_mb, s.access_method, s.static_ip,
+            p.name as package_name, p.download_mbps, p.upload_mbps
      from services s join packages p on p.id = s.package_id
      where s.tenant_id = ${tenantId} and s.username = ${username}
      order by s.created_at desc limit 1`;
+  const svc = viaRadius ?? viaService;
   if (!svc) throw new Error("Unknown username");
   const bytesIn = Math.max(0, Number(input.bytes_in) || 0);
   const bytesOut = Math.max(0, Number(input.bytes_out) || 0);
   const sessionId = input.session_id?.trim() || nid("ses");
+  const framed = (input.framed_ip || "").trim() || svc.static_ip || "";
+  const nas = input.nas_ip || "";
   const existing = await sql<{ id: string; bytes_in: number; bytes_out: number }>`
     select id, bytes_in, bytes_out from radius_sessions where tenant_id = ${tenantId} and id = ${sessionId}`;
   let addMb = 0;
@@ -141,12 +171,16 @@ export async function recordAccounting(
     const dOut = Math.max(0, bytesOut - Number(existing[0].bytes_out));
     addMb = usedMbFromBytes(dIn, dOut);
     await sql`update radius_sessions
-      set bytes_in = ${bytesIn}, bytes_out = ${bytesOut}, nas_ip = ${input.nas_ip || ""}
+      set bytes_in = ${bytesIn}, bytes_out = ${bytesOut}, nas_ip = ${nas}, framed_ip = ${framed}
       where id = ${sessionId} and tenant_id = ${tenantId}`;
   } else {
     addMb = usedMbFromBytes(bytesIn, bytesOut);
     await sql`insert into radius_sessions (id, tenant_id, username, framed_ip, nas_ip, bytes_in, bytes_out)
-      values (${sessionId}, ${tenantId}, ${username}, ${svc.static_ip ?? ""}, ${input.nas_ip || ""}, ${bytesIn}, ${bytesOut})`;
+      values (${sessionId}, ${tenantId}, ${username}, ${framed}, ${nas}, ${bytesIn}, ${bytesOut})`;
+  }
+  if (input.acct_status === "stop") {
+    await sql`update radius_sessions set stopped_at = now()
+      where id = ${sessionId} and tenant_id = ${tenantId} and stopped_at is null`;
   }
   const used = svc.bundle_used_mb + addMb;
   await sql`update services set bundle_used_mb = ${used} where id = ${svc.id} and tenant_id = ${tenantId}`;

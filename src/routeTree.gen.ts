@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PortalRouteImport } from './routes/portal'
 import { Route as ResellerRouteImport } from './routes/reseller'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAcsRouteImport } from './routes/app/acs'
 import { Route as AppAdminRouteImport } from './routes/app/admin'
@@ -44,7 +45,7 @@ import { Route as ApiV1HealthRouteImport } from './routes/api/v1/health'
 import { Route as ApiV1CronBillingRouteImport } from './routes/api/v1/cron/billing'
 import { Route as ApiWebhooksKopokopoSlugRouteImport } from './routes/api/webhooks/kopokopo/$slug'
 import { Route as ApiWebhooksMpesaSlugRouteImport } from './routes/api/webhooks/mpesa/$slug'
-import { Route as ApiV1RadiusAccountingSlugRouteImport } from './routes/api/v1/radius/accounting.$slug'
+import { Route as ApiV1RadiusActionSlugRouteImport } from './routes/api/v1/radius/$action.$slug'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -69,6 +70,11 @@ const PortalRoute = PortalRouteImport.update({
 const ResellerRoute = ResellerRouteImport.update({
   id: '/reseller',
   path: '/reseller',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -221,12 +227,11 @@ const ApiWebhooksMpesaSlugRoute = ApiWebhooksMpesaSlugRouteImport.update({
   path: '/api/webhooks/mpesa/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiV1RadiusAccountingSlugRoute =
-  ApiV1RadiusAccountingSlugRouteImport.update({
-    id: '/api/v1/radius/accounting/$slug',
-    path: '/api/v1/radius/accounting/$slug',
-    getParentRoute: () => rootRouteImport,
-  } as any)
+const ApiV1RadiusActionSlugRoute = ApiV1RadiusActionSlugRouteImport.update({
+  id: '/api/v1/radius/$action/$slug',
+  path: '/api/v1/radius/$action/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -234,6 +239,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/portal': typeof PortalRouteWithChildren
   '/reseller': typeof ResellerRouteWithChildren
+  '/reset-password': typeof ResetPasswordRoute
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
@@ -264,11 +270,12 @@ export interface FileRoutesByFullPath {
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
-  '/api/v1/radius/accounting/$slug': typeof ApiV1RadiusAccountingSlugRoute
+  '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
@@ -299,7 +306,7 @@ export interface FileRoutesByTo {
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
-  '/api/v1/radius/accounting/$slug': typeof ApiV1RadiusAccountingSlugRoute
+  '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -308,6 +315,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/portal': typeof PortalRouteWithChildren
   '/reseller': typeof ResellerRouteWithChildren
+  '/reset-password': typeof ResetPasswordRoute
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
@@ -338,7 +346,7 @@ export interface FileRoutesById {
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
-  '/api/v1/radius/accounting/$slug': typeof ApiV1RadiusAccountingSlugRoute
+  '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -348,6 +356,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/portal'
     | '/reseller'
+    | '/reset-password'
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
@@ -378,11 +387,12 @@ export interface FileRouteTypes {
     | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
-    | '/api/v1/radius/accounting/$slug'
+    | '/api/v1/radius/$action/$slug'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
+    | '/reset-password'
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
@@ -413,7 +423,7 @@ export interface FileRouteTypes {
     | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
-    | '/api/v1/radius/accounting/$slug'
+    | '/api/v1/radius/$action/$slug'
   id:
     | '__root__'
     | '/'
@@ -421,6 +431,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/portal'
     | '/reseller'
+    | '/reset-password'
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
@@ -451,7 +462,7 @@ export interface FileRouteTypes {
     | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
-    | '/api/v1/radius/accounting/$slug'
+    | '/api/v1/radius/$action/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -460,6 +471,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   PortalRoute: typeof PortalRouteWithChildren
   ResellerRoute: typeof ResellerRouteWithChildren
+  ResetPasswordRoute: typeof ResetPasswordRoute
   ApiAgentAckRoute: typeof ApiAgentAckRoute
   ApiAgentHeartbeatRoute: typeof ApiAgentHeartbeatRoute
   ApiAgentPullRoute: typeof ApiAgentPullRoute
@@ -469,7 +481,7 @@ export interface RootRouteChildren {
   ApiV1CronBillingRoute: typeof ApiV1CronBillingRoute
   ApiWebhooksKopokopoSlugRoute: typeof ApiWebhooksKopokopoSlugRoute
   ApiWebhooksMpesaSlugRoute: typeof ApiWebhooksMpesaSlugRoute
-  ApiV1RadiusAccountingSlugRoute: typeof ApiV1RadiusAccountingSlugRoute
+  ApiV1RadiusActionSlugRoute: typeof ApiV1RadiusActionSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -507,6 +519,13 @@ declare module '@tanstack/react-router' {
       path: '/reseller'
       fullPath: '/reseller'
       preLoaderRoute: typeof ResellerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/': {
@@ -719,11 +738,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWebhooksMpesaSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/v1/radius/accounting/$slug': {
-      id: '/api/v1/radius/accounting/$slug'
-      path: '/api/v1/radius/accounting/$slug'
-      fullPath: '/api/v1/radius/accounting/$slug'
-      preLoaderRoute: typeof ApiV1RadiusAccountingSlugRouteImport
+    '/api/v1/radius/$action/$slug': {
+      id: '/api/v1/radius/$action/$slug'
+      path: '/api/v1/radius/$action/$slug'
+      fullPath: '/api/v1/radius/$action/$slug'
+      preLoaderRoute: typeof ApiV1RadiusActionSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -804,6 +823,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   PortalRoute: PortalRouteWithChildren,
   ResellerRoute: ResellerRouteWithChildren,
+  ResetPasswordRoute: ResetPasswordRoute,
   ApiAgentAckRoute: ApiAgentAckRoute,
   ApiAgentHeartbeatRoute: ApiAgentHeartbeatRoute,
   ApiAgentPullRoute: ApiAgentPullRoute,
@@ -813,7 +833,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1CronBillingRoute: ApiV1CronBillingRoute,
   ApiWebhooksKopokopoSlugRoute: ApiWebhooksKopokopoSlugRoute,
   ApiWebhooksMpesaSlugRoute: ApiWebhooksMpesaSlugRoute,
-  ApiV1RadiusAccountingSlugRoute: ApiV1RadiusAccountingSlugRoute,
+  ApiV1RadiusActionSlugRoute: ApiV1RadiusActionSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

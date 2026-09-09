@@ -9,7 +9,7 @@ import { applySaasPayment, createSaasStkIntent, loadPlanDesk, requestPlanChange,
 import { assignTicket, commentTicket, listStaff } from "./tickets";
 import { loadAudit, loadReports, loadStatement } from "./reports";
 import { addBranch, addMemberByEmail, listBranches, setMemberRole } from "./members";
-import { addStaffMember, createIspWithOwner, isPlatformAdmin, listAllTenants } from "./accounts";
+import { addStaffMember, createIspWithOwner, isPlatformAdmin, listAllTenants, setCredentialPassword } from "./accounts";
 import { requireWorkspace as requireWs } from "./workspace";
 
 export const assignOpenTicket = createServerFn({ method: "POST" })
@@ -239,6 +239,19 @@ export const createIspAsAdmin = createServerFn({ method: "POST" })
       ownerEmail: data.owner_email,
       ownerPassword: data.owner_password,
     });
+  });
+
+export const adminResetPassword = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { email: string; password: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { getSql } = await import("@/lib/db");
+    const { applyRls } = await import("./rls");
+    const sql = await getSql();
+    await applyRls(sql, { bypass: true });
+    if (!(await isPlatformAdmin(sql, context.userId))) throw new Error("Forbidden");
+    const user = await setCredentialPassword(sql, data.email, data.password);
+    return { email: user.email };
   });
 
 

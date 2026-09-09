@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
-import { getDashboard, renameTenant } from "@/lib/isp/server";
+import { changeMyPassword, getDashboard, renameTenant, setStaffPassword } from "@/lib/isp/server";
 import { getKopokopo, saveKopokopo, testKopokopo } from "@/lib/isp/server-kopo";
 import { getMpesa, saveMpesa, savePublicBase, testMpesa } from "@/lib/isp/server-mpesa";
 import { getPlan, listTicketStaff, recordPlanPayment, sendPlanStk, setPlan, createStaffAccount, changeMemberRole } from "@/lib/isp/server-more";
@@ -78,6 +78,9 @@ function SettingsPage() {
   const [ws, setWs] = useState<Workspace | null>(null);
   const [form, setForm] = useState({ name: "", supportEmail: "", supportPhone: "" });
   const [slug, setSlug] = useState("");
+  const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwErr, setPwErr] = useState<string | null>(null);
   const [providers, setProviders] = useState<{ id: string; kind: string; label: string; enabled: boolean; sandbox: boolean }[]>([]);
   const [msg, setMsg] = useState<MsgForm>(EMPTY_MSG);
   const [smsHint, setSmsHint] = useState("");
@@ -261,6 +264,69 @@ function SettingsPage() {
             .
           </p>
           <Button type="submit">Save company</Button>
+        </form>
+      ) : null}
+
+      {tab === "company" ? (
+        <form
+          className="grid max-w-xl gap-3 rounded-xl bg-surface p-5 shadow-card md:p-6"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setPwErr(null);
+            if (pw.next !== pw.confirm) {
+              setPwErr("Passwords do not match");
+              return;
+            }
+            setPwBusy(true);
+            try {
+              await changeMyPassword({ data: { current: pw.current, password: pw.next } });
+              setPw({ current: "", next: "", confirm: "" });
+              setSaved("Your login password was updated.");
+            } catch (err) {
+              setPwErr(err instanceof Error ? err.message : "Could not change password");
+            } finally {
+              setPwBusy(false);
+            }
+          }}
+        >
+          <h2 className="font-medium">Your password</h2>
+          <p className="text-sm text-muted">
+            This is the email login for the ISP console and for Gridline superadmin, if you have that role.
+          </p>
+          <Field label="Current password">
+            <Input
+              type="password"
+              required
+              value={pw.current}
+              onChange={(e) => setPw({ ...pw, current: e.target.value })}
+              autoComplete="current-password"
+            />
+          </Field>
+          <Field label="New password">
+            <Input
+              type="password"
+              required
+              minLength={8}
+              value={pw.next}
+              onChange={(e) => setPw({ ...pw, next: e.target.value })}
+              autoComplete="new-password"
+            />
+          </Field>
+          <Field label="Confirm">
+            <Input
+              type="password"
+              required
+              minLength={8}
+              value={pw.confirm}
+              onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
+              autoComplete="new-password"
+            />
+          </Field>
+          {pwErr ? <p className="text-sm text-danger">{pwErr}</p> : null}
+          {saved ? <p className="text-sm text-ok">{saved}</p> : null}
+          <Button type="submit" disabled={pwBusy}>
+            {pwBusy ? "Saving…" : "Update password"}
+          </Button>
         </form>
       ) : null}
 
@@ -839,6 +905,35 @@ function SettingsPage() {
                   <option value="network_engineer">Network engineer</option>
                   <option value="technician">Technician</option>
                 </Select>
+                <form
+                  className="flex flex-col gap-2 sm:flex-row sm:items-center"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const fd = new FormData(e.currentTarget);
+                    const password = String(fd.get("password") || "");
+                    setStaffErr(null);
+                    try {
+                      await setStaffPassword({ data: { user_id: s.user_id, password } });
+                      e.currentTarget.reset();
+                      setSaved(`Password updated for ${s.email || s.name}.`);
+                    } catch (err) {
+                      setStaffErr(err instanceof Error ? err.message : "Could not reset password");
+                    }
+                  }}
+                >
+                  <Input
+                    name="password"
+                    type="password"
+                    required
+                    minLength={8}
+                    placeholder="New password"
+                    autoComplete="new-password"
+                    className="sm:w-44"
+                  />
+                  <Button type="submit" size="sm" variant="secondary">
+                    Reset
+                  </Button>
+                </form>
               </li>
             ))}
             {staff.length === 0 ? <li className="px-4 py-6 text-sm text-muted">No members yet.</li> : null}

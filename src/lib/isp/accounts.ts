@@ -77,6 +77,53 @@ export async function passwordVerifies(sql: Sql, email: string, password: string
   return verifyPassword({ hash: cred.password, password });
 }
 
+/** Replace (or attach) the email/password credential. Revokes existing sessions. */
+export async function setCredentialPassword(sql: Sql, email: string, password: string) {
+  const trimmed = email.trim().toLowerCase();
+  if (password.length < 8) throw new Error("Password must be at least 8 characters");
+  const user = await findAuthUserByEmail(sql, trimmed);
+  if (!user) throw new Error("No login for that email");
+  const hashed = await hashPassword(password);
+  const [cred] = await sql<{ id: string }>`
+    select id from account where "userId" = ${user.id} and "providerId" = 'credential'`;
+  if (cred) {
+    await sql`update account set password = ${hashed}, "updatedAt" = now() where id = ${cred.id}`;
+  } else {
+    const accountId = crypto.randomUUID();
+    await sql`insert into account (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")
+      values (${accountId}, ${user.id}, 'credential', ${user.id}, ${hashed}, now(), now())`;
+  }
+  if (!(await passwordVerifies(sql, trimmed, password))) {
+    throw new Error("Could not store the new password");
+  }
+  await sql`delete from session where "userId" = ${user.id}`;
+  return user;
+}
+
+export async function changeOwnPassword(
+  sql: Sql,
+  userId: string,
+  current: string,
+  next: string,
+) {
+  if (next.length < 8) throw new Error("Password must be at least 8 characters");
+  if (current === next) throw new Error("Pick a different password");
+  const user = await loadAuthUser(sql, userId);
+  if (!user) throw new Error("Account not found");
+  const [cred] = await sql<{ password: string }>`
+    select password from account where "userId" = ${user.id} and "providerId" = 'credential'`;
+  if (!cred?.password) throw new Error("This login has no password. Use forgot password to set one.");
+  const ok = await verifyPassword({ hash: cred.password, password: current });
+  if (!ok) throw new Error("Current password is wrong");
+  const hashed = await hashPassword(next);
+  await sql`update account set password = ${hashed}, "updatedAt" = now()
+    where "userId" = ${user.id} and "providerId" = 'credential'`;
+  if (!(await passwordVerifies(sql, user.email, next))) {
+    throw new Error("Could not store the new password");
+  }
+  return { email: user.email };
+}
+
 export async function isPlatformAdmin(sql: Sql, userId: string) {
   const [row] = await sql<{ user_id: string }>`
     select user_id from platform_admins where user_id = ${userId}`;

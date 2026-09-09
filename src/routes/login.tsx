@@ -169,6 +169,11 @@ function Login() {
                 {busy ? "Please wait…" : mode === "up" ? "Create account" : "Sign in"}
               </Button>
             </form>
+            {mode === "in" ? (
+              <Link to="/reset-password" className="block w-full text-center text-sm text-muted hover:text-fg">
+                Forgot password
+              </Link>
+            ) : null}
             <button
               type="button"
               className="w-full text-center text-sm text-muted hover:text-fg"

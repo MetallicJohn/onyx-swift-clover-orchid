@@ -8,7 +8,7 @@ Product milestones are complete except the items you asked to skip.
 | Customers / packages / services | Implemented and tested |
 | Billing / invoices / ledger / statements | Implemented and tested — line items, optional VAT, partials, auto suspend/restore |
 | Payments Daraja/Kopo | Implemented and tested (live needs real till + callback URL) |
-| RADIUS desired state | Implemented and tested — **daemon skipped** |
+| RADIUS desired state + REST adapter | Implemented and tested — **daemon stays external** |
 | MikroTik agent + approve | Implemented and tested |
 | WireGuard keys | Implemented and tested — handshake not verified in lab |
 | PPPoE / static / IPAM | Implemented and tested |
@@ -20,5 +20,7 @@ Product milestones are complete except the items you asked to skip.
 | Loyalty / referrals / resellers | Implemented and tested |
 | SaaS platform plans | Implemented — invoice-and-pay via M-Pesa, **Stripe skipped** |
 | Reports + audit | Implemented and tested |
+| Churn score | Interpretable logistic model on live billing / access / tickets — not a fitted neural net |
+| Password reset | Operator + superadmin email reset; portal password + OTP reset |
 | AI MikroTik | Implemented (template + xAI if key present) |
 | Postgres RLS | Implemented and tested (SET ROLE / non-superuser). Preview PGLite is superuser. |

@@ -10,6 +10,9 @@ import {
 import { provisionServiceAccess, seedOpsForTenant } from "./access";
 import { allocateStaticIp, disconnectSession, rotateServicePassword } from "./access-service";
 import { issueInvoice } from "./billing";
+import { loadChurnScores } from "./churn";
+import { loadDashboard } from "./dashboard";
+import { completeOperatorReset, requestOperatorReset } from "./password-reset";
 import { agentPullUrl, agentScript, enrollFields, wgAddressForIndex } from "./agent";
 import { emit } from "./events";
 import { listInbox } from "./inbox";
@@ -17,7 +20,7 @@ import { applyConfirmedPayment } from "./payments";
 import { assertPermission } from "./rbac";
 import { assertCustomerQuota } from "./saas";
 import { applyRls } from "./rls";
-import { loadAuthUser, provisionTenant } from "./accounts";
+import { loadAuthUser, provisionTenant, setCredentialPassword, changeOwnPassword } from "./accounts";
 import { resolveActiveTenant, setActiveTenant } from "./tenant-context";
 import { openTicket } from "./tickets";
 import type {
@@ -147,6 +150,8 @@ async function seedDemo(sql: Sql, tenantId: string) {
   for (const s of svcSpecs) {
     const period = new Date();
     if (s.status === "suspended") period.setDate(period.getDate() - 2);
+    else if (s.ci === 0) period.setHours(period.getHours() + 6);
+    else if (s.ci === 1) period.setDate(period.getDate() + 1);
     else period.setDate(period.getDate() + 28);
     await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end)
       values (${nid("svc")}, ${tenantId}, ${customerIds[s.ci]}, ${pkgs[s.pi].id}, ${s.method}, ${s.username ?? null}, ${s.ip ?? null}, ${s.status}, ${period.toISOString()})`;
@@ -257,6 +262,61 @@ export const bootstrapWorkspace = createServerFn({ method: "POST" })
     return workspace;
   });
 
+export const requestPasswordReset = createServerFn({ method: "POST" })
+  .validator((d: { email: string }) => d)
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    let origin = "http://localhost:8080";
+    try {
+      const { getRequest } = await import("@tanstack/react-start/server");
+      const req = getRequest();
+      if (req?.url) origin = new URL(req.url).origin;
+    } catch {
+      /* unit tests have no request */
+    }
+    return requestOperatorReset(sql, data.email, origin);
+  });
+
+export const completePasswordReset = createServerFn({ method: "POST" })
+  .validator((d: { token: string; password: string }) => d)
+  .handler(async ({ data }) => completeOperatorReset(await getSql(), data.token, data.password));
+
+export const setStaffPassword = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { user_id: string; password: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "settings.manage");
+    const [mem] = await sql<{ email: string }>`
+      select u.email from tenant_members m
+      join "user" u on u.id = m.user_id
+      where m.tenant_id = ${workspace.tenantId} and m.user_id = ${data.user_id}`;
+    if (!mem?.email) throw new Error("Not a member of this ISP");
+    await setCredentialPassword(sql, mem.email, data.password);
+    await audit(sql, workspace.tenantId, context.userId, "staff.password_reset", "user", data.user_id);
+    return { ok: true };
+  });
+
+export const setCustomerPortalPassword = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { customer_id: string; password: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "customers.manage");
+    const { setPortalPassword } = await import("./portal");
+    await setPortalPassword(sql, workspace.tenantId, data.customer_id, data.password);
+    await audit(sql, workspace.tenantId, context.userId, "customer.portal_password", "customer", data.customer_id);
+    return { ok: true };
+  });
+
+export const changeMyPassword = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { current: string; password: string }) => d)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    return changeOwnPassword(sql, context.userId, data.current, data.password);
+  });
+
 
 export const listMyTenants = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
@@ -285,55 +345,7 @@ export const getDashboard = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }): Promise<DashboardData> => {
     const { sql, workspace } = await requireTenant(context.userId);
-    const tid = workspace.tenantId;
-
-    const [cust] = await sql<{ n: number }>`select count(*)::int as n from customers where tenant_id = ${tid}`;
-    const [active] = await sql<{ n: number }>`select count(*)::int as n from customers where tenant_id = ${tid} and status = 'active'`;
-    const [susp] = await sql<{ n: number }>`select count(*)::int as n from services where tenant_id = ${tid} and status = 'suspended'`;
-    const [online] = await sql<{ n: number }>`select count(*)::int as n from services where tenant_id = ${tid} and status = 'active'`;
-    const [rev] = await sql<{ n: number }>`select coalesce(sum(amount_kes),0)::int as n from payments where tenant_id = ${tid} and status = 'confirmed'`;
-    const [out] = await sql<{ n: number }>`select coalesce(sum(greatest(0, amount_kes - paid_kes)),0)::int as n from invoices where tenant_id = ${tid} and status in ('due','overdue','issued','partial')`;
-    const [today] = await sql<{ n: number }>`select coalesce(sum(amount_kes),0)::int as n from payments where tenant_id = ${tid} and paid_at::date = current_date`;
-    const [tix] = await sql<{ n: number }>`select count(*)::int as n from tickets where tenant_id = ${tid} and status not in ('closed','resolved')`;
-    const [ron] = await sql<{ n: number }>`select count(*)::int as n from routers where tenant_id = ${tid} and wg_status = 'connected'`;
-    const [rtot] = await sql<{ n: number }>`select count(*)::int as n from routers where tenant_id = ${tid}`;
-    const [notes] = await sql<{ n: number }>`select count(*)::int as n from notification_logs where tenant_id = ${tid} and created_at::date = current_date`;
-
-    const recentPayments = await sql<PaymentRow>`
-      select p.id, p.customer_id, c.name as customer_name, p.invoice_id, p.provider, p.amount_kes, p.reference, p.status, p.paid_at::text as paid_at
-      from payments p join customers c on c.id = p.customer_id
-      where p.tenant_id = ${tid}
-      order by p.paid_at desc limit 6`;
-
-    const recentTickets = await sql<TicketRow>`
-      select t.id, t.customer_id, c.name as customer_name, t.title, t.category, t.priority, t.status, t.created_at::text as created_at
-      from tickets t left join customers c on c.id = t.customer_id
-      where t.tenant_id = ${tid}
-      order by t.created_at desc limit 5`;
-
-    const routers = await sql<RouterRow>`
-      select id, name, location, identity, role, wg_status, last_seen::text as last_seen, cpu_pct, uptime_hours
-      from routers where tenant_id = ${tid} order by name`;
-
-    return {
-      workspace,
-      totals: {
-        customers: cust?.n ?? 0,
-        active: active?.n ?? 0,
-        suspended: susp?.n ?? 0,
-        online: online?.n ?? 0,
-        revenueMonth: rev?.n ?? 0,
-        outstanding: out?.n ?? 0,
-        paymentsToday: today?.n ?? 0,
-        openTickets: tix?.n ?? 0,
-        routersOnline: ron?.n ?? 0,
-        routersTotal: rtot?.n ?? 0,
-        noticesToday: notes?.n ?? 0,
-      },
-      recentPayments,
-      recentTickets,
-      routers,
-    };
+    return loadDashboard(sql, workspace);
   });
 
 export const listCustomers = createServerFn({ method: "GET" })
@@ -347,12 +359,23 @@ export const listCustomers = createServerFn({ method: "GET" })
       from customers c
       where c.tenant_id = ${workspace.tenantId}
       order by c.created_at desc`;
-    return { workspace, customers: rows };
+    const churn = await loadChurnScores(sql, workspace.tenantId);
+    const byId = new Map(churn.map((c) => [c.customerId, c]));
+    const customers = rows.map((r) => {
+      const hit = byId.get(r.id);
+      return {
+        ...r,
+        churn_score: hit?.score ?? 0,
+        churn_band: hit?.band ?? "low",
+        churn_reason: hit?.reasons[0] ?? "",
+      };
+    });
+    return { workspace, customers };
   });
 
 export const createCustomer = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { name: string; phone: string; email: string; address: string; type: string }) => d)
+  .validator((d: { name: string; phone: string; email: string; address: string; type: string; portal_password?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     const name = data.name.trim();
@@ -361,6 +384,10 @@ export const createCustomer = createServerFn({ method: "POST" })
     const id = nid("cus");
     await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status)
       values (${id}, ${workspace.tenantId}, ${data.type || "individual"}, ${name}, ${data.phone.trim()}, ${data.email.trim()}, ${data.address.trim()}, 'active')`;
+    if (data.portal_password) {
+      const { setPortalPassword } = await import("./portal");
+      await setPortalPassword(sql, workspace.tenantId, id, data.portal_password);
+    }
     await emit(sql, {
       type: "customer.created",
       tenantId: workspace.tenantId,

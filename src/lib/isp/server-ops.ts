@@ -16,8 +16,11 @@ import { activateVoucher, expireDueVouchers, generateVouchers, revokeVoucher } f
 import { listCustomerInbox } from "./inbox";
 import { createStkIntent, settleStkIntent } from "./payments";
 import { disconnectRadiusUser, publicRadiusAccount, renderFreeRadiusUsers } from "./radius";
+import { ensureRadiusApiKey, radiusConfigBundle, rotateRadiusApiKey } from "./radius-rest";
+import { open } from "./secrets";
 import { assertPermission } from "./rbac";
-import { issuePortalOtp, portalContext, verifyPortalOtp } from "./portal";
+import { changePortalPassword, issuePortalOtp, portalContext, portalPasswordLogin, verifyPortalOtp } from "./portal";
+import { completePortalPasswordReset } from "./password-reset";
 import { issueResellerOtp, resellerHome, verifyResellerOtp } from "./reseller-portal";
 import { openTicket } from "./tickets";
 import { requireWorkspace as requireWs } from "./workspace";
@@ -26,6 +29,9 @@ export const listRadius = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, tenantId } = await requireWs(context.userId);
+    const key = await ensureRadiusApiKey(sql, tenantId);
+    const [tenant] = await sql<{ slug: string; public_base_url: string }>`
+      select slug, public_base_url from tenants where id = ${tenantId}`;
     const accounts = await sql<{
       id: string;
       username: string;
@@ -55,7 +61,42 @@ export const listRadius = createServerFn({ method: "GET" })
       stopped_at: string | null;
     }>`select id, username, framed_ip, nas_ip, bytes_in, bytes_out, started_at::text as started_at, stopped_at::text as stopped_at
        from radius_sessions where tenant_id = ${tenantId} order by started_at desc limit 40`;
-    return { accounts: accounts.map(publicRadiusAccount), sessions };
+    const events = await sql<{
+      id: string;
+      username: string;
+      nas_ip: string;
+      result: string;
+      reason: string;
+      created_at: string;
+    }>`select id, username, nas_ip, result, reason, created_at::text as created_at
+       from radius_auth_events where tenant_id = ${tenantId} order by created_at desc limit 20`;
+    const nas = await sql<{ name: string; nas_ip: string; radius_secret: string }>`
+      select name, nas_ip, radius_secret from routers where tenant_id = ${tenantId} order by name`;
+    const config = radiusConfigBundle({
+      baseUrl: tenant?.public_base_url || "",
+      slug: tenant?.slug || "",
+      apiKey: key.key || "frk_replace_me",
+      nas: nas
+        .filter((r) => r.nas_ip)
+        .map((r) => ({ name: r.name, ip: r.nas_ip, secret: r.radius_secret ? open(r.radius_secret) || "change-me-on-the-router" : "change-me-on-the-router" })),
+    });
+    return {
+      accounts: accounts.map(publicRadiusAccount),
+      sessions,
+      events,
+      slug: tenant?.slug || "",
+      api_key_hint: key.hint,
+      api_key: key.key,
+      config,
+    };
+  });
+
+export const rotateRadiusKey = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "radius.manage");
+    return rotateRadiusApiKey(sql, tenantId);
   });
 
 export const disconnectRadius = createServerFn({ method: "POST" })
@@ -393,6 +434,29 @@ export const verifyPortalLogin = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const sql = await getSql();
     return verifyPortalOtp(sql, data.slug, data.phone, data.code);
+  });
+
+export const portalPasswordSignIn = createServerFn({ method: "POST" })
+  .validator((d: { slug: string; phone: string; password: string }) => d)
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    return portalPasswordLogin(sql, data.slug, data.phone, data.password);
+  });
+
+export const portalChangePassword = createServerFn({ method: "POST" })
+  .validator((d: { token: string; current: string; password: string }) => d)
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    const ctx = await portalContext(sql, data.token);
+    await changePortalPassword(sql, ctx.tenantId, ctx.customer.id, data.current, data.password);
+    return { ok: true };
+  });
+
+export const completePortalPasswordResetFn = createServerFn({ method: "POST" })
+  .validator((d: { slug: string; phone: string; code: string; password: string }) => d)
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    return completePortalPasswordReset(sql, data);
   });
 
 export const requestResellerOtp = createServerFn({ method: "POST" })

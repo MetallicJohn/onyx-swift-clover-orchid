@@ -1,3 +1,4 @@
+import { hashPassword, verifyPassword } from "better-auth/crypto";
 import { nid } from "../utils.ts";
 import { deliverSms, getMessagingSettings } from "./messaging";
 import { newOtp } from "./otp";
@@ -10,17 +11,29 @@ type Sql = {
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
 };
 
-export async function issuePortalOtp(sql: Sql, slug: string, phone: string) {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length < 9) throw new Error("Enter a valid phone number");
+export async function findTenantBySlug(sql: Sql, slug: string) {
   await applyRls(sql, { bypass: true });
   const [ten] = await sql<{ id: string; name: string }>`select id, name from tenants where slug = ${slug.trim()}`;
   if (!ten) throw new Error("Unknown network. Check the ISP slug.");
   await applyRls(sql, { tenantId: ten.id, bypass: false });
-  const customers = await sql<{ id: string; phone: string }>`
-    select id, phone from customers where tenant_id = ${ten.id}`;
+  return ten;
+}
+
+export async function findCustomerByPhone(sql: Sql, tenantId: string, phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 9) throw new Error("Enter a valid phone number");
+  const customers = await sql<{ id: string; phone: string; name: string }>`
+    select id, phone, name from customers where tenant_id = ${tenantId}`;
   const customer = customers.find((c) => c.phone.replace(/\D/g, "").endsWith(digits.slice(-9)));
   if (!customer) throw new Error("No customer with that phone on this network");
+  return customer;
+}
+
+export async function issuePortalOtp(sql: Sql, slug: string, phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 9) throw new Error("Enter a valid phone number");
+  const ten = await findTenantBySlug(sql, slug);
+  const customer = await findCustomerByPhone(sql, ten.id, phone);
   const settings = await getMessagingSettings(sql, ten.id);
   const code = newOtp(settings.sms_sandbox);
   const id = nid("otp");
@@ -58,6 +71,57 @@ export async function verifyPortalOtp(sql: Sql, slug: string, phone: string, cod
   await sql`insert into portal_sessions (id, tenant_id, customer_id, token)
     values (${nid("psn")}, ${ten.id}, ${match.customer_id}, ${token})`;
   return { token, tenantId: ten.id, customerId: match.customer_id, isp: ten.name };
+}
+
+async function issuePortalSession(sql: Sql, tenantId: string, customerId: string, isp: string) {
+  const token = `prt_${crypto.randomUUID().replace(/-/g, "")}`;
+  await sql`insert into portal_sessions (id, tenant_id, customer_id, token)
+    values (${nid("psn")}, ${tenantId}, ${customerId}, ${token})`;
+  return { token, tenantId, customerId, isp };
+}
+
+export async function setPortalPassword(sql: Sql, tenantId: string, customerId: string, password: string) {
+  if (password.length < 8) throw new Error("Password must be at least 8 characters");
+  const hashed = await hashPassword(password);
+  const [row] = await sql<{ id: string }>`
+    update customers set portal_password = ${hashed}
+    where id = ${customerId} and tenant_id = ${tenantId}
+    returning id`;
+  if (!row) throw new Error("Customer not found");
+  return { ok: true };
+}
+
+export async function changePortalPassword(
+  sql: Sql,
+  tenantId: string,
+  customerId: string,
+  current: string,
+  next: string,
+) {
+  const [row] = await sql<{ portal_password: string }>`
+    select portal_password from customers where id = ${customerId} and tenant_id = ${tenantId}`;
+  if (!row) throw new Error("Customer not found");
+  if (row.portal_password) {
+    const ok = await verifyPassword({ hash: row.portal_password, password: current });
+    if (!ok) throw new Error("Current password is wrong");
+  } else if (!current) {
+    /* first password — OTP session is enough */
+  }
+  return setPortalPassword(sql, tenantId, customerId, next);
+}
+
+export async function portalPasswordLogin(sql: Sql, slug: string, phone: string, password: string) {
+  if (!password) throw new Error("Enter your portal password");
+  const ten = await findTenantBySlug(sql, slug);
+  const customer = await findCustomerByPhone(sql, ten.id, phone);
+  const [row] = await sql<{ portal_password: string }>`
+    select portal_password from customers where id = ${customer.id} and tenant_id = ${ten.id}`;
+  if (!row?.portal_password) {
+    throw new Error("No portal password yet. Use the SMS code, or reset to create one.");
+  }
+  const ok = await verifyPassword({ hash: row.portal_password, password });
+  if (!ok) throw new Error("Wrong phone or password");
+  return issuePortalSession(sql, ten.id, customer.id, ten.name);
 }
 
 export async function portalContext(sql: Sql, token: string) {

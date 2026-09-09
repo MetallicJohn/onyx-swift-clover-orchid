@@ -64,6 +64,9 @@ export type CustomerRow = {
   created_at: string;
   service_count: number;
   balance_kes: number;
+  churn_score: number;
+  churn_band: "low" | "medium" | "high" | "churned";
+  churn_reason: string;
 };
 
 export type ServiceRow = {
@@ -147,15 +150,58 @@ export type DashboardData = {
     active: number;
     suspended: number;
     online: number;
+    grace: number;
     revenueMonth: number;
+    revenueLastMonth: number;
     outstanding: number;
     paymentsToday: number;
+    paymentsTodayCount: number;
     openTickets: number;
     routersOnline: number;
     routersTotal: number;
+    avgCpu: number;
     noticesToday: number;
+    liveSessions: number;
+    connectionsToday: number;
+    connectionsWeek: number;
+    renewalsToday: number;
+    atRiskHigh: number;
+    atRiskMedium: number;
   };
+  revenueDays: Array<{ day: string; amount: number; count: number }>;
   recentPayments: PaymentRow[];
   recentTickets: TicketRow[];
   routers: RouterRow[];
+  atRisk: Array<{
+    id: string;
+    name: string;
+    score: number;
+    band: "low" | "medium" | "high" | "churned";
+    reason: string;
+    balance_kes: number;
+  }>;
+  newConnections: Array<{
+    id: string;
+    customer_name: string;
+    package_name: string;
+    access_method: string;
+    status: string;
+    created_at: string;
+  }>;
+  renewals: Array<{
+    id: string;
+    customer_name: string;
+    package_name: string;
+    period_end: string;
+    status: string;
+    price_kes: number;
+  }>;
+  dueInvoices: Array<{
+    id: string;
+    customer_name: string;
+    number: string;
+    amount_kes: number;
+    paid_kes: number;
+    due_date: string;
+  }>;
 };
