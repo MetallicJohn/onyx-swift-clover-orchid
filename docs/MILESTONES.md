@@ -22,5 +22,6 @@ Product milestones are complete except the items you asked to skip.
 | Reports + audit | Implemented and tested |
 | Churn score | Interpretable logistic model on live billing / access / tickets — not a fitted neural net |
 | Password reset | Operator + superadmin email reset; portal password + OTP reset |
+| Invoice / statement PDFs | Server-side A4, tenant branding, ledger-backed totals |
 | AI MikroTik | Implemented (template + xAI if key present) |
 | Postgres RLS | Implemented and tested (SET ROLE / non-superuser). Preview PGLite is superuser. |

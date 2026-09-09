@@ -17,6 +17,12 @@
   --color-danger: #d46a6a;
   --color-ok: #6db58a;
 
+  --color-paper: #f6f3ec;
+  --color-paper-ink: #1b232c;
+  --color-paper-muted: #5e6a74;
+  --color-paper-line: #ddd6cc;
+  --color-paper-wash: #eee8de;
+
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
+import { downloadPdf } from "@/lib/isp/pdf-client";
+import { portalInvoicePdf, portalStatementPdf } from "@/lib/isp/server-docs";
 import {
   completePortalPasswordResetFn,
   getPortalHome,
@@ -171,7 +173,19 @@ function PortalHome() {
         </ul>
       </section>
       <section className="mt-4 rounded-xl bg-surface p-5 shadow-card">
-        <h2 className="font-medium">Invoices</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-medium">Invoices</h2>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={async () => {
+              const file = await portalStatementPdf({ data: { token } });
+              downloadPdf(file);
+            }}
+          >
+            Statement PDF
+          </Button>
+        </div>
         <ul className="mt-3 divide-y divide-border">
           {home.invoices.map((inv) => (
             <li key={inv.id} className="flex items-center justify-between gap-3 py-3 text-sm">
@@ -181,20 +195,31 @@ function PortalHome() {
               </div>
               <div className="text-right">
                 <div className="font-mono">{kes(inv.remaining_kes)}</div>
-                {inv.status !== "paid" ? (
+                <div className="mt-1 flex flex-wrap justify-end gap-2">
                   <Button
                     size="sm"
-                    className="mt-1"
+                    variant="secondary"
                     onClick={async () => {
-                      await portalPay({ data: { token, invoice_id: inv.id } });
-                      await refresh(token);
+                      const file = await portalInvoicePdf({ data: { token, id: inv.id } });
+                      downloadPdf(file);
                     }}
                   >
-                    Pay
+                    PDF
                   </Button>
-                ) : (
-                  <Badge tone="ok">paid</Badge>
-                )}
+                  {inv.status !== "paid" ? (
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        await portalPay({ data: { token, invoice_id: inv.id } });
+                        await refresh(token);
+                      }}
+                    >
+                      Pay
+                    </Button>
+                  ) : (
+                    <Badge tone="ok">paid</Badge>
+                  )}
+                </div>
               </div>
             </li>
           ))}

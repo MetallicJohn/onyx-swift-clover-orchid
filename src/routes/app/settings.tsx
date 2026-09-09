@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Select } from "@/components/ui/input";
+import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { changeMyPassword, getDashboard, renameTenant, setStaffPassword } from "@/lib/isp/server";
+import { getDocumentBranding, saveDocumentBranding } from "@/lib/isp/server-docs";
 import { getKopokopo, saveKopokopo, testKopokopo } from "@/lib/isp/server-kopo";
 import { getMpesa, saveMpesa, savePublicBase, testMpesa } from "@/lib/isp/server-mpesa";
 import { getPlan, listTicketStaff, recordPlanPayment, sendPlanStk, setPlan, createStaffAccount, changeMemberRole } from "@/lib/isp/server-more";
@@ -77,6 +78,17 @@ function SettingsPage() {
   const [tab, setTab] = useState<TabId>("company");
   const [ws, setWs] = useState<Workspace | null>(null);
   const [form, setForm] = useState({ name: "", supportEmail: "", supportPhone: "" });
+  const [brand, setBrand] = useState({
+    address: "",
+    website: "",
+    tax_pin: "",
+    invoice_footer: "",
+    invoice_notes: "",
+    brand_color: "#4aa8a0",
+    bank_name: "",
+    bank_account: "",
+    bank_branch: "",
+  });
   const [slug, setSlug] = useState("");
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [pwBusy, setPwBusy] = useState(false);
@@ -127,7 +139,7 @@ function SettingsPage() {
   const [planErr, setPlanErr] = useState<string | null>(null);
 
   async function load() {
-    const [d, s, p, m, k, daraja, sub, st] = await Promise.all([
+    const [d, s, p, m, k, daraja, sub, st, branding] = await Promise.all([
       getDashboard(),
       workspaceSlug(),
       listProviders(),
@@ -136,6 +148,7 @@ function SettingsPage() {
       getMpesa(),
       getPlan(),
       listTicketStaff(),
+      getDocumentBranding(),
     ]);
     setWs(d.workspace);
     setSlug(s.slug);
@@ -188,6 +201,17 @@ function SettingsPage() {
     setKopoCallback(daraja.kopokopo_callback_url);
     setPlanState(sub);
     setStaff(st.staff);
+    setBrand({
+      address: branding.address,
+      website: branding.website,
+      tax_pin: branding.tax_pin,
+      invoice_footer: branding.invoice_footer,
+      invoice_notes: branding.invoice_notes,
+      brand_color: branding.brand_color || "#4aa8a0",
+      bank_name: branding.bank_name,
+      bank_account: branding.bank_account,
+      bank_branch: branding.bank_branch,
+    });
   }
   useEffect(() => {
     load().catch(console.error);
@@ -264,6 +288,74 @@ function SettingsPage() {
             .
           </p>
           <Button type="submit">Save company</Button>
+        </form>
+      ) : null}
+
+      {tab === "company" ? (
+        <form
+          className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            await saveDocumentBranding({ data: brand });
+            setSaved("Invoice branding saved.");
+            await load();
+          }}
+        >
+          <h2 className="font-medium">Invoices & statements</h2>
+          <p className="text-sm text-muted">
+            Shown on PDFs for this ISP only. Leave a field empty to hide it.
+          </p>
+          <Field label="Address">
+            <Input value={brand.address} onChange={(e) => setBrand({ ...brand, address: e.target.value })} />
+          </Field>
+          <Field label="Website">
+            <Input value={brand.website} onChange={(e) => setBrand({ ...brand, website: e.target.value })} />
+          </Field>
+          <Field label="Tax / PIN">
+            <Input value={brand.tax_pin} onChange={(e) => setBrand({ ...brand, tax_pin: e.target.value })} />
+          </Field>
+          <Field label="Brand colour">
+            <div className="flex gap-2">
+              <Input
+                type="color"
+                className="h-11 w-14 p-1"
+                value={brand.brand_color || "#4aa8a0"}
+                onChange={(e) => setBrand({ ...brand, brand_color: e.target.value })}
+              />
+              <Input
+                value={brand.brand_color}
+                onChange={(e) => setBrand({ ...brand, brand_color: e.target.value })}
+                placeholder="#4aa8a0"
+              />
+            </div>
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Bank name">
+              <Input value={brand.bank_name} onChange={(e) => setBrand({ ...brand, bank_name: e.target.value })} />
+            </Field>
+            <Field label="Account number">
+              <Input value={brand.bank_account} onChange={(e) => setBrand({ ...brand, bank_account: e.target.value })} />
+            </Field>
+          </div>
+          <Field label="Bank branch">
+            <Input value={brand.bank_branch} onChange={(e) => setBrand({ ...brand, bank_branch: e.target.value })} />
+          </Field>
+          <Field label="Invoice notes">
+            <Textarea
+              value={brand.invoice_notes}
+              onChange={(e) => setBrand({ ...brand, invoice_notes: e.target.value })}
+              placeholder="Shown on invoices when no invoice-specific note is set"
+            />
+          </Field>
+          <Field label="Footer">
+            <Textarea
+              value={brand.invoice_footer}
+              onChange={(e) => setBrand({ ...brand, invoice_footer: e.target.value })}
+              placeholder="Thank you for your business."
+            />
+          </Field>
+          {saved ? <p className="text-sm text-ok">{saved}</p> : null}
+          <Button type="submit">Save document branding</Button>
         </form>
       ) : null}
 

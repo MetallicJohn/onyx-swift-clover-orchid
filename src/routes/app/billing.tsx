@@ -1,11 +1,15 @@
 import type { ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Printer } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { InvoicePreview } from "@/components/isp/document-preview";
+import { PdfActions } from "@/components/isp/pdf-actions";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
-import { createInvoice, getInvoice, listBilling, recordPayment, saveBillingSettings } from "@/lib/isp/server";
+import { invoiceStatusLabel, type InvoiceDocument } from "@/lib/isp/document-format";
+import { downloadPdf, printPdf, viewPdf } from "@/lib/isp/pdf-client";
+import { emailInvoicePdf, getInvoiceDocument, getInvoicePdf } from "@/lib/isp/server-docs";
+import { createInvoice, listBilling, recordPayment, saveBillingSettings } from "@/lib/isp/server";
 import { confirmStk, sendStk } from "@/lib/isp/server-ops";
 import type { InvoiceRow, PaymentRow } from "@/lib/isp/types";
 import { kes } from "@/lib/utils";
@@ -23,7 +27,7 @@ type Quote = {
 
 type Line = { description: string; quantity: number; unit_kes: number; package_id?: string; service_id?: string };
 
-type InvoiceDetail = Awaited<ReturnType<typeof getInvoice>>;
+type InvoiceDetail = InvoiceDocument;
 
 function defaultDue() {
   const d = new Date();
@@ -102,12 +106,12 @@ function BillingPage() {
 
   async function openInvoice(id: string) {
     setErr(null);
-    const doc = await getInvoice({ data: { id } });
+    const doc = await getInvoiceDocument({ data: { id } });
     setDetail(doc);
     setPay((p) => ({
       ...p,
       invoice_id: doc.invoice.id,
-      amount_kes: doc.invoice.remaining_kes || doc.invoice.amount_kes,
+      amount_kes: doc.totals.amountDue || doc.totals.totalPayable,
     }));
   }
 
@@ -409,7 +413,7 @@ function BillingPage() {
             kes(i.remaining_kes),
             i.due_date,
             <Badge key={`${i.id}-st`} tone={statusTone(i.status)}>
-              {i.status}
+              {invoiceStatusLabel(i.status)}
             </Badge>,
           ])}
         />
@@ -428,7 +432,7 @@ function BillingPage() {
         />
       )}
 
-      {detail ? <InvoicePanel doc={detail} onClose={() => setDetail(null)} onReload={() => openInvoice(detail.invoice.id)} /> : null}
+      {detail ? <InvoicePanel doc={detail} onClose={() => setDetail(null)} /> : null}
     </div>
   );
 }
@@ -458,102 +462,67 @@ function Stat({ label, value, sub, tone }: { label: string; value: string; sub: 
 function InvoicePanel({
   doc,
   onClose,
-  onReload,
 }: {
   doc: InvoiceDetail;
   onClose: () => void;
-  onReload: () => void;
 }) {
-  const inv = doc.invoice;
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function withPdf(mode: "view" | "download" | "print") {
+    setBusy(true);
+    setError(null);
+    try {
+      const file = await getInvoicePdf({ data: { id: doc.invoice.id } });
+      if (mode === "download") downloadPdf(file);
+      else if (mode === "print") printPdf(file);
+      else viewPdf(file);
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : "Could not build the PDF");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendEmail() {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      const r = await emailInvoicePdf({ data: { id: doc.invoice.id } });
+      setNote(r.status === "sent" ? `Emailed to ${r.to}` : `Queued for ${r.to}`);
+    } catch (ex) {
+      setError(ex instanceof Error ? ex.message : "Could not email the invoice");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <section className="rounded-xl border border-border bg-surface p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3 print:hidden">
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs tracking-wide text-accent uppercase">{doc.tenant.name}</p>
-          <h2 className="text-xl font-semibold">{inv.number}</h2>
+          <h2 className="text-xl font-semibold">{doc.invoice.number}</h2>
           <p className="text-sm text-muted">
-            {doc.customer?.name} · {doc.customer?.phone} · due {inv.due_date}
+            {doc.customer.name} · {doc.invoice.statusLabel}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Badge tone={statusTone(inv.status)}>{inv.status}</Badge>
-          <Button size="sm" variant="secondary" onClick={() => window.print()}>
-            <Printer className="size-4" /> Print
-          </Button>
-          <Button size="sm" variant="ghost" onClick={onClose}>
-            Close
-          </Button>
-        </div>
+        <Button size="sm" variant="ghost" onClick={onClose}>
+          Close
+        </Button>
       </div>
-
-      <article className="mt-4 hidden print:block">
-        <h1 className="text-2xl font-semibold">{doc.tenant.name}</h1>
-        <p className="text-sm">
-          {inv.number} · {inv.status} · due {inv.due_date}
-        </p>
-        <p className="text-sm">
-          {doc.customer?.name} · {doc.customer?.phone} · {doc.customer?.email}
-        </p>
-      </article>
-
-      <ul className="mt-4 divide-y divide-border text-sm">
-        {(doc.items.length ? doc.items : [{ id: "one", description: "Internet service", quantity: 1, unit_kes: inv.subtotal_kes || inv.amount_kes, amount_kes: inv.subtotal_kes || inv.amount_kes }]).map((item) => (
-          <li key={item.id} className="flex justify-between gap-3 py-2">
-            <span>
-              {item.description}
-              <span className="text-muted">
-                {" "}
-                · {item.quantity} × {kes(item.unit_kes)}
-              </span>
-            </span>
-            <span className="font-mono">{kes(item.amount_kes)}</span>
-          </li>
-        ))}
-      </ul>
-      <dl className="mt-3 space-y-1 text-sm">
-        <div className="flex justify-between">
-          <dt className="text-muted">Subtotal</dt>
-          <dd className="font-mono">{kes(inv.subtotal_kes || inv.amount_kes)}</dd>
-        </div>
-        {inv.tax_kes > 0 ? (
-          <div className="flex justify-between">
-            <dt className="text-muted">VAT {inv.tax_rate}%</dt>
-            <dd className="font-mono">{kes(inv.tax_kes)}</dd>
-          </div>
-        ) : null}
-        <div className="flex justify-between font-medium">
-          <dt>Total</dt>
-          <dd className="font-mono">{kes(inv.amount_kes)}</dd>
-        </div>
-        <div className="flex justify-between">
-          <dt className="text-muted">Paid</dt>
-          <dd className="font-mono">{kes(inv.paid_kes)}</dd>
-        </div>
-        <div className="flex justify-between">
-          <dt className="text-muted">Remaining</dt>
-          <dd className="font-mono">{kes(inv.remaining_kes)}</dd>
-        </div>
-      </dl>
-      {inv.notes ? <p className="mt-3 text-sm text-muted">{inv.notes}</p> : null}
-
-      <h3 className="mt-6 font-medium">Allocations</h3>
-      {doc.payments.length === 0 ? (
-        <p className="mt-1 text-sm text-muted">No receipts on this invoice yet.</p>
-      ) : (
-        <ul className="mt-1 text-sm">
-          {doc.payments.map((p) => (
-            <li key={p.id} className="flex justify-between py-1">
-              <span>
-                {p.provider} {p.reference}
-              </span>
-              <span className="font-mono">{kes(p.amount_kes)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <button type="button" className="mt-4 hidden text-sm text-muted print:hidden" onClick={onReload}>
-        Refresh
-      </button>
+      <PdfActions
+        busy={busy}
+        note={note}
+        error={error}
+        canEmail={Boolean(doc.customer.email)}
+        onView={() => withPdf("view")}
+        onDownload={() => withPdf("download")}
+        onPrint={() => withPdf("print")}
+        onEmail={sendEmail}
+      />
+      <InvoicePreview doc={doc} />
     </section>
   );
 }

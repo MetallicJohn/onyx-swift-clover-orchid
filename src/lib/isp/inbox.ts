@@ -5,6 +5,12 @@ type Sql = {
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
 };
 
+export type EmailAttachment = {
+  filename: string;
+  content: string;
+  contentType?: string;
+};
+
 export async function writeInbox(
   sql: Sql,
   tenantId: string,
@@ -38,22 +44,36 @@ export async function listInbox(sql: Sql, tenantId: string) {
      where i.tenant_id = ${tenantId} order by i.created_at desc limit 50`;
 }
 
-export async function queueEmail(sql: Sql, tenantId: string, to: string, subject: string, body: string) {
+export async function queueEmail(
+  sql: Sql,
+  tenantId: string,
+  to: string,
+  subject: string,
+  body: string,
+  opts?: { attachments?: EmailAttachment[] },
+) {
   const id = nid("eml");
   let status = "queued";
   let detail = "";
   const key = process.env.RESEND_API_KEY;
+  const attachments = (opts?.attachments ?? []).map((a) => ({
+    filename: a.filename,
+    content: a.content,
+    content_type: a.contentType || "application/pdf",
+  }));
   if (key && to.includes("@")) {
     try {
+      const payload: Record<string, unknown> = {
+        from: "Gridline <noreply@gridline.app>",
+        to: [to],
+        subject,
+        text: body,
+      };
+      if (attachments.length) payload.attachments = attachments;
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from: "Gridline <noreply@gridline.app>",
-          to: [to],
-          subject,
-          text: body,
-        }),
+        body: JSON.stringify(payload),
       });
       status = res.ok ? "sent" : "failed";
       detail = res.ok ? "resend" : `resend ${res.status}`;
@@ -64,6 +84,9 @@ export async function queueEmail(sql: Sql, tenantId: string, to: string, subject
   } else {
     detail = to.includes("@") ? "queued (no RESEND_API_KEY)" : "missing email";
     status = to.includes("@") ? "queued" : "failed";
+  }
+  if (attachments.length) {
+    detail = `${detail}${detail ? " · " : ""}attachment ${attachments.map((a) => a.filename).join(", ")}`;
   }
   await sql`insert into email_outbox (id, tenant_id, to_addr, subject, body, status, detail)
     values (${id}, ${tenantId}, ${to}, ${subject.slice(0, 200)}, ${body.slice(0, 4000)}, ${status}, ${detail})`;
