@@ -11,7 +11,15 @@ export function invoiceAging(status: string, dueDate: string, today = new Date()
   return "60+";
 }
 
-export function tallyAging(rows: Array<{ status: string; due_date: string; amount_kes: number }>, today = new Date()) {
+export function invoiceOpenAmount(row: { status: string; amount_kes: number; paid_kes?: number }) {
+  if (row.status === "paid") return 0;
+  return Math.max(0, row.amount_kes - (row.paid_kes ?? 0));
+}
+
+export function tallyAging(
+  rows: Array<{ status: string; due_date: string; amount_kes: number; paid_kes?: number }>,
+  today = new Date(),
+) {
   const out: Record<AgingBucket, { count: number; amount: number }> = {
     current: { count: 0, amount: 0 },
     "1-30": { count: 0, amount: 0 },
@@ -22,7 +30,7 @@ export function tallyAging(rows: Array<{ status: string; due_date: string; amoun
   for (const r of rows) {
     const b = invoiceAging(r.status, r.due_date, today);
     out[b].count += 1;
-    out[b].amount += r.amount_kes;
+    out[b].amount += b === "paid" ? r.amount_kes : invoiceOpenAmount(r);
   }
   return out;
 }

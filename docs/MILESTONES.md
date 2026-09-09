@@ -6,7 +6,7 @@ Product milestones are complete except the items you asked to skip.
 |---|---|
 | Foundation / RBAC / tenants | Implemented and tested |
 | Customers / packages / services | Implemented and tested |
-| Billing / invoices / ledger / statements | Implemented and tested — auto suspend/restore on payment, time, bundle |
+| Billing / invoices / ledger / statements | Implemented and tested — line items, optional VAT, partials, auto suspend/restore |
 | Payments Daraja/Kopo | Implemented and tested (live needs real till + callback URL) |
 | RADIUS desired state | Implemented and tested — **daemon skipped** |
 | MikroTik agent + approve | Implemented and tested |
@@ -18,7 +18,7 @@ Product milestones are complete except the items you asked to skip.
 | Customer portal | Implemented and tested |
 | GenieACS inventory + queue | Implemented — **TR-069 skipped** |
 | Loyalty / referrals / resellers | Implemented and tested |
-| SaaS platform plans | Implemented — **Stripe skipped** |
+| SaaS platform plans | Implemented — invoice-and-pay via M-Pesa, **Stripe skipped** |
 | Reports + audit | Implemented and tested |
 | AI MikroTik | Implemented (template + xAI if key present) |
 | Postgres RLS | Implemented and tested (SET ROLE / non-superuser). Preview PGLite is superuser. |

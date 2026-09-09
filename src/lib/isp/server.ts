@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
-import { nid, slugify } from "@/lib/utils";
+import { nid } from "@/lib/utils";
 import {
   ensureDefaultTemplates,
   notifyCustomerEvent,
@@ -17,6 +17,7 @@ import { applyConfirmedPayment } from "./payments";
 import { assertPermission } from "./rbac";
 import { assertCustomerQuota } from "./saas";
 import { applyRls } from "./rls";
+import { loadAuthUser, provisionTenant } from "./accounts";
 import { resolveActiveTenant, setActiveTenant } from "./tenant-context";
 import { openTicket } from "./tickets";
 import type {
@@ -160,25 +161,29 @@ async function seedDemo(sql: Sql, tenantId: string) {
   };
 
   const invSpecs = [
-    { ci: 0, n: "INV-1042", amt: 3500, st: "paid", due: due(-2) },
-    { ci: 1, n: "INV-1043", amt: 2500, st: "overdue", due: due(-4) },
-    { ci: 2, n: "INV-1044", amt: 8500, st: "issued", due: due(12) },
-    { ci: 3, n: "INV-1045", amt: 2500, st: "overdue", due: due(-8) },
-    { ci: 4, n: "INV-1046", amt: 3500, st: "paid", due: due(6) },
-    { ci: 6, n: "INV-1047", amt: 2500, st: "due", due: due(1) },
+    { ci: 0, n: "INV-1042", amt: 3500, st: "paid", due: due(-2), paid: 3500, desc: "Home 20 (monthly)" },
+    { ci: 1, n: "INV-1043", amt: 2500, st: "overdue", due: due(-4), paid: 0, desc: "Home 10 (monthly)" },
+    { ci: 2, n: "INV-1044", amt: 8500, st: "issued", due: due(12), paid: 0, desc: "Business 50 (monthly)" },
+    { ci: 3, n: "INV-1045", amt: 2500, st: "overdue", due: due(-8), paid: 0, desc: "Home 10 (monthly)" },
+    { ci: 4, n: "INV-1046", amt: 3500, st: "paid", due: due(6), paid: 3500, desc: "Home 20 (monthly)" },
+    { ci: 6, n: "INV-1047", amt: 2500, st: "partial", due: due(1), paid: 1000, desc: "Home 10 (monthly)" },
   ];
   const invoiceIds: string[] = [];
   for (const i of invSpecs) {
     const id = nid("inv");
     invoiceIds.push(id);
-    await sql`insert into invoices (id, tenant_id, customer_id, number, amount_kes, status, due_date)
-      values (${id}, ${tenantId}, ${customerIds[i.ci]}, ${i.n}, ${i.amt}, ${i.st}, ${i.due})`;
+    await sql`insert into invoices (id, tenant_id, customer_id, number, amount_kes, status, due_date, subtotal_kes, paid_kes)
+      values (${id}, ${tenantId}, ${customerIds[i.ci]}, ${i.n}, ${i.amt}, ${i.st}, ${i.due}, ${i.amt}, ${i.paid})`;
+    await sql`insert into invoice_items (id, tenant_id, invoice_id, description, quantity, unit_kes, amount_kes)
+      values (${nid("ili")}, ${tenantId}, ${id}, ${i.desc}, 1, ${i.amt}, ${i.amt})`;
   }
 
   await sql`insert into payments (id, tenant_id, customer_id, invoice_id, provider, amount_kes, reference, status)
     values (${nid("pay")}, ${tenantId}, ${customerIds[0]}, ${invoiceIds[0]}, 'mpesa', 3500, 'QK7X1IMANI', 'confirmed')`;
   await sql`insert into payments (id, tenant_id, customer_id, invoice_id, provider, amount_kes, reference, status)
     values (${nid("pay")}, ${tenantId}, ${customerIds[4]}, ${invoiceIds[4]}, 'mpesa', 3500, 'QK8Y2FAITH', 'confirmed')`;
+  await sql`insert into payments (id, tenant_id, customer_id, invoice_id, provider, amount_kes, reference, status)
+    values (${nid("pay")}, ${tenantId}, ${customerIds[6]}, ${invoiceIds[5]}, 'mpesa', 1000, 'QK7P4PETER', 'confirmed')`;
   await sql`insert into payments (id, tenant_id, customer_id, invoice_id, provider, amount_kes, reference, status)
     values (${nid("pay")}, ${tenantId}, ${customerIds[5]}, ${null}, 'mpesa', 100, 'QK9Z3VOUCH', 'confirmed')`;
 
@@ -210,55 +215,48 @@ async function ensureWorkspace(
   userId: string,
   displayName: string | null,
   email: string | null,
+  ispName?: string | null,
 ): Promise<Workspace> {
   await applyRls(sql, { bypass: true });
+  const profile = await loadAuthUser(sql, userId);
+  const person = displayName || profile?.name || null;
+  const mail = email || profile?.email || null;
   const active = await resolveActiveTenant(sql, userId);
-  if (active) {
-    await applyRls(sql, { tenantId: active.tenantId, bypass: false });
-    const [row] = await sql<{ demo_seeded: boolean }>`select demo_seeded from tenants where id = ${active.tenantId}`;
-    if (!row?.demo_seeded) {
-      await applyRls(sql, { bypass: true });
-      await seedDemo(sql, active.tenantId);
-      await applyRls(sql, { tenantId: active.tenantId, bypass: false });
-    }
-    await ensureDefaultTemplates(sql, active.tenantId);
-    await seedOpsForTenant(sql, active.tenantId);
-    return active;
+  const workspace =
+    active ??
+    (await provisionTenant(sql, userId, { ispName, personName: person, email: mail }));
+
+  await applyRls(sql, { tenantId: workspace.tenantId, bypass: false });
+  const [row] = await sql<{ demo_seeded: boolean }>`select demo_seeded from tenants where id = ${workspace.tenantId}`;
+  if (!row?.demo_seeded) {
+    await applyRls(sql, { bypass: true });
+    await seedDemo(sql, workspace.tenantId);
+    await applyRls(sql, { tenantId: workspace.tenantId, bypass: false });
   }
-
-  const tenantId = nid("ten");
-  const baseName = displayName?.trim() || email?.split("@")[0] || "New ISP";
-  const name = `${baseName}'s Network`;
-  const slug = `${slugify(baseName)}-${tenantId.slice(-6)}`;
-  await sql`insert into tenants (id, name, slug, status, currency, timezone, support_email)
-    values (${tenantId}, ${name}, ${slug}, 'trial', 'KES', 'Africa/Nairobi', ${email ?? ""})`;
-  await sql`insert into tenant_members (id, tenant_id, user_id, role)
-    values (${nid("mem")}, ${tenantId}, ${userId}, 'isp_owner')`;
-  await setActiveTenant(sql, userId, tenantId);
-  await seedDemo(sql, tenantId);
-  await applyRls(sql, { tenantId, bypass: false });
-  await ensureDefaultTemplates(sql, tenantId);
-  await seedOpsForTenant(sql, tenantId);
-  await audit(sql, tenantId, userId, "tenant.created", "tenant", tenantId);
-
-  return {
-    tenantId,
-    tenantName: name,
-    slug,
-    status: "trial",
-    currency: "KES",
-    role: "isp_owner",
-    supportEmail: email ?? "",
-    supportPhone: "",
-    permissions: ["*"],
-  };
+  await ensureDefaultTemplates(sql, workspace.tenantId);
+  await seedOpsForTenant(sql, workspace.tenantId);
+  return workspace;
 }
 
-async function requireTenant(userId: string, displayName?: string | null, email?: string | null) {
+async function requireTenant(
+  userId: string,
+  displayName?: string | null,
+  email?: string | null,
+  ispName?: string | null,
+) {
   const sql = await getSql();
-  const workspace = await ensureWorkspace(sql, userId, displayName ?? null, email ?? null);
+  const workspace = await ensureWorkspace(sql, userId, displayName ?? null, email ?? null, ispName);
   return { sql, workspace };
 }
+
+export const bootstrapWorkspace = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { isp_name?: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { workspace } = await requireTenant(context.userId, null, null, data.isp_name);
+    return workspace;
+  });
+
 
 export const listMyTenants = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
@@ -294,7 +292,7 @@ export const getDashboard = createServerFn({ method: "GET" })
     const [susp] = await sql<{ n: number }>`select count(*)::int as n from services where tenant_id = ${tid} and status = 'suspended'`;
     const [online] = await sql<{ n: number }>`select count(*)::int as n from services where tenant_id = ${tid} and status = 'active'`;
     const [rev] = await sql<{ n: number }>`select coalesce(sum(amount_kes),0)::int as n from payments where tenant_id = ${tid} and status = 'confirmed'`;
-    const [out] = await sql<{ n: number }>`select coalesce(sum(amount_kes),0)::int as n from invoices where tenant_id = ${tid} and status in ('due','overdue','issued','partial')`;
+    const [out] = await sql<{ n: number }>`select coalesce(sum(greatest(0, amount_kes - paid_kes)),0)::int as n from invoices where tenant_id = ${tid} and status in ('due','overdue','issued','partial')`;
     const [today] = await sql<{ n: number }>`select coalesce(sum(amount_kes),0)::int as n from payments where tenant_id = ${tid} and paid_at::date = current_date`;
     const [tix] = await sql<{ n: number }>`select count(*)::int as n from tickets where tenant_id = ${tid} and status not in ('closed','resolved')`;
     const [ron] = await sql<{ n: number }>`select count(*)::int as n from routers where tenant_id = ${tid} and wg_status = 'connected'`;
@@ -345,7 +343,7 @@ export const listCustomers = createServerFn({ method: "GET" })
     const rows = await sql<CustomerRow>`
       select c.id, c.type, c.name, c.phone, c.email, c.address, c.status, c.created_at::text as created_at,
         (select count(*)::int from services s where s.customer_id = c.id) as service_count,
-        (select coalesce(sum(i.amount_kes),0)::int from invoices i where i.customer_id = c.id and i.status in ('due','overdue','issued','partial')) as balance_kes
+        (select coalesce(sum(greatest(0, i.amount_kes - i.paid_kes)),0)::int from invoices i where i.customer_id = c.id and i.status in ('due','overdue','issued','partial')) as balance_kes
       from customers c
       where c.tenant_id = ${workspace.tenantId}
       order by c.created_at desc`;
@@ -483,11 +481,12 @@ export const createService = createServerFn({ method: "POST" })
     const { sql, workspace } = await requireTenant(context.userId);
     const tid = workspace.tenantId;
     const [pkg] = await sql<{
+      name: string;
       access_method: AccessMethod;
       price_kes: number;
       billing_interval: string;
       validity_hours: number;
-    }>`select access_method, price_kes, billing_interval, validity_hours
+    }>`select name, access_method, price_kes, billing_interval, validity_hours
        from packages where id = ${data.package_id} and tenant_id = ${tid}`;
     if (!pkg) throw new Error("Package not found");
     const [cus] = await sql<{ id: string }>`select id from customers where id = ${data.customer_id} and tenant_id = ${tid}`;
@@ -503,20 +502,28 @@ export const createService = createServerFn({ method: "POST" })
     const radius = await provisionServiceAccess(sql, tid, id);
     const unpaid = await sql<{ id: string }>`
       select id from invoices where tenant_id = ${tid} and customer_id = ${data.customer_id}
-      and status in ('issued','due','overdue') limit 1`;
+      and status in ('issued','due','overdue','partial') limit 1`;
     if (!unpaid[0] && pkg.price_kes > 0) {
       const due = new Date();
       due.setDate(due.getDate() + 7);
       const inv = await issueInvoice(sql, {
         tenantId: tid,
         customerId: data.customer_id,
-        amountKes: pkg.price_kes,
         dueDate: due.toISOString().slice(0, 10),
+        items: [
+          {
+            description: `${pkg.name} (${pkg.billing_interval})`,
+            quantity: 1,
+            unit_kes: pkg.price_kes,
+            package_id: data.package_id,
+            service_id: id,
+          },
+        ],
       });
       await notifyCustomerEvent(sql, tid, workspace.tenantName, data.customer_id, "invoice.created", inv.id, {
         customer_name: "",
         invoice_number: inv.number,
-        amount: `KES ${pkg.price_kes}`,
+        amount: `KES ${inv.amount_kes}`,
         due_date: due.toISOString().slice(0, 10),
       });
     }
@@ -594,7 +601,10 @@ export const listBilling = createServerFn({ method: "GET" })
     const { sql, workspace } = await requireTenant(context.userId);
     const tid = workspace.tenantId;
     const invoices = await sql<InvoiceRow>`
-      select i.id, i.customer_id, c.name as customer_name, i.number, i.amount_kes, i.status, i.due_date::text as due_date, i.issued_at::text as issued_at
+      select i.id, i.customer_id, c.name as customer_name, i.number, i.amount_kes,
+             i.subtotal_kes, i.tax_kes, i.tax_rate, i.paid_kes,
+             case when i.status = 'paid' then 0 else greatest(0, i.amount_kes - i.paid_kes) end as remaining_kes,
+             i.status, i.due_date::text as due_date, i.issued_at::text as issued_at, i.notes
       from invoices i join customers c on c.id = i.customer_id
       where i.tenant_id = ${tid}
       order by i.issued_at desc`;
@@ -603,28 +613,140 @@ export const listBilling = createServerFn({ method: "GET" })
       from payments p join customers c on c.id = p.customer_id
       where p.tenant_id = ${tid}
       order by p.paid_at desc`;
-    const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${tid} order by name`;
-    return { workspace, invoices, payments, customers };
+    const customers = await sql<{ id: string; name: string; phone: string }>`
+      select id, name, phone from customers where tenant_id = ${tid} order by name`;
+    const quotes = await sql<{
+      customer_id: string;
+      package_id: string;
+      service_id: string;
+      package_name: string;
+      price_kes: number;
+      billing_interval: string;
+    }>`
+      select s.customer_id, p.id as package_id, s.id as service_id, p.name as package_name, p.price_kes, p.billing_interval
+      from services s join packages p on p.id = s.package_id
+      where s.tenant_id = ${tid} and s.status in ('active','grace','suspended','pending')
+      order by p.price_kes`;
+    const [ten] = await sql<{ vat_enabled: boolean; vat_rate_pct: number }>`
+      select vat_enabled, vat_rate_pct from tenants where id = ${tid}`;
+    const { tallyAging } = await import("./aging");
+    const aging = tallyAging(invoices);
+    const outstanding = invoices.reduce((s, i) => s + i.remaining_kes, 0);
+    const overdue = invoices
+      .filter((i) => i.status === "overdue" || (i.status === "partial" && i.remaining_kes > 0 && i.due_date < new Date().toISOString().slice(0, 10)))
+      .reduce((s, i) => s + i.remaining_kes, 0);
+    const collected = payments.filter((p) => p.status === "confirmed").reduce((s, p) => s + p.amount_kes, 0);
+    const open = invoices.filter((i) => i.remaining_kes > 0).length;
+    return {
+      workspace,
+      invoices,
+      payments,
+      customers,
+      quotes,
+      vat_enabled: Boolean(ten?.vat_enabled),
+      vat_rate_pct: ten?.vat_rate_pct ?? 16,
+      aging,
+      totals: { outstanding, overdue, collected, open },
+    };
+  });
+
+export const getInvoice = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, workspace } = await requireTenant(context.userId);
+    const tid = workspace.tenantId;
+    const [invoice] = await sql<InvoiceRow & { notes: string }>`
+      select i.id, i.customer_id, c.name as customer_name, i.number, i.amount_kes,
+             i.subtotal_kes, i.tax_kes, i.tax_rate, i.paid_kes,
+             case when i.status = 'paid' then 0 else greatest(0, i.amount_kes - i.paid_kes) end as remaining_kes,
+             i.status, i.due_date::text as due_date, i.issued_at::text as issued_at, i.notes
+      from invoices i join customers c on c.id = i.customer_id
+      where i.id = ${data.id} and i.tenant_id = ${tid}`;
+    if (!invoice) throw new Error("Invoice not found");
+    const [customer] = await sql<{
+      id: string;
+      name: string;
+      phone: string;
+      email: string;
+      address: string;
+    }>`select id, name, phone, email, address from customers where id = ${invoice.customer_id} and tenant_id = ${tid}`;
+    const items = await sql<{
+      id: string;
+      description: string;
+      quantity: number;
+      unit_kes: number;
+      amount_kes: number;
+    }>`select id, description, quantity, unit_kes, amount_kes from invoice_items
+       where invoice_id = ${invoice.id} and tenant_id = ${tid} order by description`;
+    const payments = await sql<PaymentRow>`
+      select p.id, p.customer_id, c.name as customer_name, p.invoice_id, p.provider, p.amount_kes, p.reference, p.status, p.paid_at::text as paid_at
+      from payments p join customers c on c.id = p.customer_id
+      where p.invoice_id = ${invoice.id} and p.tenant_id = ${tid}
+      order by p.paid_at desc`;
+    const allocations = await sql<{ id: string; payment_id: string; amount_kes: number }>`
+      select id, payment_id, amount_kes from payment_allocations where invoice_id = ${invoice.id} and tenant_id = ${tid}`;
+    return {
+      invoice,
+      customer,
+      items,
+      payments,
+      allocations,
+      tenant: {
+        name: workspace.tenantName,
+        supportEmail: workspace.supportEmail,
+        supportPhone: workspace.supportPhone,
+      },
+    };
+  });
+
+export const saveBillingSettings = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { vat_enabled: boolean; vat_rate_pct?: number }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "invoices.manage");
+    const rate = Math.min(100, Math.max(0, Math.round(data.vat_rate_pct ?? 16)));
+    await sql`update tenants set vat_enabled = ${data.vat_enabled}, vat_rate_pct = ${rate} where id = ${workspace.tenantId}`;
+    await audit(sql, workspace.tenantId, context.userId, "billing.settings", "tenant", workspace.tenantId);
+    return { vat_enabled: data.vat_enabled, vat_rate_pct: rate };
   });
 
 export const createInvoice = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { customer_id: string; amount_kes: number; due_date: string }) => d)
+  .validator(
+    (d: {
+      customer_id: string;
+      due_date: string;
+      amount_kes?: number;
+      notes?: string;
+      items?: Array<{
+        description: string;
+        quantity?: number;
+        unit_kes: number;
+        package_id?: string;
+        service_id?: string;
+      }>;
+    }) => d,
+  )
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     const tid = workspace.tenantId;
+    assertPermission(workspace.role, "invoices.manage");
     const [cus] = await sql<{ id: string }>`select id from customers where id = ${data.customer_id} and tenant_id = ${tid}`;
     if (!cus) throw new Error("Customer not found");
     const inv = await issueInvoice(sql, {
       tenantId: tid,
       customerId: data.customer_id,
-      amountKes: data.amount_kes,
       dueDate: data.due_date,
+      amountKes: data.amount_kes,
+      items: data.items,
+      notes: data.notes,
     });
     await notifyCustomerEvent(sql, tid, workspace.tenantName, data.customer_id, "invoice.created", inv.id, {
       customer_name: "",
       invoice_number: inv.number,
-      amount: `KES ${data.amount_kes}`,
+      amount: `KES ${inv.amount_kes}`,
       due_date: data.due_date,
     });
     await audit(sql, tid, context.userId, "invoice.created", "invoice", inv.id);
@@ -633,13 +755,13 @@ export const createInvoice = createServerFn({ method: "POST" })
 
 export const recordPayment = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { invoice_id: string; provider: string; reference: string }) => d)
+  .validator((d: { invoice_id: string; provider: string; reference: string; amount_kes?: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     const tid = workspace.tenantId;
     assertPermission(workspace.role, "payments.manage");
-    const [inv] = await sql<{ id: string; customer_id: string; amount_kes: number; status: string; number: string }>`
-      select id, customer_id, amount_kes, status, number from invoices where id = ${data.invoice_id} and tenant_id = ${tid}`;
+    const [inv] = await sql<{ id: string }>`
+      select id from invoices where id = ${data.invoice_id} and tenant_id = ${tid}`;
     if (!inv) throw new Error("Invoice not found");
     const result = await applyConfirmedPayment(sql, {
       tenantId: tid,
@@ -647,9 +769,10 @@ export const recordPayment = createServerFn({ method: "POST" })
       invoiceId: inv.id,
       provider: data.provider || "mpesa",
       reference: data.reference.trim() || `MPESA-${Date.now()}`,
+      amountKes: data.amount_kes,
     });
     await audit(sql, tid, context.userId, "payment.received", "payment", result.id);
-    return { id: result.id };
+    return { id: result.id, amount: result.amount, status: result.status };
   });
 
 export const listRouters = createServerFn({ method: "GET" })

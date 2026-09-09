@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { RedirectToSignIn } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { getDashboard, listMyTenants, switchTenant } from "@/lib/isp/server";
+import { platformStatus } from "@/lib/isp/server-more";
 import type { Workspace } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app")({ component: AppLayout });
@@ -13,16 +14,18 @@ function AppLayout() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
   const [activeTenantId, setActiveTenantId] = useState("");
+  const [platformAdmin, setPlatformAdmin] = useState(false);
 
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    Promise.all([getDashboard(), listMyTenants()])
-      .then(([d, t]) => {
+    Promise.all([getDashboard(), listMyTenants(), platformStatus()])
+      .then(([d, t, p]) => {
         if (cancelled) return;
         setWorkspace(d.workspace);
         setTenants(t.tenants);
         setActiveTenantId(t.activeId || d.workspace.tenantId);
+        setPlatformAdmin(p.admin);
       })
       .catch(() => {
         /* dashboard child will surface errors */
@@ -49,6 +52,7 @@ function AppLayout() {
         setActiveTenantId(id);
         window.location.reload();
       }}
+      platformAdmin={platformAdmin}
     />
   );
 }

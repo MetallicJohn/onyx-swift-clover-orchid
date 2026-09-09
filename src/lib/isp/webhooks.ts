@@ -2,6 +2,7 @@ import { nid } from "../utils.ts";
 import { evaluateStkCallback, parseKopokopoCallback, parseMpesaCallback } from "./callback-validate";
 import { applyRls } from "./rls";
 import { applyConfirmedPayment } from "./payments";
+import { applySaasPayment } from "./saas";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -37,7 +38,16 @@ async function logWebhook(
     values (${nid("wh")}, ${tenantId}, ${provider}, ${checkoutId}, ${JSON.stringify(payload).slice(0, 8000)}, ${status})`;
 }
 
-async function loadIntent(sql: Sql, tenantId: string, checkout: string) {
+type LoadedIntent = {
+  id: string;
+  invoice_id: string;
+  status: string;
+  checkout_id: string;
+  amount_kes: number;
+  kind: "customer" | "saas";
+};
+
+async function loadIntent(sql: Sql, tenantId: string, checkout: string): Promise<LoadedIntent | null> {
   const [intent] = await sql<{
     id: string;
     invoice_id: string;
@@ -46,44 +56,81 @@ async function loadIntent(sql: Sql, tenantId: string, checkout: string) {
     amount_kes: number;
   }>`select id, invoice_id, status, checkout_id, amount_kes from payment_intents
      where tenant_id = ${tenantId} and checkout_id = ${checkout}`;
-  return intent ?? null;
+  if (intent) return { ...intent, kind: "customer" };
+  const [saas] = await sql<{
+    id: string;
+    invoice_id: string;
+    status: string;
+    checkout_id: string;
+    amount_kes: number;
+  }>`select id, invoice_id, status, checkout_id, amount_kes from saas_payment_intents
+     where tenant_id = ${tenantId} and checkout_id = ${checkout}`;
+  if (saas) return { ...saas, kind: "saas" };
+  return null;
 }
 
 async function settleFromDecision(
   sql: Sql,
   tenant: { id: string; name: string },
   provider: string,
-  intent: { id: string; invoice_id: string; status: string; checkout_id: string; amount_kes: number },
+  intent: LoadedIntent,
   parsed: { checkout: string; resultCode: number; resultDesc: string; receipt: string; amount?: number },
 ) {
   const decision = evaluateStkCallback(intent, parsed);
   if (decision.action === "idempotent") return "idempotent";
   if (decision.action === "ignore") return decision.reason;
   if (decision.action === "fail") {
-    await sql`update payment_intents set status = ${decision.intentStatus}, fail_reason = ${decision.reason}
-      where id = ${intent.id} and tenant_id = ${tenant.id} and status = 'pending'`;
+    if (intent.kind === "saas") {
+      await sql`update saas_payment_intents set status = ${decision.intentStatus}
+        where id = ${intent.id} and tenant_id = ${tenant.id} and status = 'pending'`;
+    } else {
+      await sql`update payment_intents set status = ${decision.intentStatus}, fail_reason = ${decision.reason}
+        where id = ${intent.id} and tenant_id = ${tenant.id} and status = 'pending'`;
+    }
     return decision.intentStatus;
   }
   if (decision.action === "reconcile") {
-    await sql`update payment_intents set status = 'reconciliation_required', fail_reason = ${decision.reason}
-      where id = ${intent.id} and tenant_id = ${tenant.id} and status = 'pending'`;
+    if (intent.kind === "saas") {
+      await sql`update saas_payment_intents set status = 'reconciliation_required'
+        where id = ${intent.id} and tenant_id = ${tenant.id} and status = 'pending'`;
+    } else {
+      await sql`update payment_intents set status = 'reconciliation_required', fail_reason = ${decision.reason}
+        where id = ${intent.id} and tenant_id = ${tenant.id} and status = 'pending'`;
+    }
     return "reconciliation_required";
   }
   try {
-    await applyConfirmedPayment(sql, {
-      tenantId: tenant.id,
-      ispName: tenant.name,
-      invoiceId: intent.invoice_id,
-      provider,
-      reference: decision.reference,
-    });
-    await sql`update payment_intents set status = 'confirmed', fail_reason = ''
-      where id = ${intent.id} and tenant_id = ${tenant.id}`;
+    if (intent.kind === "saas") {
+      await applySaasPayment(sql, {
+        tenantId: tenant.id,
+        invoiceId: intent.invoice_id,
+        provider,
+        reference: decision.reference,
+        amountKes: intent.amount_kes,
+      });
+      await sql`update saas_payment_intents set status = 'confirmed'
+        where id = ${intent.id} and tenant_id = ${tenant.id}`;
+    } else {
+      await applyConfirmedPayment(sql, {
+        tenantId: tenant.id,
+        ispName: tenant.name,
+        invoiceId: intent.invoice_id,
+        provider,
+        reference: decision.reference,
+        amountKes: intent.amount_kes,
+      });
+      await sql`update payment_intents set status = 'confirmed', fail_reason = ''
+        where id = ${intent.id} and tenant_id = ${tenant.id}`;
+    }
     return "confirmed";
   } catch (e) {
     const msg = e instanceof Error ? e.message : "confirm failed";
-    if (/Duplicate/i.test(msg)) {
-      await sql`update payment_intents set status = 'confirmed' where id = ${intent.id}`;
+    if (/Duplicate/i.test(msg) || /already paid/i.test(msg)) {
+      if (intent.kind === "saas") {
+        await sql`update saas_payment_intents set status = 'confirmed' where id = ${intent.id}`;
+      } else {
+        await sql`update payment_intents set status = 'confirmed' where id = ${intent.id}`;
+      }
       return "idempotent";
     }
     throw e;
@@ -128,8 +175,9 @@ export async function handleKopokopoCallback(slug: string, body: Record<string, 
          where tenant_id = ${tenant.id} and checkout_id like ${"%" + parsed.checkout} limit 1`
     )[0];
   if (!intent) return { ok: true };
-  const aligned = { ...parsed, checkout: intent.checkout_id };
-  await settleFromDecision(sql, tenant, "kopokopo", intent, aligned);
+  const loaded: LoadedIntent = "kind" in intent ? (intent as LoadedIntent) : { ...intent, kind: "customer" };
+  const aligned = { ...parsed, checkout: loaded.checkout_id };
+  await settleFromDecision(sql, tenant, "kopokopo", loaded, aligned);
   return { ok: true };
 }
 

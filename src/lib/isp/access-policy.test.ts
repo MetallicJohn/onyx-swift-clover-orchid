@@ -128,3 +128,34 @@ test("payment restores only when no other invoice is overdue", async () => {
     await close();
   }
 });
+
+test("partial payment does not restore while remainder is overdue", async () => {
+  const { sql, bypass, asRole, close } = await openTestDb();
+  try {
+    await bypass();
+    await sql`insert into tenants (id, name, slug) values ('ten_p', 'Part', 'part')`;
+    await sql`insert into customers (id, tenant_id, name, phone) values ('cus_p', 'ten_p', 'Pat', '0711000004')`;
+    await sql`insert into packages (id, tenant_id, name, access_method, download_mbps, upload_mbps, price_kes, grace_days)
+      values ('pkg_p', 'ten_p', 'Home', 'pppoe', 10, 10, 2500, 0)`;
+    await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, status)
+      values ('svc_p', 'ten_p', 'cus_p', 'pkg_p', 'pppoe', 'pat', 'suspended')`;
+    await sql`insert into invoices (id, tenant_id, customer_id, number, amount_kes, status, due_date, paid_kes)
+      values ('inv_p', 'ten_p', 'cus_p', 'INV-P', 2500, 'overdue', '2020-01-01', 0)`;
+    await asRole("ten_p");
+    await applyConfirmedPayment(sql, {
+      tenantId: "ten_p",
+      ispName: "Part",
+      invoiceId: "inv_p",
+      provider: "mpesa",
+      reference: "PART-P",
+      amountKes: 500,
+    });
+    const [held] = await sql<{ status: string }>`select status from services where id = ${"svc_p"}`;
+    assert.equal(held?.status, "suspended");
+    const [inv] = await sql<{ status: string; paid_kes: number }>`select status, paid_kes from invoices where id = ${"inv_p"}`;
+    assert.equal(inv?.status, "partial");
+    assert.equal(inv?.paid_kes, 500);
+  } finally {
+    await close();
+  }
+});

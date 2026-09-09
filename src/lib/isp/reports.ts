@@ -18,8 +18,8 @@ function groupDaily(rows: Array<{ paid_at: string; amount_kes: number }>) {
 }
 
 export async function loadReports(sql: Sql, tenantId: string) {
-  const invoices = await sql<{ status: string; due_date: string; amount_kes: number }>`
-    select status, due_date::text as due_date, amount_kes from invoices where tenant_id = ${tenantId}`;
+  const invoices = await sql<{ status: string; due_date: string; amount_kes: number; paid_kes: number }>`
+    select status, due_date::text as due_date, amount_kes, paid_kes from invoices where tenant_id = ${tenantId}`;
   const aging = tallyAging(invoices);
   const pays = await sql<{ paid_at: string; amount_kes: number }>`
     select paid_at::text as paid_at, amount_kes from payments
@@ -66,9 +66,10 @@ export async function loadStatement(sql: Sql, tenantId: string, customerId: stri
   const invoices = await sql<{
     number: string;
     amount_kes: number;
+    paid_kes: number;
     status: string;
     due_date: string;
-  }>`select number, amount_kes, status, due_date::text as due_date
+  }>`select number, amount_kes, paid_kes, status, due_date::text as due_date
      from invoices where tenant_id = ${tenantId} and customer_id = ${customerId} order by issued_at desc`;
   const payments = await sql<{
     reference: string;

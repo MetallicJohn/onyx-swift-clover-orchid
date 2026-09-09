@@ -5,9 +5,9 @@ import { Field, Input, Select } from "@/components/ui/input";
 import { getDashboard, renameTenant } from "@/lib/isp/server";
 import { getKopokopo, saveKopokopo, testKopokopo } from "@/lib/isp/server-kopo";
 import { getMpesa, saveMpesa, savePublicBase, testMpesa } from "@/lib/isp/server-mpesa";
-import { getPlan, listTicketStaff, setPlan } from "@/lib/isp/server-more";
-import { checkSmsAccount, getMessaging, listProviders, saveMessaging, testMessaging, toggleProvider, workspaceSlug } from "@/lib/isp/server-ops";
-import { cn } from "@/lib/utils";
+import { getPlan, listTicketStaff, recordPlanPayment, sendPlanStk, setPlan, createStaffAccount, changeMemberRole } from "@/lib/isp/server-more";
+import { checkSmsAccount, confirmStk, getMessaging, listProviders, saveMessaging, testMessaging, toggleProvider, workspaceSlug } from "@/lib/isp/server-ops";
+import { cn, kes } from "@/lib/utils";
 import type { Workspace } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app/settings")({ component: SettingsPage });
@@ -109,8 +109,19 @@ function SettingsPage() {
   const [publicBase, setPublicBase] = useState("");
   const [mpesaCallback, setMpesaCallback] = useState("");
   const [kopoCallback, setKopoCallback] = useState("");
-  const [plan, setPlanState] = useState<{ plan: string; status: string; max_customers: number; max_routers: number; monthly_kes: number; period_end: string | null } | null>(null);
-  const [staff, setStaff] = useState<{ user_id: string; role: string; name: string }[]>([]);
+  const [plan, setPlanState] = useState<Awaited<ReturnType<typeof getPlan>> | null>(null);
+  const [staff, setStaff] = useState<{ user_id: string; role: string; name: string; email?: string }[]>([]);
+  const [staffForm, setStaffForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "technician",
+  });
+  const [staffErr, setStaffErr] = useState<string | null>(null);
+  const [staffBusy, setStaffBusy] = useState(false);
+  const [planRef, setPlanRef] = useState("");
+  const [planStk, setPlanStk] = useState<string | null>(null);
+  const [planErr, setPlanErr] = useState<string | null>(null);
 
   async function load() {
     const [d, s, p, m, k, daraja, sub, st] = await Promise.all([
@@ -569,47 +580,270 @@ function SettingsPage() {
       ) : null}
 
       {tab === "plan" ? (
-        <div className="grid gap-3 rounded-xl border border-border bg-surface p-4">
+        <div className="space-y-4">
           <p className="text-sm text-muted">
-            Platform subscription for this ISP tenant. Customer billing stays on the Billing page.
+            Gridline subscription for this ISP. Customer invoices stay on Billing. Paid plans issue an invoice and activate after M-Pesa (Stripe is not used).
           </p>
+          {planErr ? <p className="text-sm text-danger">{planErr}</p> : null}
+          {saved && tab === "plan" ? <p className="text-sm text-accent">{saved}</p> : null}
           {plan ? (
-            <p className="text-sm">
-              Current: <strong>{plan.plan}</strong> ({plan.status}) · {plan.max_customers} customers · {plan.max_routers}{" "}
-              routers · KES {plan.monthly_kes}/mo
-            </p>
+            <div className="rounded-xl border border-border bg-surface p-4 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  Current: <strong className="capitalize">{plan.plan}</strong> ({plan.status}) · {plan.max_customers} customers ·{" "}
+                  {plan.max_routers} routers
+                </div>
+                <div className="text-muted">
+                  {plan.plan === "trial"
+                    ? plan.trial_expired
+                      ? "Trial ended"
+                      : `${plan.days_left} day${plan.days_left === 1 ? "" : "s"} left`
+                    : plan.period_end
+                      ? `Renews ${plan.period_end.slice(0, 10)}`
+                      : null}
+                </div>
+              </div>
+            </div>
           ) : null}
-          <div className="flex flex-wrap gap-2">
-            {(["trial", "starter", "growth"] as const).map((p) => (
-              <Button
-                key={p}
-                variant={plan?.plan === p ? "default" : "secondary"}
-                onClick={async () => {
-                  const r = await setPlan({ data: { plan: p } });
-                  setPlanState(r);
-                  setSaved(`Plan set to ${p}`);
-                }}
-              >
-                {p}
-              </Button>
-            ))}
+          <div className="grid gap-3 md:grid-cols-3">
+            {(plan?.catalog ?? []).map((p) => {
+              const current = plan?.plan === p.code && !plan.pending_plan;
+              const pending = plan?.pending_plan === p.code;
+              return (
+                <div key={p.code} className="flex flex-col rounded-xl border border-border bg-surface p-4">
+                  <div className="text-xs tracking-wide text-accent uppercase">{p.label}</div>
+                  <div className="mt-1 font-mono text-2xl">{p.monthly_kes ? kes(p.monthly_kes) : "Free"}</div>
+                  <p className="mt-1 text-sm text-muted">{p.blurb}</p>
+                  <p className="mt-2 text-xs text-subtle">
+                    {p.max_customers} customers · {p.max_routers} routers
+                  </p>
+                  <Button
+                    className="mt-4"
+                    variant={current ? "default" : "secondary"}
+                    disabled={current}
+                    onClick={async () => {
+                      setPlanErr(null);
+                      setSaved(null);
+                      try {
+                        const r = await setPlan({ data: { plan: p.code } });
+                        setPlanState(r);
+                        setSaved(
+                          p.monthly_kes === 0
+                            ? "Trial is active."
+                            : r.invoice
+                              ? `Invoice ${r.invoice.number} issued. Pay to activate ${p.label}.`
+                              : `Plan set to ${p.label}.`,
+                        );
+                      } catch (ex) {
+                        setPlanErr(ex instanceof Error ? ex.message : "Plan change failed");
+                      }
+                    }}
+                  >
+                    {current ? "Current" : pending ? "Pay to activate" : p.monthly_kes === 0 ? "Switch to trial" : "Select"}
+                  </Button>
+                </div>
+              );
+            })}
           </div>
+          {plan?.invoice ? (
+            <form
+              className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setPlanErr(null);
+                try {
+                  const r = await recordPlanPayment({
+                    data: { invoice_id: plan.invoice!.id, provider: "mpesa", reference: planRef },
+                  });
+                  setPlanState(r);
+                  setPlanRef("");
+                  setPlanStk(null);
+                  setSaved(`Paid ${plan.invoice!.number}. ${r.plan} is active.`);
+                } catch (ex) {
+                  setPlanErr(ex instanceof Error ? ex.message : "Payment failed");
+                }
+              }}
+            >
+              <h2 className="font-medium">Pay {plan.invoice.number}</h2>
+              <p className="text-sm text-muted">
+                {plan.invoice.plan} · {kes(plan.invoice.amount_kes)} · due {plan.invoice.due_date}. The plan does not change until this is paid.
+              </p>
+              <Field label="M-Pesa receipt">
+                <Input required placeholder="QK7X…" value={planRef} onChange={(e) => setPlanRef(e.target.value)} />
+              </Field>
+              {planErr ? <p className="text-sm text-danger">{planErr}</p> : null}
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit">Record payment</Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={async () => {
+                    setPlanErr(null);
+                    try {
+                      const r = await sendPlanStk({ data: { invoice_id: plan.invoice!.id, provider: "mpesa" } });
+                      setPlanStk(r.checkout_id);
+                      if (r.note) setPlanErr(r.note);
+                    } catch (ex) {
+                      setPlanErr(ex instanceof Error ? ex.message : "STK failed");
+                    }
+                  }}
+                >
+                  Send STK to company phone
+                </Button>
+              </div>
+              {planStk ? (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-mono">{planStk}</span>
+                  {planStk.startsWith("ws_") ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={async () => {
+                        await confirmStk({ data: { checkout_id: planStk } });
+                        setPlanStk(null);
+                        setPlanState(await getPlan());
+                        setSaved("Platform invoice paid. Plan is active.");
+                      }}
+                    >
+                      Simulate Daraja callback
+                    </Button>
+                  ) : (
+                    <span className="text-muted">Waiting for the live callback.</span>
+                  )}
+                </div>
+              ) : null}
+            </form>
+          ) : null}
+          {plan?.invoices?.length ? (
+            <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border text-sm">
+              {plan.invoices.map((inv) => (
+                <li key={inv.id} className="flex items-center justify-between bg-surface px-4 py-3">
+                  <span>
+                    {inv.number} · {inv.plan} · due {inv.due_date}
+                  </span>
+                  <span className="font-mono">
+                    {kes(inv.amount_kes)} · {inv.status}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : null}
 
       {tab === "staff" ? (
-        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
-          {staff.map((s) => (
-            <li key={s.user_id} className="flex items-center justify-between bg-surface px-4 py-3">
-              <div>
-                <div className="font-medium">{s.name}</div>
-                <div className="text-xs text-muted">{s.user_id}</div>
-              </div>
-              <span className="text-sm text-muted">{s.role}</span>
-            </li>
-          ))}
-          {staff.length === 0 ? <li className="px-4 py-6 text-sm text-muted">No members yet.</li> : null}
-        </ul>
+        <div className="space-y-6">
+          <form
+            className="grid gap-3 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setStaffErr(null);
+              setStaffBusy(true);
+              try {
+                await createStaffAccount({
+                  data: {
+                    name: staffForm.name,
+                    email: staffForm.email,
+                    password: staffForm.password,
+                    role: staffForm.role,
+                  },
+                });
+                setStaffForm({ name: "", email: "", password: "", role: "technician" });
+                setSaved("Staff login created. They can sign in with that email and password.");
+                await load();
+              } catch (err) {
+                setStaffErr(err instanceof Error ? err.message : "Could not create staff");
+              } finally {
+                setStaffBusy(false);
+              }
+            }}
+          >
+            <div className="sm:col-span-2">
+              <h2 className="font-medium">Create a staff login</h2>
+              <p className="mt-1 text-sm text-muted">
+                They sign in at the same Gridline login with this email and password. No extra signup needed.
+              </p>
+            </div>
+            <Field label="Name">
+              <Input
+                required
+                value={staffForm.name}
+                onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })}
+                placeholder="Kamau Otieno"
+              />
+            </Field>
+            <Field label="Email">
+              <Input
+                type="email"
+                required
+                value={staffForm.email}
+                onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })}
+                placeholder="tech@isp.co.ke"
+              />
+            </Field>
+            <Field label="Temporary password">
+              <Input
+                type="password"
+                required
+                minLength={8}
+                value={staffForm.password}
+                onChange={(e) => setStaffForm({ ...staffForm, password: e.target.value })}
+                autoComplete="new-password"
+                placeholder="At least 8 characters"
+              />
+            </Field>
+            <Field label="Role">
+              <Select
+                value={staffForm.role}
+                onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })}
+              >
+                <option value="isp_admin">Admin</option>
+                <option value="finance">Finance</option>
+                <option value="customer_care">Customer care</option>
+                <option value="network_engineer">Network engineer</option>
+                <option value="technician">Technician</option>
+                <option value="isp_owner">Owner</option>
+              </Select>
+            </Field>
+            {staffErr ? <p className="text-sm text-danger sm:col-span-2">{staffErr}</p> : null}
+            <div className="sm:col-span-2">
+              <Button type="submit" disabled={staffBusy}>
+                {staffBusy ? "Creating…" : "Create login"}
+              </Button>
+            </div>
+          </form>
+
+          <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
+            {staff.map((s) => (
+              <li key={s.user_id} className="flex flex-col gap-2 bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="font-medium">{s.name}</div>
+                  <div className="text-xs text-muted">{s.email || s.user_id}</div>
+                </div>
+                <Select
+                  className="sm:w-52"
+                  value={s.role}
+                  onChange={async (e) => {
+                    try {
+                      await changeMemberRole({ data: { user_id: s.user_id, role: e.target.value } });
+                      await load();
+                    } catch (err) {
+                      setStaffErr(err instanceof Error ? err.message : "Could not change role");
+                    }
+                  }}
+                >
+                  <option value="isp_owner">Owner</option>
+                  <option value="isp_admin">Admin</option>
+                  <option value="finance">Finance</option>
+                  <option value="customer_care">Customer care</option>
+                  <option value="network_engineer">Network engineer</option>
+                  <option value="technician">Technician</option>
+                </Select>
+              </li>
+            ))}
+            {staff.length === 0 ? <li className="px-4 py-6 text-sm text-muted">No members yet.</li> : null}
+          </ul>
+        </div>
       ) : null}
     </div>
   );

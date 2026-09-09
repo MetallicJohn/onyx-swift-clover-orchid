@@ -21,7 +21,9 @@ export function wireModules() {
     const ispName = String(p.isp_name || "");
     const payId = String(p.payment_id || "");
     const amount = Number(p.amount_kes || 0);
-    await restorePaidAccess(sql, tenantId, customerId);
+    if (p.invoice_paid !== false) {
+      await restorePaidAccess(sql, tenantId, customerId);
+    }
     await awardLoyalty(sql, tenantId, customerId, amount, "payment", payId);
     try {
       await creditReseller(sql, tenantId, customerId, amount, payId);

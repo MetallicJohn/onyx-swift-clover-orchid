@@ -18,9 +18,11 @@ import {
   Wifi,
   Wrench,
   X,
+  Shield,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { UserButton } from "@/lib/auth/gates";
+import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -44,25 +46,35 @@ const NAV = [
   { to: "/app/settings", label: "Settings", icon: Settings },
 ];
 
+const subscribeToNothing = () => () => {};
+
 export function AppShell({
   tenantName,
   role,
   tenants,
   activeTenantId,
   onSwitchTenant,
+  platformAdmin,
 }: {
   tenantName?: string;
   role?: string;
   tenants?: { id: string; name: string }[];
   activeTenantId?: string;
   onSwitchTenant?: (id: string) => void;
+  platformAdmin?: boolean;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [open, setOpen] = useState(false);
+  const nav = platformAdmin ? [...NAV, { to: "/app/admin", label: "Superadmin", icon: Shield }] : NAV;
+  const gateSession = useSyncExternalStore(
+    subscribeToNothing,
+    hasGateSessionMarker,
+    () => false,
+  );
 
   const Nav = () => (
     <nav className="flex flex-col gap-0.5">
-      {NAV.map((item) => {
+      {nav.map((item) => {
         const active = item.to === "/app" ? pathname === "/app" : pathname.startsWith(item.to);
         const Icon = item.icon;
         return (
@@ -135,7 +147,14 @@ export function AppShell({
             <Menu className="size-5" />
           </button>
           <div className="hidden text-sm text-muted md:block">Operations</div>
-          <UserButton />
+          <div className="flex items-center gap-3">
+            {gateSession ? (
+              <Link to="/login" className="text-sm text-muted hover:text-fg">
+                ISP login
+              </Link>
+            ) : null}
+            <UserButton />
+          </div>
         </header>
         <main className="p-4 md:p-6">
           <Outlet />

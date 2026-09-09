@@ -19,11 +19,9 @@ function Home() {
         </div>
         <div className="flex h-11 items-center gap-3 text-sm">
           {isPending ? <span className="size-8 animate-pulse rounded-full bg-elevated" /> : null}
-          <SignedOut>
-            <Link to="/login" className="text-muted hover:text-fg">
-              Sign in
-            </Link>
-          </SignedOut>
+          <Link to="/login" className="text-muted hover:text-fg">
+            ISP login
+          </Link>
           <SignedIn>
             <Link to="/app" className="rounded-md bg-accent px-4 py-2 font-medium text-accent-fg">
               Open console
@@ -56,6 +54,12 @@ function Home() {
               className="inline-flex h-12 items-center gap-2 rounded-md bg-accent px-5 font-medium text-accent-fg"
             >
               Continue to console <ArrowRight className="size-4" />
+            </Link>
+            <Link
+              to="/login"
+              className="inline-flex h-12 items-center rounded-md border border-border px-5 font-medium"
+            >
+              ISP login
             </Link>
           </SignedIn>
           <Link to="/portal" className="inline-flex h-12 items-center rounded-md border border-border px-5 font-medium">

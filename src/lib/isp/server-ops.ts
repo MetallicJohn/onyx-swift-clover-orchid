@@ -218,11 +218,16 @@ export const toggleProvider = createServerFn({ method: "POST" })
 
 export const sendStk = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { invoice_id: string; provider: string }) => d)
+  .validator((d: { invoice_id: string; provider: string; amount_kes?: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "payments.manage");
-    return createStkIntent(sql, { tenantId, invoiceId: data.invoice_id, provider: data.provider || "mpesa" });
+    return createStkIntent(sql, {
+      tenantId,
+      invoiceId: data.invoice_id,
+      provider: data.provider || "mpesa",
+      amountKes: data.amount_kes,
+    });
   });
 
 export const confirmStk = createServerFn({ method: "POST" })
@@ -428,9 +433,13 @@ export const getPortalHome = createServerFn({ method: "POST" })
       id: string;
       number: string;
       amount_kes: number;
+      paid_kes: number;
+      remaining_kes: number;
       status: string;
       due_date: string;
-    }>`select id, number, amount_kes, status, due_date::text as due_date
+    }>`select id, number, amount_kes, paid_kes,
+              case when status = 'paid' then 0 else greatest(0, amount_kes - paid_kes) end as remaining_kes,
+              status, due_date::text as due_date
        from invoices where tenant_id = ${ctx.tenantId} and customer_id = ${ctx.customer.id}
        order by issued_at desc`;
     const [loy] = await sql<{ points: number }>`

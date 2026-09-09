@@ -1,5 +1,5 @@
 import { nid } from "../utils.ts";
-import { generateRecurringInvoices, issueInvoice } from "./billing";
+import { generateRecurringInvoices } from "./billing";
 import { queueEmail, writeInbox } from "./inbox";
 import { channelAllowed, deliverChannel, getMessagingSettings } from "./messaging";
 import type { BillingEvent, NotifyChannel } from "./types";
@@ -227,16 +227,16 @@ export async function notifyCustomerEvent(
 }
 
 export async function runBillingCycle(sql: Sql, tenantId: string, ispName: string) {
-  const issued = await generateRecurringInvoices(sql, tenantId, async (customerId, amountKes, dueDate) => {
-    const inv = await issueInvoice(sql, { tenantId, customerId, amountKes, dueDate });
-    await notifyCustomerEvent(sql, tenantId, ispName, customerId, "invoice.created", inv.id, {
+  const created = await generateRecurringInvoices(sql, tenantId);
+  for (const inv of created) {
+    await notifyCustomerEvent(sql, tenantId, ispName, inv.customerId, "invoice.created", inv.id, {
       customer_name: "",
       invoice_number: inv.number,
-      amount: `KES ${amountKes}`,
-      due_date: dueDate,
+      amount: `KES ${inv.amount_kes}`,
+      due_date: inv.dueDate,
     });
-  });
+  }
   const { applyAccessPolicy } = await import("./access-policy.ts");
   const access = await applyAccessPolicy(sql, tenantId, ispName);
-  return { issued, ...access };
+  return { issued: created.length, ...access };
 }

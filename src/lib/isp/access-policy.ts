@@ -37,7 +37,7 @@ export async function customerHasOverdue(
   const rows = await sql<{ id: string }>`
     select id from invoices
     where tenant_id = ${tenantId} and customer_id = ${customerId}
-      and status in ('issued','due','overdue')
+      and status in ('issued','due','overdue','partial')
       and due_date::text < ${today}
     limit 1`;
   return Boolean(rows[0]);
@@ -167,7 +167,8 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
     status: string;
     due_date: string;
   }>`select id, customer_id, number, amount_kes, status, due_date::text as due_date
-     from invoices where tenant_id = ${tenantId} and status in ('issued','due','overdue')`;
+     from invoices where tenant_id = ${tenantId} and status in ('issued','due','overdue','partial')
+       and amount_kes > paid_kes`;
 
   const today = new Date().toISOString().slice(0, 10);
   let due = 0;
@@ -189,7 +190,7 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
       notices += await notify(sql, tenantId, ispName, inv.customer_id, "invoice.due", inv.id, vars);
       due += 1;
     }
-    if (inv.due_date < today && inv.status !== "overdue") {
+    if (inv.due_date < today && inv.status !== "overdue" && inv.status !== "partial") {
       await sql`update invoices set status = 'overdue' where id = ${inv.id} and tenant_id = ${tenantId}`;
       notices += await notify(sql, tenantId, ispName, inv.customer_id, "invoice.overdue", inv.id, vars);
       overdue += 1;

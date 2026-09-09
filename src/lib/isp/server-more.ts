@@ -5,10 +5,11 @@ import { generateMikrotikScript } from "./ai-mikrotik";
 import { redeemLoyalty } from "./loyalty";
 import { assertPermission } from "./rbac";
 import { attachCustomerReseller } from "./resellers";
-import { changePlan, ensureSubscription, type PlanCode } from "./saas";
+import { applySaasPayment, createSaasStkIntent, loadPlanDesk, requestPlanChange, type PlanCode } from "./saas";
 import { assignTicket, commentTicket, listStaff } from "./tickets";
 import { loadAudit, loadReports, loadStatement } from "./reports";
 import { addBranch, addMemberByEmail, listBranches, setMemberRole } from "./members";
+import { addStaffMember, createIspWithOwner, isPlatformAdmin, listAllTenants } from "./accounts";
 import { requireWorkspace as requireWs } from "./workspace";
 
 export const assignOpenTicket = createServerFn({ method: "POST" })
@@ -86,7 +87,7 @@ export const getPlan = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, tenantId } = await requireWs(context.userId);
-    return ensureSubscription(sql, tenantId);
+    return loadPlanDesk(sql, tenantId);
   });
 
 export const setPlan = createServerFn({ method: "POST" })
@@ -95,7 +96,36 @@ export const setPlan = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "settings.manage");
-    return changePlan(sql, tenantId, data.plan);
+    await requestPlanChange(sql, tenantId, data.plan);
+    return loadPlanDesk(sql, tenantId);
+  });
+
+export const recordPlanPayment = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { invoice_id: string; provider: string; reference: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
+    await applySaasPayment(sql, {
+      tenantId,
+      invoiceId: data.invoice_id,
+      provider: data.provider || "mpesa",
+      reference: data.reference.trim(),
+    });
+    return loadPlanDesk(sql, tenantId);
+  });
+
+export const sendPlanStk = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { invoice_id: string; provider: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
+    return createSaasStkIntent(sql, {
+      tenantId,
+      invoiceId: data.invoice_id,
+      provider: data.provider || "mpesa",
+    });
   });
 
 export const askRouterOs = createServerFn({ method: "POST" })
@@ -149,12 +179,68 @@ export const createBranch = createServerFn({ method: "POST" })
 
 export const inviteMember = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { email: string; role: string }) => d)
+  .validator((d: { email: string; role: string; name?: string; password?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "settings.manage");
+    if (data.password) {
+      return addStaffMember(sql, tenantId, data);
+    }
     return addMemberByEmail(sql, tenantId, data.email, data.role);
   });
+
+export const createStaffAccount = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { email: string; role: string; name: string; password: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
+    if (!data.password || data.password.length < 8) {
+      throw new Error("Password must be at least 8 characters");
+    }
+    return addStaffMember(sql, tenantId, data);
+  });
+
+export const platformStatus = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { getSql } = await import("@/lib/db");
+    const { applyRls } = await import("./rls");
+    const sql = await getSql();
+    await applyRls(sql, { bypass: true });
+    return { admin: await isPlatformAdmin(sql, context.userId) };
+  });
+
+export const listPlatformTenants = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { getSql } = await import("@/lib/db");
+    const { applyRls } = await import("./rls");
+    const sql = await getSql();
+    await applyRls(sql, { bypass: true });
+    if (!(await isPlatformAdmin(sql, context.userId))) throw new Error("Forbidden");
+    return { tenants: await listAllTenants(sql) };
+  });
+
+export const createIspAsAdmin = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(
+    (d: { isp_name: string; owner_name: string; owner_email: string; owner_password: string }) => d,
+  )
+  .handler(async ({ context, data }) => {
+    const { getSql } = await import("@/lib/db");
+    const { applyRls } = await import("./rls");
+    const sql = await getSql();
+    await applyRls(sql, { bypass: true });
+    if (!(await isPlatformAdmin(sql, context.userId))) throw new Error("Forbidden");
+    return createIspWithOwner(sql, {
+      ispName: data.isp_name,
+      ownerName: data.owner_name,
+      ownerEmail: data.owner_email,
+      ownerPassword: data.owner_password,
+    });
+  });
+
 
 export const changeMemberRole = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
@@ -164,5 +250,3 @@ export const changeMemberRole = createServerFn({ method: "POST" })
     assertPermission(role, "settings.manage");
     return setMemberRole(sql, tenantId, data.user_id, data.role);
   });
-
-

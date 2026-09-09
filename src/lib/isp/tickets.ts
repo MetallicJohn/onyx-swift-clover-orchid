@@ -39,8 +39,8 @@ export async function commentTicket(sql: Sql, tenantId: string, ticketId: string
 }
 
 export async function listStaff(sql: Sql, tenantId: string) {
-  return sql<{ user_id: string; role: string; name: string }>`
-    select m.user_id, m.role, coalesce(u.name, m.user_id) as name
+  return sql<{ user_id: string; role: string; name: string; email: string }>`
+    select m.user_id, m.role, coalesce(u.name, m.user_id) as name, coalesce(u.email, '') as email
     from tenant_members m
     left join "user" u on u.id = m.user_id
     where m.tenant_id = ${tenantId}

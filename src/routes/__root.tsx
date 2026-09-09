@@ -7,6 +7,16 @@ import appCss from "../styles.css?url";
 const APP_NAME = "Gridline";
 
 const fetchSessionUser = createServerFn({ method: "GET" }).handler(async () => {
+  const { getRequest } = await import("@tanstack/react-start/server");
+  const { GATE_IDENTITY_HEADER } = await import("@/lib/auth/gate-identity.server");
+  const request = getRequest();
+  const headers = request?.headers;
+  // Gate identity on a cookie-only request would replace an email/password
+  // session. Let the client attach the operator bearer (or materialize the
+  // Grok viewer) instead of resolving here.
+  if (headers?.get(GATE_IDENTITY_HEADER) && !headers.get("authorization")) {
+    return null;
+  }
   const { getSessionUser } = await import("@/lib/auth/verify.server");
   const u = await getSessionUser();
   return u ? { id: u.id, email: u.email } : null;

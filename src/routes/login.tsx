@@ -1,43 +1,74 @@
 import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { Activity } from "lucide-react";
-import { useState } from "react";
-import { GROK_PROVIDERS, authClient, authEnabled, signIn } from "@/lib/auth/client";
+import { useState, useSyncExternalStore } from "react";
+import { GROK_PROVIDERS, authClient, authEnabled, getBearerToken, signIn } from "@/lib/auth/client";
+import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Field, Input } from "@/components/ui/input";
+import { hasOperatorBearer, loginPageAction, rememberAuthSession } from "@/lib/isp/auth-session";
+import { bootstrapWorkspace } from "@/lib/isp/server";
 
 export const Route = createFileRoute("/login")({ component: Login });
 
+const subscribeToNothing = () => () => {};
+
 function Login() {
   const { user, isPending } = useCurrentUserState();
+  const gateSession = useSyncExternalStore(
+    subscribeToNothing,
+    hasGateSessionMarker,
+    () => false,
+  );
+  const [name, setName] = useState("");
+  const [ispName, setIspName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"in" | "up">("in");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (isPending) {
-    return <div className="min-h-dvh bg-bg" />;
-  }
-  if (user) return <Navigate to="/app" />;
+  const action = loginPageAction({
+    isPending,
+    hasUser: Boolean(user),
+    hasOperatorBearer: hasOperatorBearer() || Boolean(getBearerToken()),
+    hasGateSession: gateSession,
+  });
+
+  if (action === "go_app") return <Navigate to="/app" />;
+
+  const switching = Boolean(user && gateSession);
 
   async function onEmail(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
+      const fetchOptions = {
+        onSuccess: (ctx: { data?: { token?: string | null }; response: Response }) => {
+          rememberAuthSession({ data: ctx.data }, ctx.response.headers);
+        },
+      };
       if (mode === "up") {
-        const { error: err } = await authClient.signUp.email({
+        const result = await authClient.signUp.email({
           email,
           password,
-          name: email.split("@")[0],
+          name: name.trim() || email.split("@")[0] || "Operator",
+          fetchOptions,
         });
-        if (err) throw new Error(err.message);
+        if (result.error) throw new Error(result.error.message || "Could not create the account");
+        rememberAuthSession(result);
+        try {
+          await bootstrapWorkspace({ data: { isp_name: ispName.trim() } });
+        } catch {
+          /* first /app load also provisions the workspace */
+        }
       } else {
-        const { error: err } = await authClient.signIn.email({ email, password });
-        if (err) throw new Error(err.message);
+        const result = await authClient.signIn.email({ email, password, fetchOptions });
+        if (result.error) throw new Error(result.error.message || "Invalid email or password");
+        rememberAuthSession(result);
       }
-      window.location.href = "/app";
+      window.location.assign("/app");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed");
     } finally {
@@ -54,56 +85,105 @@ function Login() {
           </span>
           <span className="text-lg font-semibold tracking-tight">Gridline</span>
         </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">Sign in to your ISP</h1>
-        <p className="mt-2 text-sm text-muted">Operations, billing, and network control in one console.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {mode === "up" ? "Create your ISP" : "Sign in to your ISP"}
+        </h1>
+        <p className="mt-2 text-sm text-muted">
+          {mode === "up"
+            ? "Your email and password become the owner login for this workspace."
+            : switching
+              ? "Enter the email and password from signup or the login your superadmin created. That account replaces this Grok view."
+              : "Use the email and password from signup, or the owner/staff login your superadmin created."}
+        </p>
 
         {authEnabled ? (
           <div className="mt-6 space-y-3">
-            {GROK_PROVIDERS.map((p) => (
-              <Button
-                key={p.providerId}
-                type="button"
-                variant="secondary"
-                className="w-full"
-                onClick={() => signIn(p.providerId, { callbackURL: "/app" })}
-              >
-                Continue with {p.label}
-              </Button>
-            ))}
-            <div className="relative py-2 text-center text-xs text-subtle">
-              <span className="bg-bg px-2">or email</span>
-              <div className="absolute top-1/2 right-0 left-0 -z-10 h-px bg-border" />
-            </div>
+            {!switching && GROK_PROVIDERS.length > 0 ? (
+              <>
+                {GROK_PROVIDERS.map((p) => (
+                  <Button
+                    key={p.providerId}
+                    type="button"
+                    variant="secondary"
+                    className="w-full"
+                    onClick={() => signIn(p.providerId, { callbackURL: "/app" })}
+                  >
+                    Continue with {p.label}
+                  </Button>
+                ))}
+                <div className="relative py-2 text-center text-xs text-subtle">
+                  <span className="bg-bg px-2">or email</span>
+                  <div className="absolute top-1/2 right-0 left-0 -z-10 h-px bg-border" />
+                </div>
+              </>
+            ) : null}
             <form className="grid gap-3" onSubmit={onEmail}>
-              <Input
-                type="email"
-                required
-                placeholder="you@isp.co.ke"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
-              />
-              <Input
-                type="password"
-                required
-                minLength={8}
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete={mode === "up" ? "new-password" : "current-password"}
-              />
+              {mode === "up" ? (
+                <>
+                  <Field label="Your name">
+                    <Input
+                      required
+                      placeholder="Jane Wanjiku"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      autoComplete="name"
+                      name="name"
+                    />
+                  </Field>
+                  <Field label="ISP name">
+                    <Input
+                      required
+                      placeholder="Imani Networks"
+                      value={ispName}
+                      onChange={(e) => setIspName(e.target.value)}
+                      name="isp_name"
+                    />
+                  </Field>
+                </>
+              ) : null}
+              <Field label="Email">
+                <Input
+                  type="email"
+                  required
+                  placeholder="you@isp.co.ke"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  name="email"
+                />
+              </Field>
+              <Field label="Password">
+                <Input
+                  type="password"
+                  required
+                  minLength={8}
+                  placeholder="At least 8 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete={mode === "up" ? "new-password" : "current-password"}
+                  name="password"
+                />
+              </Field>
               {error ? <p className="text-sm text-danger">{error}</p> : null}
               <Button type="submit" className="w-full" disabled={busy}>
-                {busy ? "Please wait…" : mode === "up" ? "Create account" : "Sign in with email"}
+                {busy ? "Please wait…" : mode === "up" ? "Create account" : "Sign in"}
               </Button>
             </form>
             <button
               type="button"
               className="w-full text-center text-sm text-muted hover:text-fg"
-              onClick={() => setMode(mode === "up" ? "in" : "up")}
+              onClick={() => {
+                setMode(mode === "up" ? "in" : "up");
+                setError(null);
+              }}
             >
               {mode === "up" ? "Already have an account? Sign in" : "New ISP? Create an account"}
             </button>
+            {switching ? (
+              <Link to="/app" className="block w-full text-center text-sm text-muted hover:text-fg">
+                Stay in the current console
+              </Link>
+            ) : null}
           </div>
         ) : (
           <p className="mt-6 text-sm text-muted">Sign-in is disabled.</p>

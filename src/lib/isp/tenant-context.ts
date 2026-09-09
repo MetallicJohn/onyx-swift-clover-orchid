@@ -1,8 +1,10 @@
-import { getSql } from "../db.ts";
 import { permissionsFor, type Permission } from "./rbac";
 import type { TenantRole, Workspace } from "./types";
 
-type Sql = Awaited<ReturnType<typeof getSql>>;
+type Sql = {
+  <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
+  query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
+};
 
 export type TenantContext = Workspace & {
   role: TenantRole;

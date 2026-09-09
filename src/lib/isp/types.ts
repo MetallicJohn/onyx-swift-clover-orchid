@@ -89,9 +89,15 @@ export type InvoiceRow = {
   customer_name: string;
   number: string;
   amount_kes: number;
+  subtotal_kes: number;
+  tax_kes: number;
+  tax_rate: number;
+  paid_kes: number;
+  remaining_kes: number;
   status: string;
   due_date: string;
   issued_at: string;
+  notes?: string;
 };
 
 export type PaymentRow = {

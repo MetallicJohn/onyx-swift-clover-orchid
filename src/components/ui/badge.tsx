@@ -35,7 +35,7 @@ export function Badge({
 export function statusTone(status: string) {
   const s = status.toLowerCase();
   if (["active", "paid", "connected", "resolved", "closed", "confirmed"].includes(s)) return "ok";
-  if (["grace", "due", "issued", "pending", "assigned", "travelling", "degraded", "on_site"].includes(s))
+  if (["grace", "due", "issued", "pending", "assigned", "travelling", "degraded", "on_site", "partial"].includes(s))
     return "warn";
   if (["suspended", "overdue", "offline", "urgent", "terminated"].includes(s)) return "danger";
   return "muted";

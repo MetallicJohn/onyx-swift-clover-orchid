@@ -25,3 +25,15 @@ test("tally sums amounts per bucket", () => {
   assert.equal(t.paid.amount, 100);
   assert.equal(t.current.amount, 50);
 });
+
+test("tally uses remaining balance for unpaid invoices", () => {
+  const t = tallyAging(
+    [
+      { status: "partial", due_date: "2026-09-30", amount_kes: 2500, paid_kes: 1000 },
+      { status: "paid", due_date: "2026-01-01", amount_kes: 3500, paid_kes: 3500 },
+    ],
+    new Date("2026-09-09"),
+  );
+  assert.equal(t.current.amount, 1500);
+  assert.equal(t.paid.amount, 3500);
+});

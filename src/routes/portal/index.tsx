@@ -112,8 +112,8 @@ function PortalHome() {
               <div className="text-xs text-muted">Due {inv.due_date}</div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="font-mono text-sm">{kes(inv.amount_kes)}</span>
-              {inv.status === "paid" ? (
+              <span className="font-mono text-sm">{kes(inv.remaining_kes ?? inv.amount_kes)}</span>
+              {inv.status === "paid" || (inv.remaining_kes ?? 0) <= 0 ? (
                 <Badge tone="ok">paid</Badge>
               ) : (
                 <Button
