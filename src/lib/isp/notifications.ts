@@ -1,4 +1,6 @@
 import { nid } from "@/lib/utils";
+import { provisionServiceAccess } from "./access";
+import { generateRecurringInvoices, issueInvoice } from "./billing";
 import { queueEmail, writeInbox } from "./inbox";
 import { channelAllowed, deliverChannel, getMessagingSettings } from "./messaging";
 import type { BillingEvent, NotifyChannel } from "./types";
@@ -226,6 +228,15 @@ export async function notifyCustomerEvent(
 }
 
 export async function runBillingCycle(sql: Sql, tenantId: string, ispName: string) {
+  const issued = await generateRecurringInvoices(sql, tenantId, async (customerId, amountKes, dueDate) => {
+    const inv = await issueInvoice(sql, { tenantId, customerId, amountKes, dueDate });
+    await notifyCustomerEvent(sql, tenantId, ispName, customerId, "invoice.created", inv.id, {
+      customer_name: "",
+      invoice_number: inv.number,
+      amount: `KES ${amountKes}`,
+      due_date: dueDate,
+    });
+  });
   const invoices = await sql<{
     id: string;
     customer_id: string;
@@ -282,10 +293,12 @@ export async function runBillingCycle(sql: Sql, tenantId: string, ispName: strin
       const svcVars: NotifyVars = { ...vars, service_name: svc.name };
       if (daysPast <= svc.grace_days && svc.status === "active") {
         await sql`update services set status = 'grace' where id = ${svc.id} and tenant_id = ${tenantId}`;
+        await provisionServiceAccess(sql, tenantId, svc.id);
         notices += await notifyCustomerEvent(sql, tenantId, ispName, inv.customer_id, "grace.started", svc.id, svcVars);
         grace += 1;
       } else if (daysPast > svc.grace_days && svc.status !== "suspended") {
         await sql`update services set status = 'suspended' where id = ${svc.id} and tenant_id = ${tenantId}`;
+        await provisionServiceAccess(sql, tenantId, svc.id);
         notices += await notifyCustomerEvent(
           sql,
           tenantId,
@@ -300,5 +313,5 @@ export async function runBillingCycle(sql: Sql, tenantId: string, ispName: strin
     }
   }
 
-  return { due, overdue, grace, suspended, notices };
+  return { due, overdue, grace, suspended, notices, issued };
 }
