@@ -25,9 +25,11 @@ import { Route as AppNotificationsRouteImport } from './routes/app/notifications
 import { Route as AppPackagesRouteImport } from './routes/app/packages'
 import { Route as AppPartnersRouteImport } from './routes/app/partners'
 import { Route as AppRadiusRouteImport } from './routes/app/radius'
+import { Route as AppReportsRouteImport } from './routes/app/reports'
 import { Route as AppRoutersRouteImport } from './routes/app/routers'
 import { Route as AppServicesRouteImport } from './routes/app/services'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
+import { Route as AppStatementsRouteImport } from './routes/app/statements'
 import { Route as AppTicketsRouteImport } from './routes/app/tickets'
 import { Route as PortalIndexRouteImport } from './routes/portal/index'
 import { Route as ApiAgentAckRouteImport } from './routes/api/agent/ack'
@@ -36,6 +38,7 @@ import { Route as ApiAgentPullRouteImport } from './routes/api/agent/pull'
 import { Route as ApiAgentScriptRouteImport } from './routes/api/agent/script'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiV1HealthRouteImport } from './routes/api/v1/health'
+import { Route as ApiV1CronBillingRouteImport } from './routes/api/v1/cron/billing'
 import { Route as ApiWebhooksKopokopoSlugRouteImport } from './routes/api/webhooks/kopokopo/$slug'
 import { Route as ApiWebhooksMpesaSlugRouteImport } from './routes/api/webhooks/mpesa/$slug'
 
@@ -119,6 +122,11 @@ const AppRadiusRoute = AppRadiusRouteImport.update({
   path: '/radius',
   getParentRoute: () => AppRoute,
 } as any)
+const AppReportsRoute = AppReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppRoutersRoute = AppRoutersRouteImport.update({
   id: '/routers',
   path: '/routers',
@@ -132,6 +140,11 @@ const AppServicesRoute = AppServicesRouteImport.update({
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppStatementsRoute = AppStatementsRouteImport.update({
+  id: '/statements',
+  path: '/statements',
   getParentRoute: () => AppRoute,
 } as any)
 const AppTicketsRoute = AppTicketsRouteImport.update({
@@ -174,6 +187,11 @@ const ApiV1HealthRoute = ApiV1HealthRouteImport.update({
   path: '/api/v1/health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1CronBillingRoute = ApiV1CronBillingRouteImport.update({
+  id: '/api/v1/cron/billing',
+  path: '/api/v1/cron/billing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWebhooksKopokopoSlugRoute = ApiWebhooksKopokopoSlugRouteImport.update({
   id: '/api/webhooks/kopokopo/$slug',
   path: '/api/webhooks/kopokopo/$slug',
@@ -201,9 +219,11 @@ export interface FileRoutesByFullPath {
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
   '/app/radius': typeof AppRadiusRoute
+  '/app/reports': typeof AppReportsRoute
   '/app/routers': typeof AppRoutersRoute
   '/app/services': typeof AppServicesRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/statements': typeof AppStatementsRoute
   '/app/tickets': typeof AppTicketsRoute
   '/app/': typeof AppIndexRoute
   '/portal/': typeof PortalIndexRoute
@@ -213,6 +233,7 @@ export interface FileRoutesByFullPath {
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/v1/health': typeof ApiV1HealthRoute
+  '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
 }
@@ -230,9 +251,11 @@ export interface FileRoutesByTo {
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
   '/app/radius': typeof AppRadiusRoute
+  '/app/reports': typeof AppReportsRoute
   '/app/routers': typeof AppRoutersRoute
   '/app/services': typeof AppServicesRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/statements': typeof AppStatementsRoute
   '/app/tickets': typeof AppTicketsRoute
   '/app': typeof AppIndexRoute
   '/portal': typeof PortalIndexRoute
@@ -242,6 +265,7 @@ export interface FileRoutesByTo {
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/v1/health': typeof ApiV1HealthRoute
+  '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
 }
@@ -262,9 +286,11 @@ export interface FileRoutesById {
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
   '/app/radius': typeof AppRadiusRoute
+  '/app/reports': typeof AppReportsRoute
   '/app/routers': typeof AppRoutersRoute
   '/app/services': typeof AppServicesRoute
   '/app/settings': typeof AppSettingsRoute
+  '/app/statements': typeof AppStatementsRoute
   '/app/tickets': typeof AppTicketsRoute
   '/app/': typeof AppIndexRoute
   '/portal/': typeof PortalIndexRoute
@@ -274,6 +300,7 @@ export interface FileRoutesById {
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/v1/health': typeof ApiV1HealthRoute
+  '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
 }
@@ -295,9 +322,11 @@ export interface FileRouteTypes {
     | '/app/packages'
     | '/app/partners'
     | '/app/radius'
+    | '/app/reports'
     | '/app/routers'
     | '/app/services'
     | '/app/settings'
+    | '/app/statements'
     | '/app/tickets'
     | '/app/'
     | '/portal/'
@@ -307,6 +336,7 @@ export interface FileRouteTypes {
     | '/api/agent/script'
     | '/api/auth/$'
     | '/api/v1/health'
+    | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
   fileRoutesByTo: FileRoutesByTo
@@ -324,9 +354,11 @@ export interface FileRouteTypes {
     | '/app/packages'
     | '/app/partners'
     | '/app/radius'
+    | '/app/reports'
     | '/app/routers'
     | '/app/services'
     | '/app/settings'
+    | '/app/statements'
     | '/app/tickets'
     | '/app'
     | '/portal'
@@ -336,6 +368,7 @@ export interface FileRouteTypes {
     | '/api/agent/script'
     | '/api/auth/$'
     | '/api/v1/health'
+    | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
   id:
@@ -355,9 +388,11 @@ export interface FileRouteTypes {
     | '/app/packages'
     | '/app/partners'
     | '/app/radius'
+    | '/app/reports'
     | '/app/routers'
     | '/app/services'
     | '/app/settings'
+    | '/app/statements'
     | '/app/tickets'
     | '/app/'
     | '/portal/'
@@ -367,6 +402,7 @@ export interface FileRouteTypes {
     | '/api/agent/script'
     | '/api/auth/$'
     | '/api/v1/health'
+    | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
   fileRoutesById: FileRoutesById
@@ -382,6 +418,7 @@ export interface RootRouteChildren {
   ApiAgentScriptRoute: typeof ApiAgentScriptRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiV1HealthRoute: typeof ApiV1HealthRoute
+  ApiV1CronBillingRoute: typeof ApiV1CronBillingRoute
   ApiWebhooksKopokopoSlugRoute: typeof ApiWebhooksKopokopoSlugRoute
   ApiWebhooksMpesaSlugRoute: typeof ApiWebhooksMpesaSlugRoute
 }
@@ -500,6 +537,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRadiusRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/reports': {
+      id: '/app/reports'
+      path: '/reports'
+      fullPath: '/app/reports'
+      preLoaderRoute: typeof AppReportsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/routers': {
       id: '/app/routers'
       path: '/routers'
@@ -519,6 +563,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/app/settings'
       preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/statements': {
+      id: '/app/statements'
+      path: '/statements'
+      fullPath: '/app/statements'
+      preLoaderRoute: typeof AppStatementsRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/tickets': {
@@ -577,6 +628,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1HealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/cron/billing': {
+      id: '/api/v1/cron/billing'
+      path: '/api/v1/cron/billing'
+      fullPath: '/api/v1/cron/billing'
+      preLoaderRoute: typeof ApiV1CronBillingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/webhooks/kopokopo/$slug': {
       id: '/api/webhooks/kopokopo/$slug'
       path: '/api/webhooks/kopokopo/$slug'
@@ -606,9 +664,11 @@ interface AppRouteChildren {
   AppPackagesRoute: typeof AppPackagesRoute
   AppPartnersRoute: typeof AppPartnersRoute
   AppRadiusRoute: typeof AppRadiusRoute
+  AppReportsRoute: typeof AppReportsRoute
   AppRoutersRoute: typeof AppRoutersRoute
   AppServicesRoute: typeof AppServicesRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppStatementsRoute: typeof AppStatementsRoute
   AppTicketsRoute: typeof AppTicketsRoute
   AppIndexRoute: typeof AppIndexRoute
 }
@@ -625,9 +685,11 @@ const AppRouteChildren: AppRouteChildren = {
   AppPackagesRoute: AppPackagesRoute,
   AppPartnersRoute: AppPartnersRoute,
   AppRadiusRoute: AppRadiusRoute,
+  AppReportsRoute: AppReportsRoute,
   AppRoutersRoute: AppRoutersRoute,
   AppServicesRoute: AppServicesRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppStatementsRoute: AppStatementsRoute,
   AppTicketsRoute: AppTicketsRoute,
   AppIndexRoute: AppIndexRoute,
 }
@@ -656,6 +718,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAgentScriptRoute: ApiAgentScriptRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiV1HealthRoute: ApiV1HealthRoute,
+  ApiV1CronBillingRoute: ApiV1CronBillingRoute,
   ApiWebhooksKopokopoSlugRoute: ApiWebhooksKopokopoSlugRoute,
   ApiWebhooksMpesaSlugRoute: ApiWebhooksMpesaSlugRoute,
 }
