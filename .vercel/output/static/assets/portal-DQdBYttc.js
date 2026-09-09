@@ -1,0 +1,1 @@
+import{n as e}from"./Match-BRwKM9x5.js";import{t}from"./jsx-runtime-0vZSBttN.js";var n=t();function r(){return(0,n.jsx)(`div`,{className:`min-h-dvh bg-bg text-fg`,children:(0,n.jsx)(e,{})})}export{r as component};
