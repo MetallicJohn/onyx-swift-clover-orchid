@@ -6,6 +6,7 @@
 |---|---|
 | Multi-tenant isolation | App queries are tenant-scoped. PostgreSQL RLS (`0013_rls.sql`) hides other tenants when the session role is not a superuser. CI re-runs this against Postgres 16. |
 | M-Pesa callback + idempotency | Duplicate Daraja callbacks confirm once. Amount mismatch goes to reconciliation and does not insert a payment. Duplicate payment references are rejected. Invoice ledger debit + payment credit net to zero. |
+| Paybill / till C2B | Every C2B hit is stored. Unknown bill refs stay unmatched on Reports for finance to assign. Proven in `incoming-payments.test.ts`. Live till needs a public Daraja confirmation URL. |
 | WireGuard keys | Real X25519 keypairs. Peers compute the same 32-byte shared secret. Private keys are sealed at rest. Hub `wg-gridline.conf` + MikroTik enroll script with endpoint. Live kernel handshake is **not** run in CI. |
 | MikroTik agent | Enroll token + generated WG keys. Service commands auto-queue. Destructive `raw.script` stays `proposed` until approve, then is pulled. Approval writes `audit_logs`. Pull marks the router connected. |
 | Billing lifecycle | Overdue past `grace_days` suspends. Inside grace → `grace`. Expired `period_end` suspends (`time`). Data cap suspends (`bundle`). Full payment extends the period, resets usage, restores unless another invoice is still overdue. Partials do not restore. Optional exclusive VAT. Platform plans activate after M-Pesa, not on click. |

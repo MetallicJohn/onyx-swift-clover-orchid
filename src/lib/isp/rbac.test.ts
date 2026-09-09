@@ -26,3 +26,9 @@ test("tenant A cannot match tenant B", () => {
   assert.throws(() => assertTenantMatch("ten_a", "ten_b"), /Not found/);
   assert.doesNotThrow(() => assertTenantMatch("ten_a", "ten_a"));
 });
+
+test("finance can reconcile paybill hits; customer care cannot", () => {
+  assert.equal(hasPermission("finance", "payments.reconcile"), true);
+  assert.equal(hasPermission("customer_care", "payments.reconcile"), false);
+  assert.equal(hasPermission("customer_care", "payments.read"), true);
+});

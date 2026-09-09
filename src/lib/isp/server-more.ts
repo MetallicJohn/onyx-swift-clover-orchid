@@ -8,6 +8,7 @@ import { attachCustomerReseller } from "./resellers";
 import { applySaasPayment, createSaasStkIntent, loadPlanDesk, requestPlanChange, type PlanCode } from "./saas";
 import { assignTicket, commentTicket, listStaff } from "./tickets";
 import { loadAudit, loadReports, loadStatement } from "./reports";
+import { assignIncomingPayments, listIncomingPayments } from "./incoming-payments";
 import { addBranch, addMemberByEmail, listBranches, setMemberRole } from "./members";
 import { addStaffMember, createIspWithOwner, isPlatformAdmin, listAllTenants, setCredentialPassword } from "./accounts";
 import { requireWorkspace as requireWs } from "./workspace";
@@ -151,6 +152,30 @@ export const getAuditLog = createServerFn({ method: "GET" })
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "audit.read");
     return { rows: await loadAudit(sql, tenantId) };
+  });
+
+export const getIncomingPayments = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "payments.read");
+    return listIncomingPayments(sql, tenantId);
+  });
+
+export const assignPaybillPayments = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { ids: string[]; customer_id: string; invoice_id?: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, tenantName, role } = await requireWs(context.userId);
+    assertPermission(role, "payments.reconcile");
+    return assignIncomingPayments(sql, {
+      tenantId,
+      ispName: tenantName,
+      userId: context.userId,
+      ids: data.ids,
+      customerId: data.customer_id,
+      invoiceId: data.invoice_id,
+    });
   });
 
 export const getStatement = createServerFn({ method: "POST" })

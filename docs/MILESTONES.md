@@ -20,7 +20,7 @@ Product milestones are complete except the items you asked to skip.
 | GenieACS inventory + NBI adapter | Implemented and tested — **daemon is the compose sidecar, not in-process TR-069** |
 | Loyalty / referrals / resellers | Implemented and tested |
 | SaaS platform plans | Implemented — invoice-and-pay via M-Pesa, **Stripe skipped** |
-| Reports + audit | Implemented and tested |
+| Reports + audit | Implemented and tested — Paybill / Till desk includes unmatched C2B hits and manual assign |
 | Churn score | Interpretable logistic model on live billing / access / tickets — not a fitted neural net |
 | Password reset | Operator + superadmin email reset; portal password + OTP reset |
 | Invoice / statement PDFs | Server-side A4, tenant branding, ledger-backed totals |

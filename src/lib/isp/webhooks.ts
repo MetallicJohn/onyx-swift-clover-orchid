@@ -1,7 +1,8 @@
 import { nid } from "../utils.ts";
 import { evaluateStkCallback, parseKopokopoCallback, parseMpesaCallback } from "./callback-validate";
-import { applyRls } from "./rls";
+import { ingestIncomingPayment, isC2bBody, parseC2bBody, parseStkAsIncoming } from "./incoming-payments";
 import { applyConfirmedPayment } from "./payments";
+import { applyRls } from "./rls";
 import { applySaasPayment } from "./saas";
 
 type Sql = {
@@ -111,7 +112,7 @@ async function settleFromDecision(
       await sql`update saas_payment_intents set status = 'confirmed'
         where id = ${intent.id} and tenant_id = ${tenant.id}`;
     } else {
-      await applyConfirmedPayment(sql, {
+      const pay = await applyConfirmedPayment(sql, {
         tenantId: tenant.id,
         ispName: tenant.name,
         invoiceId: intent.invoice_id,
@@ -121,6 +122,15 @@ async function settleFromDecision(
       });
       await sql`update payment_intents set status = 'confirmed', fail_reason = ''
         where id = ${intent.id} and tenant_id = ${tenant.id}`;
+      const incoming = parseStkAsIncoming(parsed);
+      if (incoming) {
+        await ingestIncomingPayment(sql, tenant, incoming, { autoMatch: false });
+        const [inv] = await sql<{ customer_id: string }>`
+          select customer_id from invoices where id = ${intent.invoice_id} and tenant_id = ${tenant.id}`;
+        await sql`update incoming_payments set status = 'matched', customer_id = ${inv?.customer_id || null},
+          invoice_id = ${intent.invoice_id}, payment_id = ${pay.id}, match_reason = 'stk'
+          where tenant_id = ${tenant.id} and trans_id = ${incoming.transId}`;
+      }
     }
     return "confirmed";
   } catch (e) {
@@ -139,12 +149,31 @@ async function settleFromDecision(
 
 export async function processMpesaCallback(sql: Sql, slug: string, body: Record<string, unknown>) {
   const tenant = await tenantBySlug(sql, slug);
-  const parsed = parseMpesaCallback(body);
   if (!tenant) return { ResultCode: 0, ResultDesc: "Unknown tenant" };
+  if (isC2bBody(body)) {
+    const hit = parseC2bBody(body);
+    await logWebhook(sql, tenant.id, "mpesa", hit?.transId || "", body, "c2b");
+    if (!hit) return { ResultCode: 0, ResultDesc: "Accepted" };
+    const stored = await ingestIncomingPayment(sql, tenant, hit);
+    return { ResultCode: 0, ResultDesc: stored.status };
+  }
+  const parsed = parseMpesaCallback(body);
   await logWebhook(sql, tenant.id, "mpesa", parsed.checkout, body, String(parsed.resultCode));
-  if (!parsed.checkout) return { ResultCode: 0, ResultDesc: "Accepted" };
+  if (!parsed.checkout) {
+    const loose = parseStkAsIncoming(parsed);
+    if (loose) await ingestIncomingPayment(sql, tenant, loose);
+    return { ResultCode: 0, ResultDesc: "Accepted" };
+  }
   const intent = await loadIntent(sql, tenant.id, parsed.checkout);
-  if (!intent) return { ResultCode: 0, ResultDesc: "Unknown checkout" };
+  if (!intent) {
+    const loose = parseStkAsIncoming({ ...parsed, amount: parsed.amount || 0 });
+    if (loose) await ingestIncomingPayment(sql, tenant, loose);
+    return { ResultCode: 0, ResultDesc: "unmatched" };
+  }
+  if (intent.status !== "confirmed" && parsed.resultCode === 0 && parsed.amount != null && Math.round(parsed.amount) !== intent.amount_kes) {
+    const loose = parseStkAsIncoming(parsed);
+    if (loose) await ingestIncomingPayment(sql, tenant, loose, { autoMatch: false });
+  }
   const result = await settleFromDecision(sql, tenant, "mpesa", intent, parsed);
   return { ResultCode: 0, ResultDesc: result };
 }
