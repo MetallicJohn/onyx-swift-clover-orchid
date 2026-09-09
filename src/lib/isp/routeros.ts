@@ -18,10 +18,29 @@ export function enrollRosScript(opts: {
   wgPublic: string;
   wgAddress: string;
   pullUrl?: string;
+  wgPrivate?: string;
+  serverPublic?: string;
+  endpointHost?: string;
+  endpointPort?: number;
+  serverAddress?: string;
 }) {
   const identity = opts.identity || opts.name;
   const addr = opts.wgAddress.includes("/") ? opts.wgAddress : `${opts.wgAddress}/32`;
   const pull = opts.pullUrl || "";
+  const peerKey = opts.serverPublic || opts.wgPublic;
+  const endpointHost = (opts.endpointHost || "").trim();
+  const endpointPort = opts.endpointPort || 51820;
+  const hubIp = opts.serverAddress || "10.200.0.1";
+  const allowed = "10.200.0.0/24";
+
+  const endpointSet = endpointHost
+    ? `  endpoint-address=${rosQuote(endpointHost)} endpoint-port=${endpointPort} \\`
+    : "  \\";
+  const missingEndpoint = endpointHost
+    ? ""
+    : `# No hub endpoint saved — the router cannot start the handshake.
+# Settings → Network: set the VPS public hostname or IP, then copy this script again.
+`;
 
   const scheduler = pull
     ? `
@@ -49,27 +68,41 @@ export function enrollRosScript(opts: {
 
   return `# Gridline agent enroll — RouterOS v7 script
 # Paste in New Terminal, or: /import file-name=gridline-enroll.rsc
+# Overlay ${addr} → hub ${hubIp} (UDP ${endpointPort})
 # Syntax: :local / :if / :do on-error / find where
-
+${missingEndpoint}
 ${localBlock({
     identity,
     token: opts.token,
-    wgKey: opts.wgPublic,
+    wgPriv: opts.wgPrivate || "",
+    srvKey: peerKey,
     wgAddr: addr,
+    allowed,
   })}
 
 /system identity set name=\$identity;
 
 :if ([:len [/interface wireguard find where name="wg-gridline"]] = 0) do={
-  /interface wireguard add name=wg-gridline listen-port=13231 comment="gridline-agent";
+  /interface wireguard add name=wg-gridline listen-port=13231 private-key=\$wgPriv comment="gridline-agent";
+} else={
+  /interface wireguard set [find where name="wg-gridline"] private-key=\$wgPriv listen-port=13231;
 }
 
-:if ([:len [/interface wireguard peers find where interface="wg-gridline" and public-key=\$wgKey]] = 0) do={
-  /interface wireguard peers add interface=wg-gridline public-key=\$wgKey allowed-address=10.200.0.1/32 persistent-keepalive=00:00:25 comment="gridline-controller";
+:if ([:len [/interface wireguard peers find where interface="wg-gridline" and comment="gridline-controller"]] = 0) do={
+  /interface wireguard peers add interface=wg-gridline public-key=\$srvKey allowed-address=\$allowed \\
+${endpointSet}
+    persistent-keepalive=00:00:25 comment="gridline-controller";
+} else={
+  /interface wireguard peers set [find where interface="wg-gridline" and comment="gridline-controller"] \\
+    public-key=\$srvKey allowed-address=\$allowed \\
+${endpointSet}
+    persistent-keepalive=00:00:25;
 }
 
 :if ([:len [/ip address find where interface="wg-gridline"]] = 0) do={
   /ip address add address=\$wgAddr interface=wg-gridline;
+} else={
+  /ip address set [find where interface="wg-gridline"] address=\$wgAddr;
 }
 
 :if ([:len [/ip firewall filter find where comment="gridline-agent"]] = 0) do={

@@ -6,7 +6,7 @@
 |---|---|
 | Multi-tenant isolation | App queries are tenant-scoped. PostgreSQL RLS (`0013_rls.sql`) hides other tenants when the session role is not a superuser. CI re-runs this against Postgres 16. |
 | M-Pesa callback + idempotency | Duplicate Daraja callbacks confirm once. Amount mismatch goes to reconciliation and does not insert a payment. Duplicate payment references are rejected. Invoice ledger debit + payment credit net to zero. |
-| WireGuard keys | Real X25519 keypairs. Peers compute the same 32-byte shared secret. Private keys are sealed at rest. Live kernel handshake is **not** run in CI. |
+| WireGuard keys | Real X25519 keypairs. Peers compute the same 32-byte shared secret. Private keys are sealed at rest. Hub `wg-gridline.conf` + MikroTik enroll script with endpoint. Live kernel handshake is **not** run in CI. |
 | MikroTik agent | Enroll token + generated WG keys. Service commands auto-queue. Destructive `raw.script` stays `proposed` until approve, then is pulled. Approval writes `audit_logs`. Pull marks the router connected. |
 | Billing lifecycle | Overdue past `grace_days` suspends. Inside grace → `grace`. Expired `period_end` suspends (`time`). Data cap suspends (`bundle`). Full payment extends the period, resets usage, restores unless another invoice is still overdue. Partials do not restore. Optional exclusive VAT. Platform plans activate after M-Pesa, not on click. |
 | FreeRADIUS REST | Authorize / authenticate / accounting over HTTPS with a per-tenant API key. rlm_rest JSON. Suspended, expired, and FUP users are Access-Reject. The daemon is not in this app. |
@@ -14,6 +14,7 @@
 | Password reset | Operator/superadmin email reset (hashed token, 30 min). Portal password + SMS reset. Admin/staff can set a password. Email sends only with Resend; otherwise the link is shown. |
 | Custom domain login | Same-origin Origin/Host match plus tenant `public_base_url`. CSRF stays on. Proven in `auth-origins.test.ts`. |
 | Invoice / statement PDFs | pdfkit A4 from live billing + ledger. Tenant-branded. View/download/print/email. |
+| VPS publish | Docker Compose + Caddy + Postgres. `deploy/vps/install.sh`. Platform deploy remains Vercel. |
 | Secrets | No published `gridline-dev-secret-change-me`. Production or any `DATABASE_URL` requires `APP_SECRET`. |
 
 ## Simulated / architecture-only

@@ -2,7 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import { nid } from "@/lib/utils";
-import { agentScript } from "./agent";
+import { agentPullUrl, agentScript } from "./agent";
+import { wgEnrollContext } from "./wireguard";
 import { pullCommands } from "./mikrotik";
 import {
   deliverSms,
@@ -207,8 +208,16 @@ export const simulateAgentPull = createServerFn({ method: "POST" })
   .validator((d: { router_id: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId } = await requireWs(context.userId);
-    const [r] = await sql<{ id: string; enroll_token: string; identity: string; name: string; wg_public: string; wg_address: string }>`
-      select id, enroll_token, identity, name, wg_public, wg_address from routers where id = ${data.router_id} and tenant_id = ${tenantId}`;
+    const [r] = await sql<{
+      id: string;
+      enroll_token: string;
+      identity: string;
+      name: string;
+      wg_public: string;
+      wg_address: string;
+      wg_private_ref: string;
+    }>`
+      select id, enroll_token, identity, name, wg_public, wg_address, wg_private_ref from routers where id = ${data.router_id} and tenant_id = ${tenantId}`;
     if (!r) throw new Error("Router not found");
     const pulled = r.enroll_token
       ? await pullCommands(sql, r.enroll_token, true)
@@ -216,16 +225,22 @@ export const simulateAgentPull = createServerFn({ method: "POST" })
     if (!r.enroll_token) {
       await sql`update routers set wg_status = 'connected', last_seen = now(), cpu_pct = 12, agent_version = '0.2.0' where id = ${r.id}`;
     }
+    const [t] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${tenantId}`;
     return {
       pulled: pulled.commands.length,
       commands: pulled.commands,
-      script: agentScript({
-        name: r.name,
-        identity: r.identity,
-        token: r.enroll_token,
-        wgPublic: r.wg_public,
-        wgAddress: r.wg_address || "10.200.0.2/32",
-      }),
+      script: agentScript(
+        await wgEnrollContext(sql, tenantId, {
+          id: r.id,
+          name: r.name,
+          identity: r.identity,
+          token: r.enroll_token,
+          wg_public: r.wg_public,
+          wg_private_ref: r.wg_private_ref,
+          wg_address: r.wg_address || "10.200.0.2/32",
+          pullUrl: agentPullUrl(t?.public_base_url || "", r.enroll_token),
+        }),
+      ),
     };
   });
 

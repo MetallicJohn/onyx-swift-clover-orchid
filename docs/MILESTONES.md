@@ -10,7 +10,8 @@ Product milestones are complete except the items you asked to skip.
 | Payments Daraja/Kopo | Implemented and tested (live needs real till + callback URL) |
 | RADIUS desired state + REST adapter | Implemented and tested — **daemon stays external** |
 | MikroTik agent + approve | Implemented and tested |
-| WireGuard keys | Implemented and tested — handshake not verified in lab |
+| WireGuard hub + client script | Implemented and tested — hub conf + enroll `.rsc` with endpoint; kernel handshake not verified in lab |
+| VPS self-host | Docker + Caddy + Postgres installer — WireGuard on the host kernel |
 | PPPoE / static / IPAM | Implemented and tested |
 | Hotspot vouchers | Implemented and tested — no captive portal |
 | Notifications SMS/WA/inbox | Implemented and tested — email queued |

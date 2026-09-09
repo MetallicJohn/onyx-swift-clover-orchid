@@ -1,12 +1,13 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { addRouter, listRouters } from "@/lib/isp/server";
 import { approveRouterCommand, getRouterApi, previewRouterCommand, queueRouterCommand, runRouterApi, saveRouterApi } from "@/lib/isp/server-mikrotik";
-import { copyRouterScript, updateRouter } from "@/lib/isp/server-routers";
 import { listAgentQueue, simulateAgentPull } from "@/lib/isp/server-ops";
+import { getWireGuardHub } from "@/lib/isp/server-wg";
+import { copyRouterScript, updateRouter } from "@/lib/isp/server-routers";
 import type { RouterRow } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app/routers")({ component: RoutersPage });
@@ -50,21 +51,24 @@ function RoutersPage() {
   });
   const [preview, setPreview] = useState("");
   const [apiOut, setApiOut] = useState<string | null>(null);
+  const [hubReady, setHubReady] = useState(true);
 
   async function load() {
-    const [res, q] = await Promise.all([listRouters(), listAgentQueue()]);
+    const [res, q, hub] = await Promise.all([listRouters(), listAgentQueue(), getWireGuardHub().catch(() => null)]);
     setRows(res.routers);
     setCommands(q.commands);
     setApiRouter((current) => current || res.routers[0]?.id || "");
+    setHubReady(Boolean(hub?.ready));
   }
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [res, q] = await Promise.all([listRouters(), listAgentQueue()]);
+      const [res, q, hub] = await Promise.all([listRouters(), listAgentQueue(), getWireGuardHub().catch(() => null)]);
       if (cancelled) return;
       setRows(res.routers);
       setCommands(q.commands);
       setApiRouter((current) => current || res.routers[0]?.id || "");
+      setHubReady(Boolean(hub?.ready));
     })().catch(console.error);
     return () => {
       cancelled = true;
@@ -135,6 +139,17 @@ function RoutersPage() {
         </p>
       </div>
 
+      {!hubReady ? (
+        <div className="rounded-xl border border-border bg-surface p-4 text-sm text-muted">
+          Set the hub public IP or hostname under{" "}
+          <Link to="/app/settings" className="text-accent hover:underline">
+            Settings → Network
+          </Link>{" "}
+          and download <span className="font-mono text-fg">wg-gridline.conf</span> onto the VPS. Until then the enroll
+          script cannot start a handshake.
+        </div>
+      ) : null}
+
       <form onSubmit={submit} className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2">
         <h2 className="md:col-span-2 font-medium">{editingId ? "Edit router" : "Add router"}</h2>
         <Field label="Name">
@@ -198,6 +213,7 @@ function RoutersPage() {
               <th className="px-4 py-3 font-medium">Router</th>
               <th className="px-4 py-3 font-medium">Role</th>
               <th className="px-4 py-3 font-medium">WireGuard</th>
+              <th className="px-4 py-3 font-medium">Overlay IP</th>
               <th className="px-4 py-3 font-medium">CPU</th>
               <th className="px-4 py-3 font-medium">Uptime</th>
               <th className="px-4 py-3 font-medium" />
@@ -217,6 +233,7 @@ function RoutersPage() {
                 <td className="px-4 py-3">
                   <Badge tone={statusTone(r.wg_status)}>{r.wg_status}</Badge>
                 </td>
+                <td className="px-4 py-3 font-mono text-xs">{r.wg_address || "—"}</td>
                 <td className="px-4 py-3 font-mono">{r.cpu_pct}%</td>
                 <td className="px-4 py-3 font-mono">{r.uptime_hours}h</td>
                 <td className="px-4 py-3">

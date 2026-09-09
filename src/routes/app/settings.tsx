@@ -8,15 +8,18 @@ import { getKopokopo, saveKopokopo, testKopokopo } from "@/lib/isp/server-kopo";
 import { getMpesa, saveMpesa, savePublicBase, testMpesa } from "@/lib/isp/server-mpesa";
 import { getPlan, listTicketStaff, recordPlanPayment, sendPlanStk, setPlan, createStaffAccount, changeMemberRole } from "@/lib/isp/server-more";
 import { checkSmsAccount, confirmStk, getMessaging, listProviders, saveMessaging, testMessaging, toggleProvider, workspaceSlug } from "@/lib/isp/server-ops";
+import { downloadWireGuardServer, getVpsPublishGuide, getWireGuardHub, rotateWireGuardHub, saveWireGuardHub } from "@/lib/isp/server-wg";
+import { vpsInstallCommand } from "@/lib/isp/vps-publish";
 import { cn, kes } from "@/lib/utils";
 import type { Workspace } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app/settings")({ component: SettingsPage });
 
-type TabId = "company" | "sms" | "payment" | "plan" | "staff";
+type TabId = "company" | "network" | "sms" | "payment" | "plan" | "staff";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "company", label: "Company info" },
+  { id: "network", label: "Network" },
   { id: "sms", label: "SMS" },
   { id: "payment", label: "Payment" },
   { id: "plan", label: "Plan" },
@@ -137,6 +140,20 @@ function SettingsPage() {
   const [planRef, setPlanRef] = useState("");
   const [planStk, setPlanStk] = useState<string | null>(null);
   const [planErr, setPlanErr] = useState<string | null>(null);
+  const [hub, setHub] = useState<{
+    publicKey: string;
+    address: string;
+    network: string;
+    listenPort: number;
+    endpointHost: string;
+    ready: boolean;
+  } | null>(null);
+  const [hubForm, setHubForm] = useState({ endpoint_host: "", listen_port: 51820 });
+  const [hubConf, setHubConf] = useState<string | null>(null);
+  const [hubInstall, setHubInstall] = useState<string | null>(null);
+  const [hubCopied, setHubCopied] = useState<"conf" | "install" | null>(null);
+  const [vpsGuide, setVpsGuide] = useState<{ domain: string; command: string; notes: string[] } | null>(null);
+  const [vpsCopied, setVpsCopied] = useState(false);
 
   async function load() {
     const [d, s, p, m, k, daraja, sub, st, branding] = await Promise.all([
@@ -212,6 +229,18 @@ function SettingsPage() {
       bank_account: branding.bank_account,
       bank_branch: branding.bank_branch,
     });
+    try {
+      const wg = await getWireGuardHub();
+      setHub(wg);
+      setHubForm({ endpoint_host: wg.endpointHost, listen_port: wg.listenPort });
+    } catch {
+      setHub(null);
+    }
+    try {
+      setVpsGuide(await getVpsPublishGuide());
+    } catch {
+      setVpsGuide(null);
+    }
   }
   useEffect(() => {
     load().catch(console.error);
@@ -229,7 +258,7 @@ function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted">Company profile, SMS gateways, and payment rails.</p>
+        <p className="text-sm text-muted">Company profile, WireGuard hub, SMS gateways, and payment rails.</p>
       </div>
 
       <div
@@ -420,6 +449,146 @@ function SettingsPage() {
             {pwBusy ? "Saving…" : "Update password"}
           </Button>
         </form>
+      ) : null}
+
+      {tab === "network" ? (
+        <section className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4 md:p-5">
+          <h2 className="font-medium">WireGuard hub</h2>
+          <p className="text-sm text-muted">
+            This VPS is <span className="font-mono text-fg">{hub?.address || "10.200.0.1/24"}</span> on{" "}
+            <span className="font-mono text-fg">{hub?.network || "10.200.0.0/24"}</span>. Routers dial it; Winbox and
+            API stay on the overlay. Paste the public hostname or IP of the server that will run{" "}
+            <span className="font-mono">wg-quick</span>.
+          </p>
+          <form
+            className="grid gap-3"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const next = await saveWireGuardHub({
+                data: {
+                  endpoint_host: hubForm.endpoint_host,
+                  listen_port: Number(hubForm.listen_port) || 51820,
+                },
+              });
+              setHub(next);
+              setHubForm({ endpoint_host: next.endpointHost, listen_port: next.listenPort });
+              setSaved("WireGuard hub endpoint saved. Re-copy router enroll scripts so they pick up the endpoint.");
+            }}
+          >
+            <Field label="Public endpoint">
+              <Input
+                placeholder="vpn.yourisp.co.ke or 102.68.10.2"
+                value={hubForm.endpoint_host}
+                onChange={(e) => setHubForm({ ...hubForm, endpoint_host: e.target.value })}
+              />
+            </Field>
+            <Field label="Listen port">
+              <Input
+                type="number"
+                min={1}
+                max={65535}
+                value={hubForm.listen_port}
+                onChange={(e) => setHubForm({ ...hubForm, listen_port: Number(e.target.value) || 51820 })}
+              />
+            </Field>
+            <Field label="Hub public key">
+              <Input readOnly value={hub?.publicKey || "Generated on first save"} />
+            </Field>
+            <Button type="submit">Save hub</Button>
+          </form>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={async () => {
+                const pack = await downloadWireGuardServer();
+                setHubConf(pack.conf);
+                setHubInstall(pack.install);
+                setHub(pack.hub);
+                try {
+                  await navigator.clipboard.writeText(pack.conf);
+                  setHubCopied("conf");
+                  setTimeout(() => setHubCopied(null), 2500);
+                } catch {
+                  setHubCopied(null);
+                }
+              }}
+            >
+              {hubCopied === "conf" ? "Copied wg-gridline.conf" : "Download server config"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={async () => {
+                const pack = await downloadWireGuardServer();
+                setHubConf(pack.conf);
+                setHubInstall(pack.install);
+                try {
+                  await navigator.clipboard.writeText(pack.install);
+                  setHubCopied("install");
+                  setTimeout(() => setHubCopied(null), 2500);
+                } catch {
+                  setHubCopied(null);
+                }
+              }}
+            >
+              {hubCopied === "install" ? "Copied install script" : "Copy VPS install script"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={async () => {
+                if (!window.confirm("Rotate the hub keypair? Every router enroll script must be copied again.")) return;
+                const next = await rotateWireGuardHub();
+                setHub(next);
+                setHubConf(null);
+                setHubInstall(null);
+                setSaved("Hub keys rotated. Download a new server config and re-copy each router script.");
+              }}
+            >
+              Rotate hub keys
+            </Button>
+          </div>
+          {hubConf ? (
+            <pre className="overflow-x-auto rounded-xl border border-border bg-elevated p-4 font-mono text-xs leading-relaxed text-fg">
+              {hubCopied === "install" && hubInstall ? hubInstall : hubConf}
+            </pre>
+          ) : null}
+        </section>
+      ) : null}
+
+      {tab === "network" ? (
+        <section className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4 md:p-5">
+          <h2 className="font-medium">Publish to a VPS</h2>
+          <p className="text-sm text-muted">
+            Gridline runs as Docker on Ubuntu 24.04: Caddy (HTTPS), Postgres, and the web app. WireGuard stays on the
+            host kernel. Copy this project onto the server, then run the installer.
+          </p>
+          <pre className="overflow-x-auto rounded-xl border border-border bg-elevated p-4 font-mono text-xs leading-relaxed text-fg">
+            {vpsGuide?.command || vpsInstallCommand({ domain: publicBase, email: form.supportEmail })}
+          </pre>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={async () => {
+              const text = vpsGuide?.command || vpsInstallCommand({ domain: publicBase, email: form.supportEmail });
+              try {
+                await navigator.clipboard.writeText(text);
+                setVpsCopied(true);
+                setTimeout(() => setVpsCopied(false), 2500);
+              } catch {
+                setVpsCopied(false);
+              }
+            }}
+          >
+            {vpsCopied ? "Copied" : "Copy install command"}
+          </Button>
+          <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
+            {(vpsGuide?.notes || []).map((n) => (
+              <li key={n}>{n}</li>
+            ))}
+          </ol>
+        </section>
       ) : null}
 
       {tab === "sms" ? (

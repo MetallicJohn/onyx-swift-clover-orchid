@@ -1,0 +1,108 @@
+#!/bin/bash
+# Gridline Ubuntu 24.04 publisher. Run from the repo (or copy this tree first):
+#   sudo bash deploy/vps/install.sh --domain ops.yourisp.co.ke --email you@yourisp.co.ke
+set -euo pipefail
+
+DOMAIN=""
+EMAIL=""
+INSTALL_DIR="/opt/gridline"
+
+usage() {
+  echo "Usage: sudo bash deploy/vps/install.sh --domain ops.yourisp.co.ke --email you@yourisp.co.ke"
+  exit 1
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --domain) DOMAIN="${2:-}"; shift 2 ;;
+    --email) EMAIL="${2:-}"; shift 2 ;;
+    --dir) INSTALL_DIR="${2:-}"; shift 2 ;;
+    -h|--help) usage ;;
+    *) echo "Unknown flag $1"; usage ;;
+  esac
+done
+
+if [[ -z "$DOMAIN" || -z "$EMAIL" ]]; then
+  usage
+fi
+if [[ "$(id -u)" -ne 0 ]]; then
+  echo "Run as root (sudo)." >&2
+  exit 1
+fi
+if ! [[ "$DOMAIN" =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+  echo "Domain looks invalid: $DOMAIN" >&2
+  exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+echo "[gridline] installing Docker and WireGuard"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y ca-certificates curl ufw wireguard rsync
+if ! command -v docker >/dev/null 2>&1; then
+  curl -fsSL https://get.docker.com | sh
+fi
+systemctl enable --now docker
+
+if [[ "$REPO_ROOT" != "$INSTALL_DIR" ]]; then
+  echo "[gridline] copying app to $INSTALL_DIR"
+  mkdir -p "$INSTALL_DIR"
+  rsync -a --delete \
+    --exclude node_modules \
+    --exclude .output \
+    --exclude .vercel \
+    --exclude .git \
+    "$REPO_ROOT/" "$INSTALL_DIR/"
+fi
+cd "$INSTALL_DIR"
+
+ENV_FILE="$INSTALL_DIR/gridline.env"
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "[gridline] writing $ENV_FILE"
+  POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+  APP_SECRET="$(openssl rand -hex 32)"
+  cat >"$ENV_FILE" <<EOF
+NODE_ENV=production
+HOST=0.0.0.0
+PORT=3000
+GRIDLINE_DOMAIN=$DOMAIN
+ACME_EMAIL=$EMAIL
+POSTGRES_USER=gridline
+POSTGRES_DB=gridline
+POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+DATABASE_URL=postgres://gridline:${POSTGRES_PASSWORD}@postgres:5432/gridline
+APP_SECRET=$APP_SECRET
+BETTER_AUTH_SECRET=$APP_SECRET
+BETTER_AUTH_URL=https://$DOMAIN
+BETTER_AUTH_TRUSTED_ORIGINS=https://$DOMAIN,https://www.$DOMAIN
+EOF
+  chmod 600 "$ENV_FILE"
+else
+  echo "[gridline] keeping existing $ENV_FILE"
+fi
+
+if command -v ufw >/dev/null 2>&1; then
+  ufw allow OpenSSH || true
+  ufw allow 80/tcp || true
+  ufw allow 443/tcp || true
+  ufw allow 51820/udp || true
+  ufw --force enable || true
+fi
+
+echo "[gridline] building and starting containers (first build takes several minutes)"
+docker compose -f deploy/vps/docker-compose.yml --env-file "$ENV_FILE" up -d --build
+
+echo
+echo "Gridline is publishing at https://$DOMAIN"
+echo "Point DNS A/AAAA for $DOMAIN at this VPS, then wait for TLS."
+echo
+echo "Next:"
+echo "  1. Sign in at https://$DOMAIN/login (signup creates the first ISP owner)."
+echo "  2. Settings → Public URL = https://$DOMAIN"
+echo "  3. Settings → Network: hub endpoint = this VPS public IP or $DOMAIN, then copy wg-gridline.conf to /etc/wireguard/ and wg-quick up wg-gridline"
+echo "  4. Routers → Copy script onto each MikroTik"
+echo
+echo "Health: curl -fsS https://$DOMAIN/api/v1/health"
+echo "Logs:   docker compose -f $INSTALL_DIR/deploy/vps/docker-compose.yml logs -f web"

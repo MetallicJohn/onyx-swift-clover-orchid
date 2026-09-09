@@ -1,5 +1,6 @@
 import { nid } from "../utils.ts";
 import { enrollFields, wgAddressForIndex } from "./agent";
+import { ensureTenantHub, syncRouterWgPeer } from "./wireguard";
 import { emit } from "./events";
 import { getMessagingSettings } from "./messaging";
 import { ensureOpsSchema } from "./ops-schema";
@@ -73,13 +74,21 @@ export async function seedOpsForTenant(sql: Sql, tenantId: string) {
 
   const routers = await sql<{ id: string; name: string; enroll_token: string }>`
     select id, name, enroll_token from routers where tenant_id = ${tenantId}`;
+  await ensureTenantHub(sql, tenantId);
   let i = 0;
   for (const r of routers) {
     i += 1;
     if (!r.enroll_token) {
       const enroll = enrollFields(r.name);
-      await sql`update routers set enroll_token = ${enroll.token}, wg_public = ${enroll.wg_public}, wg_private_ref = ${enroll.wg_private_sealed}, wg_address = ${wgAddressForIndex(i)}, agent_version = '0.2.0'
+      const address = wgAddressForIndex(i);
+      await sql`update routers set enroll_token = ${enroll.token}, wg_public = ${enroll.wg_public}, wg_private_ref = ${enroll.wg_private_sealed}, wg_address = ${address}, agent_version = '0.2.0'
         where id = ${r.id}`;
+      await syncRouterWgPeer(sql, tenantId, {
+        id: r.id,
+        wg_public: enroll.wg_public,
+        wg_private_ref: enroll.wg_private_sealed,
+        wg_address: address,
+      });
     }
   }
 

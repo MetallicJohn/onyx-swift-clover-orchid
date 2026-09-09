@@ -1,0 +1,13 @@
+node_modules
+.output
+.vercel
+.git
+.github_repo
+.env
+.env.*
+gridline.env
+artifacts
+screenshots
+attachments
+*.log
+.pglite

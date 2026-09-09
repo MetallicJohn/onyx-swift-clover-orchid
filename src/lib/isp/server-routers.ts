@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { agentPullUrl, agentScript, enrollFields } from "./agent";
+import { wgEnrollContext } from "./wireguard";
 import { requireWorkspace as requireWs } from "./workspace";
 
 type RouterEnroll = {
@@ -12,11 +13,12 @@ type RouterEnroll = {
   enroll_token: string;
   wg_public: string;
   wg_address: string;
+  wg_private_ref: string;
 };
 
 async function loadRouter(sql: Awaited<ReturnType<typeof requireWs>>["sql"], tenantId: string, id: string) {
   const [r] = await sql<RouterEnroll>`
-    select id, name, identity, location, role, enroll_token, wg_public, wg_address
+    select id, name, identity, location, role, enroll_token, wg_public, wg_address, wg_private_ref
     from routers where id = ${id} and tenant_id = ${tenantId}`;
   if (!r) throw new Error("Router not found");
   return r;
@@ -28,14 +30,17 @@ async function scriptFor(
   r: RouterEnroll,
 ) {
   const [t] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${tenantId}`;
-  return agentScript({
+  const ctx = await wgEnrollContext(sql, tenantId, {
+    id: r.id,
     name: r.name,
     identity: r.identity,
     token: r.enroll_token,
-    wgPublic: r.wg_public,
-    wgAddress: r.wg_address || "10.200.0.2/32",
+    wg_public: r.wg_public,
+    wg_private_ref: r.wg_private_ref,
+    wg_address: r.wg_address || "10.200.0.2/32",
     pullUrl: agentPullUrl(t?.public_base_url || "", r.enroll_token),
   });
+  return agentScript(ctx);
 }
 
 export const updateRouter = createServerFn({ method: "POST" })

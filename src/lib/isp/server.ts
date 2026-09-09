@@ -15,6 +15,7 @@ import { loadDashboard } from "./dashboard";
 import { requestPublicOrigin } from "./auth-origins";
 import { completeOperatorReset, requestOperatorReset } from "./password-reset";
 import { agentPullUrl, agentScript, enrollFields, wgAddressForIndex } from "./agent";
+import { wgEnrollContext } from "./wireguard";
 import { emit } from "./events";
 import { listInbox } from "./inbox";
 import { applyConfirmedPayment } from "./payments";
@@ -828,14 +829,18 @@ export const addRouter = createServerFn({ method: "POST" })
       values (${id}, ${workspace.tenantId}, ${data.name.trim()}, ${data.location.trim()}, ${data.identity.trim() || data.name.trim().toLowerCase()}, ${data.role || "access"}, 'pending', now(), 0, 0, ${enroll.token}, ${enroll.wg_public}, ${wgAddress}, '0.2.0', ${enroll.wg_private_sealed})`;
     await audit(sql, workspace.tenantId, context.userId, "router.created", "router", id);
     const [ten] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${workspace.tenantId}`;
-    const script = agentScript({
-      name: data.name.trim(),
-      identity: data.identity.trim() || data.name.trim().toLowerCase(),
-      token: enroll.token,
-      wgPublic: enroll.wg_public,
-      wgAddress,
-      pullUrl: agentPullUrl(ten?.public_base_url || "", enroll.token),
-    });
+    const script = agentScript(
+      await wgEnrollContext(sql, workspace.tenantId, {
+        id,
+        name: data.name.trim(),
+        identity: data.identity.trim() || data.name.trim().toLowerCase(),
+        token: enroll.token,
+        wg_public: enroll.wg_public,
+        wg_private_ref: enroll.wg_private_sealed,
+        wg_address: wgAddress,
+        pullUrl: agentPullUrl(ten?.public_base_url || "", enroll.token),
+      }),
+    );
     return { id, script, token: enroll.token };
   });
 

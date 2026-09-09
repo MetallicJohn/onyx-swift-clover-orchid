@@ -88,6 +88,11 @@ export function agentScript(opts: {
   wgPublic: string;
   wgAddress: string;
   pullUrl?: string;
+  wgPrivate?: string;
+  serverPublic?: string;
+  endpointHost?: string;
+  endpointPort?: number;
+  serverAddress?: string;
 }) {
   return enrollRosScript(opts);
 }
