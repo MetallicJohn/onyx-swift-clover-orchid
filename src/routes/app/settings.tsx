@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { APP_NAME } from "@/lib/brand";
+import { AppearanceSettings } from "@/components/isp/appearance-settings";
+import { hasPermission } from "@/lib/isp/rbac";
 import { changeMyPassword, getDashboard, renameTenant, setStaffPassword } from "@/lib/isp/server";
 import { getDocumentBranding, saveDocumentBranding } from "@/lib/isp/server-docs";
 import { getKopokopo, saveKopokopo, testKopokopo } from "@/lib/isp/server-kopo";
@@ -16,10 +18,11 @@ import type { Workspace } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app/settings")({ component: SettingsPage });
 
-type TabId = "company" | "network" | "sms" | "payment" | "plan" | "staff";
+type TabId = "company" | "appearance" | "network" | "sms" | "payment" | "plan" | "staff";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "company", label: "Company info" },
+  { id: "appearance", label: "Appearance" },
   { id: "network", label: "Network" },
   { id: "sms", label: "SMS" },
   { id: "payment", label: "Payment" },
@@ -264,7 +267,7 @@ function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted">Company profile, WireGuard hub, SMS gateways, and payment rails.</p>
+        <p className="text-sm text-muted">Company profile, appearance, WireGuard hub, SMS gateways, and payment rails.</p>
       </div>
 
       <div
@@ -326,6 +329,10 @@ function SettingsPage() {
         </form>
       ) : null}
 
+      {tab === "appearance" ? (
+        <AppearanceSettings canManage={Boolean(ws && hasPermission(ws.role, "settings.manage"))} />
+      ) : null}
+
       {tab === "company" ? (
         <form
           className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4"
@@ -349,21 +356,7 @@ function SettingsPage() {
           <Field label="Tax / PIN">
             <Input value={brand.tax_pin} onChange={(e) => setBrand({ ...brand, tax_pin: e.target.value })} />
           </Field>
-          <Field label="Brand colour">
-            <div className="flex gap-2">
-              <Input
-                type="color"
-                className="h-11 w-14 p-1"
-                value={brand.brand_color || "#4aa8a0"}
-                onChange={(e) => setBrand({ ...brand, brand_color: e.target.value })}
-              />
-              <Input
-                value={brand.brand_color}
-                onChange={(e) => setBrand({ ...brand, brand_color: e.target.value })}
-                placeholder="#4aa8a0"
-              />
-            </div>
-          </Field>
+          <p className="text-xs text-muted">Invoice accent colour follows Appearance → Primary.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Bank name">
               <Input value={brand.bank_name} onChange={(e) => setBrand({ ...brand, bank_name: e.target.value })} />

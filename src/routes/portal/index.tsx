@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Activity } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { BrandMark } from "@/components/isp/brand-mark";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
+import { usePublicTheme } from "@/components/theme-provider";
 import { APP_NAME } from "@/lib/brand";
 import { downloadPdf } from "@/lib/isp/pdf-client";
 import { portalInvoicePdf, portalStatementPdf } from "@/lib/isp/server-docs";
@@ -23,6 +24,9 @@ export const Route = createFileRoute("/portal/")({ component: PortalHome });
 
 function PortalHome() {
   const [slug, setSlug] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const { branding } = usePublicTheme(debounced, "portal");
+  const brandName = branding?.displayName || APP_NAME;
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -36,6 +40,11 @@ function PortalHome() {
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [pwMsg, setPwMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(slug.trim()), 400);
+    return () => clearTimeout(t);
+  }, [slug]);
+
   async function refresh(t: string) {
     setHome(await getPortalHome({ data: { token: t } }));
   }
@@ -44,7 +53,7 @@ function PortalHome() {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-4 py-12">
         <Link to="/" className="mb-8 flex items-center gap-2 text-sm text-muted">
-          <Activity className="size-4 text-accent" /> {APP_NAME} customer portal
+          <BrandMark name={brandName} logo={branding?.logo} size={20} /> {brandName} customer portal
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Pay bills & check your line</h1>
         <p className="mt-2 text-sm text-muted">
@@ -143,7 +152,10 @@ function PortalHome() {
     <main className="mx-auto max-w-2xl px-4 py-10">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs tracking-wide text-accent uppercase">{home.isp.name}</p>
+          <p className="flex items-center gap-2 text-xs tracking-wide text-accent uppercase">
+            <BrandMark name={home.isp.name} logo={branding?.logo} size={16} />
+            {branding?.displayName || home.isp.name}
+          </p>
           <h1 className="text-2xl font-semibold tracking-tight">{home.customer.name}</h1>
           <p className="text-sm text-muted">{home.customer.phone} · {home.points} loyalty points</p>
         </div>

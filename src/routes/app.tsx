@@ -1,20 +1,25 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { useTheme } from "@/components/theme-provider";
 import { RedirectToSignIn } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { getDashboard, listMyTenants, switchTenant } from "@/lib/isp/server";
 import { platformStatus } from "@/lib/isp/server-more";
+import { getTenantTheme } from "@/lib/isp/server-theme";
+import { clearThemeCache, type ThemeConfig } from "@/lib/theme/resolve";
 import type { Workspace } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app")({ component: AppLayout });
 
 function AppLayout() {
   const { user, isPending } = useCurrentUserState();
+  const { apply } = useTheme();
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
   const [activeTenantId, setActiveTenantId] = useState("");
   const [platformAdmin, setPlatformAdmin] = useState(false);
+  const [brand, setBrand] = useState<{ displayName: string; logo: string }>({ displayName: "", logo: "" });
 
   useEffect(() => {
     if (!user) return;
@@ -30,10 +35,23 @@ function AppLayout() {
       .catch(() => {
         /* dashboard child will surface errors */
       });
+    getTenantTheme()
+      .then((theme) => {
+        if (cancelled) return;
+        setBrand({ displayName: theme.displayName || theme.name, logo: theme.logo });
+        apply(theme as ThemeConfig, theme.name);
+      })
+      .catch(() => {
+        /* keep stylesheet / cached tokens until the next successful load */
+      });
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user, apply]);
+
+  useEffect(() => {
+    return () => apply(null);
+  }, [apply]);
 
   if (isPending) {
     return <div className="min-h-dvh bg-bg" />;
@@ -43,10 +61,14 @@ function AppLayout() {
   return (
     <AppShell
       tenantName={workspace?.tenantName}
+      displayName={brand.displayName || workspace?.tenantName}
+      logo={brand.logo}
       role={workspace?.role}
       tenants={tenants}
       activeTenantId={activeTenantId}
       onSwitchTenant={async (id) => {
+        clearThemeCache();
+        apply(null);
         const ws = await switchTenant({ data: { tenant_id: id } });
         setWorkspace(ws);
         setActiveTenantId(id);

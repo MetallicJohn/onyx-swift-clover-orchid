@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import { pngJpegBuffer } from "../../theme/assets.ts";
 import { brandInitials, parseBrandColor, type BrandProfile } from "../document-format.ts";
 
 export const A4 = { width: 595.28, height: 841.89 };
@@ -157,15 +158,34 @@ export class PdfCtx {
     const onAccent: RGB = luminance(this.accent) > 0.62 ? this.ink : [255, 255, 255];
 
     this.doc.save();
-    this.doc.roundedRect(x, this.y, mark, mark, 8).fill(this.accent);
+    const logoBuf = brand.logo ? pngJpegBuffer(brand.logo) : null;
+    if (logoBuf) {
+      try {
+        this.doc.save();
+        this.doc.roundedRect(x, this.y, mark, mark, 8).clip();
+        this.doc.image(logoBuf, x, this.y, { fit: [mark, mark], align: "center", valign: "center" });
+        this.doc.restore();
+      } catch {
+        this.doc.roundedRect(x, this.y, mark, mark, 8).fill(this.accent);
+        this.text(brandInitials(brand.name), x, this.y + 12, {
+          width: mark,
+          align: "center",
+          size: 12,
+          font: "bold",
+          color: onAccent,
+        });
+      }
+    } else {
+      this.doc.roundedRect(x, this.y, mark, mark, 8).fill(this.accent);
+      this.text(brandInitials(brand.name), x, this.y + 12, {
+        width: mark,
+        align: "center",
+        size: 12,
+        font: "bold",
+        color: onAccent,
+      });
+    }
     this.doc.restore();
-    this.text(brandInitials(brand.name), x, this.y + 12, {
-      width: mark,
-      align: "center",
-      size: 12,
-      font: "bold",
-      color: onAccent,
-    });
 
     this.doc.font("Helvetica-Bold").fontSize(13).fillColor(this.ink);
     this.doc.text(brand.name, x + mark + 12, this.y, { width: nameWidth });

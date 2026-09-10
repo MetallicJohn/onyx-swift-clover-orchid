@@ -14,6 +14,7 @@ export type BrandProfile = {
   footer: string;
   notes: string;
   brandColor: string;
+  logo?: string;
   bankName: string;
   bankAccount: string;
   bankBranch: string;

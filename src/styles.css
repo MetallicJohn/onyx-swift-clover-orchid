@@ -16,6 +16,10 @@
   --color-warn: #d4a35c;
   --color-danger: #d46a6a;
   --color-ok: #6db58a;
+  --color-info: #6b9fd4;
+  --color-sidebar: #11181f;
+  --color-header: #0a0e13;
+  --color-chart: #4aa8a0;
 
   --color-paper: #f6f3ec;
   --color-paper-ink: #1b232c;
@@ -36,6 +40,33 @@
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
+  }
+
+  html {
+    color-scheme: dark;
+    --primary: var(--color-accent);
+    --primary-foreground: var(--color-accent-fg);
+    --secondary: var(--color-elevated);
+    --secondary-foreground: var(--color-fg);
+    --accent: var(--color-accent);
+    --accent-foreground: var(--color-accent-fg);
+    --background: var(--color-bg);
+    --foreground: var(--color-fg);
+    --card: var(--color-surface);
+    --card-foreground: var(--color-fg);
+    --muted: var(--color-elevated);
+    --muted-foreground: var(--color-muted);
+    --border: var(--color-border);
+    --success: var(--color-ok);
+    --warning: var(--color-warn);
+    --destructive: var(--color-danger);
+    --info: var(--color-info);
+    --sidebar: var(--color-sidebar);
+    --header: var(--color-header);
+  }
+
+  html[data-appearance="light"] {
+    color-scheme: light;
   }
 
   html,

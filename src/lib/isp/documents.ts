@@ -11,6 +11,8 @@ import {
   type StatementDocument,
 } from "./document-format.ts";
 import { customerBalance } from "./ledger.ts";
+import { DEFAULT_APPEARANCE, DEFAULT_PRESET, isAppearance, isPresetId } from "../theme/presets.ts";
+import { resolvePalette } from "../theme/resolve.ts";
 
 export type {
   BrandProfile,
@@ -54,6 +56,13 @@ async function loadBrand(sql: Sql, tenantId: string): Promise<BrandProfile> {
     invoice_footer: string;
     invoice_notes: string;
     brand_color: string;
+    theme_preset: string;
+    theme_appearance: string;
+    theme_primary: string;
+    theme_secondary: string;
+    theme_accent: string;
+    theme_display_name: string;
+    theme_logo: string;
     bank_name: string;
     bank_account: string;
     bank_branch: string;
@@ -62,6 +71,13 @@ async function loadBrand(sql: Sql, tenantId: string): Promise<BrandProfile> {
             vat_enabled, vat_rate_pct, currency, timezone,
             coalesce(invoice_footer,'') as invoice_footer, coalesce(invoice_notes,'') as invoice_notes,
             coalesce(brand_color,'') as brand_color,
+            coalesce(theme_preset,'teal') as theme_preset,
+            coalesce(theme_appearance,'dark') as theme_appearance,
+            coalesce(theme_primary,'') as theme_primary,
+            coalesce(theme_secondary,'') as theme_secondary,
+            coalesce(theme_accent,'') as theme_accent,
+            coalesce(theme_display_name,'') as theme_display_name,
+            coalesce(theme_logo,'') as theme_logo,
             coalesce(bank_name,'') as bank_name, coalesce(bank_account,'') as bank_account,
             coalesce(bank_branch,'') as bank_branch
      from tenants where id = ${tenantId}`;
@@ -94,7 +110,7 @@ async function loadBrand(sql: Sql, tenantId: string): Promise<BrandProfile> {
   }
   return {
     tenantId,
-    name: ten.name,
+    name: ten.theme_display_name.trim() || ten.name,
     slug: ten.slug,
     address: ten.address,
     phone: ten.support_phone,
@@ -107,7 +123,17 @@ async function loadBrand(sql: Sql, tenantId: string): Promise<BrandProfile> {
     timezone: ten.timezone || "Africa/Nairobi",
     footer: ten.invoice_footer,
     notes: ten.invoice_notes,
-    brandColor: ten.brand_color || DEFAULT_COLOR,
+    brandColor: resolvePalette(
+      {
+        preset: isPresetId(ten.theme_preset) ? ten.theme_preset : DEFAULT_PRESET,
+        appearance: isAppearance(ten.theme_appearance) ? ten.theme_appearance : DEFAULT_APPEARANCE,
+        primary: ten.theme_primary,
+        secondary: ten.theme_secondary,
+        accent: ten.theme_accent,
+      },
+      true,
+    ).primary || ten.brand_color || DEFAULT_COLOR,
+    logo: ten.theme_logo || "",
     bankName: ten.bank_name,
     bankAccount: ten.bank_account,
     bankBranch: ten.bank_branch,

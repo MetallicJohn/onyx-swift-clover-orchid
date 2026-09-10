@@ -32,3 +32,10 @@ test("finance can reconcile paybill hits; customer care cannot", () => {
   assert.equal(hasPermission("customer_care", "payments.reconcile"), false);
   assert.equal(hasPermission("customer_care", "payments.read"), true);
 });
+
+test("only owners and admins can change settings including appearance", () => {
+  assert.equal(hasPermission("isp_owner", "settings.manage"), true);
+  assert.equal(hasPermission("isp_admin", "settings.manage"), true);
+  assert.equal(hasPermission("finance", "settings.manage"), false);
+  assert.equal(hasPermission("technician", "settings.manage"), false);
+});

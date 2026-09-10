@@ -1,11 +1,12 @@
-import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
-import { Activity } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
+import { createFileRoute, Link, Navigate, useRouterState } from "@tanstack/react-router";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { GROK_PROVIDERS, authClient, authEnabled, getBearerToken, signIn } from "@/lib/auth/client";
 import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { BrandMark } from "@/components/isp/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
+import { usePublicTheme } from "@/components/theme-provider";
 import { APP_NAME } from "@/lib/brand";
 import { hasOperatorBearer, loginPageAction, rememberAuthSession } from "@/lib/isp/auth-session";
 import { bootstrapWorkspace } from "@/lib/isp/server";
@@ -24,6 +25,10 @@ function signInErrorMessage(err: unknown) {
 
 function Login() {
   const { user, isPending } = useCurrentUserState();
+  const search = useRouterState({ select: (s) => s.location.searchStr });
+  const ispSlug = useMemo(() => new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("isp") ?? "", [search]);
+  const { branding } = usePublicTheme(ispSlug, "login");
+  const brandName = branding?.displayName || APP_NAME;
   const gateSession = useSyncExternalStore(
     subscribeToNothing,
     hasGateSessionMarker,
@@ -89,10 +94,8 @@ function Login() {
     <main className="grid min-h-dvh place-items-center bg-bg px-4">
       <div className="w-full max-w-sm">
         <Link to="/" className="mb-8 flex items-center gap-2">
-          <span className="grid size-9 place-items-center rounded-md bg-accent text-accent-fg">
-            <Activity className="size-4" />
-          </span>
-          <span className="text-lg font-semibold tracking-tight">{APP_NAME}</span>
+          <BrandMark name={brandName} logo={branding?.logo} size={36} />
+          <span className="text-lg font-semibold tracking-tight">{brandName}</span>
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">
           {mode === "up" ? "Create your ISP" : "Sign in to your ISP"}

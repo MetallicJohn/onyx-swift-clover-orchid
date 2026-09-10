@@ -145,7 +145,7 @@ function RevenueChart({ days }: { days: DashboardData["revenueDays"] }) {
             <div className="flex h-36 w-full items-end justify-center">
               <div
                 title={`${shortDay(d.day)} · ${kes(d.amount)}`}
-                className="w-full max-w-8 rounded-sm bg-accent/80 transition-opacity hover:opacity-100 sm:max-w-none"
+                className="w-full max-w-8 rounded-sm bg-chart/80 transition-opacity hover:opacity-100 sm:max-w-none"
                 style={{ height: `${pct}%`, opacity: d.amount ? 1 : 0.25 }}
               />
             </div>

@@ -49,6 +49,11 @@ export const Route = createRootRoute({
     <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(location.pathname.indexOf("/app")===0){var t=sessionStorage.getItem("isp-theme.v1");if(t){var p=JSON.parse(t);if(p&&p.vars){var r=document.documentElement;for(var k in p.vars)r.style.setProperty(k,p.vars[k]);r.dataset.appearance=p.appearance||"dark";r.style.colorScheme=p.appearance||"dark";}}}}catch(e){}`,
+          }}
+        />
       </head>
       <body>
         <PreviewHostBridge />

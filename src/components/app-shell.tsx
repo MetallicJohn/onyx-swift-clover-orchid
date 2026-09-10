@@ -1,6 +1,5 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
-  Activity,
   BarChart3,
   Bell,
   Boxes,
@@ -19,8 +18,10 @@ import {
   Wrench,
   X,
   Shield,
+  Activity,
 } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
+import { BrandMark } from "@/components/isp/brand-mark";
 import { UserButton } from "@/lib/auth/gates";
 import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
 import { APP_NAME } from "@/lib/brand";
@@ -51,6 +52,8 @@ const subscribeToNothing = () => () => {};
 
 export function AppShell({
   tenantName,
+  displayName,
+  logo,
   role,
   tenants,
   activeTenantId,
@@ -58,6 +61,8 @@ export function AppShell({
   platformAdmin,
 }: {
   tenantName?: string;
+  displayName?: string;
+  logo?: string;
   role?: string;
   tenants?: { id: string; name: string }[];
   activeTenantId?: string;
@@ -72,6 +77,7 @@ export function AppShell({
     hasGateSessionMarker,
     () => false,
   );
+  const brand = displayName || tenantName || APP_NAME;
 
   const Nav = () => (
     <nav className="flex flex-col gap-0.5">
@@ -85,10 +91,10 @@ export function AppShell({
             onClick={() => setOpen(false)}
             className={cn(
               "flex h-11 items-center gap-3 rounded-md px-3 text-sm transition-colors",
-              active ? "bg-elevated text-fg" : "text-muted hover:bg-elevated/60 hover:text-fg",
+              active ? "bg-accent/10 text-fg" : "text-muted hover:bg-elevated/60 hover:text-fg",
             )}
           >
-            <Icon className="size-4 shrink-0" strokeWidth={1.75} />
+            <Icon className={cn("size-4 shrink-0", active && "text-accent")} strokeWidth={1.75} />
             {item.label}
           </Link>
         );
@@ -98,14 +104,12 @@ export function AppShell({
 
   return (
     <div className="min-h-dvh bg-bg text-fg">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-surface p-4 md:flex">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-sidebar p-4 md:flex">
         <Link to="/app" className="mb-6 flex items-center gap-2 px-2">
-          <span className="grid size-8 place-items-center rounded-md bg-accent text-accent-fg">
-            <Activity className="size-4" />
-          </span>
+          <BrandMark name={brand} logo={logo} size={32} />
           <div>
-            <div className="text-sm font-semibold tracking-tight">{APP_NAME}</div>
-            <div className="max-w-36 truncate text-[11px] text-muted">{tenantName ?? "ISP console"}</div>
+            <div className="max-w-36 truncate text-sm font-semibold tracking-tight">{brand}</div>
+            <div className="max-w-36 truncate text-[11px] text-muted">{tenantName && tenantName !== brand ? tenantName : "ISP console"}</div>
           </div>
         </Link>
         {tenants && tenants.length > 1 && onSwitchTenant ? (
@@ -130,9 +134,12 @@ export function AppShell({
       {open ? (
         <div className="fixed inset-0 z-40 md:hidden">
           <button className="absolute inset-0 bg-bg/70" aria-label="Close menu" onClick={() => setOpen(false)} />
-          <div className="relative z-10 flex h-full w-64 flex-col bg-surface p-4">
-            <div className="mb-4 flex items-center justify-between">
-              <span className="font-semibold">{APP_NAME}</span>
+          <div className="relative z-10 flex h-full w-64 flex-col bg-sidebar p-4">
+            <div className="mb-4 flex items-center justify-between gap-2">
+              <span className="flex min-w-0 items-center gap-2 font-semibold">
+                <BrandMark name={brand} logo={logo} size={28} />
+                <span className="truncate">{brand}</span>
+              </span>
               <button className="grid size-11 place-items-center" onClick={() => setOpen(false)} aria-label="Close">
                 <X className="size-5" />
               </button>
@@ -143,7 +150,7 @@ export function AppShell({
       ) : null}
 
       <div className="md:pl-60">
-        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border bg-bg/90 px-4 backdrop-blur">
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border bg-header/90 px-4 backdrop-blur">
           <button className="grid size-11 place-items-center md:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
             <Menu className="size-5" />
           </button>

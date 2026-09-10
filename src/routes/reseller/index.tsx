@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Handshake } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { BrandMark } from "@/components/isp/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
+import { usePublicTheme } from "@/components/theme-provider";
 import { APP_NAME } from "@/lib/brand";
 import { getResellerHome, requestResellerOtp, verifyResellerLogin } from "@/lib/isp/server-ops";
 import { kes } from "@/lib/utils";
@@ -11,6 +12,9 @@ export const Route = createFileRoute("/reseller/")({ component: ResellerHome });
 
 function ResellerHome() {
   const [slug, setSlug] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const { branding } = usePublicTheme(debounced, "reseller");
+  const brandName = branding?.displayName || APP_NAME;
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [hint, setHint] = useState<string | null>(null);
@@ -18,11 +22,16 @@ function ResellerHome() {
   const [home, setHome] = useState<Awaited<ReturnType<typeof getResellerHome>> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(slug.trim()), 400);
+    return () => clearTimeout(t);
+  }, [slug]);
+
   if (!token || !home) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-4 py-12">
         <Link to="/" className="mb-8 flex items-center gap-2 text-sm text-muted">
-          <Handshake className="size-4 text-accent" /> {APP_NAME} reseller
+          <BrandMark name={brandName} logo={branding?.logo} size={20} /> {brandName} reseller
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Commission wallet</h1>
         <p className="mt-2 text-sm text-muted">ISP slug + the phone on your reseller record. Sandbox code is 000000.</p>
