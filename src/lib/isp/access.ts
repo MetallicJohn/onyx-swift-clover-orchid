@@ -4,7 +4,6 @@ import { ensureTenantHub, syncRouterWgPeer } from "./wireguard";
 import { emit } from "./events";
 import { getMessagingSettings } from "./messaging";
 import { ensureOpsSchema } from "./ops-schema";
-import { seedRadiusSessions } from "./radius";
 
 export { awardLoyalty } from "./loyalty";
 
@@ -62,15 +61,8 @@ export async function seedOpsForTenant(sql: Sql, tenantId: string) {
     }
   }
 
-  const pool = await sql<{ id: string }>`select id from ip_pools where tenant_id = ${tenantId}`;
-  if (!pool[0]) {
-    await sql`insert into ip_pools (id, tenant_id, name, cidr, next_host)
-      values (${nid("pool")}, ${tenantId}, 'Static customers', '102.68.10.0/24', 20)`;
-  }
-
   const services = await sql<{ id: string }>`select id from services where tenant_id = ${tenantId}`;
   for (const s of services) await provisionServiceAccess(sql, tenantId, s.id);
-  await seedRadiusSessions(sql, tenantId);
 
   const routers = await sql<{ id: string; name: string; enroll_token: string }>`
     select id, name, enroll_token from routers where tenant_id = ${tenantId}`;
@@ -90,59 +82,5 @@ export async function seedOpsForTenant(sql: Sql, tenantId: string) {
         wg_address: address,
       });
     }
-  }
-
-  const hsPkg = await sql<{ id: string }>`select id from packages where tenant_id = ${tenantId} and access_method = 'hotspot' limit 1`;
-  const vouchers = await sql<{ n: number }>`select count(*)::int as n from hotspot_vouchers where tenant_id = ${tenantId}`;
-  if (hsPkg[0] && (vouchers[0]?.n ?? 0) === 0) {
-    for (let v = 1; v <= 6; v++) {
-      const code = `HS-${(100000 + v).toString(36).toUpperCase()}${v}`;
-      await sql`insert into hotspot_vouchers (id, tenant_id, package_id, code, hours, status)
-        values (${nid("vch")}, ${tenantId}, ${hsPkg[0].id}, ${code}, 24, ${v < 3 ? "active" : "unused"})`;
-    }
-  }
-
-  const cpes = await sql<{ n: number }>`select count(*)::int as n from cpe_devices where tenant_id = ${tenantId}`;
-  if ((cpes[0]?.n ?? 0) === 0) {
-    const cust = await sql<{ id: string }>`select id from customers where tenant_id = ${tenantId} limit 3`;
-    const devices = [
-      { serial: "ZTE-4G-88921", product: "F670L", ssid: "Amina-Home" },
-      { serial: "HW-HG8145-1022", product: "HG8145V5", ssid: "Njeri-Office" },
-      { serial: "TK-ARCHER-4410", product: "Archer C6", ssid: "Faith-WiFi" },
-    ];
-    for (let d = 0; d < devices.length; d++) {
-      await sql`insert into cpe_devices (id, tenant_id, serial, product_class, ssid, status, customer_id)
-        values (${nid("cpe")}, ${tenantId}, ${devices[d].serial}, ${devices[d].product}, ${devices[d].ssid}, 'online', ${cust[d]?.id ?? null})`;
-    }
-  }
-
-  const resellers = await sql<{ n: number }>`select count(*)::int as n from resellers where tenant_id = ${tenantId}`;
-  if ((resellers[0]?.n ?? 0) === 0) {
-    await sql`insert into resellers (id, tenant_id, name, phone, commission_pct, status)
-      values (${nid("rsl")}, ${tenantId}, 'Westlands Agent', '+254700111222', 12, 'active')`;
-    await sql`insert into resellers (id, tenant_id, name, phone, commission_pct, status)
-      values (${nid("rsl")}, ${tenantId}, 'Nyali Kiosk', '+254711333444', 8, 'active')`;
-  }
-
-  try {
-    const incoming = await sql<{ n: number }>`select count(*)::int as n from incoming_payments where tenant_id = ${tenantId}`;
-    if ((incoming[0]?.n ?? 0) === 0) {
-      const [amina] = await sql<{ id: string }>`
-        select id from customers where tenant_id = ${tenantId} order by created_at limit 1`;
-      if (!amina) return;
-      const [pay] = await sql<{ id: string }>`
-        select id from payments where tenant_id = ${tenantId} order by paid_at desc limit 1`;
-      await sql`insert into incoming_payments
-        (id, tenant_id, provider, channel, trans_id, bill_ref, msisdn, payer_name, amount_kes, shortcode, trans_time, status, customer_id, payment_id, match_reason)
-        values (${nid("inp")}, ${tenantId}, 'mpesa', 'paybill', 'QK7X1IMANI', 'IMAN-1042', '254712001001', 'Amina Wanjiku', 3500, '4095123', now() - interval '2 hours', 'matched', ${amina?.id ?? null}, ${pay?.id ?? null}, 'bill_ref')`;
-      await sql`insert into incoming_payments
-        (id, tenant_id, provider, channel, trans_id, bill_ref, msisdn, payer_name, amount_kes, shortcode, trans_time, status)
-        values (${nid("inp")}, ${tenantId}, 'mpesa', 'paybill', 'RCVUNMATCH1', 'WRONG', '254799000111', 'Joseph Kariuki', 2500, '4095123', now() - interval '40 minutes', 'unmatched')`;
-      await sql`insert into incoming_payments
-        (id, tenant_id, provider, channel, trans_id, bill_ref, msisdn, payer_name, amount_kes, shortcode, trans_time, status)
-        values (${nid("inp")}, ${tenantId}, 'mpesa', 'till', 'RCVUNMATCH2', '', '254700445566', 'Grace Njeri', 800, '5721234', now() - interval '12 minutes', 'unmatched')`;
-    }
-  } catch {
-    /* table applies via 0022 */
   }
 }

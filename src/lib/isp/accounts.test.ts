@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { seedOpsForTenant } from "./access.ts";
 import {
   addStaffMember,
   createCredentialAccount,
@@ -106,6 +107,42 @@ test("platform superadmin can create an ISP with an owner login", async () => {
     const ownerWs = await provisionTenant(sql, created.owner_id);
     assert.equal(ownerWs.tenantName, "Coast Fibre");
     assert.equal(ownerWs.role, "isp_owner");
+  } finally {
+    await close();
+  }
+});
+
+test("a new tenant starts with no customers, invoices, or sample network data", async () => {
+  const { sql, close } = await openTestDb();
+  try {
+    const user = await createCredentialAccount(sql, {
+      email: "empty@isp.test",
+      password: "EmptyPass1",
+      name: "Empty Owner",
+    });
+    const ws = await provisionTenant(sql, user.id, { ispName: "Empty ISP" });
+    await seedOpsForTenant(sql, ws.tenantId);
+    const tables = [
+      "customers",
+      "packages",
+      "services",
+      "invoices",
+      "payments",
+      "tickets",
+      "routers",
+      "resellers",
+      "hotspot_vouchers",
+      "cpe_devices",
+      "incoming_payments",
+      "radius_sessions",
+      "ip_pools",
+    ];
+    for (const table of tables) {
+      const [row] = await sql.query<{ n: number }>(`select count(*)::int as n from ${table} where tenant_id = $1`, [
+        ws.tenantId,
+      ]);
+      assert.equal(row?.n ?? -1, 0, `${table} should be empty`);
+    }
   } finally {
     await close();
   }
