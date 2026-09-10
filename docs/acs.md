@@ -1,11 +1,11 @@
 # ACS / GenieACS
 
-GenieACS is a **separate process** (CWMP :7547, NBI :7557, FS :7567, UI on `acs.<domain>`). Gridline does not speak TR-069 itself.
+GenieACS is a **separate process** (CWMP :7547, NBI :7557, FS :7567, UI on `acs.<domain>`). ISP Solutions does not speak TR-069 itself.
 
 ## What is real
 
 - Docker Compose starts MongoDB 7 + `drumsergio/genieacs:1.2.16.0` beside the web app
-- Gridline NBI adapter: list devices, post `reboot` / `setParameterValues` (SSID) / `refreshObject` with `connection_request`
+- ISP Solutions NBI adapter: list devices, post `reboot` / `setParameterValues` (SSID) / `refreshObject` with `connection_request`
 - Inventory sync from `GET /devices/`
 - Tasks stay `queued` until NBI is configured, then `sent` or `error`
 - CPE ACS URL on the VPS: `http://<host>:7547/`

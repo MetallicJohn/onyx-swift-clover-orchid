@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
+import { APP_NAME } from "@/lib/brand";
 import { createIspAsAdmin, listPlatformTenants, platformStatus, adminResetPassword } from "@/lib/isp/server-more";
 
 export const Route = createFileRoute("/app/admin")({ component: AdminPage });
@@ -35,7 +36,7 @@ function AdminPage() {
   }, []);
 
   if (allowed === false) {
-    return <p className="text-sm text-danger">Only a Gridline superadmin can open this desk.</p>;
+    return <p className="text-sm text-danger">Only an {APP_NAME} superadmin can open this desk.</p>;
   }
   if (allowed === null) return <div className="h-32 animate-pulse rounded-xl bg-surface" />;
 

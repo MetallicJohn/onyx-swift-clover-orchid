@@ -1,5 +1,6 @@
 /** RouterOS v7 script generation. Uses :local, :if, :do, find where — not API-style one-liners. */
 /* eslint-disable no-useless-escape -- RouterOS uses $locals; JS templates must emit a literal dollar */
+import { APP_NAME } from "../brand.ts";
 
 export function rosQuote(value: string) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
@@ -66,7 +67,7 @@ export function enrollRosScript(opts: {
 /system scheduler add name=gridline-agent interval=1m start-time=startup \\
   on-event={ :log info ("gridline heartbeat " . ${rosQuote(opts.token)}) };`;
 
-  return `# Gridline agent enroll — RouterOS v7 script
+  return `# ${APP_NAME} agent enroll — RouterOS v7 script
 # Paste in New Terminal, or: /import file-name=gridline-enroll.rsc
 # Overlay ${addr} → hub ${hubIp} (UDP ${endpointPort})
 # Syntax: :local / :if / :do on-error / find where
@@ -220,7 +221,7 @@ export function wrapPullRosScript(opts: {
 ${c.script}`,
     )
     .join("\n\n");
-  return `# Gridline agent pull — RouterOS v7
+  return `# ${APP_NAME} agent pull — RouterOS v7
 # /import file-name=gridline-pull.rsc
 # identity: ${opts.identity}
 

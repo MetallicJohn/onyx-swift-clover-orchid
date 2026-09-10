@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
+import { APP_NAME } from "@/lib/brand";
 import { getSql } from "@/lib/db";
 import { nid } from "@/lib/utils";
 import { agentPullUrl, agentScript } from "./agent";
@@ -651,8 +652,8 @@ export const testMessaging = createServerFn({ method: "POST" })
     if (!phone) throw new Error("Enter a test phone number");
     const msg =
       data.channel === "sms"
-        ? `${tenantName}: test payment SMS from Gridline. If you received this, SMS is configured.`
-        : `${tenantName}: test payment WhatsApp from Gridline. If you received this, the Cloud API is configured.`;
+        ? `${tenantName}: test payment SMS from ${APP_NAME}. If you received this, SMS is configured.`
+        : `${tenantName}: test payment WhatsApp from ${APP_NAME}. If you received this, the Cloud API is configured.`;
     return data.channel === "sms" ? deliverSms(settings, phone, msg) : deliverWhatsapp(settings, phone, msg);
   });
 

@@ -1,4 +1,4 @@
-# Gridline VPS image. Build from the repository root:
+# ISP Solutions VPS image. Build from the repository root:
 #   docker build -f deploy/vps/Dockerfile .
 FROM node:22-bookworm-slim AS build
 WORKDIR /app

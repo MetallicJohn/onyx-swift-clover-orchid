@@ -1,4 +1,4 @@
-# Gridline architecture (living)
+# ISP Solutions architecture (living)
 
 Last updated: 2026-09-09 — CR-008 RLS, CI, production proofs.
 

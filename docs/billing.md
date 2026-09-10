@@ -16,7 +16,7 @@ Invoices: issued / due / overdue / partial / paid.
 
 ## Platform subscription (Settings → Plan)
 
-Gridline charges the ISP tenant. Stripe is not used.
+ISP Solutions charges the ISP tenant. Stripe is not used.
 
 - Trial is immediate (14 days).
 - Starter / Growth issue a platform invoice (`SUB-…`). The plan does **not** change until that invoice is paid in full via M-Pesa (STK to the company phone) or a recorded receipt.

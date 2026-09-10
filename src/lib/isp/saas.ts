@@ -1,3 +1,4 @@
+import { APP_NAME } from "../brand.ts";
 import { nid } from "../utils.ts";
 import { stkAdapter } from "./providers";
 
@@ -277,7 +278,7 @@ export async function createSaasStkIntent(
       amount: inv.amount_kes,
       invoiceId: inv.id,
       invoiceNumber: inv.number,
-      firstName: ten?.name || "Gridline",
+      firstName: ten?.name || APP_NAME,
       lastName: "Plan",
       callbackUrl,
     });

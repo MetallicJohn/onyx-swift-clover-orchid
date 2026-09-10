@@ -3,6 +3,7 @@ import { Handshake } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
+import { APP_NAME } from "@/lib/brand";
 import { getResellerHome, requestResellerOtp, verifyResellerLogin } from "@/lib/isp/server-ops";
 import { kes } from "@/lib/utils";
 
@@ -21,7 +22,7 @@ function ResellerHome() {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-4 py-12">
         <Link to="/" className="mb-8 flex items-center gap-2 text-sm text-muted">
-          <Handshake className="size-4 text-accent" /> Gridline reseller
+          <Handshake className="size-4 text-accent" /> {APP_NAME} reseller
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Commission wallet</h1>
         <p className="mt-2 text-sm text-muted">ISP slug + the phone on your reseller record. Sandbox code is 000000.</p>

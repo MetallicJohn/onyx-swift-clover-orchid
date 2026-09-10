@@ -6,6 +6,7 @@ import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
+import { APP_NAME } from "@/lib/brand";
 import { hasOperatorBearer, loginPageAction, rememberAuthSession } from "@/lib/isp/auth-session";
 import { bootstrapWorkspace } from "@/lib/isp/server";
 
@@ -16,7 +17,7 @@ const subscribeToNothing = () => () => {};
 function signInErrorMessage(err: unknown) {
   const raw = err instanceof Error ? err.message : "Sign-in failed";
   if (/invalid origin/i.test(raw)) {
-    return "This address is not yet allowed for sign-in. Open Gridline at your public HTTPS URL (the same one under Settings → Callback URLs).";
+    return `This address is not yet allowed for sign-in. Open ${APP_NAME} at your public HTTPS URL (the same one under Settings → Callback URLs).`;
   }
   return raw;
 }
@@ -91,7 +92,7 @@ function Login() {
           <span className="grid size-9 place-items-center rounded-md bg-accent text-accent-fg">
             <Activity className="size-4" />
           </span>
-          <span className="text-lg font-semibold tracking-tight">Gridline</span>
+          <span className="text-lg font-semibold tracking-tight">{APP_NAME}</span>
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">
           {mode === "up" ? "Create your ISP" : "Sign in to your ISP"}

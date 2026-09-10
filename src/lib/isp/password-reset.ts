@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { APP_NAME } from "../brand.ts";
 import { nid } from "../utils.ts";
 import { findAuthUserByEmail, setCredentialPassword } from "./accounts.ts";
 import { queueEmail } from "./inbox.ts";
@@ -11,7 +12,7 @@ type Sql = {
 };
 
 export const RESET_GENERIC =
-  "If that email has a Gridline login, we sent a reset link. It expires in 30 minutes.";
+  `If that email has an ${APP_NAME} login, we sent a reset link. It expires in 30 minutes.`;
 
 export function hashResetToken(raw: string) {
   return createHash("sha256").update(raw).digest("hex");
@@ -56,7 +57,7 @@ export async function requestOperatorReset(
       sql,
       mem.tenant_id,
       trimmed,
-      "Reset your Gridline password",
+      `Reset your ${APP_NAME} password`,
       `Use this link to set a new password (30 minutes):\n${link}\n\nIf you did not ask for this, ignore the message.`,
     );
     mailed = q.status === "sent";

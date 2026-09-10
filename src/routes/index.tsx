@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Activity, ArrowRight, Radio, Shield, Wallet } from "lucide-react";
 import { SignedIn, SignedOut } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { APP_NAME } from "@/lib/brand";
 
 export const Route = createFileRoute("/")({ component: Home });
 
@@ -15,7 +16,7 @@ function Home() {
           <span className="grid size-8 place-items-center rounded-md bg-accent text-accent-fg">
             <Activity className="size-4" />
           </span>
-          <span className="font-semibold tracking-tight">Gridline</span>
+          <span className="font-semibold tracking-tight">{APP_NAME}</span>
         </div>
         <div className="flex h-11 items-center gap-3 text-sm">
           {isPending ? <span className="size-8 animate-pulse rounded-full bg-elevated" /> : null}

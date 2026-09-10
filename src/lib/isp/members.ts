@@ -1,3 +1,4 @@
+import { APP_NAME } from "../brand.ts";
 import { nid } from "../utils.ts";
 import type { TenantRole } from "./types";
 
@@ -24,7 +25,7 @@ export async function addMemberByEmail(sql: Sql, tenantId: string, email: string
   const trimmed = email.trim().toLowerCase();
   if (!trimmed.includes("@")) throw new Error("Enter an email");
   const [user] = await sql<{ id: string }>`select id from "user" where lower(email) = ${trimmed}`;
-  if (!user) throw new Error("They must sign in to Gridline once before you can add them.");
+  if (!user) throw new Error(`They must sign in to ${APP_NAME} once before you can add them.`);
   const existing = await sql<{ id: string }>`
     select id from tenant_members where tenant_id = ${tenantId} and user_id = ${user.id}`;
   if (existing[0]) throw new Error("Already a member of this ISP");

@@ -23,6 +23,7 @@ import {
 import { useState, useSyncExternalStore } from "react";
 import { UserButton } from "@/lib/auth/gates";
 import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
+import { APP_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -103,7 +104,7 @@ export function AppShell({
             <Activity className="size-4" />
           </span>
           <div>
-            <div className="text-sm font-semibold tracking-tight">Gridline</div>
+            <div className="text-sm font-semibold tracking-tight">{APP_NAME}</div>
             <div className="max-w-36 truncate text-[11px] text-muted">{tenantName ?? "ISP console"}</div>
           </div>
         </Link>
@@ -131,7 +132,7 @@ export function AppShell({
           <button className="absolute inset-0 bg-bg/70" aria-label="Close menu" onClick={() => setOpen(false)} />
           <div className="relative z-10 flex h-full w-64 flex-col bg-surface p-4">
             <div className="mb-4 flex items-center justify-between">
-              <span className="font-semibold">Gridline</span>
+              <span className="font-semibold">{APP_NAME}</span>
               <button className="grid size-11 place-items-center" onClick={() => setOpen(false)} aria-label="Close">
                 <X className="size-5" />
               </button>

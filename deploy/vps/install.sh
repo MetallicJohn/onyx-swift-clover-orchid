@@ -1,5 +1,5 @@
 #!/bin/bash
-# Gridline Ubuntu 24.04 publisher. Run from the repo (or copy this tree first):
+# ISP Solutions Ubuntu 24.04 publisher. Run from the repo (or copy this tree first):
 #   sudo bash deploy/vps/install.sh --domain ops.yourisp.co.ke --email you@yourisp.co.ke
 set -euo pipefail
 
@@ -136,7 +136,7 @@ echo "[gridline] building and starting containers (first build takes several min
 INSTALL_DIR="$INSTALL_DIR" bash "$INSTALL_DIR/deploy/vps/update.sh" --force
 
 echo
-echo "Gridline is publishing at https://$DOMAIN"
+echo "ISP Solutions is publishing at https://$DOMAIN"
 echo "Point DNS A/AAAA for $DOMAIN at this VPS, then wait for TLS."
 echo "After this, each GitHub push is pulled and rebuilt on the VPS within a few minutes."
 echo
@@ -146,7 +146,7 @@ echo "  2. Settings → Public URL = https://$DOMAIN"
 echo "  3. Settings → Network: hub endpoint = this VPS public IP or $DOMAIN, then copy wg-gridline.conf to /etc/wireguard/ and wg-quick up wg-gridline"
 echo "  4. Routers → Copy script onto each MikroTik"
 echo "  5. Point acs.$DOMAIN at this VPS. CPE ACS URL = http://$DOMAIN:7547/"
-echo "  6. Gridline → GenieACS → Save NBI (http://genieacs:7557) → Sync from ACS"
+echo "  6. ISP Solutions → GenieACS → Save NBI (http://genieacs:7557) → Sync from ACS"
 echo "  7. RADIUS → Copy VPS env into gridline.env, then restart the freeradius container"
 echo "  8. Publish now: sudo bash $INSTALL_DIR/deploy/vps/update.sh"
 echo

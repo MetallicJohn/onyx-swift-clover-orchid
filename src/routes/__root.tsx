@@ -2,9 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
+import { APP_NAME } from "@/lib/brand";
 import appCss from "../styles.css?url";
-
-const APP_NAME = "Gridline";
 
 const fetchSessionUser = createServerFn({ method: "GET" }).handler(async () => {
   const { getRequest } = await import("@tanstack/react-start/server");

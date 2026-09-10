@@ -6,7 +6,7 @@ The App Builder publishes this TanStack app to Vercel. `npm run build` uses the 
 
 ## Self-host VPS (Ubuntu 24.04)
 
-This is the path for an ISP that wants Gridline on its own server next to the WireGuard hub.
+This is the path for an ISP that wants ISP Solutions on its own server next to the WireGuard hub.
 
 **Build as we publish:** we push to GitHub; the VPS pulls `main` and rebuilds. Secrets in `/opt/gridline/gridline.env` are never overwritten. First install once; after that every push lands on the box.
 

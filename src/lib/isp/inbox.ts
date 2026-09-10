@@ -1,3 +1,4 @@
+import { APP_NAME } from "../brand.ts";
 import { nid } from "../utils.ts";
 
 type Sql = {
@@ -64,7 +65,7 @@ export async function queueEmail(
   if (key && to.includes("@")) {
     try {
       const payload: Record<string, unknown> = {
-        from: "Gridline <noreply@gridline.app>",
+        from: `${APP_NAME} <noreply@gridline.app>`,
         to: [to],
         subject,
         text: body,

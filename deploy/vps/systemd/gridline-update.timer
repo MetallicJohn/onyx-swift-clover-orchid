@@ -1,5 +1,5 @@
 [Unit]
-Description=Publish Gridline from GitHub when we push
+Description=Publish ISP Solutions from GitHub when we push
 
 [Timer]
 OnBootSec=3min

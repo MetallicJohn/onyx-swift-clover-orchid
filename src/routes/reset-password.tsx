@@ -3,6 +3,7 @@ import { Activity } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
+import { APP_NAME } from "@/lib/brand";
 import { completePasswordReset, requestPasswordReset } from "@/lib/isp/server";
 
 export const Route = createFileRoute("/reset-password")({ component: ResetPassword });
@@ -60,7 +61,7 @@ function ResetPassword() {
           <span className="grid size-9 place-items-center rounded-md bg-accent text-accent-fg">
             <Activity className="size-4" />
           </span>
-          <span className="text-lg font-semibold tracking-tight">Gridline</span>
+          <span className="text-lg font-semibold tracking-tight">{APP_NAME}</span>
         </Link>
         {done ? (
           <>
@@ -73,7 +74,7 @@ function ResetPassword() {
         ) : token ? (
           <>
             <h1 className="text-2xl font-semibold tracking-tight">Set a new password</h1>
-            <p className="mt-2 text-sm text-muted">Choose a password for this Gridline login. At least 8 characters.</p>
+            <p className="mt-2 text-sm text-muted">Choose a password for this {APP_NAME} login. At least 8 characters.</p>
             <form className="mt-6 grid gap-3" onSubmit={onComplete}>
               <Field label="New password">
                 <Input
@@ -105,7 +106,7 @@ function ResetPassword() {
           <>
             <h1 className="text-2xl font-semibold tracking-tight">Forgot password</h1>
             <p className="mt-2 text-sm text-muted">
-              ISP owners, staff, and the Gridline superadmin use the same email login. We email a reset link when SMTP is configured.
+              ISP owners, staff, and the {APP_NAME} superadmin use the same email login. We email a reset link when SMTP is configured.
             </p>
             <form className="mt-6 grid gap-3" onSubmit={onRequest}>
               <Field label="Email">

@@ -1,20 +1,20 @@
 # RADIUS
 
-This SaaS is **not** a RADIUS server. FreeRADIUS is a **sidecar** on the VPS. Gridline is the source of truth.
+This SaaS is **not** a RADIUS server. FreeRADIUS is a **sidecar** on the VPS. ISP Solutions is the source of truth.
 
 ```
 MikroTik NAS  --UDP 1812/1813-->  FreeRADIUS (compose)
                                       |
                                       | HTTP rlm_rest
                                       v
-                                  Gridline
+                               ISP Solutions
                      authorize / authenticate / accounting / bootstrap
                      radius_accounts + services + packages
 ```
 
 ## VPS (recommended)
 
-`deploy/vps` starts `freeradius/freeradius-server:3.2.10`. The container waits for Gridline, then:
+`deploy/vps` starts `freeradius/freeradius-server:3.2.10`. The container waits for ISP Solutions, then:
 
 `GET /api/v1/radius/bootstrap/{slug}` (HTTP Basic, password = tenant RADIUS API key)
 

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { APP_NAME } from "@/lib/brand";
 import { disconnectRadius, exportRadiusUsers, listRadius, rotateRadiusKey } from "@/lib/isp/server-ops";
 
 export const Route = createFileRoute("/app/radius")({ component: RadiusPage });
@@ -71,7 +72,7 @@ function RadiusPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">RADIUS</h1>
           <p className="text-sm text-muted">
-            Gridline is the source of truth. FreeRADIUS beside this app (UDP 1812/1813) authorizes over REST.
+            {APP_NAME} is the source of truth. FreeRADIUS beside this app (UDP 1812/1813) authorizes over REST.
             Suspend rejects the next Access-Request; Disconnect kicks the session on the router.
           </p>
         </div>

@@ -1,4 +1,5 @@
 import { diffieHellman, generateKeyPairSync, type KeyObject } from "node:crypto";
+import { APP_NAME } from "../brand.ts";
 import { nid } from "../utils.ts";
 import { open, seal } from "./secrets.ts";
 
@@ -105,7 +106,7 @@ function overlayIp(address: string) {
 
 export function buildServerConf(hub: WgHubConfig, peers: WgPeerConfig[]) {
   const lines = [
-    "# Gridline hub — /etc/wireguard/wg-gridline.conf",
+    `# ${APP_NAME} hub — /etc/wireguard/wg-gridline.conf`,
     "# Overlay " + hub.network + " · this host " + hub.address,
     "# Clients initiate with persistent keepalive. Do not NAT customer LAN through this interface.",
     "",
@@ -130,7 +131,7 @@ export function buildServerConf(hub: WgHubConfig, peers: WgPeerConfig[]) {
 export function buildServerInstallScript(hub: WgHubConfig, peers: WgPeerConfig[]) {
   const conf = buildServerConf(hub, peers);
   return `#!/bin/bash
-# Gridline WireGuard hub. Run as root on the VPS that routers dial.
+# ${APP_NAME} WireGuard hub. Run as root on the VPS that routers dial.
 # Endpoint routers use: ${hub.endpointHost || "<public-ip>"}:${hub.listenPort}
 set -euo pipefail
 if ! command -v wg >/dev/null 2>&1; then

@@ -1,4 +1,4 @@
-# Gridline
+# ISP Solutions
 
 ISP operations console (multi-tenant SaaS): customers, packages, billing, M-Pesa, RADIUS, MikroTik agent, WireGuard hub.
 
@@ -11,7 +11,7 @@ git clone https://github.com/MetallicJohn/onyx-swift-clover-orchid.git /opt/grid
 sudo bash /opt/gridline/deploy/vps/install.sh --domain ops.yourisp.co.ke --email you@yourisp.co.ke
 ```
 
-That starts Caddy (HTTPS), Postgres, Gridline, MongoDB, and GenieACS. WireGuard stays on the host kernel (UDP 51820). Use a VPS with about 4 GB RAM.
+That starts Caddy (HTTPS), Postgres, ISP Solutions, MongoDB, and GenieACS. WireGuard stays on the host kernel (UDP 51820). Use a VPS with about 4 GB RAM.
 
 After DNS and TLS:
 

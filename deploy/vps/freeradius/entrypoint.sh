@@ -5,7 +5,7 @@ SLUG="${GRIDLINE_SLUG:-}"
 KEY="${RADIUS_API_KEY:-}"
 RADDB="${RADDB:-/etc/raddb}"
 
-echo "[gridline-radius] waiting for Gridline at $BASE"
+echo "[gridline-radius] waiting for ISP Solutions at $BASE"
 i=0
 while [ "$i" -lt 40 ]; do
   if curl -fsS --max-time 3 "$BASE/api/v1/health" >/dev/null 2>&1; then
@@ -17,7 +17,7 @@ done
 
 if [ -z "$SLUG" ] || [ -z "$KEY" ]; then
   echo "[gridline-radius] GRIDLINE_SLUG and RADIUS_API_KEY are required."
-  echo "[gridline-radius] Copy them from Gridline → RADIUS → Copy VPS env, then restart this container."
+  echo "[gridline-radius] Copy them from ISP Solutions → RADIUS → Copy VPS env, then restart this container."
   sleep 15
   exit 1
 fi

@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
+import { APP_NAME } from "@/lib/brand";
 import { changeMyPassword, getDashboard, renameTenant, setStaffPassword } from "@/lib/isp/server";
 import { getDocumentBranding, saveDocumentBranding } from "@/lib/isp/server-docs";
 import { getKopokopo, saveKopokopo, testKopokopo } from "@/lib/isp/server-kopo";
@@ -417,7 +418,7 @@ function SettingsPage() {
         >
           <h2 className="font-medium">Your password</h2>
           <p className="text-sm text-muted">
-            This is the email login for the ISP console and for Gridline superadmin, if you have that role.
+            This is the email login for the ISP console and for {APP_NAME} superadmin, if you have that role.
           </p>
           <Field label="Current password">
             <Input
@@ -942,7 +943,7 @@ function SettingsPage() {
       {tab === "plan" ? (
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            Gridline subscription for this ISP. Customer invoices stay on Billing. Paid plans issue an invoice and activate after M-Pesa (Stripe is not used).
+            {APP_NAME} subscription for this ISP. Customer invoices stay on Billing. Paid plans issue an invoice and activate after M-Pesa (Stripe is not used).
           </p>
           {planErr ? <p className="text-sm text-danger">{planErr}</p> : null}
           {saved && tab === "plan" ? <p className="text-sm text-accent">{saved}</p> : null}
@@ -1121,7 +1122,7 @@ function SettingsPage() {
             <div className="sm:col-span-2">
               <h2 className="font-medium">Create a staff login</h2>
               <p className="mt-1 text-sm text-muted">
-                They sign in at the same Gridline login with this email and password. No extra signup needed.
+                They sign in at the same {APP_NAME} login with this email and password. No extra signup needed.
               </p>
             </div>
             <Field label="Name">

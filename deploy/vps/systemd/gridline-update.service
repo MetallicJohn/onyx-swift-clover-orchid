@@ -1,5 +1,5 @@
 [Unit]
-Description=Pull Gridline from GitHub and rebuild
+Description=Pull ISP Solutions from GitHub and rebuild
 After=docker.service network-online.target
 Wants=network-online.target
 

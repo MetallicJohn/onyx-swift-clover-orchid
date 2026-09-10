@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
+import { APP_NAME } from "@/lib/brand";
 import { downloadPdf } from "@/lib/isp/pdf-client";
 import { portalInvoicePdf, portalStatementPdf } from "@/lib/isp/server-docs";
 import {
@@ -43,7 +44,7 @@ function PortalHome() {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-4 py-12">
         <Link to="/" className="mb-8 flex items-center gap-2 text-sm text-muted">
-          <Activity className="size-4 text-accent" /> Gridline customer portal
+          <Activity className="size-4 text-accent" /> {APP_NAME} customer portal
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">Pay bills & check your line</h1>
         <p className="mt-2 text-sm text-muted">
