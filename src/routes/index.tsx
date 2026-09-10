@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Activity, ArrowRight, Radio, Shield, Wallet } from "lucide-react";
 import { SignedIn, SignedOut } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { PublicPricing } from "@/components/public-pricing";
 import { APP_NAME } from "@/lib/brand";
 
 export const Route = createFileRoute("/")({ component: Home });
@@ -94,6 +95,8 @@ function Home() {
           ))}
         </div>
       </section>
+
+      <PublicPricing />
     </main>
   );
 }

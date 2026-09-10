@@ -346,3 +346,27 @@ export async function assertFeature(sql: Sql, tenantId: string, feature: string)
     throw new Error(`Your plan does not include ${label}. Upgrade in Settings → Plan.`);
   }
 }
+
+export async function publicCatalog(sql: Sql) {
+  const plans = await listPlans(sql, false);
+  return plans.map((p) => ({
+    code: p.code,
+    name: p.name,
+    description: p.description,
+    monthly_kes: p.monthly_kes,
+    annual_kes: p.annual_kes,
+    trial_days: p.trial_days,
+    max_customers: p.max_customers,
+    max_routers: p.max_routers,
+    max_services: p.max_services,
+    max_admins: p.max_admins,
+    support_level: p.support_level,
+    features: FEATURE_CATALOG.filter((f) => p.entitlements[f.id]).map((f) => ({
+      id: f.id,
+      label: f.label,
+    })),
+  }));
+}
+
+export type PublicPlan = Awaited<ReturnType<typeof publicCatalog>>[number];
+

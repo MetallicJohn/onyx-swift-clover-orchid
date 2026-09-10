@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  addStaffMember,
   createCredentialAccount,
   createIspWithOwner,
   isPlatformAdmin,
   provisionTenant,
 } from "./accounts.ts";
-import { assertFeature, listPlans, upsertPlan } from "./plans.ts";
+import { assertFeature, listPlans, publicCatalog, upsertPlan } from "./plans.ts";
 import {
   assignTenantPlan,
+  archiveCatalogPlan,
   ingestNodeTelemetry,
   listPlatformTenantsPage,
   loadPlatformOverview,
@@ -112,6 +112,11 @@ test("plans are database-driven and entitlements are enforced", async () => {
       () => upsertPlan(sql, { ...custom, name: "" }),
       /Plan name/,
     );
+    await archiveCatalogPlan(sql, admin.id, "starter", "archived");
+    const publicPlans = await publicCatalog(sql);
+    assert.ok(publicPlans.some((p) => p.code === "pro_plus"));
+    assert.ok(!publicPlans.some((p) => p.code === "starter"));
+    assert.ok(publicPlans.find((p) => p.code === "growth")?.features.some((f) => f.id === "whatsapp"));
   } finally {
     await close();
   }

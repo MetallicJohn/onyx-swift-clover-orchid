@@ -8,7 +8,7 @@ import {
   loadAuthUser,
   setCredentialPassword,
 } from "./accounts";
-import { listPlans, type PlanInput } from "./plans";
+import { listPlans, publicCatalog, type PlanInput } from "./plans";
 import {
   archiveCatalogPlan,
   assignTenantPlan,
@@ -205,6 +205,14 @@ export const resetSaasOperatorPassword = createServerFn({ method: "POST" })
     });
     return { email: user.email };
   });
+
+export const listPublicPlans = createServerFn({ method: "GET" }).handler(async () => {
+  const sql = await getSql();
+  await applyRls(sql, { bypass: true });
+  const plans = await publicCatalog(sql);
+  await applyRls(sql, { bypass: false });
+  return { plans };
+});
 
 export const listSaasPlans = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
