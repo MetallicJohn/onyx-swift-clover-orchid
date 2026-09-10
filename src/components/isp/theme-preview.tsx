@@ -1,10 +1,18 @@
 import type { ThemePalette } from "@/lib/theme/presets";
 
-export function ThemePreview({ palette, name }: { palette: ThemePalette; name: string }) {
+export function ThemePreview({
+  palette,
+  name,
+  fontFamily,
+}: {
+  palette: ThemePalette;
+  name: string;
+  fontFamily?: string;
+}) {
   return (
     <div
       className="overflow-hidden rounded-xl border text-left"
-      style={{ background: palette.bg, color: palette.fg, borderColor: palette.border, maxHeight: 280 }}
+      style={{ background: palette.bg, color: palette.fg, borderColor: palette.border, maxHeight: 280, fontFamily }}
     >
       <div className="flex min-h-[220px]">
         <aside className="hidden w-28 shrink-0 flex-col gap-1 p-2 sm:flex" style={{ background: palette.surface, borderRight: `1px solid ${palette.border}` }}>
@@ -20,7 +28,7 @@ export function ThemePreview({ palette, name }: { palette: ThemePalette; name: s
               className="rounded px-2 py-1 text-[10px]"
               style={
                 i === 0
-                  ? { background: `${palette.primary}22`, color: palette.fg }
+                  ? { background: palette.elevated, color: palette.fg }
                   : { color: palette.muted }
               }
             >
@@ -29,11 +37,8 @@ export function ThemePreview({ palette, name }: { palette: ThemePalette; name: s
           ))}
         </aside>
         <div className="min-w-0 flex-1 p-3">
-          <div className="mb-2 flex items-center justify-between text-[10px]" style={{ color: palette.muted }}>
-            <span>Operations</span>
-            <span className="rounded px-1.5 py-0.5" style={{ background: palette.elevated }}>
-              Admin
-            </span>
+          <div className="mb-2 text-[10px]" style={{ color: palette.muted }}>
+            Operations
           </div>
           <div className="grid grid-cols-3 gap-2">
             {[
@@ -50,7 +55,7 @@ export function ThemePreview({ palette, name }: { palette: ThemePalette; name: s
               </div>
             ))}
           </div>
-          <div className="mt-2 flex h-10 items-end gap-1 px-1">
+          <div className="mt-2 flex h-12 items-end gap-1 px-1">
             {[40, 65, 50, 80, 45, 90, 70].map((h, i) => (
               <div key={i} className="flex-1 rounded-sm" style={{ height: `${h}%`, background: palette.primary, opacity: 0.35 + h / 200 }} />
             ))}
@@ -71,26 +76,26 @@ export function ThemePreview({ palette, name }: { palette: ThemePalette; name: s
               <span className="text-right font-mono">2,500</span>
             </div>
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="mt-2 flex gap-2">
             <span
-              className="inline-flex h-7 items-center rounded-md px-3 text-[10px] font-medium"
+              className="inline-flex h-8 items-center rounded-md px-3 text-[10px] font-medium"
               style={{ background: palette.primary, color: palette.primaryFg }}
             >
               Save
             </span>
             <span
-              className="inline-flex h-7 items-center rounded-md px-3 text-[10px]"
+              className="inline-flex h-8 items-center rounded-md px-3 text-[10px]"
               style={{ background: palette.elevated, color: palette.fg, border: `1px solid ${palette.border}` }}
             >
               Cancel
             </span>
             <span
-              className="h-7 min-w-24 rounded-md px-2 text-[10px] leading-7"
-              style={{ background: palette.bg, border: `1px solid ${palette.border}`, color: palette.muted }}
+              className="inline-flex h-8 items-center rounded-md px-3 text-[10px]"
+              style={{ background: palette.elevated, color: palette.muted, border: `1px solid ${palette.border}` }}
             >
               Search…
             </span>
-            <span className="inline-flex h-7 items-center rounded-md px-3 text-[10px]" style={{ color: palette.danger }}>
+            <span className="inline-flex h-8 items-center rounded-md px-3 text-[10px]" style={{ color: palette.danger }}>
               Suspend
             </span>
           </div>

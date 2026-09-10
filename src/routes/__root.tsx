@@ -51,7 +51,7 @@ export const Route = createRootRoute({
         <HeadContent />
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{if(location.pathname.indexOf("/app")===0){var t=sessionStorage.getItem("isp-theme.v1");if(t){var p=JSON.parse(t);if(p&&p.vars){var r=document.documentElement;for(var k in p.vars)r.style.setProperty(k,p.vars[k]);r.dataset.appearance=p.appearance||"dark";r.style.colorScheme=p.appearance||"dark";}}}}catch(e){}`,
+            __html: `try{if(location.pathname.indexOf("/app")===0){var t=sessionStorage.getItem("isp-theme.v1");if(t){var p=JSON.parse(t);var r=document.documentElement;if(p&&p.vars){for(var k in p.vars)r.style.setProperty(k,p.vars[k]);r.dataset.appearance=p.appearance||"dark";r.style.colorScheme=p.appearance||"dark";}if(p&&p.fontHref){var l=document.getElementById("isp-tenant-font");if(!l){l=document.createElement("link");l.id="isp-tenant-font";l.rel="stylesheet";document.head.appendChild(l);}l.href=p.fontHref;}}}}catch(e){}`,
           }}
         />
       </head>

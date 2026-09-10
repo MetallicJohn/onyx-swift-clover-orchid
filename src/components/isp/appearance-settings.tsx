@@ -7,6 +7,7 @@ import { Field, Input } from "@/components/ui/input";
 import { getTenantTheme, saveTenantThemeFn } from "@/lib/isp/server-theme";
 import { MAX_FAVICON_BYTES, MAX_LOGO_BYTES, parseDataImage } from "@/lib/theme/assets";
 import { normalizeHex } from "@/lib/theme/contrast";
+import { DEFAULT_FONT, THEME_FONTS, applyFontKit, fontFamily } from "@/lib/theme/fonts";
 import { DEFAULT_APPEARANCE, DEFAULT_PRESET, THEME_PRESETS, type ThemeAppearance, type ThemePresetId } from "@/lib/theme/presets";
 import { emptyThemeConfig, resolvePalette, resolveTheme, type ThemeConfig } from "@/lib/theme/resolve";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,7 @@ function isThemeDirty(a: ThemeConfig, b: ThemeConfig) {
   return (
     a.preset !== b.preset ||
     a.appearance !== b.appearance ||
+    a.font !== b.font ||
     a.primary !== b.primary ||
     a.secondary !== b.secondary ||
     a.accent !== b.accent ||
@@ -84,6 +86,7 @@ function toConfig(row: {
   tenantId: string;
   preset: ThemeConfig["preset"];
   appearance: ThemeConfig["appearance"];
+  font: ThemeConfig["font"];
   primary: string;
   secondary: string;
   accent: string;
@@ -98,6 +101,7 @@ function toConfig(row: {
     tenantId: row.tenantId,
     preset: row.preset,
     appearance: row.appearance,
+    font: row.font,
     primary: row.primary,
     secondary: row.secondary,
     accent: row.accent,
@@ -121,6 +125,7 @@ export function AppearanceSettings({ canManage }: { canManage: boolean }) {
   const dirtyRef = useRef(false);
 
   useEffect(() => {
+    applyFontKit(true);
     let cancelled = false;
     getTenantTheme()
       .then((row) => {
@@ -136,6 +141,7 @@ export function AppearanceSettings({ canManage }: { canManage: boolean }) {
       .catch((e) => setErr(e instanceof Error ? e.message : "Could not load appearance"));
     return () => {
       cancelled = true;
+      applyFontKit(false);
       clearPreview();
     };
   }, [clearPreview]);
@@ -161,11 +167,11 @@ export function AppearanceSettings({ canManage }: { canManage: boolean }) {
       <div>
         <h2 className="font-medium">Appearance</h2>
         <p className="mt-1 text-sm text-muted">
-          White-label this ISP only. Other networks keep their own colours, logo, and login.
+          White-label this ISP only. Other networks keep their own colours, type, logo, and login.
         </p>
       </div>
 
-      <ThemePreview palette={resolved.palette} name={resolved.displayName} />
+      <ThemePreview palette={resolved.palette} name={resolved.displayName} fontFamily={fontFamily(draft.font)} />
 
       {resolved.issues.length ? (
         <div className="rounded-xl border border-warn/40 bg-warn/10 px-4 py-3 text-sm text-warn">
@@ -205,6 +211,40 @@ export function AppearanceSettings({ canManage }: { canManage: boolean }) {
                   {selected ? <Check className="size-4 text-accent" /> : null}
                 </div>
                 <p className="mt-0.5 text-[11px] leading-snug text-muted">{preset.blurb}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-medium">Typeface</h3>
+        <p className="mt-1 text-sm text-muted">
+          UI and headings. Amounts, account IDs, and RADIUS usernames stay IBM Plex Mono. Invoices stay Helvetica.
+        </p>
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          {THEME_FONTS.map((font) => {
+            const selected = draft.font === font.id;
+            return (
+              <button
+                key={font.id}
+                type="button"
+                onClick={() => setPatch({ font: font.id })}
+                className={cn(
+                  "min-h-20 rounded-xl border p-3 text-left transition-colors",
+                  selected ? "border-accent bg-accent/10" : "border-border bg-surface hover:bg-elevated",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-lg font-medium leading-none" style={{ fontFamily: font.family }}>
+                    Ag
+                  </span>
+                  {selected ? <Check className="size-4 text-accent" /> : null}
+                </div>
+                <div className="mt-2 text-sm font-medium" style={{ fontFamily: font.family }}>
+                  {font.name}
+                </div>
+                <p className="mt-0.5 text-[11px] leading-snug text-muted">{font.blurb}</p>
               </button>
             );
           })}
@@ -304,6 +344,7 @@ export function AppearanceSettings({ canManage }: { canManage: boolean }) {
                 data: {
                   preset: draft.preset,
                   appearance: draft.appearance,
+                  font: draft.font,
                   primary: draft.primary,
                   secondary: draft.secondary,
                   accent: draft.accent,
@@ -352,6 +393,7 @@ export function AppearanceSettings({ canManage }: { canManage: boolean }) {
             setPatch({
               preset: DEFAULT_PRESET,
               appearance: DEFAULT_APPEARANCE,
+              font: DEFAULT_FONT,
               primary: "",
               secondary: "",
               accent: "",

@@ -1,5 +1,6 @@
 import { MAX_FAVICON_BYTES, MAX_LOGO_BYTES, parseDataImage } from "../theme/assets.ts";
 import { normalizeHex } from "../theme/contrast.ts";
+import { DEFAULT_FONT, isFontId, type ThemeFontId } from "../theme/fonts.ts";
 import {
   DEFAULT_APPEARANCE,
   DEFAULT_PRESET,
@@ -22,6 +23,7 @@ type ThemeRow = {
   slug: string;
   theme_preset: string;
   theme_appearance: string;
+  theme_font: string;
   theme_primary: string;
   theme_secondary: string;
   theme_accent: string;
@@ -37,6 +39,7 @@ function rowToConfig(row: ThemeRow): ThemeConfig {
     tenantId: row.id,
     preset: isPresetId(row.theme_preset) ? row.theme_preset : DEFAULT_PRESET,
     appearance: isAppearance(row.theme_appearance) ? row.theme_appearance : DEFAULT_APPEARANCE,
+    font: isFontId(row.theme_font) ? row.theme_font : DEFAULT_FONT,
     primary: row.theme_primary || "",
     secondary: row.theme_secondary || "",
     accent: row.theme_accent || "",
@@ -51,6 +54,7 @@ function rowToConfig(row: ThemeRow): ThemeConfig {
 const THEME_SELECT = `id, name, slug,
   coalesce(theme_preset, 'teal') as theme_preset,
   coalesce(theme_appearance, 'dark') as theme_appearance,
+  coalesce(theme_font, 'outfit') as theme_font,
   coalesce(theme_primary, '') as theme_primary,
   coalesce(theme_secondary, '') as theme_secondary,
   coalesce(theme_accent, '') as theme_accent,
@@ -89,6 +93,7 @@ export async function loadPublicBranding(sql: Sql, slug: string): Promise<Public
 export type ThemePatch = {
   preset?: string;
   appearance?: string;
+  font?: string;
   primary?: string;
   secondary?: string;
   accent?: string;
@@ -122,6 +127,11 @@ export async function saveTenantTheme(sql: Sql, tenantId: string, patch: ThemePa
     if (!isAppearance(patch.appearance)) throw new Error("Appearance must be light, dark, or system");
     appearance = patch.appearance;
   }
+  let font: ThemeFontId = current.font;
+  if (patch.font != null) {
+    if (!isFontId(patch.font)) throw new Error("Unknown typeface");
+    font = patch.font;
+  }
   const primary = requireHex("Primary", patch.primary) ?? current.primary;
   const secondary = requireHex("Secondary", patch.secondary) ?? current.secondary;
   const accent = requireHex("Accent", patch.accent) ?? current.accent;
@@ -140,20 +150,22 @@ export async function saveTenantTheme(sql: Sql, tenantId: string, patch: ThemePa
     `update tenants set
       theme_preset = $2,
       theme_appearance = $3,
-      theme_primary = $4,
-      theme_secondary = $5,
-      theme_accent = $6,
-      theme_logo = $7,
-      theme_favicon = $8,
-      theme_display_name = $9,
-      theme_brand_login = $10,
-      theme_brand_portal = $11,
-      brand_color = $12
+      theme_font = $4,
+      theme_primary = $5,
+      theme_secondary = $6,
+      theme_accent = $7,
+      theme_logo = $8,
+      theme_favicon = $9,
+      theme_display_name = $10,
+      theme_brand_login = $11,
+      theme_brand_portal = $12,
+      brand_color = $13
      where id = $1`,
     [
       tenantId,
       preset,
       appearance,
+      font,
       primary,
       secondary,
       accent,
@@ -169,6 +181,7 @@ export async function saveTenantTheme(sql: Sql, tenantId: string, patch: ThemePa
     tenantId,
     preset,
     appearance,
+    font,
     primary,
     secondary,
     accent,
@@ -191,6 +204,7 @@ export function publicBrandingPayload(row: PublicBranding, surface: "login" | "p
       displayName: row.displayName || row.name,
       preset: row.preset,
       appearance: row.appearance,
+      font: row.font,
       primary: row.primary,
       secondary: row.secondary,
       accent: row.accent,

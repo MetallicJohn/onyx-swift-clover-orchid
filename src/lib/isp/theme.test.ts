@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { parseDataImage } from "../theme/assets.ts";
 import { contrastFg, contrastRatio, normalizeHex } from "../theme/contrast.ts";
+import { DEFAULT_FONT, FONT_BY_ID, googleStylesheet, isFontId } from "../theme/fonts.ts";
 import { DEFAULT_PRESET, PRESET_BY_ID } from "../theme/presets.ts";
 import { cssVars, resolvePalette, resolveTheme } from "../theme/resolve.ts";
 import { hasPermission } from "./rbac.ts";
@@ -20,6 +21,7 @@ test("new tenants receive the default teal / dark theme", async () => {
     const theme = await loadTenantTheme(sql, "ten_theme_d");
     assert.equal(theme.preset, DEFAULT_PRESET);
     assert.equal(theme.appearance, "dark");
+    assert.equal(theme.font, DEFAULT_FONT);
     assert.equal(theme.primary, "");
     assert.equal(theme.logo, "");
     const pal = resolvePalette(theme, true);
@@ -97,6 +99,7 @@ test("custom colours get an accessible button foreground", () => {
       logo: "",
       favicon: "",
       displayName: "",
+      font: "outfit",
       brandLogin: true,
       brandPortal: true,
     },
@@ -180,4 +183,29 @@ test("css tokens include sidebar, header, and chart aliases", () => {
   assert.equal(vars["--header"], pal.bg);
   assert.equal(vars["--color-chart"], pal.primary);
   assert.equal(vars["--color-accent"], pal.primary);
+  assert.equal(vars["--font-sans"], FONT_BY_ID.outfit.family);
+  assert.equal(cssVars(pal, "inter")["--font-sans"], FONT_BY_ID.inter.family);
+  assert.equal(cssVars(pal, "inter")["--default-font-family"], FONT_BY_ID.inter.family);
+});
+
+test("typeface is isolated per tenant and unknown ids are rejected", async () => {
+  const { sql, bypass, close } = await openTestDb();
+  try {
+    await bypass();
+    await sql`insert into tenants (id, name, slug) values ('ten_font_a', 'Inter ISP', 'inter-isp')`;
+    await sql`insert into tenants (id, name, slug) values ('ten_font_b', 'Outfit ISP', 'outfit-isp')`;
+    await saveTenantTheme(sql, "ten_font_a", { font: "inter" });
+    const a = await loadTenantTheme(sql, "ten_font_a");
+    const b = await loadTenantTheme(sql, "ten_font_b");
+    assert.equal(a.font, "inter");
+    assert.equal(b.font, DEFAULT_FONT);
+    await assert.rejects(() => saveTenantTheme(sql, "ten_font_a", { font: "comic-sans" }), /typeface/);
+    assert.equal(isFontId("inter"), true);
+    assert.equal(isFontId("Comic Sans"), false);
+    const href = googleStylesheet("inter");
+    assert.match(href || "", /^https:\/\/fonts\.googleapis\.com\/css2\?family=Inter/);
+    assert.equal(googleStylesheet("not-a-font"), null);
+  } finally {
+    await close();
+  }
 });

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { getPublicBranding } from "@/lib/isp/server-theme";
+import { applyFontLink, googleStylesheet } from "@/lib/theme/fonts";
 import {
   THEME_CACHE_KEY,
   applyCssVars,
@@ -27,6 +28,7 @@ type CachePayload = {
   tenantId: string;
   vars: Record<string, string>;
   appearance: "light" | "dark";
+  fontHref?: string | null;
 };
 
 function systemDark() {
@@ -47,10 +49,10 @@ function readCache(): CachePayload | null {
   }
 }
 
-function writeCache(tenantId: string, vars: Record<string, string>, appearance: "light" | "dark") {
+function writeCache(tenantId: string, vars: Record<string, string>, appearance: "light" | "dark", fontHref: string | null) {
   if (typeof sessionStorage === "undefined") return;
   try {
-    sessionStorage.setItem(THEME_CACHE_KEY, JSON.stringify({ tenantId, vars, appearance }));
+    sessionStorage.setItem(THEME_CACHE_KEY, JSON.stringify({ tenantId, vars, appearance, fontHref }));
   } catch {
     /* quota */
   }
@@ -60,10 +62,12 @@ function paint(resolved: ResolvedTheme | null) {
   if (!resolved) {
     applyCssVars(null, "dark");
     applyFavicon(null, "#0a0e13");
+    applyFontLink(null);
     return;
   }
   applyCssVars(resolved.vars, resolved.appearance);
   applyFavicon(resolved.config.favicon || null, resolved.palette.bg);
+  applyFontLink(googleStylesheet(resolved.config.font));
 }
 
 function onAppPath() {
@@ -75,6 +79,7 @@ function paintCachedForApp() {
   const cached = readCache();
   if (!cached) return false;
   applyCssVars(cached.vars, cached.appearance);
+  applyFontLink(cached.fontHref || null);
   return true;
 }
 
@@ -103,7 +108,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (resolved) {
       paint(resolved);
-      if (committed && !previewCfg) writeCache(committed.tenantId, resolved.vars, resolved.appearance);
+      if (committed && !previewCfg) {
+        writeCache(committed.tenantId, resolved.vars, resolved.appearance, googleStylesheet(committed.font));
+      }
       return;
     }
     if (onAppPath() && paintCachedForApp()) return;
@@ -118,7 +125,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       return;
     }
     const cached = readCache();
-    if (cached && cached.tenantId === config.tenantId) applyCssVars(cached.vars, cached.appearance);
+    if (cached && cached.tenantId === config.tenantId) {
+      applyCssVars(cached.vars, cached.appearance);
+      applyFontLink(cached.fontHref || null);
+    }
     setCommitted(config);
   }, []);
 
@@ -164,6 +174,7 @@ export function usePublicTheme(slug: string, surface: "login" | "portal" | "rese
             tenantId: `slug:${b.slug}`,
             preset: b.preset,
             appearance: b.appearance,
+            font: b.font,
             primary: b.primary,
             secondary: b.secondary,
             accent: b.accent,

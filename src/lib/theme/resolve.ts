@@ -1,4 +1,5 @@
 import { contrastFg, contrastIssues, mixHex, normalizeHex } from "./contrast.ts";
+import { DEFAULT_FONT, fontFamily, type ThemeFontId } from "./fonts.ts";
 import {
   DEFAULT_APPEARANCE,
   DEFAULT_PRESET,
@@ -12,6 +13,7 @@ export type ThemeConfig = {
   tenantId: string;
   preset: ThemePresetId;
   appearance: ThemeAppearance;
+  font: ThemeFontId;
   primary: string;
   secondary: string;
   accent: string;
@@ -72,6 +74,8 @@ export const CSS_VAR_KEYS = [
   "--info",
   "--sidebar",
   "--header",
+  "--font-sans",
+  "--default-font-family",
 ] as const;
 
 export const THEME_CACHE_KEY = "isp-theme.v1";
@@ -90,6 +94,7 @@ export function emptyThemeConfig(tenantId = "", displayName = ""): ThemeConfig {
     tenantId,
     preset: DEFAULT_PRESET,
     appearance: DEFAULT_APPEARANCE,
+    font: DEFAULT_FONT,
     primary: "",
     secondary: "",
     accent: "",
@@ -124,7 +129,8 @@ export function resolvePalette(config: Pick<ThemeConfig, "preset" | "appearance"
   };
 }
 
-export function cssVars(palette: ThemePalette): Record<string, string> {
+export function cssVars(palette: ThemePalette, font: ThemeFontId = DEFAULT_FONT): Record<string, string> {
+  const stack = fontFamily(font);
   return {
     "--color-bg": palette.bg,
     "--color-surface": palette.surface,
@@ -161,6 +167,8 @@ export function cssVars(palette: ThemePalette): Record<string, string> {
     "--info": palette.info,
     "--sidebar": palette.surface,
     "--header": palette.bg,
+    "--font-sans": stack,
+    "--default-font-family": stack,
   };
 }
 
@@ -171,7 +179,7 @@ export function resolveTheme(config: ThemeConfig, fallbackName: string, systemDa
     config,
     palette,
     appearance,
-    vars: cssVars(palette),
+    vars: cssVars(palette, config.font),
     issues: contrastIssues({
       primary: palette.primary,
       primaryFg: palette.primaryFg,
