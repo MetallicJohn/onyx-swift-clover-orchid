@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as PlatformRouteImport } from './routes/platform'
 import { Route as PortalRouteImport } from './routes/portal'
 import { Route as ResellerRouteImport } from './routes/reseller'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
@@ -34,6 +35,15 @@ import { Route as AppServicesRouteImport } from './routes/app/services'
 import { Route as AppSettingsRouteImport } from './routes/app/settings'
 import { Route as AppStatementsRouteImport } from './routes/app/statements'
 import { Route as AppTicketsRouteImport } from './routes/app/tickets'
+import { Route as PlatformIndexRouteImport } from './routes/platform/index'
+import { Route as PlatformActivityRouteImport } from './routes/platform/activity'
+import { Route as PlatformInfrastructureRouteImport } from './routes/platform/infrastructure'
+import { Route as PlatformPlansRouteImport } from './routes/platform/plans'
+import { Route as PlatformReportsRouteImport } from './routes/platform/reports'
+import { Route as PlatformRevenueRouteImport } from './routes/platform/revenue'
+import { Route as PlatformSettingsRouteImport } from './routes/platform/settings'
+import { Route as PlatformSubscriptionsRouteImport } from './routes/platform/subscriptions'
+import { Route as PlatformTenantsRouteImport } from './routes/platform/tenants'
 import { Route as PortalIndexRouteImport } from './routes/portal/index'
 import { Route as ResellerIndexRouteImport } from './routes/reseller/index'
 import { Route as ApiAgentAckRouteImport } from './routes/api/agent/ack'
@@ -41,7 +51,9 @@ import { Route as ApiAgentHeartbeatRouteImport } from './routes/api/agent/heartb
 import { Route as ApiAgentPullRouteImport } from './routes/api/agent/pull'
 import { Route as ApiAgentScriptRouteImport } from './routes/api/agent/script'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiPlatformTelemetryRouteImport } from './routes/api/platform/telemetry'
 import { Route as ApiV1HealthRouteImport } from './routes/api/v1/health'
+import { Route as PlatformTenantsTenantIdRouteImport } from './routes/platform/tenants.$tenantId'
 import { Route as ApiV1CronBillingRouteImport } from './routes/api/v1/cron/billing'
 import { Route as ApiWebhooksKopokopoSlugRouteImport } from './routes/api/webhooks/kopokopo/$slug'
 import { Route as ApiWebhooksMpesaSlugRouteImport } from './routes/api/webhooks/mpesa/$slug'
@@ -60,6 +72,11 @@ const AppRoute = AppRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlatformRoute = PlatformRouteImport.update({
+  id: '/platform',
+  path: '/platform',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PortalRoute = PortalRouteImport.update({
@@ -172,6 +189,51 @@ const AppTicketsRoute = AppTicketsRouteImport.update({
   path: '/tickets',
   getParentRoute: () => AppRoute,
 } as any)
+const PlatformIndexRoute = PlatformIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformActivityRoute = PlatformActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformInfrastructureRoute = PlatformInfrastructureRouteImport.update({
+  id: '/infrastructure',
+  path: '/infrastructure',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformPlansRoute = PlatformPlansRouteImport.update({
+  id: '/plans',
+  path: '/plans',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformReportsRoute = PlatformReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformRevenueRoute = PlatformRevenueRouteImport.update({
+  id: '/revenue',
+  path: '/revenue',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformSettingsRoute = PlatformSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformSubscriptionsRoute = PlatformSubscriptionsRouteImport.update({
+  id: '/subscriptions',
+  path: '/subscriptions',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformTenantsRoute = PlatformTenantsRouteImport.update({
+  id: '/tenants',
+  path: '/tenants',
+  getParentRoute: () => PlatformRoute,
+} as any)
 const PortalIndexRoute = PortalIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -207,10 +269,20 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPlatformTelemetryRoute = ApiPlatformTelemetryRouteImport.update({
+  id: '/api/platform/telemetry',
+  path: '/api/platform/telemetry',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1HealthRoute = ApiV1HealthRouteImport.update({
   id: '/api/v1/health',
   path: '/api/v1/health',
   getParentRoute: () => rootRouteImport,
+} as any)
+const PlatformTenantsTenantIdRoute = PlatformTenantsTenantIdRouteImport.update({
+  id: '/$tenantId',
+  path: '/$tenantId',
+  getParentRoute: () => PlatformTenantsRoute,
 } as any)
 const ApiV1CronBillingRoute = ApiV1CronBillingRouteImport.update({
   id: '/api/v1/cron/billing',
@@ -237,6 +309,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/platform': typeof PlatformRouteWithChildren
   '/portal': typeof PortalRouteWithChildren
   '/reseller': typeof ResellerRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
@@ -258,7 +331,16 @@ export interface FileRoutesByFullPath {
   '/app/settings': typeof AppSettingsRoute
   '/app/statements': typeof AppStatementsRoute
   '/app/tickets': typeof AppTicketsRoute
+  '/platform/activity': typeof PlatformActivityRoute
+  '/platform/infrastructure': typeof PlatformInfrastructureRoute
+  '/platform/plans': typeof PlatformPlansRoute
+  '/platform/reports': typeof PlatformReportsRoute
+  '/platform/revenue': typeof PlatformRevenueRoute
+  '/platform/settings': typeof PlatformSettingsRoute
+  '/platform/subscriptions': typeof PlatformSubscriptionsRoute
+  '/platform/tenants': typeof PlatformTenantsRouteWithChildren
   '/app/': typeof AppIndexRoute
+  '/platform/': typeof PlatformIndexRoute
   '/portal/': typeof PortalIndexRoute
   '/reseller/': typeof ResellerIndexRoute
   '/api/agent/ack': typeof ApiAgentAckRoute
@@ -266,7 +348,9 @@ export interface FileRoutesByFullPath {
   '/api/agent/pull': typeof ApiAgentPullRoute
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
   '/api/v1/health': typeof ApiV1HealthRoute
+  '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
@@ -294,7 +378,16 @@ export interface FileRoutesByTo {
   '/app/settings': typeof AppSettingsRoute
   '/app/statements': typeof AppStatementsRoute
   '/app/tickets': typeof AppTicketsRoute
+  '/platform/activity': typeof PlatformActivityRoute
+  '/platform/infrastructure': typeof PlatformInfrastructureRoute
+  '/platform/plans': typeof PlatformPlansRoute
+  '/platform/reports': typeof PlatformReportsRoute
+  '/platform/revenue': typeof PlatformRevenueRoute
+  '/platform/settings': typeof PlatformSettingsRoute
+  '/platform/subscriptions': typeof PlatformSubscriptionsRoute
+  '/platform/tenants': typeof PlatformTenantsRouteWithChildren
   '/app': typeof AppIndexRoute
+  '/platform': typeof PlatformIndexRoute
   '/portal': typeof PortalIndexRoute
   '/reseller': typeof ResellerIndexRoute
   '/api/agent/ack': typeof ApiAgentAckRoute
@@ -302,7 +395,9 @@ export interface FileRoutesByTo {
   '/api/agent/pull': typeof ApiAgentPullRoute
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
   '/api/v1/health': typeof ApiV1HealthRoute
+  '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
@@ -313,6 +408,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
+  '/platform': typeof PlatformRouteWithChildren
   '/portal': typeof PortalRouteWithChildren
   '/reseller': typeof ResellerRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
@@ -334,7 +430,16 @@ export interface FileRoutesById {
   '/app/settings': typeof AppSettingsRoute
   '/app/statements': typeof AppStatementsRoute
   '/app/tickets': typeof AppTicketsRoute
+  '/platform/activity': typeof PlatformActivityRoute
+  '/platform/infrastructure': typeof PlatformInfrastructureRoute
+  '/platform/plans': typeof PlatformPlansRoute
+  '/platform/reports': typeof PlatformReportsRoute
+  '/platform/revenue': typeof PlatformRevenueRoute
+  '/platform/settings': typeof PlatformSettingsRoute
+  '/platform/subscriptions': typeof PlatformSubscriptionsRoute
+  '/platform/tenants': typeof PlatformTenantsRouteWithChildren
   '/app/': typeof AppIndexRoute
+  '/platform/': typeof PlatformIndexRoute
   '/portal/': typeof PortalIndexRoute
   '/reseller/': typeof ResellerIndexRoute
   '/api/agent/ack': typeof ApiAgentAckRoute
@@ -342,7 +447,9 @@ export interface FileRoutesById {
   '/api/agent/pull': typeof ApiAgentPullRoute
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
   '/api/v1/health': typeof ApiV1HealthRoute
+  '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
@@ -354,6 +461,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/login'
+    | '/platform'
     | '/portal'
     | '/reseller'
     | '/reset-password'
@@ -375,7 +483,16 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/statements'
     | '/app/tickets'
+    | '/platform/activity'
+    | '/platform/infrastructure'
+    | '/platform/plans'
+    | '/platform/reports'
+    | '/platform/revenue'
+    | '/platform/settings'
+    | '/platform/subscriptions'
+    | '/platform/tenants'
     | '/app/'
+    | '/platform/'
     | '/portal/'
     | '/reseller/'
     | '/api/agent/ack'
@@ -383,7 +500,9 @@ export interface FileRouteTypes {
     | '/api/agent/pull'
     | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/platform/telemetry'
     | '/api/v1/health'
+    | '/platform/tenants/$tenantId'
     | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
@@ -411,7 +530,16 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/statements'
     | '/app/tickets'
+    | '/platform/activity'
+    | '/platform/infrastructure'
+    | '/platform/plans'
+    | '/platform/reports'
+    | '/platform/revenue'
+    | '/platform/settings'
+    | '/platform/subscriptions'
+    | '/platform/tenants'
     | '/app'
+    | '/platform'
     | '/portal'
     | '/reseller'
     | '/api/agent/ack'
@@ -419,7 +547,9 @@ export interface FileRouteTypes {
     | '/api/agent/pull'
     | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/platform/telemetry'
     | '/api/v1/health'
+    | '/platform/tenants/$tenantId'
     | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
@@ -429,6 +559,7 @@ export interface FileRouteTypes {
     | '/'
     | '/app'
     | '/login'
+    | '/platform'
     | '/portal'
     | '/reseller'
     | '/reset-password'
@@ -450,7 +581,16 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/statements'
     | '/app/tickets'
+    | '/platform/activity'
+    | '/platform/infrastructure'
+    | '/platform/plans'
+    | '/platform/reports'
+    | '/platform/revenue'
+    | '/platform/settings'
+    | '/platform/subscriptions'
+    | '/platform/tenants'
     | '/app/'
+    | '/platform/'
     | '/portal/'
     | '/reseller/'
     | '/api/agent/ack'
@@ -458,7 +598,9 @@ export interface FileRouteTypes {
     | '/api/agent/pull'
     | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/platform/telemetry'
     | '/api/v1/health'
+    | '/platform/tenants/$tenantId'
     | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
@@ -469,6 +611,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
+  PlatformRoute: typeof PlatformRouteWithChildren
   PortalRoute: typeof PortalRouteWithChildren
   ResellerRoute: typeof ResellerRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -477,6 +620,7 @@ export interface RootRouteChildren {
   ApiAgentPullRoute: typeof ApiAgentPullRoute
   ApiAgentScriptRoute: typeof ApiAgentScriptRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiPlatformTelemetryRoute: typeof ApiPlatformTelemetryRoute
   ApiV1HealthRoute: typeof ApiV1HealthRoute
   ApiV1CronBillingRoute: typeof ApiV1CronBillingRoute
   ApiWebhooksKopokopoSlugRoute: typeof ApiWebhooksKopokopoSlugRoute
@@ -505,6 +649,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/platform': {
+      id: '/platform'
+      path: '/platform'
+      fullPath: '/platform'
+      preLoaderRoute: typeof PlatformRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/portal': {
@@ -661,6 +812,69 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTicketsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/platform/': {
+      id: '/platform/'
+      path: '/'
+      fullPath: '/platform/'
+      preLoaderRoute: typeof PlatformIndexRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/activity': {
+      id: '/platform/activity'
+      path: '/activity'
+      fullPath: '/platform/activity'
+      preLoaderRoute: typeof PlatformActivityRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/infrastructure': {
+      id: '/platform/infrastructure'
+      path: '/infrastructure'
+      fullPath: '/platform/infrastructure'
+      preLoaderRoute: typeof PlatformInfrastructureRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/plans': {
+      id: '/platform/plans'
+      path: '/plans'
+      fullPath: '/platform/plans'
+      preLoaderRoute: typeof PlatformPlansRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/reports': {
+      id: '/platform/reports'
+      path: '/reports'
+      fullPath: '/platform/reports'
+      preLoaderRoute: typeof PlatformReportsRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/revenue': {
+      id: '/platform/revenue'
+      path: '/revenue'
+      fullPath: '/platform/revenue'
+      preLoaderRoute: typeof PlatformRevenueRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/settings': {
+      id: '/platform/settings'
+      path: '/settings'
+      fullPath: '/platform/settings'
+      preLoaderRoute: typeof PlatformSettingsRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/subscriptions': {
+      id: '/platform/subscriptions'
+      path: '/subscriptions'
+      fullPath: '/platform/subscriptions'
+      preLoaderRoute: typeof PlatformSubscriptionsRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/tenants': {
+      id: '/platform/tenants'
+      path: '/tenants'
+      fullPath: '/platform/tenants'
+      preLoaderRoute: typeof PlatformTenantsRouteImport
+      parentRoute: typeof PlatformRoute
+    }
     '/portal/': {
       id: '/portal/'
       path: '/'
@@ -710,12 +924,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/platform/telemetry': {
+      id: '/api/platform/telemetry'
+      path: '/api/platform/telemetry'
+      fullPath: '/api/platform/telemetry'
+      preLoaderRoute: typeof ApiPlatformTelemetryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/health': {
       id: '/api/v1/health'
       path: '/api/v1/health'
       fullPath: '/api/v1/health'
       preLoaderRoute: typeof ApiV1HealthRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/platform/tenants/$tenantId': {
+      id: '/platform/tenants/$tenantId'
+      path: '/$tenantId'
+      fullPath: '/platform/tenants/$tenantId'
+      preLoaderRoute: typeof PlatformTenantsTenantIdRouteImport
+      parentRoute: typeof PlatformTenantsRoute
     }
     '/api/v1/cron/billing': {
       id: '/api/v1/cron/billing'
@@ -794,6 +1022,46 @@ const AppRouteChildren: AppRouteChildren = {
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
+interface PlatformTenantsRouteChildren {
+  PlatformTenantsTenantIdRoute: typeof PlatformTenantsTenantIdRoute
+}
+
+const PlatformTenantsRouteChildren: PlatformTenantsRouteChildren = {
+  PlatformTenantsTenantIdRoute: PlatformTenantsTenantIdRoute,
+}
+
+const PlatformTenantsRouteWithChildren = PlatformTenantsRoute._addFileChildren(
+  PlatformTenantsRouteChildren,
+)
+
+interface PlatformRouteChildren {
+  PlatformActivityRoute: typeof PlatformActivityRoute
+  PlatformInfrastructureRoute: typeof PlatformInfrastructureRoute
+  PlatformPlansRoute: typeof PlatformPlansRoute
+  PlatformReportsRoute: typeof PlatformReportsRoute
+  PlatformRevenueRoute: typeof PlatformRevenueRoute
+  PlatformSettingsRoute: typeof PlatformSettingsRoute
+  PlatformSubscriptionsRoute: typeof PlatformSubscriptionsRoute
+  PlatformTenantsRoute: typeof PlatformTenantsRouteWithChildren
+  PlatformIndexRoute: typeof PlatformIndexRoute
+}
+
+const PlatformRouteChildren: PlatformRouteChildren = {
+  PlatformActivityRoute: PlatformActivityRoute,
+  PlatformInfrastructureRoute: PlatformInfrastructureRoute,
+  PlatformPlansRoute: PlatformPlansRoute,
+  PlatformReportsRoute: PlatformReportsRoute,
+  PlatformRevenueRoute: PlatformRevenueRoute,
+  PlatformSettingsRoute: PlatformSettingsRoute,
+  PlatformSubscriptionsRoute: PlatformSubscriptionsRoute,
+  PlatformTenantsRoute: PlatformTenantsRouteWithChildren,
+  PlatformIndexRoute: PlatformIndexRoute,
+}
+
+const PlatformRouteWithChildren = PlatformRoute._addFileChildren(
+  PlatformRouteChildren,
+)
+
 interface PortalRouteChildren {
   PortalIndexRoute: typeof PortalIndexRoute
 }
@@ -821,6 +1089,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
+  PlatformRoute: PlatformRouteWithChildren,
   PortalRoute: PortalRouteWithChildren,
   ResellerRoute: ResellerRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
@@ -829,6 +1098,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAgentPullRoute: ApiAgentPullRoute,
   ApiAgentScriptRoute: ApiAgentScriptRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiPlatformTelemetryRoute: ApiPlatformTelemetryRoute,
   ApiV1HealthRoute: ApiV1HealthRoute,
   ApiV1CronBillingRoute: ApiV1CronBillingRoute,
   ApiWebhooksKopokopoSlugRoute: ApiWebhooksKopokopoSlugRoute,

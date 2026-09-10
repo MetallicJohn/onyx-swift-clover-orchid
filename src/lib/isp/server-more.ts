@@ -5,6 +5,7 @@ import { generateMikrotikScript } from "./ai-mikrotik";
 import { redeemLoyalty } from "./loyalty";
 import { assertPermission } from "./rbac";
 import { attachCustomerReseller } from "./resellers";
+import { assertFeature } from "./plans";
 import { applySaasPayment, createSaasStkIntent, loadPlanDesk, requestPlanChange, type PlanCode } from "./saas";
 import { assignTicket, commentTicket, listStaff } from "./tickets";
 import { loadAudit, loadReports, loadStatement } from "./reports";
@@ -46,6 +47,7 @@ export const queueCpeTask = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "routers.manage");
+    await assertFeature(sql, tenantId, "genieacs");
     return queueAcsTask(sql, tenantId, data.cpe_id, data.kind, { ssid: data.ssid || "" });
   });
 
@@ -81,6 +83,7 @@ export const linkReseller = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "customers.manage");
+    await assertFeature(sql, tenantId, "reseller");
     await attachCustomerReseller(sql, tenantId, data.customer_id, data.reseller_id);
     return { ok: true };
   });
@@ -136,6 +139,7 @@ export const askRouterOs = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "routers.manage");
+    await assertFeature(sql, tenantId, "ai_assistant");
     return generateMikrotikScript(sql, tenantId, data.prompt);
   });
 
@@ -143,6 +147,7 @@ export const getReports = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, tenantId } = await requireWs(context.userId);
+    await assertFeature(sql, tenantId, "reports");
     return loadReports(sql, tenantId);
   });
 

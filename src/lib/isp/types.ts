@@ -4,7 +4,8 @@ export type TenantRole =
   | "finance"
   | "customer_care"
   | "network_engineer"
-  | "technician";
+  | "technician"
+  | "support";
 
 export type AccessMethod = "pppoe" | "static" | "hotspot";
 
@@ -36,6 +37,10 @@ export type Workspace = {
   supportEmail: string;
   supportPhone: string;
   permissions?: string[];
+  supportMode?: boolean;
+  supportReason?: string;
+  supportExpiresAt?: string;
+  supportSessionId?: string;
 };
 
 export type PackageRow = {

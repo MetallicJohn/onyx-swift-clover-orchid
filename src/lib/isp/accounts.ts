@@ -4,6 +4,7 @@ import { isTenantRole } from "./members.ts";
 import { permissionsFor } from "./rbac.ts";
 import { applyRls } from "./rls.ts";
 import { resolveActiveTenant, setActiveTenant, type TenantContext } from "./tenant-context.ts";
+import { assertAdminQuota } from "./saas.ts";
 import type { TenantRole } from "./types.ts";
 
 type Sql = {
@@ -181,6 +182,8 @@ export async function provisionTenant(
     values (${nid("mem")}, ${tenantId}, ${userId}, 'isp_owner')`;
   await setActiveTenant(sql, userId, tenantId);
   await ensureFirstPlatformAdmin(sql, userId);
+  const { ensureSubscription } = await import("./saas");
+  await ensureSubscription(sql, tenantId);
   await applyRls(sql, { tenantId, bypass: false });
   return toWorkspace({ tenantId, name: ispName, slug, email, role: "isp_owner" });
 }
@@ -191,6 +194,7 @@ export async function addStaffMember(
   opts: { email: string; role: string; name?: string; password?: string },
 ) {
   if (!isTenantRole(opts.role)) throw new Error("Unknown role");
+  await assertAdminQuota(sql, tenantId);
   const email = opts.email.trim().toLowerCase();
   const password = (opts.password || "").trim();
   let user: AuthUser;
@@ -243,6 +247,8 @@ export async function createIspWithOwner(
     values (${nid("mem")}, ${tenantId}, ${owner.id}, 'isp_owner')`;
   await setActiveTenant(sql, owner.id, tenantId);
   await ensureFirstPlatformAdmin(sql, owner.id);
+  const { ensureSubscription } = await import("./saas");
+  await ensureSubscription(sql, tenantId);
   return {
     tenant_id: tenantId,
     tenant_name: ispName,

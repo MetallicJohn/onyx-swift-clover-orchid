@@ -70,6 +70,39 @@ export async function setActiveTenant(sql: Sql, userId: string, tenantId: string
 }
 
 export async function resolveActiveTenant(sql: Sql, userId: string): Promise<TenantContext | null> {
+  const [support] = await sql<{
+    id: string;
+    tenant_id: string;
+    reason: string;
+    expires_at: string;
+    name: string;
+    slug: string;
+    status: string;
+    currency: string;
+    support_email: string;
+    support_phone: string;
+  }>`select s.id, s.tenant_id, s.reason, s.expires_at::text as expires_at,
+            t.name, t.slug, t.status, t.currency, t.support_email, t.support_phone
+     from support_sessions s join tenants t on t.id = s.tenant_id
+     where s.actor_user_id = ${userId} and s.status = 'active' and s.expires_at > now()
+     order by s.started_at desc limit 1`;
+  if (support) {
+    const ctx = toWorkspace({
+      tenant_id: support.tenant_id,
+      name: support.name,
+      slug: support.slug,
+      role: "support",
+      status: support.status,
+      currency: support.currency,
+      support_email: support.support_email,
+      support_phone: support.support_phone,
+    });
+    ctx.supportMode = true;
+    ctx.supportReason = support.reason;
+    ctx.supportExpiresAt = support.expires_at;
+    ctx.supportSessionId = support.id;
+    return ctx;
+  }
   const [active] = await sql<{ tenant_id: string }>`
     select tenant_id from user_active_tenant where user_id = ${userId}`;
   if (active?.tenant_id) {

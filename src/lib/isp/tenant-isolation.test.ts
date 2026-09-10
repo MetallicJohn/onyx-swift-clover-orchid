@@ -19,3 +19,10 @@ test("active tenant is membership-validated", () => {
 test("cross-tenant resource access is denied", () => {
   assert.throws(() => assertTenantMatch("tenant-a", "tenant-b"), /Not found/);
 });
+
+test("platform console never accepts a client tenant without an admin check", () => {
+  const src = readFileSync(new URL("./server-platform.ts", import.meta.url), "utf8");
+  assert.match(src, /requirePlatformActor/);
+  assert.match(src, /applyRls\(sql, \{ bypass: true \}\)/);
+  assert.doesNotMatch(src, /requireTenant\(/);
+});

@@ -39,3 +39,12 @@ test("only owners and admins can change settings including appearance", () => {
   assert.equal(hasPermission("finance", "settings.manage"), false);
   assert.equal(hasPermission("technician", "settings.manage"), false);
 });
+
+test("support access is read-only", () => {
+  assert.equal(hasPermission("support", "customers.read"), true);
+  assert.equal(hasPermission("support", "customers.manage"), false);
+  assert.equal(hasPermission("support", "payments.manage"), false);
+  assert.equal(hasPermission("support", "routers.manage"), false);
+  assert.equal(hasPermission("support", "settings.manage"), false);
+  assert.equal(hasPermission("support", "radius.manage"), false);
+});

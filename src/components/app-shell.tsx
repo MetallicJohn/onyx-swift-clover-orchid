@@ -20,11 +20,12 @@ import {
   Shield,
   Activity,
 } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { BrandMark } from "@/components/isp/brand-mark";
 import { UserButton } from "@/lib/auth/gates";
 import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
 import { APP_NAME } from "@/lib/brand";
+import { endSaasSupport, getMyEntitlements } from "@/lib/isp/server-platform";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -59,6 +60,9 @@ export function AppShell({
   activeTenantId,
   onSwitchTenant,
   platformAdmin,
+  tenantStatus,
+  supportMode,
+  supportReason,
 }: {
   tenantName?: string;
   displayName?: string;
@@ -68,10 +72,35 @@ export function AppShell({
   activeTenantId?: string;
   onSwitchTenant?: (id: string) => void;
   platformAdmin?: boolean;
+  tenantStatus?: string;
+  supportMode?: boolean;
+  supportReason?: string;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [open, setOpen] = useState(false);
-  const nav = platformAdmin ? [...NAV, { to: "/app/admin", label: "Superadmin", icon: Shield }] : NAV;
+  const [features, setFeatures] = useState<Record<string, boolean>>({});
+  const [leaving, setLeaving] = useState(false);
+  useEffect(() => {
+    getMyEntitlements()
+      .then((r) => setFeatures(r.features))
+      .catch(() => setFeatures({}));
+  }, []);
+  const featureNav: Record<string, string> = {
+    "/app/hotspot": "hotspot",
+    "/app/radius": "radius",
+    "/app/acs": "genieacs",
+    "/app/ai": "ai_assistant",
+    "/app/field": "technician",
+    "/app/partners": "reseller",
+    "/app/reports": "reports",
+  };
+  const visible = NAV.filter((item) => {
+    const feat = featureNav[item.to];
+    if (!feat) return true;
+    if (Object.keys(features).length === 0) return true;
+    return Boolean(features[feat]);
+  });
+  const nav = visible;
   const gateSession = useSyncExternalStore(
     subscribeToNothing,
     hasGateSessionMarker,
@@ -126,8 +155,17 @@ export function AppShell({
           </select>
         ) : null}
         <Nav />
-        <div className="mt-auto border-t border-border pt-3 text-[11px] uppercase tracking-wider text-subtle">
-          {role?.replace("_", " ")}
+        <div className="mt-auto space-y-2 border-t border-border pt-3">
+          {platformAdmin ? (
+            <Link
+              to="/platform"
+              className="flex h-11 items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-elevated/60 hover:text-fg"
+            >
+              <Shield className="size-4" />
+              SaaS Management
+            </Link>
+          ) : null}
+          <div className="px-3 text-[11px] uppercase tracking-wider text-subtle">{role?.replace("_", " ")}</div>
         </div>
       </aside>
 
@@ -150,6 +188,33 @@ export function AppShell({
       ) : null}
 
       <div className="md:pl-60">
+        {supportMode ? (
+          <div className="flex flex-col gap-2 border-b border-warn/40 bg-warn/10 px-4 py-3 text-sm text-warn sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              Support mode — you are {APP_NAME} staff in this ISP. {supportReason ? `Reason: ${supportReason}` : ""}
+            </span>
+            <button
+              className="h-11 shrink-0 text-sm font-medium underline"
+              disabled={leaving}
+              onClick={async () => {
+                setLeaving(true);
+                try {
+                  await endSaasSupport();
+                  window.location.href = "/platform";
+                } finally {
+                  setLeaving(false);
+                }
+              }}
+            >
+              {leaving ? "Exiting…" : "Exit support"}
+            </button>
+          </div>
+        ) : null}
+        {tenantStatus === "suspended" && !supportMode ? (
+          <div className="border-b border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">
+            This ISP is suspended. Billing and network changes are locked until {APP_NAME} reactivates the workspace.
+          </div>
+        ) : null}
         <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border bg-header/90 px-4 backdrop-blur">
           <button className="grid size-11 place-items-center md:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
             <Menu className="size-5" />

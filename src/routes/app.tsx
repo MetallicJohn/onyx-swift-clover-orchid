@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { useTheme } from "@/components/theme-provider";
@@ -19,6 +19,7 @@ function AppLayout() {
   const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
   const [activeTenantId, setActiveTenantId] = useState("");
   const [platformAdmin, setPlatformAdmin] = useState(false);
+  const [platformOnly, setPlatformOnly] = useState(false);
   const [brand, setBrand] = useState<{ displayName: string; logo: string }>({ displayName: "", logo: "" });
 
   useEffect(() => {
@@ -32,8 +33,11 @@ function AppLayout() {
         setActiveTenantId(t.activeId || d.workspace.tenantId);
         setPlatformAdmin(p.admin);
       })
-      .catch(() => {
-        /* dashboard child will surface errors */
+      .catch((e) => {
+        const msg = e instanceof Error ? e.message : "";
+        if (msg.includes("SaaS Management") || msg.includes("No ISP workspace")) {
+          if (!cancelled) setPlatformOnly(true);
+        }
       });
     getTenantTheme()
       .then((theme) => {
@@ -57,6 +61,7 @@ function AppLayout() {
     return <div className="min-h-dvh bg-bg" />;
   }
   if (!user) return <RedirectToSignIn />;
+  if (platformOnly) return <Navigate to="/platform" />;
 
   return (
     <AppShell
@@ -75,6 +80,9 @@ function AppLayout() {
         window.location.reload();
       }}
       platformAdmin={platformAdmin}
+      tenantStatus={workspace?.status}
+      supportMode={workspace?.supportMode}
+      supportReason={workspace?.supportReason}
     />
   );
 }

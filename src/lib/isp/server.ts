@@ -20,9 +20,10 @@ import { emit } from "./events";
 import { listInbox } from "./inbox";
 import { applyConfirmedPayment } from "./payments";
 import { assertPermission } from "./rbac";
-import { assertCustomerQuota } from "./saas";
+import { assertCustomerQuota, assertRouterQuota, assertServiceQuota, assertTenantOperable } from "./saas";
+import { assertFeature, featureForAccess } from "./plans";
 import { applyRls } from "./rls";
-import { loadAuthUser, provisionTenant, setCredentialPassword, changeOwnPassword } from "./accounts";
+import { loadAuthUser, provisionTenant, setCredentialPassword, changeOwnPassword, isPlatformAdmin } from "./accounts";
 import { resolveActiveTenant, setActiveTenant } from "./tenant-context";
 import { openTicket } from "./tickets";
 import type {
@@ -65,6 +66,13 @@ async function ensureWorkspace(
   const person = displayName || profile?.name || null;
   const mail = email || profile?.email || null;
   const active = await resolveActiveTenant(sql, userId);
+  if (!active) {
+    if (await isPlatformAdmin(sql, userId)) {
+      const err = new Error("No ISP workspace. Open SaaS Management.");
+      (err as Error & { code?: string }).code = "PLATFORM_ONLY";
+      throw err;
+    }
+  }
   const workspace =
     active ??
     (await provisionTenant(sql, userId, { ispName, personName: person, email: mail }));
@@ -258,6 +266,8 @@ export const createPackage = createServerFn({ method: "POST" })
     if (!["pppoe", "static", "hotspot"].includes(data.access_method)) {
       throw new Error("Access method must be PPPoE, static, or hotspot");
     }
+    await assertTenantOperable(sql, workspace.tenantId);
+    await assertFeature(sql, workspace.tenantId, featureForAccess(data.access_method));
     const id = nid("pkg");
     await sql`insert into packages (id, tenant_id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active)
       values (${id}, ${workspace.tenantId}, ${data.name.trim()}, ${data.description}, ${data.access_method}, ${data.download_mbps}, ${data.upload_mbps}, ${data.price_kes}, ${data.billing_interval}, ${data.grace_days}, ${Math.max(0, data.bundle_mb ?? 0)}, ${Math.max(0, data.validity_hours ?? 0)}, true)`;
@@ -338,6 +348,7 @@ export const createService = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     const tid = workspace.tenantId;
+    await assertServiceQuota(sql, tid);
     const [pkg] = await sql<{
       name: string;
       access_method: AccessMethod;
@@ -347,6 +358,7 @@ export const createService = createServerFn({ method: "POST" })
     }>`select name, access_method, price_kes, billing_interval, validity_hours
        from packages where id = ${data.package_id} and tenant_id = ${tid}`;
     if (!pkg) throw new Error("Package not found");
+    await assertFeature(sql, tid, featureForAccess(pkg.access_method));
     const [cus] = await sql<{ id: string }>`select id from customers where id = ${data.customer_id} and tenant_id = ${tid}`;
     if (!cus) throw new Error("Customer not found");
     const id = nid("svc");
@@ -651,6 +663,8 @@ export const addRouter = createServerFn({ method: "POST" })
     const { sql, workspace } = await requireTenant(context.userId);
     if (!data.name.trim()) throw new Error("Name is required");
     assertPermission(workspace.role, "routers.manage");
+    await assertRouterQuota(sql, workspace.tenantId);
+    await assertFeature(sql, workspace.tenantId, "mikrotik");
     const id = nid("rtr");
     const count = await sql<{ n: number }>`select count(*)::int as n from routers where tenant_id = ${workspace.tenantId}`;
     const enroll = enrollFields(data.name);

@@ -62,6 +62,17 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "packages.read",
   ],
   technician: ["tickets.assigned.read", "jobs.update", "customers.read", "services.read", "tickets.read"],
+  support: [
+    "customers.read",
+    "packages.read",
+    "services.read",
+    "invoices.read",
+    "payments.read",
+    "routers.read",
+    "network.read",
+    "tickets.read",
+    "audit.read",
+  ],
 };
 
 export function permissionsFor(role: TenantRole): Permission[] {

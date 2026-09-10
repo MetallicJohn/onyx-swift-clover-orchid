@@ -1,5 +1,6 @@
 import { APP_NAME } from "../brand.ts";
 import { nid } from "../utils.ts";
+import { getPlan, listPlans, PLANS as SEEDED_PLANS, type PlanRecord } from "./plans";
 import { stkAdapter } from "./providers";
 
 type Sql = {
@@ -7,31 +8,20 @@ type Sql = {
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
 };
 
-export const PLANS = {
-  trial: {
-    label: "Trial",
-    blurb: "14 days to onboard your first sites.",
-    max_customers: 50,
-    max_routers: 5,
-    monthly_kes: 0,
-  },
-  starter: {
-    label: "Starter",
-    blurb: "Single-POP operators and neighbourhood ISPs.",
-    max_customers: 500,
-    max_routers: 20,
-    monthly_kes: 4999,
-  },
-  growth: {
-    label: "Growth",
-    blurb: "Multi-POP with room to scale.",
-    max_customers: 5000,
-    max_routers: 100,
-    monthly_kes: 14999,
-  },
-} as const;
+/** Seed catalog kept for tests and invoice amounts before a custom plan is saved. */
+export const PLANS = SEEDED_PLANS;
+export type PlanCode = string;
 
-export type PlanCode = keyof typeof PLANS;
+export const SUBSCRIPTION_STATUSES = [
+  "trial",
+  "active",
+  "past_due",
+  "grace",
+  "suspended",
+  "cancelled",
+  "expired",
+] as const;
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
 
 export type SaasInvoiceRow = {
   id: string;
@@ -50,12 +40,22 @@ export type PlanSnapshot = {
   status: string;
   max_customers: number;
   max_routers: number;
+  max_services: number;
+  max_admins: number;
   monthly_kes: number;
+  annual_kes: number;
+  billing_cycle: string;
   period_end: string | null;
   pending_plan: string;
   pending_invoice_id: string;
   days_left: number;
   trial_expired: boolean;
+  trial_ends_at: string | null;
+  grace_until: string | null;
+  cancelled_at: string | null;
+  started_at: string | null;
+  entitlements: Record<string, boolean>;
+  support_level: string;
 };
 
 function daysLeft(periodEnd: string | null, now = new Date()) {
@@ -65,17 +65,44 @@ function daysLeft(periodEnd: string | null, now = new Date()) {
   return Math.ceil((end.getTime() - now.getTime()) / 86400_000);
 }
 
-function asSnapshot(row: {
+function parseEnt(raw: unknown): Record<string, boolean> {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const out: Record<string, boolean> = {};
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) out[k] = Boolean(v);
+    return out;
+  }
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      return parseEnt(JSON.parse(raw));
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+type SubRow = {
   id: string;
   plan: string;
   status: string;
   max_customers: number;
   max_routers: number;
+  max_services: number;
+  max_admins: number;
   monthly_kes: number;
+  billing_cycle: string;
   period_end: string | null;
   pending_plan?: string;
   pending_invoice_id?: string;
-}): PlanSnapshot {
+  trial_ends_at?: string | null;
+  grace_until?: string | null;
+  cancelled_at?: string | null;
+  started_at?: string | null;
+  entitlements?: unknown;
+  support_level?: string;
+};
+
+function asSnapshot(row: SubRow, annual = 0): PlanSnapshot {
   const left = daysLeft(row.period_end);
   return {
     id: row.id,
@@ -83,57 +110,148 @@ function asSnapshot(row: {
     status: row.status,
     max_customers: row.max_customers,
     max_routers: row.max_routers,
+    max_services: row.max_services ?? 0,
+    max_admins: row.max_admins ?? 0,
     monthly_kes: row.monthly_kes,
+    annual_kes: annual,
+    billing_cycle: row.billing_cycle || "monthly",
     period_end: row.period_end,
     pending_plan: row.pending_plan ?? "",
     pending_invoice_id: row.pending_invoice_id ?? "",
     days_left: Math.max(0, left),
     trial_expired: row.plan === "trial" && left < 0,
+    trial_ends_at: row.trial_ends_at ?? null,
+    grace_until: row.grace_until ?? null,
+    cancelled_at: row.cancelled_at ?? null,
+    started_at: row.started_at ?? null,
+    entitlements: parseEnt(row.entitlements),
+    support_level: row.support_level || "community",
   };
 }
 
+async function loadPlanOrThrow(sql: Sql, code: string): Promise<PlanRecord> {
+  const plan = await getPlan(sql, code);
+  if (!plan || plan.status === "archived") throw new Error("Unknown plan");
+  return plan;
+}
+
+const SUB_SELECT = `id, plan, status, max_customers, max_routers, coalesce(max_services,0) as max_services,
+  coalesce(max_admins,0) as max_admins, monthly_kes, coalesce(billing_cycle,'monthly') as billing_cycle,
+  period_end::text as period_end, pending_plan, pending_invoice_id,
+  trial_ends_at::text as trial_ends_at, grace_until::text as grace_until, cancelled_at::text as cancelled_at,
+  started_at::text as started_at, entitlements, coalesce(support_level,'community') as support_level`;
+
+export async function readSubscription(sql: Sql, tenantId: string) {
+  const rows = await sql.query<SubRow>(
+    `select ${SUB_SELECT} from tenant_subscriptions where tenant_id = $1`,
+    [tenantId],
+  );
+  return rows[0] ?? null;
+}
+
 export async function ensureSubscription(sql: Sql, tenantId: string): Promise<PlanSnapshot> {
-  const [row] = await sql<{
-    id: string;
-    plan: string;
-    status: string;
-    max_customers: number;
-    max_routers: number;
-    monthly_kes: number;
-    period_end: string | null;
-    pending_plan: string;
-    pending_invoice_id: string;
-  }>`select id, plan, status, max_customers, max_routers, monthly_kes, period_end::text as period_end,
-            pending_plan, pending_invoice_id
-     from tenant_subscriptions where tenant_id = ${tenantId}`;
-  if (row) return asSnapshot(row);
-  const spec = PLANS.trial;
-  const end = new Date(Date.now() + 14 * 86400_000);
+  const row = await readSubscription(sql, tenantId);
+  if (row) {
+    const catalog = await getPlan(sql, row.plan);
+    return asSnapshot(row, catalog?.annual_kes ?? 0);
+  }
+  const spec = await loadPlanOrThrow(sql, "trial");
+  const end = new Date(Date.now() + (spec.trial_days || 14) * 86400_000);
   const id = nid("sub");
-  await sql`insert into tenant_subscriptions (id, tenant_id, plan, status, max_customers, max_routers, monthly_kes, period_end)
-    values (${id}, ${tenantId}, 'trial', 'trial', ${spec.max_customers}, ${spec.max_routers}, ${spec.monthly_kes}, ${end.toISOString()})`;
+  await sql.query(
+    `insert into tenant_subscriptions (
+       id, tenant_id, plan, status, max_customers, max_routers, max_services, max_admins,
+       max_storage_gb, api_requests_per_day, monthly_kes, period_end, billing_cycle, support_level,
+       entitlements, started_at, trial_ends_at
+     ) values ($1,$2,'trial','trial',$3,$4,$5,$6,$7,$8,$9,$10,'monthly',$11,$12,now(),$10)`,
+    [
+      id,
+      tenantId,
+      spec.max_customers,
+      spec.max_routers,
+      spec.max_services,
+      spec.max_admins,
+      spec.max_storage_gb,
+      spec.api_requests_per_day,
+      spec.monthly_kes,
+      end.toISOString(),
+      spec.support_level,
+      JSON.stringify(spec.entitlements),
+    ],
+  );
   return asSnapshot({
     id,
     plan: "trial",
     status: "trial",
-    ...spec,
+    max_customers: spec.max_customers,
+    max_routers: spec.max_routers,
+    max_services: spec.max_services,
+    max_admins: spec.max_admins,
+    monthly_kes: spec.monthly_kes,
+    billing_cycle: "monthly",
     period_end: end.toISOString(),
     pending_plan: "",
     pending_invoice_id: "",
-  });
+    trial_ends_at: end.toISOString(),
+    entitlements: spec.entitlements,
+    support_level: spec.support_level,
+    started_at: new Date().toISOString(),
+  }, spec.annual_kes);
 }
 
-export async function activatePlan(sql: Sql, tenantId: string, plan: PlanCode) {
-  const spec = PLANS[plan];
-  if (!spec) throw new Error("Unknown plan");
+function periodEndFor(plan: PlanRecord, cycle: string) {
+  const days =
+    plan.code === "trial" || plan.monthly_kes === 0
+      ? plan.trial_days || 14
+      : cycle === "annual"
+        ? 365
+        : 30;
+  return new Date(Date.now() + days * 86400_000);
+}
+
+export async function activatePlan(
+  sql: Sql,
+  tenantId: string,
+  plan: PlanCode,
+  cycle: "monthly" | "annual" = "monthly",
+) {
+  const spec = await loadPlanOrThrow(sql, plan);
   await ensureSubscription(sql, tenantId);
-  const end = new Date(Date.now() + (plan === "trial" ? 14 : 30) * 86400_000);
-  const status = plan === "trial" ? "trial" : "active";
-  await sql`update tenant_subscriptions
-    set plan = ${plan}, status = ${status}, max_customers = ${spec.max_customers}, max_routers = ${spec.max_routers},
-        monthly_kes = ${spec.monthly_kes}, period_end = ${end.toISOString()},
-        pending_plan = '', pending_invoice_id = ''
-    where tenant_id = ${tenantId}`;
+  const end = periodEndFor(spec, cycle);
+  const status = spec.monthly_kes === 0 || spec.code === "trial" ? "trial" : "active";
+  const trialEnd = status === "trial" ? end.toISOString() : null;
+  await sql.query(
+    `update tenant_subscriptions
+     set plan = $2, status = $3, max_customers = $4, max_routers = $5, max_services = $6, max_admins = $7,
+         max_storage_gb = $8, api_requests_per_day = $9, monthly_kes = $10, period_end = $11,
+         pending_plan = '', pending_invoice_id = '', billing_cycle = $12, support_level = $13,
+         entitlements = $14, cancelled_at = null, grace_until = null,
+         trial_ends_at = $15, started_at = coalesce(started_at, now())
+     where tenant_id = $1`,
+    [
+      tenantId,
+      spec.code,
+      status,
+      spec.max_customers,
+      spec.max_routers,
+      spec.max_services,
+      spec.max_admins,
+      spec.max_storage_gb,
+      spec.api_requests_per_day,
+      spec.monthly_kes,
+      end.toISOString(),
+      cycle,
+      spec.support_level,
+      JSON.stringify(spec.entitlements),
+      trialEnd,
+    ],
+  );
+  if (status === "trial") {
+    await sql`update tenants set status = 'trial', suspended_reason = '', suspended_at = null where id = ${tenantId}`;
+  } else {
+    await sql`update tenants set status = 'active', suspended_reason = '', suspended_at = null
+      where id = ${tenantId}`;
+  }
   return ensureSubscription(sql, tenantId);
 }
 
@@ -148,26 +266,27 @@ async function voidOpenSaasInvoice(sql: Sql, tenantId: string, invoiceId: string
     where id = ${invoiceId} and tenant_id = ${tenantId} and status in ('issued','due','overdue')`;
 }
 
-async function issueSaasInvoice(sql: Sql, tenantId: string, plan: PlanCode) {
-  const spec = PLANS[plan];
+async function issueSaasInvoice(sql: Sql, tenantId: string, plan: PlanCode, cycle: "monthly" | "annual" = "monthly") {
+  const spec = await loadPlanOrThrow(sql, plan);
+  const amount = cycle === "annual" ? spec.annual_kes || spec.monthly_kes * 12 : spec.monthly_kes;
   const [{ n }] = await sql<{ n: number }>`select count(*)::int as n from saas_invoices where tenant_id = ${tenantId}`;
   const number = `SUB-${String(1000 + (n ?? 0) + 1)}`;
   const id = nid("sinv");
   const due = new Date();
   due.setDate(due.getDate() + 7);
   const periodStart = new Date();
-  const periodEnd = new Date(Date.now() + 30 * 86400_000);
+  const periodEnd = periodEndFor(spec, cycle);
   await sql`insert into saas_invoices
     (id, tenant_id, number, plan, amount_kes, status, due_date, period_start, period_end)
     values (
-      ${id}, ${tenantId}, ${number}, ${plan}, ${spec.monthly_kes}, 'issued', ${due.toISOString().slice(0, 10)},
+      ${id}, ${tenantId}, ${number}, ${plan}, ${amount}, 'issued', ${due.toISOString().slice(0, 10)},
       ${periodStart.toISOString()}, ${periodEnd.toISOString()}
     )`;
   return {
     id,
     number,
     plan,
-    amount_kes: spec.monthly_kes,
+    amount_kes: amount,
     status: "issued",
     due_date: due.toISOString().slice(0, 10),
     issued_at: new Date().toISOString(),
@@ -184,15 +303,14 @@ export async function listSaasInvoices(sql: Sql, tenantId: string) {
 }
 
 export async function requestPlanChange(sql: Sql, tenantId: string, plan: PlanCode) {
-  const spec = PLANS[plan];
-  if (!spec) throw new Error("Unknown plan");
+  const spec = await loadPlanOrThrow(sql, plan);
   const sub = await ensureSubscription(sql, tenantId);
-  if (plan === "trial") {
+  if (spec.monthly_kes === 0 || spec.code === "trial") {
     if (sub.pending_invoice_id) await voidOpenSaasInvoice(sql, tenantId, sub.pending_invoice_id);
-    if (sub.plan === "trial" && !sub.pending_plan) {
+    if (sub.plan === spec.code && !sub.pending_plan) {
       return { ...sub, invoice: null as SaasInvoiceRow | null, invoices: await listSaasInvoices(sql, tenantId) };
     }
-    const next = await activatePlan(sql, tenantId, "trial");
+    const next = await activatePlan(sql, tenantId, spec.code);
     return { ...next, invoice: null as SaasInvoiceRow | null, invoices: await listSaasInvoices(sql, tenantId) };
   }
   if (sub.plan === plan && sub.status === "active" && !sub.pending_plan) {
@@ -243,9 +361,7 @@ export async function applySaasPayment(
     values (${payId}, ${opts.tenantId}, ${inv.id}, ${opts.provider || "mpesa"}, ${amount}, ${ref}, 'confirmed')`;
   await sql`update saas_invoices set status = 'paid', paid_at = now()
     where id = ${inv.id} and tenant_id = ${opts.tenantId}`;
-  const plan = inv.plan as PlanCode;
-  if (!PLANS[plan]) throw new Error("Unknown plan on invoice");
-  const next = await activatePlan(sql, opts.tenantId, plan);
+  const next = await activatePlan(sql, opts.tenantId, inv.plan);
   return { id: payId, amount, plan: next.plan, status: next.status, period_end: next.period_end };
 }
 
@@ -338,18 +454,123 @@ export async function loadPlanDesk(sql: Sql, tenantId: string) {
   const pending = current.pending_invoice_id
     ? (invoices.find((i) => i.id === current.pending_invoice_id && i.status !== "paid" && i.status !== "void") ?? null)
     : null;
+  const catalog = (await listPlans(sql, false)).map((p) => ({
+    code: p.code,
+    label: p.name,
+    blurb: p.description,
+    max_customers: p.max_customers,
+    max_routers: p.max_routers,
+    monthly_kes: p.monthly_kes,
+    annual_kes: p.annual_kes,
+    entitlements: p.entitlements,
+  }));
   return {
     ...current,
-    catalog: (Object.keys(PLANS) as PlanCode[]).map((code) => ({ code, ...PLANS[code] })),
+    catalog,
     invoice: pending,
     invoices,
   };
 }
 
+export async function assertTenantOperable(sql: Sql, tenantId: string) {
+  const [row] = await sql<{ status: string }>`select status from tenants where id = ${tenantId}`;
+  if (row?.status === "suspended") {
+    throw new Error(`This ISP is suspended. Contact ${APP_NAME} support.`);
+  }
+}
+
+function quotaMessage(plan: string, kind: string, max: number) {
+  return `Plan ${plan} allows ${max} ${kind}. Upgrade in Settings → Plan.`;
+}
+
 export async function assertCustomerQuota(sql: Sql, tenantId: string) {
+  await assertTenantOperable(sql, tenantId);
   const sub = await ensureSubscription(sql, tenantId);
   const [n] = await sql<{ n: number }>`select count(*)::int as n from customers where tenant_id = ${tenantId}`;
-  if ((n?.n ?? 0) >= sub.max_customers) {
-    throw new Error(`Plan ${sub.plan} allows ${sub.max_customers} customers. Upgrade in Settings → Plan.`);
+  if (sub.max_customers > 0 && (n?.n ?? 0) >= sub.max_customers) {
+    throw new Error(quotaMessage(sub.plan, "customers", sub.max_customers));
   }
+}
+
+export async function assertRouterQuota(sql: Sql, tenantId: string) {
+  await assertTenantOperable(sql, tenantId);
+  const sub = await ensureSubscription(sql, tenantId);
+  const [n] = await sql<{ n: number }>`select count(*)::int as n from routers where tenant_id = ${tenantId}`;
+  if (sub.max_routers > 0 && (n?.n ?? 0) >= sub.max_routers) {
+    throw new Error(quotaMessage(sub.plan, "routers", sub.max_routers));
+  }
+}
+
+export async function assertServiceQuota(sql: Sql, tenantId: string) {
+  await assertTenantOperable(sql, tenantId);
+  const sub = await ensureSubscription(sql, tenantId);
+  if (sub.max_services <= 0) return;
+  const [n] = await sql<{ n: number }>`select count(*)::int as n from services where tenant_id = ${tenantId}`;
+  if ((n?.n ?? 0) >= sub.max_services) {
+    throw new Error(quotaMessage(sub.plan, "services", sub.max_services));
+  }
+}
+
+export async function assertAdminQuota(sql: Sql, tenantId: string) {
+  const sub = await ensureSubscription(sql, tenantId);
+  if (sub.max_admins <= 0) return;
+  const [n] = await sql<{ n: number }>`select count(*)::int as n from tenant_members where tenant_id = ${tenantId}`;
+  if ((n?.n ?? 0) >= sub.max_admins) {
+    throw new Error(quotaMessage(sub.plan, "staff logins", sub.max_admins));
+  }
+}
+
+export async function settingInt(sql: Sql, key: string, fallback: number) {
+  const [row] = await sql<{ value: string }>`select value from platform_settings where key = ${key}`;
+  const n = Number(row?.value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/** Advance trial/active → grace → past_due → expired/suspended from dates. Does not delete data. */
+export async function evaluateSubscription(sql: Sql, tenantId: string, now = new Date()) {
+  const sub = await ensureSubscription(sql, tenantId);
+  if (sub.status === "cancelled" || sub.cancelled_at) return ensureSubscription(sql, tenantId);
+  const [ten] = await sql<{ status: string; suspended_reason: string }>`
+    select status, suspended_reason from tenants where id = ${tenantId}`;
+  if (ten?.status === "suspended" && ten.suspended_reason) {
+    if (sub.status !== "suspended") {
+      await sql`update tenant_subscriptions set status = 'suspended' where tenant_id = ${tenantId}`;
+    }
+    return ensureSubscription(sql, tenantId);
+  }
+  const end = sub.period_end ? new Date(sub.period_end) : null;
+  if (!end || Number.isNaN(end.getTime()) || end.getTime() >= now.getTime()) {
+    return sub;
+  }
+  const graceDays = await settingInt(sql, "grace_days", 3);
+  const pastDueDays = await settingInt(sql, "past_due_days", 7);
+  const overdueMs = now.getTime() - end.getTime();
+  const graceMs = graceDays * 86400_000;
+  const pastDueMs = pastDueDays * 86400_000;
+  if (sub.plan === "trial" || sub.monthly_kes === 0) {
+    await sql`update tenant_subscriptions set status = 'expired' where tenant_id = ${tenantId}`;
+    await sql`update tenants set status = 'suspended', suspended_reason = 'trial expired', suspended_at = now()
+      where id = ${tenantId} and status <> 'suspended'`;
+    return ensureSubscription(sql, tenantId);
+  }
+  if (overdueMs <= graceMs) {
+    const until = new Date(end.getTime() + graceMs).toISOString();
+    await sql`update tenant_subscriptions set status = 'grace', grace_until = ${until} where tenant_id = ${tenantId}`;
+    return ensureSubscription(sql, tenantId);
+  }
+  if (overdueMs <= graceMs + pastDueMs) {
+    await sql`update tenant_subscriptions set status = 'past_due' where tenant_id = ${tenantId}`;
+    return ensureSubscription(sql, tenantId);
+  }
+  await sql`update tenant_subscriptions set status = 'suspended' where tenant_id = ${tenantId}`;
+  await sql`update tenants set status = 'suspended', suspended_reason = 'non-payment', suspended_at = now()
+    where id = ${tenantId}`;
+  return ensureSubscription(sql, tenantId);
+}
+
+export async function cancelSubscription(sql: Sql, tenantId: string) {
+  await ensureSubscription(sql, tenantId);
+  await sql`update tenant_subscriptions set status = 'cancelled', cancelled_at = now(), pending_plan = '', pending_invoice_id = ''
+    where tenant_id = ${tenantId}`;
+  return ensureSubscription(sql, tenantId);
 }

@@ -34,9 +34,9 @@ export function Badge({
 /** Map a domain status string onto Badge tone classes. */
 export function statusTone(status: string) {
   const s = status.toLowerCase();
-  if (["active", "paid", "connected", "resolved", "closed", "confirmed", "online", "sent"].includes(s)) return "ok";
-  if (["grace", "due", "issued", "pending", "assigned", "travelling", "degraded", "on_site", "partial"].includes(s))
+  if (["active", "paid", "connected", "resolved", "closed", "confirmed", "online", "sent", "healthy"].includes(s)) return "ok";
+  if (["grace", "due", "issued", "pending", "assigned", "travelling", "degraded", "on_site", "partial", "trial", "past_due", "warning"].includes(s))
     return "warn";
-  if (["suspended", "overdue", "offline", "urgent", "terminated", "error"].includes(s)) return "danger";
+  if (["suspended", "overdue", "offline", "urgent", "terminated", "error", "expired", "cancelled", "critical"].includes(s)) return "danger";
   return "muted";
 }
