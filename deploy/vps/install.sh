@@ -6,6 +6,7 @@ set -euo pipefail
 DOMAIN=""
 EMAIL=""
 INSTALL_DIR="/opt/gridline"
+GIT_URL="${GRIDLINE_GIT_URL:-https://github.com/MetallicJohn/onyx-swift-clover-orchid.git}"
 
 usage() {
   echo "Usage: sudo bash deploy/vps/install.sh --domain ops.yourisp.co.ke --email you@yourisp.co.ke"
@@ -37,26 +38,36 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-echo "[gridline] installing Docker and WireGuard"
+echo "[gridline] installing Docker, git, and WireGuard"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y ca-certificates curl ufw wireguard rsync
+apt-get install -y ca-certificates curl git ufw wireguard rsync
 if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
 fi
 systemctl enable --now docker
 
+git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
+
 if [[ "$REPO_ROOT" != "$INSTALL_DIR" ]]; then
-  echo "[gridline] copying app to $INSTALL_DIR"
+  echo "[gridline] publishing checkout to $INSTALL_DIR"
   mkdir -p "$INSTALL_DIR"
-  rsync -a --delete \
-    --exclude node_modules \
-    --exclude .output \
-    --exclude .vercel \
-    --exclude .git \
-    "$REPO_ROOT/" "$INSTALL_DIR/"
+  if [[ ! -d "$INSTALL_DIR/.git" ]]; then
+    if [[ -z "$(ls -A "$INSTALL_DIR" 2>/dev/null || true)" ]]; then
+      git clone "$GIT_URL" "$INSTALL_DIR"
+    else
+      rsync -a \
+        --exclude node_modules \
+        --exclude .output \
+        --exclude .vercel \
+        --exclude .git \
+        --exclude gridline.env \
+        "$REPO_ROOT/" "$INSTALL_DIR/"
+    fi
+  fi
 fi
 cd "$INSTALL_DIR"
+chmod +x "$INSTALL_DIR/deploy/vps/update.sh" "$INSTALL_DIR/deploy/vps/entrypoint.sh" 2>/dev/null || true
 
 ENV_FILE="$INSTALL_DIR/gridline.env"
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -88,6 +99,12 @@ EOF
   chmod 600 "$ENV_FILE"
 else
   echo "[gridline] keeping existing $ENV_FILE"
+  if ! grep -q '^GRIDLINE_DOMAIN=' "$ENV_FILE"; then
+    echo "GRIDLINE_DOMAIN=$DOMAIN" >>"$ENV_FILE"
+  fi
+  if ! grep -q '^ACME_EMAIL=' "$ENV_FILE"; then
+    echo "ACME_EMAIL=$EMAIL" >>"$ENV_FILE"
+  fi
   if ! grep -q '^GENIEACS_NBI_URL=' "$ENV_FILE"; then
     echo "GENIEACS_NBI_URL=http://genieacs:7557" >>"$ENV_FILE"
   fi
@@ -116,11 +133,12 @@ if command -v ufw >/dev/null 2>&1; then
 fi
 
 echo "[gridline] building and starting containers (first build takes several minutes)"
-docker compose -f deploy/vps/docker-compose.yml --env-file "$ENV_FILE" up -d --build
+INSTALL_DIR="$INSTALL_DIR" bash "$INSTALL_DIR/deploy/vps/update.sh" --force
 
 echo
 echo "Gridline is publishing at https://$DOMAIN"
 echo "Point DNS A/AAAA for $DOMAIN at this VPS, then wait for TLS."
+echo "After this, each GitHub push is pulled and rebuilt on the VPS within a few minutes."
 echo
 echo "Next:"
 echo "  1. Sign in at https://$DOMAIN/login (signup creates the first ISP owner)."
@@ -130,6 +148,7 @@ echo "  4. Routers → Copy script onto each MikroTik"
 echo "  5. Point acs.$DOMAIN at this VPS. CPE ACS URL = http://$DOMAIN:7547/"
 echo "  6. Gridline → GenieACS → Save NBI (http://genieacs:7557) → Sync from ACS"
 echo "  7. RADIUS → Copy VPS env into gridline.env, then restart the freeradius container"
+echo "  8. Publish now: sudo bash $INSTALL_DIR/deploy/vps/update.sh"
 echo
 echo "Health: curl -fsS https://$DOMAIN/api/v1/health"
 echo "Logs:   docker compose -f $INSTALL_DIR/deploy/vps/docker-compose.yml logs -f web"

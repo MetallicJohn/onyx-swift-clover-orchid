@@ -17,6 +17,7 @@ export const Route = createFileRoute("/api/v1/health")({
           ok: database === "ok",
           service: "gridline-web",
           database,
+          sha: process.env.GRIDLINE_GIT_SHA || "",
         });
       },
     },

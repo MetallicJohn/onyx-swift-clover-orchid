@@ -1,0 +1,11 @@
+[Unit]
+Description=Publish Gridline from GitHub when we push
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

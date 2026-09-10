@@ -15,7 +15,7 @@
 | Password reset | Operator/superadmin email reset (hashed token, 30 min). Portal password + SMS reset. Admin/staff can set a password. Email sends only with Resend; otherwise the link is shown. |
 | Custom domain login | Same-origin Origin/Host match plus tenant `public_base_url`. CSRF stays on. Proven in `auth-origins.test.ts`. |
 | Invoice / statement PDFs | pdfkit A4 from live billing + ledger. Tenant-branded. View/download/print/email. |
-| VPS publish | Docker Compose + Caddy + Postgres. `deploy/vps/install.sh`. Platform deploy remains Vercel. |
+| VPS publish | Docker Compose + Caddy + Postgres. First install, then auto-pull of `main`. Platform deploy remains Vercel. |
 | Secrets | No published `gridline-dev-secret-change-me`. Production or any `DATABASE_URL` requires `APP_SECRET`. |
 
 ## Simulated / architecture-only

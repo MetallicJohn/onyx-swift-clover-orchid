@@ -22,6 +22,8 @@ services:
     build:
       context: ../..
       dockerfile: deploy/vps/Dockerfile
+      args:
+        GIT_SHA: ${GRIDLINE_GIT_SHA:-unknown}
     restart: unless-stopped
     env_file:
       - ../../gridline.env

@@ -1,0 +1,10 @@
+[Unit]
+Description=Pull Gridline from GitHub and rebuild
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Nice=10
+Environment=INSTALL_DIR=/opt/gridline
+ExecStart=/opt/gridline/deploy/vps/update.sh

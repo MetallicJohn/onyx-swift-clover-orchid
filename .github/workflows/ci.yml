@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   checks:
@@ -43,3 +44,29 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
           GRIDLINE_TEST_PG: "1"
         run: npm run test:pg
+
+  publish-vps:
+    needs: checks
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate
+        id: gate
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$KEY" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No VPS_HOST / VPS_SSH_KEY — the VPS timer will pull this commit."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish to VPS
+        if: steps.gate.outputs.skip != 'true'
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER || 'root' }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: sudo bash /opt/gridline/deploy/vps/update.sh

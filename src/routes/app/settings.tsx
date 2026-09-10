@@ -9,7 +9,7 @@ import { getMpesa, saveMpesa, savePublicBase, testMpesa } from "@/lib/isp/server
 import { getPlan, listTicketStaff, recordPlanPayment, sendPlanStk, setPlan, createStaffAccount, changeMemberRole } from "@/lib/isp/server-more";
 import { checkSmsAccount, confirmStk, getMessaging, listProviders, saveMessaging, testMessaging, toggleProvider, workspaceSlug } from "@/lib/isp/server-ops";
 import { downloadWireGuardServer, getVpsPublishGuide, getWireGuardHub, rotateWireGuardHub, saveWireGuardHub } from "@/lib/isp/server-wg";
-import { vpsInstallCommand } from "@/lib/isp/vps-publish";
+import { vpsInstallCommand, vpsUpdateCommand } from "@/lib/isp/vps-publish";
 import { cn, kes } from "@/lib/utils";
 import type { Workspace } from "@/lib/isp/types";
 
@@ -152,8 +152,13 @@ function SettingsPage() {
   const [hubConf, setHubConf] = useState<string | null>(null);
   const [hubInstall, setHubInstall] = useState<string | null>(null);
   const [hubCopied, setHubCopied] = useState<"conf" | "install" | null>(null);
-  const [vpsGuide, setVpsGuide] = useState<{ domain: string; command: string; notes: string[] } | null>(null);
-  const [vpsCopied, setVpsCopied] = useState(false);
+  const [vpsGuide, setVpsGuide] = useState<{
+    domain: string;
+    command: string;
+    updateCommand: string;
+    notes: string[];
+  } | null>(null);
+  const [vpsCopied, setVpsCopied] = useState<"install" | "update" | null>(null);
 
   async function load() {
     const [d, s, p, m, k, daraja, sub, st, branding] = await Promise.all([
@@ -559,30 +564,55 @@ function SettingsPage() {
 
       {tab === "network" ? (
         <section className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4 md:p-5">
-          <h2 className="font-medium">Publish to a VPS</h2>
+          <h2 className="font-medium">Publish to your VPS</h2>
           <p className="text-sm text-muted">
-            Gridline runs as Docker on Ubuntu 24.04: Caddy (HTTPS), Postgres, and the web app. WireGuard stays on the
-            host kernel. Copy this project onto the server, then run the installer.
+            We build here and push to GitHub. After the first install, the VPS pulls that push and rebuilds — usually
+            within a few minutes. Secrets on the server stay put.
           </p>
-          <pre className="overflow-x-auto rounded-xl border border-border bg-elevated p-4 font-mono text-xs leading-relaxed text-fg">
-            {vpsGuide?.command || vpsInstallCommand({ domain: publicBase, email: form.supportEmail })}
-          </pre>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={async () => {
-              const text = vpsGuide?.command || vpsInstallCommand({ domain: publicBase, email: form.supportEmail });
-              try {
-                await navigator.clipboard.writeText(text);
-                setVpsCopied(true);
-                setTimeout(() => setVpsCopied(false), 2500);
-              } catch {
-                setVpsCopied(false);
-              }
-            }}
-          >
-            {vpsCopied ? "Copied" : "Copy install command"}
-          </Button>
+          <Field label="First time (Ubuntu 24.04)">
+            <pre className="overflow-x-auto rounded-xl border border-border bg-elevated p-4 font-mono text-xs leading-relaxed text-fg">
+              {vpsGuide?.command || vpsInstallCommand({ domain: publicBase, email: form.supportEmail })}
+            </pre>
+          </Field>
+          <Field label="Already installed — publish now">
+            <pre className="overflow-x-auto rounded-xl border border-border bg-elevated p-4 font-mono text-xs leading-relaxed text-fg">
+              {vpsGuide?.updateCommand || vpsUpdateCommand()}
+            </pre>
+          </Field>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={async () => {
+                const text = vpsGuide?.command || vpsInstallCommand({ domain: publicBase, email: form.supportEmail });
+                try {
+                  await navigator.clipboard.writeText(text);
+                  setVpsCopied("install");
+                  setTimeout(() => setVpsCopied(null), 2500);
+                } catch {
+                  setVpsCopied(null);
+                }
+              }}
+            >
+              {vpsCopied === "install" ? "Copied install" : "Copy first-time install"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={async () => {
+                const text = vpsGuide?.updateCommand || vpsUpdateCommand();
+                try {
+                  await navigator.clipboard.writeText(text);
+                  setVpsCopied("update");
+                  setTimeout(() => setVpsCopied(null), 2500);
+                } catch {
+                  setVpsCopied(null);
+                }
+              }}
+            >
+              {vpsCopied === "update" ? "Copied updater" : "Copy publish now"}
+            </Button>
+          </div>
           <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
             {(vpsGuide?.notes || []).map((n) => (
               <li key={n}>{n}</li>
