@@ -1,5 +1,6 @@
 import { nid } from "../utils.ts";
 import { enrollFields, wgAddressForIndex } from "./agent";
+import { emptySeededTenantsCreatedOn } from "./empty-tenant";
 import { ensureTenantHub, syncRouterWgPeer } from "./wireguard";
 import { emit } from "./events";
 import { getMessagingSettings } from "./messaging";
@@ -45,6 +46,7 @@ export async function restoreCustomerAccess(sql: Sql, tenantId: string, customer
 
 export async function seedOpsForTenant(sql: Sql, tenantId: string) {
   await ensureOpsSchema(sql);
+  await emptySeededTenantsCreatedOn(sql, tenantId);
   await getMessagingSettings(sql, tenantId);
 
   const providers = [
