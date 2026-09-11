@@ -75,6 +75,26 @@ export async function enqueueServiceCommand(
   });
 }
 
+export async function enqueuePackageProfiles(
+  sql: Sql,
+  tenantId: string,
+  pkg: { name: string; download_mbps: number; upload_mbps: number; access_method?: string },
+) {
+  const routers = await sql<{ id: string }>`select id from routers where tenant_id = ${tenantId}`;
+  const payload = {
+    package: pkg.name,
+    download_mbps: pkg.download_mbps,
+    upload_mbps: pkg.upload_mbps,
+    access_method: pkg.access_method || "",
+  };
+  const ids: string[] = [];
+  for (const r of routers) {
+    const id = await enqueueAgentCommand(sql, tenantId, "package.sync", payload, r.id);
+    if (id) ids.push(id);
+  }
+  return ids;
+}
+
 export function agentPullUrl(base: string, token: string) {
   const root = (base || "").replace(/\/$/, "");
   if (!root || !token) return "";

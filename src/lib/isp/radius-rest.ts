@@ -2,6 +2,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { nid } from "../utils.ts";
 import { recordAccounting } from "./access-policy.ts";
 import { applyRls } from "./rls.ts";
+import { mikrotikProfileName } from "./pcq.ts";
 import {
   attrValue,
   octetsFromAvps,
@@ -148,17 +149,15 @@ function rejectBody(message: string): Record<string, unknown> {
 
 function acceptBody(opts: {
   password: string;
-  rateLimit: string;
   framedIp: string;
   group: string;
   sessionTimeout: number;
 }): Record<string, unknown> {
   const body: Record<string, unknown> = {
     "control:Cleartext-Password": restAttr(opts.password),
-    "Mikrotik-Group": restAttr(opts.group || "pppoe"),
+    "Mikrotik-Group": restAttr(opts.group || "isp-pkg"),
     "Acct-Interim-Interval": restAttr(300),
   };
-  if (opts.rateLimit) body["Mikrotik-Rate-Limit"] = restAttr(opts.rateLimit);
   if (opts.framedIp) body["Framed-IP-Address"] = restAttr(opts.framedIp);
   if (opts.sessionTimeout > 0) body["Session-Timeout"] = restAttr(opts.sessionTimeout);
   return body;
@@ -199,16 +198,16 @@ export async function authorizeRadius(
     enabled: boolean;
     framed_ip: string;
     group_name: string;
-    rate_limit: string;
     status: string;
     period_end: string | null;
     bundle_used_mb: number;
     bundle_mb: number;
     grace_days: number;
     grant_expires_at: string | null;
-  }>`select a.username, a.password, a.enabled, a.framed_ip, a.group_name, a.rate_limit,
+    package_name: string;
+  }>`select a.username, a.password, a.enabled, a.framed_ip, a.group_name,
             s.status, s.period_end::text as period_end, s.bundle_used_mb, p.bundle_mb, p.grace_days,
-            g.expires_at::text as grant_expires_at
+            g.expires_at::text as grant_expires_at, p.name as package_name
      from radius_accounts a
      join services s on s.id = a.service_id
      join packages p on p.id = s.package_id
@@ -240,9 +239,8 @@ export async function authorizeRadius(
     http: 200,
     body: acceptBody({
       password: row.password,
-      rateLimit: row.rate_limit,
       framedIp: row.framed_ip,
-      group: row.group_name,
+      group: mikrotikProfileName(row.package_name || row.group_name),
       sessionTimeout: sessionTimeoutSec(row.period_end, row.grace_days, row.grant_expires_at),
     }),
   };

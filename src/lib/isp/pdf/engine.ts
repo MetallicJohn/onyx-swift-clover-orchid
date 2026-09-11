@@ -1,4 +1,4 @@
-import PDFDocument from "pdfkit";
+import PDFDocument from "./pdfkit.ts";
 import { pngJpegBuffer } from "../../theme/assets.ts";
 import { brandInitials, parseBrandColor, type BrandProfile } from "../document-format.ts";
 
@@ -50,7 +50,7 @@ export async function buildPdf(draw: (ctx: PdfCtx) => void | Promise<void>): Pro
   const doc = createDoc();
   const chunks: Buffer[] = [];
   const done = new Promise<Buffer>((resolve, reject) => {
-    doc.on("data", (c: Buffer) => chunks.push(c));
+    doc.on("data", (c: Buffer | Uint8Array) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
   });

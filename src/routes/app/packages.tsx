@@ -118,7 +118,7 @@ function PackagesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Packages</h1>
           <p className="text-sm text-muted">
-            Product catalog for PPPoE, static IP, and hotspot. Unpaid invoices, expired time, or a used-up data cap suspend access automatically. Payment restores it.
+            Product catalog for PPPoE, static IP, and hotspot. Each package is one PCQ profile on the router — not a simple queue per customer. Unpaid invoices, expired time, or a used-up data cap suspend access automatically. Payment restores it.
           </p>
         </div>
         <Button onClick={startCreate}>New package</Button>

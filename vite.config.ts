@@ -1,5 +1,6 @@
 import { readdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 import { defineConfig } from "vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
@@ -11,6 +12,8 @@ import { grokPwaPlugin } from "./scripts/grok-pwa-plugin.mjs";
 // @ts-expect-error JS plugin alongside the TS vite config
 import { appEnvPlugin } from "./scripts/app-env-plugin.mjs";
 import { isMigrationFile } from "./scripts/migration-plan.mjs";
+
+const workspaceRoot = dirname(fileURLToPath(import.meta.url));
 
 /** The files `src/lib/db.ts` globs — same directory, same non-recursive scope. */
 function hasGlobbedMigrations(root: string): boolean {
@@ -156,7 +159,21 @@ export default defineConfig(({ command, isPreview }) => ({
     port: 8081,
     strictPort: true,
   },
-  resolve: { tsconfigPaths: true },
+  resolve: {
+    tsconfigPaths: true,
+    alias: [
+      // PDFKit's Node entry lazy-requires `#standard-fonts/*`, which Nitro
+      // cannot resolve after bundling into /var/task/_libs. The browser ESM
+      // build plus explicit Helvetica registration works on Vercel.
+      {
+        find: /^pdfkit$/,
+        replacement: join(workspaceRoot, "node_modules/pdfkit/js/pdfkit.browser.mjs"),
+      },
+    ],
+  },
+  ssr: {
+    noExternal: ["pdfkit"],
+  },
   plugins: [
     pgliteBootstrapPlugin(),
     // Before tanstackStart so /auth/popup never falls through to the SPA.

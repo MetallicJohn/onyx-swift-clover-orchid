@@ -1,6 +1,7 @@
 /** RouterOS v7 script generation. Uses :local, :if, :do, find where — not API-style one-liners. */
 /* eslint-disable no-useless-escape -- RouterOS uses $locals; JS templates must emit a literal dollar */
 import { APP_NAME } from "../brand.ts";
+import { pcqFromPayload } from "./pcq.ts";
 
 export function rosQuote(value: string) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
@@ -119,17 +120,77 @@ ${scheduler}
 `;
 }
 
+function pcqEnsureRos(payload: Record<string, unknown>) {
+  const p = pcqFromPayload(payload);
+  return `${localBlock({
+    profile: p.profile,
+    upType: p.upType,
+    downType: p.downType,
+    upRate: p.upRate,
+    downRate: p.downRate,
+    list: p.list,
+    markUp: p.markUp,
+    markDown: p.markDown,
+    treeUp: p.treeUp,
+    treeDown: p.treeDown,
+    cmtUp: p.commentUp,
+    cmtDown: p.commentDown,
+  })}
+:if ([:len [/queue type find where name=\$upType]] = 0) do={
+  /queue type add name=\$upType kind=pcq pcq-rate=\$upRate pcq-classifier=src-address pcq-limit=50 pcq-total-limit=20000;
+} else={
+  /queue type set [find where name=\$upType] kind=pcq pcq-rate=\$upRate pcq-classifier=src-address pcq-limit=50 pcq-total-limit=20000;
+}
+:if ([:len [/queue type find where name=\$downType]] = 0) do={
+  /queue type add name=\$downType kind=pcq pcq-rate=\$downRate pcq-classifier=dst-address pcq-limit=50 pcq-total-limit=20000;
+} else={
+  /queue type set [find where name=\$downType] kind=pcq pcq-rate=\$downRate pcq-classifier=dst-address pcq-limit=50 pcq-total-limit=20000;
+}
+:local qspec (\$upType . "/" . \$downType);
+:if ([:len [/ppp profile find where name=\$profile]] = 0) do={
+  /ppp profile add name=\$profile queue=\$qspec comment="isp-pcq";
+} else={
+  /ppp profile set [find where name=\$profile] queue=\$qspec;
+}
+:if ([:len [/ip hotspot user profile find where name=\$profile]] = 0) do={
+  /ip hotspot user profile add name=\$profile address-list=\$list rate-limit="" comment="isp-pcq";
+} else={
+  /ip hotspot user profile set [find where name=\$profile] address-list=\$list rate-limit="";
+}
+:if ([:len [/ip firewall mangle find where comment=\$cmtUp]] = 0) do={
+  /ip firewall mangle add chain=forward action=mark-packet new-packet-mark=\$markUp passthrough=no src-address-list=\$list comment=\$cmtUp;
+} else={
+  /ip firewall mangle set [find where comment=\$cmtUp] src-address-list=\$list new-packet-mark=\$markUp passthrough=no;
+}
+:if ([:len [/ip firewall mangle find where comment=\$cmtDown]] = 0) do={
+  /ip firewall mangle add chain=forward action=mark-packet new-packet-mark=\$markDown passthrough=no dst-address-list=\$list comment=\$cmtDown;
+} else={
+  /ip firewall mangle set [find where comment=\$cmtDown] dst-address-list=\$list new-packet-mark=\$markDown passthrough=no;
+}
+:if ([:len [/queue tree find where name=\$treeUp]] = 0) do={
+  /queue tree add name=\$treeUp parent=global queue=\$upType packet-mark=\$markUp comment="isp-pcq";
+} else={
+  /queue tree set [find where name=\$treeUp] queue=\$upType packet-mark=\$markUp parent=global;
+}
+:if ([:len [/queue tree find where name=\$treeDown]] = 0) do={
+  /queue tree add name=\$treeDown parent=global queue=\$downType packet-mark=\$markDown comment="isp-pcq";
+} else={
+  /queue tree set [find where name=\$treeDown] queue=\$downType packet-mark=\$markDown parent=global;
+}`;
+}
+
 export function commandRosScript(kind: string, payload: Record<string, unknown>) {
   const user = String(payload.username || payload.name || "").trim();
   const password = String(payload.password || "");
   const ip = String(payload.static_ip || payload.address || "");
-  const profile = String(payload.package || payload.profile || "default");
+  const list = pcqFromPayload(payload).list;
   const comment = String(payload.service_id || "gridline");
-  const up = Number(payload.upload_mbps || payload.up || 10);
-  const down = Number(payload.download_mbps || payload.down || 10);
-  const limit = `${up}M/${down}M`;
   const disabled = payload.status === "suspended" || payload.status === "terminated" || payload.enabled === false;
   const qname = `static-${user || ip || "host"}`;
+
+  if (kind === "package.sync") {
+    return pcqEnsureRos(payload);
+  }
 
   if (kind.startsWith("pppoe.")) {
     if (!user) return "# missing pppoe username";
@@ -144,7 +205,9 @@ export function commandRosScript(kind: string, payload: Record<string, unknown>)
 }
 :do { /ppp active remove [find where name=\$user] } on-error={};`;
     }
-    return `${localBlock({ user, pass: password, profile, comment })}
+    return `${pcqEnsureRos(payload)}
+
+${localBlock({ user, pass: password, comment })}
 :if ([:len [/ppp secret find where name=\$user]] = 0) do={
   /ppp secret add name=\$user password=\$pass service=pppoe profile=\$profile comment=\$comment disabled=no;
 } else={
@@ -154,17 +217,18 @@ export function commandRosScript(kind: string, payload: Record<string, unknown>)
 
   if (kind.startsWith("static.")) {
     if (kind.endsWith("disable") || disabled) {
-      return `${localBlock({ qname, ip })}
-:if ([:len [/queue simple find where name=\$qname]] > 0) do={
-  /queue simple set [find where name=\$qname] disabled=yes;
-}
+      return `${localBlock({ qname, ip, list, user })}
+:do { /queue simple remove [find where name=\$qname] } on-error={};
+:do { /ip firewall address-list remove [find where list=\$list and address=\$ip] } on-error={};
 :do { /ip firewall address-list remove [find where list="gridline-active" and address=\$ip] } on-error={};`;
     }
-    return `${localBlock({ qname, ip, limit, user })}
-:if ([:len [/queue simple find where name=\$qname]] = 0) do={
-  /queue simple add name=\$qname target=(\$ip . "/32") max-limit=\$limit;
-} else={
-  /queue simple set [find where name=\$qname] max-limit=\$limit disabled=no;
+    return `${pcqEnsureRos(payload)}
+
+${localBlock({ qname, ip, user })}
+:do { /queue simple remove [find where name=\$qname] } on-error={};
+:do { /ip firewall address-list remove [find where address=\$ip and list~"^isp-"] } on-error={};
+:if ([:len [/ip firewall address-list find where list=\$list and address=\$ip]] = 0) do={
+  /ip firewall address-list add list=\$list address=\$ip comment=\$user;
 }
 :if ([:len [/ip firewall address-list find where list="gridline-active" and address=\$ip]] = 0) do={
   /ip firewall address-list add list=gridline-active address=\$ip comment=\$user;
@@ -173,6 +237,10 @@ export function commandRosScript(kind: string, payload: Record<string, unknown>)
 
   if (kind.startsWith("hotspot.")) {
     if (!user) return "# missing hotspot username";
+    if (kind.endsWith("disconnect")) {
+      return `${localBlock({ user })}
+:do { /ip hotspot active remove [find where user=\$user] } on-error={};`;
+    }
     if (kind.endsWith("disable") || disabled) {
       return `${localBlock({ user })}
 :if ([:len [/ip hotspot user find where name=\$user]] > 0) do={
@@ -180,7 +248,9 @@ export function commandRosScript(kind: string, payload: Record<string, unknown>)
 }
 :do { /ip hotspot active remove [find where user=\$user] } on-error={};`;
     }
-    return `${localBlock({ user, pass: password, profile })}
+    return `${pcqEnsureRos(payload)}
+
+${localBlock({ user, pass: password })}
 :if ([:len [/ip hotspot user find where name=\$user]] = 0) do={
   /ip hotspot user add name=\$user password=\$pass profile=\$profile disabled=no;
 } else={

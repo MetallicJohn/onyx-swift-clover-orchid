@@ -11,12 +11,13 @@ test("list DTO redacts the RADIUS secret", () => {
   assert.equal(pub.password.includes("s3cretpass"), false);
 });
 
-test("FreeRADIUS export rejects disabled users", () => {
+test("FreeRADIUS export assigns the PCQ profile and does not send Rate-Limit", () => {
   const text = renderFreeRadiusUsers([
-    { username: "off", password: "x", framed_ip: "", group_name: "pppoe", enabled: false, rate_limit: "" },
-    { username: "on", password: "pw", framed_ip: "10.1.1.8", group_name: "pppoe", enabled: true, rate_limit: "5M/10M" },
+    { username: "off", password: "x", framed_ip: "", group_name: "isp-home-10", enabled: false },
+    { username: "on", password: "pw", framed_ip: "10.1.1.8", group_name: "isp-home-10", enabled: true },
   ]);
   assert.match(text, /off Auth-Type := Reject/);
-  assert.match(text, /Mikrotik-Rate-Limit := "5M\/10M"/);
+  assert.doesNotMatch(text, /Mikrotik-Rate-Limit/);
+  assert.match(text, /Mikrotik-Group := "isp-home-10"/);
   assert.match(text, /Framed-IP-Address := 10.1.1.8/);
 });

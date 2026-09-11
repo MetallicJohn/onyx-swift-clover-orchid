@@ -27,7 +27,7 @@ const NAV = [
   { to: "/platform/subscriptions", label: "Subscriptions", icon: Radio },
   { to: "/platform/revenue", label: "Revenue", icon: BarChart3 },
   { to: "/platform/infrastructure", label: "Infrastructure", icon: Server },
-  { to: "/platform/reports", label: "Reports", icon: BarChart3 },
+  { to: "/platform/reports", label: "Insights", icon: BarChart3 },
   { to: "/platform/activity", label: "Platform Activity", icon: Activity },
   { to: "/platform/settings", label: "System Settings", icon: Settings },
 ];

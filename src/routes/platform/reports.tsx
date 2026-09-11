@@ -55,7 +55,7 @@ function ReportsPage() {
     <div>
       <PageHead
         eyebrow="Analytics"
-        title="Platform reports"
+        title="Insights"
         hint="Aggregated on the server. Export CSV or print this page."
         actions={
           <>

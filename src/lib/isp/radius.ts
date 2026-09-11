@@ -1,5 +1,6 @@
 import { nid } from "../utils.ts";
 import { enqueueAgentCommand } from "./agent";
+import { mikrotikProfileName } from "./pcq";
 import { mikrotikRateLimit } from "./radius-format";
 
 export { mikrotikRateLimit, publicRadiusAccount, renderFreeRadiusUsers } from "./radius-format";
@@ -25,13 +26,14 @@ export async function syncRadiusAccount(
     download_mbps?: number;
     upload_mbps?: number;
     password?: string;
+    package_name?: string;
   },
 ) {
   const username =
     service.username?.trim() ||
     `${service.access_method}-${service.id.slice(-6)}`;
   const enabled = service.status === "active" || service.status === "grace" || service.status === "pending";
-  const group = service.access_method === "static" ? "static" : service.access_method;
+  const group = mikrotikProfileName(service.package_name || service.access_method);
   const rate = mikrotikRateLimit(service.download_mbps ?? 10, service.upload_mbps ?? 10);
   const existing = await sql<{ id: string; password: string }>`
     select id, password from radius_accounts where tenant_id = ${tenantId} and service_id = ${service.id}`;
@@ -51,12 +53,19 @@ export async function syncRadiusAccount(
 export async function disconnectRadiusUser(sql: Sql, tenantId: string, username: string) {
   const [acc] = await sql<{
     username: string;
-    group_name: string;
     service_id: string;
-  }>`select username, group_name, service_id from radius_accounts
-     where tenant_id = ${tenantId} and username = ${username}`;
+    access_method: string;
+  }>`select a.username, a.service_id, s.access_method
+     from radius_accounts a
+     join services s on s.id = a.service_id
+     where a.tenant_id = ${tenantId} and a.username = ${username}`;
   if (!acc) throw new Error("RADIUS user not found");
-  const kind = acc.group_name === "hotspot" ? "hotspot.disable" : "pppoe.disable";
+  const kind =
+    acc.access_method === "hotspot"
+      ? "hotspot.disable"
+      : acc.access_method === "static"
+        ? "static.disable"
+        : "pppoe.disable";
   await enqueueAgentCommand(sql, tenantId, kind, { username: acc.username, service_id: acc.service_id, status: "suspended" });
   await sql`update radius_sessions set stopped_at = now()
     where tenant_id = ${tenantId} and username = ${username} and stopped_at is null`;

@@ -14,7 +14,7 @@ export const FEATURE_CATALOG = [
   { id: "genieacs", label: "GenieACS" },
   { id: "whatsapp", label: "WhatsApp" },
   { id: "sms", label: "SMS" },
-  { id: "reports", label: "Reports" },
+  { id: "reports", label: "Insights" },
   { id: "customer_portal", label: "Customer portal" },
   { id: "reseller", label: "Reseller module" },
   { id: "technician", label: "Technician / field" },

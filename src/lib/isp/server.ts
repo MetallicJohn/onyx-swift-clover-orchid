@@ -14,7 +14,9 @@ import { loadChurnScores } from "./churn";
 import { loadDashboard } from "./dashboard";
 import { requestPublicOrigin } from "./auth-origins";
 import { completeOperatorReset, requestOperatorReset } from "./password-reset";
-import { agentPullUrl, agentScript, enrollFields, wgAddressForIndex } from "./agent";
+import { agentPullUrl, agentScript, enrollFields, enqueuePackageProfiles, wgAddressForIndex } from "./agent";
+import { mikrotikProfileName } from "./pcq";
+import { mikrotikRateLimit } from "./radius-format";
 import { wgEnrollContext } from "./wireguard";
 import { emit } from "./events";
 import { listInbox } from "./inbox";
@@ -272,6 +274,12 @@ export const createPackage = createServerFn({ method: "POST" })
     const id = nid("pkg");
     await sql`insert into packages (id, tenant_id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active)
       values (${id}, ${workspace.tenantId}, ${data.name.trim()}, ${data.description}, ${data.access_method}, ${data.download_mbps}, ${data.upload_mbps}, ${data.price_kes}, ${data.billing_interval}, ${data.grace_days}, ${Math.max(0, data.bundle_mb ?? 0)}, ${Math.max(0, data.validity_hours ?? 0)}, true)`;
+    await enqueuePackageProfiles(sql, workspace.tenantId, {
+      name: data.name.trim(),
+      download_mbps: data.download_mbps,
+      upload_mbps: data.upload_mbps,
+      access_method: data.access_method,
+    });
     await audit(sql, workspace.tenantId, context.userId, "package.created", "package", id);
     return { id };
   });
@@ -314,6 +322,18 @@ export const updatePackage = createServerFn({ method: "POST" })
       where id = ${data.id} and tenant_id = ${workspace.tenantId}
       returning id`;
     if (!rows[0]) throw new Error("Package not found");
+    const profile = mikrotikProfileName(data.name.trim());
+    const rate = mikrotikRateLimit(data.download_mbps, data.upload_mbps);
+    await sql`update radius_accounts
+      set group_name = ${profile}, rate_limit = ${rate}
+      where tenant_id = ${workspace.tenantId}
+        and service_id in (select id from services where package_id = ${data.id} and tenant_id = ${workspace.tenantId})`;
+    await enqueuePackageProfiles(sql, workspace.tenantId, {
+      name: data.name.trim(),
+      download_mbps: data.download_mbps,
+      upload_mbps: data.upload_mbps,
+      access_method: data.access_method,
+    });
     await audit(sql, workspace.tenantId, context.userId, "package.updated", "package", data.id);
     return { id: data.id };
   });

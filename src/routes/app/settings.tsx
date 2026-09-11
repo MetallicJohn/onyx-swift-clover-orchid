@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { APP_NAME } from "@/lib/brand";
 import { AppearanceSettings } from "@/components/isp/appearance-settings";
+import { NotificationsSettings } from "@/components/isp/notifications-settings";
 import { hasPermission } from "@/lib/isp/rbac";
 import { changeMyPassword, getDashboard, renameTenant, setStaffPassword } from "@/lib/isp/server";
 import { getDocumentBranding, saveDocumentBranding } from "@/lib/isp/server-docs";
@@ -18,20 +19,30 @@ import { vpsInstallCommand, vpsUpdateCommand } from "@/lib/isp/vps-publish";
 import { cn, kes } from "@/lib/utils";
 import type { Workspace } from "@/lib/isp/types";
 
-export const Route = createFileRoute("/app/settings")({ component: SettingsPage });
+export const Route = createFileRoute("/app/settings")({
+  validateSearch: (search: Record<string, unknown>): { tab?: TabId } => ({
+    tab: isTabId(search.tab) ? search.tab : undefined,
+  }),
+  component: SettingsPage,
+});
 
-type TabId = "company" | "appearance" | "network" | "sms" | "payment" | "plan" | "staff" | "grace";
+type TabId = "company" | "appearance" | "network" | "sms" | "notifications" | "payment" | "plan" | "staff" | "grace";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "company", label: "Company info" },
   { id: "appearance", label: "Appearance" },
   { id: "network", label: "Network" },
   { id: "sms", label: "SMS" },
+  { id: "notifications", label: "Notifications" },
   { id: "payment", label: "Payment" },
   { id: "plan", label: "Plan" },
   { id: "staff", label: "Staff" },
   { id: "grace", label: "Grace period" },
 ];
+
+function isTabId(value: unknown): value is TabId {
+  return TABS.some((t) => t.id === value);
+}
 
 type MsgForm = {
   payment_sms: boolean;
@@ -85,7 +96,9 @@ function Check({
 }
 
 function SettingsPage() {
-  const [tab, setTab] = useState<TabId>("company");
+  const navigate = Route.useNavigate();
+  const { tab: tabParam } = Route.useSearch();
+  const tab: TabId = tabParam ?? "company";
   const [ws, setWs] = useState<Workspace | null>(null);
   const [form, setForm] = useState({ name: "", supportEmail: "", supportPhone: "" });
   const [brand, setBrand] = useState({
@@ -274,7 +287,7 @@ function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted">Company profile, appearance, WireGuard hub, SMS gateways, and payment rails.</p>
+        <p className="text-sm text-muted">Company profile, appearance, WireGuard hub, SMS, notifications, and payment rails.</p>
       </div>
 
       <div
@@ -293,7 +306,7 @@ function SettingsPage() {
               tab === t.id ? "bg-accent text-accent-fg" : "text-muted hover:bg-elevated hover:text-fg",
             )}
             onClick={() => {
-              setTab(t.id);
+              void navigate({ search: { tab: t.id }, replace: true });
               setSaved(null);
             }}
           >
@@ -754,6 +767,8 @@ function SettingsPage() {
           {testOut ? <p className="text-sm text-muted">{testOut}</p> : null}
         </form>
       ) : null}
+
+      {tab === "notifications" ? <NotificationsSettings /> : null}
 
       {tab === "payment" ? (
         <div className="space-y-6">

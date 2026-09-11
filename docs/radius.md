@@ -33,7 +33,7 @@ That writes `mods-available/rest`, `sites-enabled/gridline`, and `clients.conf` 
 
 Auth: HTTP Basic (`username=gridline`, password = API key), Bearer, or `X-Radius-Key`.
 
-Authorize returns rlm_rest JSON (`control:Cleartext-Password`, `Mikrotik-Rate-Limit`, framed IP, session timeout). Rejects unknown, suspended, expired, and bundle-exhausted users (HTTP 200 + Auth-Type Reject).
+Authorize returns rlm_rest JSON (`control:Cleartext-Password`, `Mikrotik-Group` = PCQ package profile, framed IP, session timeout). It does **not** send `Mikrotik-Rate-Limit` (that would create a dynamic simple queue per session). Rejects unknown, suspended, expired, and bundle-exhausted users (HTTP 200 + Auth-Type Reject).
 
 ## Users file (offline)
 

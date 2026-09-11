@@ -18,6 +18,7 @@ import { activateVoucher, expireDueVouchers, generateVouchers, revokeVoucher } f
 import { listCustomerInbox } from "./inbox";
 import { createStkIntent, settleStkIntent } from "./payments";
 import { disconnectRadiusUser, publicRadiusAccount, renderFreeRadiusUsers } from "./radius";
+import { mikrotikProfileName } from "./pcq";
 import { ensureRadiusApiKey, radiusConfigBundle, rotateRadiusApiKey, defaultNasClients, ensureRadiusNasSecret, radiusVpsEnv, internalRadiusBaseUrl } from "./radius-rest";
 import { open } from "./secrets";
 import { assertPermission } from "./rbac";
@@ -49,11 +50,13 @@ export const listRadius = createServerFn({ method: "GET" })
       customer_name: string;
       status: string;
       access_method: string;
+      package_name: string;
     }>`select a.id, a.username, a.password, a.framed_ip, a.group_name, a.enabled, a.rate_limit,
-              c.name as customer_name, s.status, s.access_method
+              c.name as customer_name, s.status, s.access_method, p.name as package_name
        from radius_accounts a
        join services s on s.id = a.service_id
        join customers c on c.id = s.customer_id
+       join packages p on p.id = s.package_id
        where a.tenant_id = ${tenantId}
        order by a.username`;
     const sessions = await sql<{
@@ -104,7 +107,9 @@ export const listRadius = createServerFn({ method: "GET" })
       radiusHost,
     });
     return {
-      accounts: accounts.map(publicRadiusAccount),
+      accounts: accounts.map((a) =>
+        publicRadiusAccount({ ...a, group_name: mikrotikProfileName(a.package_name || a.group_name) }),
+      ),
       sessions,
       events,
       slug: tenant?.slug || "",
@@ -143,12 +148,21 @@ export const exportRadiusUsers = createServerFn({ method: "GET" })
       username: string;
       password: string;
       framed_ip: string;
-      group_name: string;
+      package_name: string;
       enabled: boolean;
-      rate_limit: string;
-    }>`select username, password, framed_ip, group_name, enabled, rate_limit
-       from radius_accounts where tenant_id = ${tenantId} order by username`;
-    return { users: renderFreeRadiusUsers(accounts) };
+    }>`select a.username, a.password, a.framed_ip, p.name as package_name, a.enabled
+       from radius_accounts a
+       join services s on s.id = a.service_id
+       join packages p on p.id = s.package_id
+       where a.tenant_id = ${tenantId} order by a.username`;
+    return {
+      users: renderFreeRadiusUsers(
+        accounts.map((a) => ({
+          ...a,
+          group_name: mikrotikProfileName(a.package_name),
+        })),
+      ),
+    };
   });
 
 export const listHotspot = createServerFn({ method: "GET" })

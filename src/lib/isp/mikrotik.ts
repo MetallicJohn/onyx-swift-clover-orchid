@@ -3,6 +3,7 @@ import { initialCommandStatus } from "./command-policy";
 import { ensureOpsSchema } from "./ops-schema";
 import { applyRls } from "./rls";
 import { commandRosScript, wrapPullRosScript } from "./routeros";
+import { pcqFromPayload } from "./pcq";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -23,24 +24,97 @@ export type CompiledCommand = {
   payload: Record<string, unknown>;
 };
 
-function rate(payload: Record<string, unknown>) {
-  const up = Number(payload.upload_mbps || payload.up || 10);
-  const down = Number(payload.download_mbps || payload.down || 10);
-  return `${up}M/${down}M`;
-}
-
 function nameOf(payload: Record<string, unknown>) {
   return String(payload.username || payload.name || "").trim();
+}
+
+function pcqRestOps(payload: Record<string, unknown>): RestOp[] {
+  const p = pcqFromPayload(payload);
+  const qspec = `${p.upType}/${p.downType}`;
+  return [
+    {
+      method: "PUT",
+      path: "/rest/queue/type",
+      body: {
+        name: p.upType,
+        kind: "pcq",
+        "pcq-rate": p.upRate,
+        "pcq-classifier": "src-address",
+        "pcq-limit": "50",
+        "pcq-total-limit": "20000",
+      },
+    },
+    {
+      method: "PUT",
+      path: "/rest/queue/type",
+      body: {
+        name: p.downType,
+        kind: "pcq",
+        "pcq-rate": p.downRate,
+        "pcq-classifier": "dst-address",
+        "pcq-limit": "50",
+        "pcq-total-limit": "20000",
+      },
+    },
+    {
+      method: "PUT",
+      path: "/rest/ppp/profile",
+      body: { name: p.profile, queue: qspec, comment: "isp-pcq" },
+    },
+    {
+      method: "PUT",
+      path: "/rest/ip/hotspot/user-profile",
+      body: { name: p.profile, "address-list": p.list, "rate-limit": "", comment: "isp-pcq" },
+    },
+    {
+      method: "PUT",
+      path: "/rest/ip/firewall/mangle",
+      body: {
+        chain: "forward",
+        action: "mark-packet",
+        "new-packet-mark": p.markUp,
+        passthrough: "no",
+        "src-address-list": p.list,
+        comment: p.commentUp,
+      },
+    },
+    {
+      method: "PUT",
+      path: "/rest/ip/firewall/mangle",
+      body: {
+        chain: "forward",
+        action: "mark-packet",
+        "new-packet-mark": p.markDown,
+        passthrough: "no",
+        "dst-address-list": p.list,
+        comment: p.commentDown,
+      },
+    },
+    {
+      method: "PUT",
+      path: "/rest/queue/tree",
+      body: { name: p.treeUp, parent: "global", queue: p.upType, "packet-mark": p.markUp, comment: "isp-pcq" },
+    },
+    {
+      method: "PUT",
+      path: "/rest/queue/tree",
+      body: { name: p.treeDown, parent: "global", queue: p.downType, "packet-mark": p.markDown, comment: "isp-pcq" },
+    },
+  ];
 }
 
 export function compileMikrotik(kind: string, payload: Record<string, unknown>): { rest: RestOp[]; script: string } {
   const user = nameOf(payload);
   const password = String(payload.password || "changeme");
   const ip = String(payload.static_ip || payload.address || "");
-  const profile = String(payload.package || payload.profile || "default");
-  const limit = rate(payload);
+  const profile = pcqFromPayload(payload).profile;
+  const list = pcqFromPayload(payload).list;
   const disabled = payload.status === "suspended" || payload.status === "terminated" || payload.enabled === false;
   const script = commandRosScript(kind, payload);
+
+  if (kind === "package.sync") {
+    return { rest: pcqRestOps(payload), script };
+  }
 
   if (kind.startsWith("pppoe.")) {
     if (!user) return { rest: [], script };
@@ -58,6 +132,7 @@ export function compileMikrotik(kind: string, payload: Record<string, unknown>):
     }
     return {
       rest: [
+        ...pcqRestOps(payload),
         {
           method: "PUT",
           path: "/rest/ppp/secret",
@@ -80,7 +155,7 @@ export function compileMikrotik(kind: string, payload: Record<string, unknown>):
     if (kind.endsWith("disable") || disabled) {
       return {
         rest: [
-          { method: "PATCH", path: `/rest/queue/simple/${encodeURIComponent(qname)}`, body: { disabled: "true" } },
+          { method: "DELETE", path: `/rest/queue/simple/${encodeURIComponent(qname)}` },
           { method: "DELETE", path: `/rest/ip/firewall/address-list/${encodeURIComponent(ip)}` },
         ],
         script,
@@ -88,10 +163,12 @@ export function compileMikrotik(kind: string, payload: Record<string, unknown>):
     }
     return {
       rest: [
+        ...pcqRestOps(payload),
+        { method: "DELETE", path: `/rest/queue/simple/${encodeURIComponent(qname)}` },
         {
           method: "PUT",
-          path: "/rest/queue/simple",
-          body: { name: qname, target: `${ip}/32`, "max-limit": limit },
+          path: "/rest/ip/firewall/address-list",
+          body: { list, address: ip, comment: user },
         },
         {
           method: "PUT",
@@ -116,6 +193,7 @@ export function compileMikrotik(kind: string, payload: Record<string, unknown>):
     }
     return {
       rest: [
+        ...pcqRestOps(payload),
         {
           method: "PUT",
           path: "/rest/ip/hotspot/user",

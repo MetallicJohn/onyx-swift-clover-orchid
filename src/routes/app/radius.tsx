@@ -152,8 +152,8 @@ function RadiusPage() {
             <tr>
               <th className="px-4 py-3 font-medium">User</th>
               <th className="px-4 py-3 font-medium">Customer</th>
-              <th className="px-4 py-3 font-medium">Group</th>
-              <th className="px-4 py-3 font-medium">Rate</th>
+              <th className="px-4 py-3 font-medium">Profile</th>
+              <th className="px-4 py-3 font-medium">Package rate</th>
               <th className="px-4 py-3 font-medium">Framed IP</th>
               <th className="px-4 py-3 font-medium">Secret</th>
               <th className="px-4 py-3 font-medium">Auth</th>

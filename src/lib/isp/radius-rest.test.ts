@@ -52,8 +52,9 @@ test("authorize accepts active users and rejects suspended or unknown", async ()
     assert.equal(ok.result, "accept");
     const pw = ok.body["control:Cleartext-Password"] as { value: string[] };
     assert.equal(pw.value[0], "s3cret");
-    const rate = ok.body["Mikrotik-Rate-Limit"] as { value: string[] };
-    assert.equal(rate.value[0], "10M/20M");
+    const group = ok.body["Mikrotik-Group"] as { value: string[] };
+    assert.equal(group.value[0], "isp-home-10");
+    assert.equal(ok.body["Mikrotik-Rate-Limit"], undefined);
 
     await bypass();
     await sql`update services set status = 'suspended' where id = 'svc_fr'`;
