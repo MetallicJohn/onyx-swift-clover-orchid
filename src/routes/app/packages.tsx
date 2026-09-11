@@ -24,12 +24,69 @@ const EMPTY = {
 };
 
 type FormState = typeof EMPTY;
+type Filter = "all" | AccessMethod;
+type ValidityUnit = "hours" | "days";
+type CapUnit = "mb" | "gb";
+
+function blankForm(method: AccessMethod): FormState {
+  return { ...EMPTY, access_method: method };
+}
+
+function validityUnitOf(hours: number): ValidityUnit {
+  return hours > 0 && hours % 24 !== 0 ? "hours" : "days";
+}
+
+function capUnitOf(mb: number): CapUnit {
+  return mb > 0 && mb % 1024 !== 0 ? "mb" : "gb";
+}
+
+function shownValidity(hours: number, unit: ValidityUnit) {
+  if (!hours) return 0;
+  if (unit === "hours") return hours;
+  const days = hours / 24;
+  return Number.isInteger(days) ? days : Math.round(days * 100) / 100;
+}
+
+function shownCap(mb: number, unit: CapUnit) {
+  if (!mb) return 0;
+  if (unit === "mb") return mb;
+  const gb = mb / 1024;
+  return Number.isInteger(gb) ? gb : Math.round(gb * 100) / 100;
+}
+
+function hoursFromInput(value: number, unit: ValidityUnit) {
+  const n = Math.max(0, Number(value) || 0);
+  return Math.round(unit === "days" ? n * 24 : n);
+}
+
+function mbFromInput(value: number, unit: CapUnit) {
+  const n = Math.max(0, Number(value) || 0);
+  return Math.round(unit === "gb" ? n * 1024 : n);
+}
+
+function formatValidity(hours: number) {
+  if (!hours) return "";
+  if (hours % 24 === 0) return ` · ${hours / 24}d`;
+  return ` · ${hours}h`;
+}
+
+function formatCap(mb: number) {
+  if (!mb) return " · unlimited";
+  if (mb % 1024 === 0) return ` · ${mb / 1024} GB`;
+  return ` · ${mb} MB`;
+}
+
+function methodLabel(m: AccessMethod) {
+  return m === "pppoe" ? "PPPoE" : m === "static" ? "Static IP" : "Hotspot";
+}
 
 function PackagesPage() {
   const [packages, setPackages] = useState<PackageRow[]>([]);
-  const [filter, setFilter] = useState<"all" | AccessMethod>("all");
+  const [filter, setFilter] = useState<Filter>("all");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
+  const [validityUnit, setValidityUnit] = useState<ValidityUnit>("days");
+  const [capUnit, setCapUnit] = useState<CapUnit>("gb");
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,8 +101,11 @@ function PackagesPage() {
   }, []);
 
   function startCreate() {
+    const method = filter === "all" ? "pppoe" : filter;
     setEditingId(null);
-    setForm(EMPTY);
+    setForm(blankForm(method));
+    setValidityUnit("days");
+    setCapUnit("gb");
     setOpen(true);
     setError(null);
   }
@@ -65,8 +125,17 @@ function PackagesPage() {
       validity_hours: p.validity_hours,
       active: p.active,
     });
+    setValidityUnit(validityUnitOf(p.validity_hours));
+    setCapUnit(capUnitOf(p.bundle_mb));
     setOpen(true);
     setError(null);
+  }
+
+  function pickFilter(next: Filter) {
+    setFilter(next);
+    if (open && !editingId && next !== "all") {
+      setForm((f) => ({ ...f, access_method: next }));
+    }
   }
 
   async function submit(e: React.FormEvent) {
@@ -81,7 +150,7 @@ function PackagesPage() {
       }
       setOpen(false);
       setEditingId(null);
-      setForm(EMPTY);
+      setForm(blankForm(filter === "all" ? "pppoe" : filter));
       await load();
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : "Save failed");
@@ -111,6 +180,7 @@ function PackagesPage() {
   }
 
   const visible = packages.filter((p) => filter === "all" || p.access_method === filter);
+  const lockMethod = !editingId && filter !== "all";
 
   return (
     <div className="space-y-6">
@@ -126,8 +196,8 @@ function PackagesPage() {
 
       <div className="flex flex-wrap gap-2">
         {(["all", "pppoe", "static", "hotspot"] as const).map((m) => (
-          <Button key={m} size="sm" variant={filter === m ? "default" : "secondary"} onClick={() => setFilter(m)}>
-            {m === "all" ? "All" : m === "pppoe" ? "PPPoE" : m === "static" ? "Static IP" : "Hotspot"}
+          <Button key={m} size="sm" variant={filter === m ? "default" : "secondary"} onClick={() => pickFilter(m)}>
+            {m === "all" ? "All" : methodLabel(m)}
           </Button>
         ))}
       </div>
@@ -141,12 +211,16 @@ function PackagesPage() {
           <Field label="Access method">
             <Select
               value={form.access_method}
+              disabled={lockMethod}
               onChange={(e) => setForm({ ...form, access_method: e.target.value as AccessMethod })}
             >
               <option value="pppoe">PPPoE</option>
               <option value="static">Static IP</option>
               <option value="hotspot">Hotspot</option>
             </Select>
+            {lockMethod ? (
+              <p className="text-xs text-muted">Locked to {methodLabel(filter as AccessMethod)} from the filter above.</p>
+            ) : null}
           </Field>
           <Field label="Description">
             <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
@@ -193,21 +267,49 @@ function PackagesPage() {
               onChange={(e) => setForm({ ...form, grace_days: Number(e.target.value) })}
             />
           </Field>
-          <Field label="Data cap GB (0 = unlimited)">
-            <Input
-              type="number"
-              min={0}
-              value={form.bundle_mb ? Math.round(form.bundle_mb / 1024) : 0}
-              onChange={(e) => setForm({ ...form, bundle_mb: Math.max(0, Number(e.target.value)) * 1024 })}
-            />
+          <Field label="Data cap (0 = unlimited)">
+            <div className="flex gap-2">
+              <Input
+                className="min-w-0 flex-1"
+                type="number"
+                min={0}
+                step={capUnit === "gb" ? "0.5" : "1"}
+                value={shownCap(form.bundle_mb, capUnit)}
+                onChange={(e) => setForm({ ...form, bundle_mb: mbFromInput(Number(e.target.value), capUnit) })}
+              />
+              <Select
+                className="w-28 shrink-0"
+                aria-label="Data cap unit"
+                value={capUnit}
+                onChange={(e) => setCapUnit(e.target.value as CapUnit)}
+              >
+                <option value="mb">MB</option>
+                <option value="gb">GB</option>
+              </Select>
+            </div>
           </Field>
-          <Field label="Validity hours (0 = billing interval)">
-            <Input
-              type="number"
-              min={0}
-              value={form.validity_hours}
-              onChange={(e) => setForm({ ...form, validity_hours: Number(e.target.value) })}
-            />
+          <Field label="Validity (0 = billing interval)">
+            <div className="flex gap-2">
+              <Input
+                className="min-w-0 flex-1"
+                type="number"
+                min={0}
+                step={validityUnit === "days" ? "0.5" : "1"}
+                value={shownValidity(form.validity_hours, validityUnit)}
+                onChange={(e) =>
+                  setForm({ ...form, validity_hours: hoursFromInput(Number(e.target.value), validityUnit) })
+                }
+              />
+              <Select
+                className="w-28 shrink-0"
+                aria-label="Validity unit"
+                value={validityUnit}
+                onChange={(e) => setValidityUnit(e.target.value as ValidityUnit)}
+              >
+                <option value="hours">Hours</option>
+                <option value="days">Days</option>
+              </Select>
+            </div>
           </Field>
           {editingId ? (
             <Field label="Availability">
@@ -246,7 +348,7 @@ function PackagesPage() {
               <div>
                 <div className="font-medium">{p.name}</div>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <Badge tone="accent">{p.access_method === "pppoe" ? "PPPoE" : p.access_method === "static" ? "Static IP" : "Hotspot"}</Badge>
+                  <Badge tone="accent">{methodLabel(p.access_method)}</Badge>
                   <Badge tone={statusTone(p.active ? "active" : "pending")}>{p.active ? "active" : "inactive"}</Badge>
                 </div>
               </div>
@@ -254,8 +356,8 @@ function PackagesPage() {
             </div>
             <p className="mt-3 text-sm text-muted">
               {p.download_mbps}/{p.upload_mbps} Mbps · {p.billing_interval}
-              {p.validity_hours ? ` · ${p.validity_hours}h` : ""} · {p.grace_days}d automatic grace
-              {p.bundle_mb ? ` · ${p.bundle_mb >= 1024 ? `${Math.round(p.bundle_mb / 1024)} GB` : `${p.bundle_mb} MB`}` : " · unlimited"}
+              {formatValidity(p.validity_hours)} · {p.grace_days}d automatic grace
+              {formatCap(p.bundle_mb)}
             </p>
             {p.description ? <p className="mt-1 text-sm text-subtle">{p.description}</p> : null}
             <div className="mt-4 flex flex-wrap gap-2">
@@ -269,7 +371,12 @@ function PackagesPage() {
           </article>
         ))}
       </div>
-      {visible.length === 0 ? <p className="text-sm text-muted">No packages in this mode yet.</p> : null}
+      {visible.length === 0 ? (
+        <p className="text-sm text-muted">
+          No packages in this mode yet.
+          {filter !== "all" ? ` New package will create a ${methodLabel(filter)} plan.` : ""}
+        </p>
+      ) : null}
     </div>
   );
 }

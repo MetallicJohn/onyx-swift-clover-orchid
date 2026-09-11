@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 
 export const VIRTUAL_VIEWPORT = "max-h-[min(70vh,44rem)] overflow-auto";
@@ -10,6 +10,7 @@ export function VirtualList<T>({
   overscan = 8,
   className,
   viewportClassName = VIRTUAL_VIEWPORT,
+  scrollToIndex,
   renderItem,
 }: {
   items: T[];
@@ -17,6 +18,7 @@ export function VirtualList<T>({
   overscan?: number;
   className?: string;
   viewportClassName?: string;
+  scrollToIndex?: number;
   renderItem: (item: T, index: number) => ReactNode;
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
@@ -27,6 +29,11 @@ export function VirtualList<T>({
     overscan,
     measureElement: (el) => el.getBoundingClientRect().height,
   });
+
+  useEffect(() => {
+    if (scrollToIndex == null || scrollToIndex < 0 || scrollToIndex >= items.length) return;
+    virtualizer.scrollToIndex(scrollToIndex, { align: "auto" });
+  }, [scrollToIndex, items.length, virtualizer]);
 
   return (
     <div ref={parentRef} className={cn(viewportClassName, className)}>
