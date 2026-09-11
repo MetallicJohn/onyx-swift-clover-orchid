@@ -11,7 +11,7 @@
 * isBytes(new Uint8Array());
 * ```
 */
-function isBytes$1(a) {
+function isBytes(a) {
 	return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array" && "BYTES_PER_ELEMENT" in a && a.BYTES_PER_ELEMENT === 1;
 }
 var atitle = (title) => title ? `"${title}" ` : "";
@@ -65,10 +65,10 @@ function anumber(n, title = "") {
 * abytes(new Uint8Array([1, 2]), 2);
 * ```
 */
-function abytes$1(value, length, title = "") {
-	if (isBytes$1(value) && (length === void 0 || value.length === length)) return value;
+function abytes(value, length, title = "") {
+	if (isBytes(value) && (length === void 0 || value.length === length)) return value;
 	if (length !== void 0) anumber(length, "length");
-	const bytes = isBytes$1(value);
+	const bytes = isBytes(value);
 	const ofLen = length !== void 0 ? ` of length ${length}` : "";
 	const got = bytes ? `length=${value.length}` : `type=${typeof value}`;
 	const message = atitle(title) + "expected Uint8Array" + ofLen + ", got " + got;
@@ -111,7 +111,7 @@ function aexists(instance, checkFinished = true) {
 * ```
 */
 function aoutput(out, instance) {
-	abytes$1(out, void 0, "output");
+	abytes(out, void 0, "output");
 	const min = instance.outputLen;
 	if (!(out.length >= min)) throw new RangeError("\"output\" expected length >= " + min);
 }
@@ -127,7 +127,7 @@ function aoutput(out, instance) {
 * u32(new Uint8Array(4));
 * ```
 */
-function u32$1(arr) {
+function u32(arr) {
 	return new Uint32Array(arr.buffer, arr.byteOffset, Math.floor(arr.byteLength / 4));
 }
 /**
@@ -142,7 +142,7 @@ function u32$1(arr) {
 * clean(bytes);
 * ```
 */
-function clean$1(...arrays) {
+function clean(...arrays) {
 	for (let i = 0; i < arrays.length; i++) arrays[i].fill(0);
 }
 /**
@@ -163,7 +163,7 @@ function createView(arr) {
 * Whether the current platform is little-endian.
 * Most are; some IBM systems are not.
 */
-var isLE$1 = /* @__PURE__ */ (() => new Uint8Array(new Uint32Array([287454020]).buffer)[0] === 68)();
+var isLE = /* @__PURE__ */ (() => new Uint8Array(new Uint32Array([287454020]).buffer)[0] === 68)();
 /**
 * Reverses byte order of one 32-bit word.
 * @param word - Unsigned 32-bit word to swap.
@@ -204,7 +204,7 @@ function byteSwap32(arr) {
 * swap32IfBE(new Uint32Array([0x11223344]));
 * ```
 */
-var swap32IfBE = isLE$1 ? (u) => u : byteSwap32;
+var swap32IfBE = isLE ? (u) => u : byteSwap32;
 var hasHexBuiltin = /* @__PURE__ */ (() => typeof Uint8Array.from([]).toHex === "function" && typeof Uint8Array.fromHex === "function")();
 var hexes = /* @__PURE__ */ Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, "0"));
 /**
@@ -220,7 +220,7 @@ var hexes = /* @__PURE__ */ Array.from({ length: 256 }, (_, i) => i.toString(16)
 * ```
 */
 function bytesToHex(bytes) {
-	abytes$1(bytes);
+	abytes(bytes);
 	if (hasHexBuiltin) return bytes.toHex();
 	let hex = "";
 	for (let i = 0; i < bytes.length; i++) hex += hexes[bytes[i]];
@@ -293,7 +293,7 @@ function utf8ToBytes(str) {
 * overlapBytes(new Uint8Array(4), new Uint8Array(4));
 * ```
 */
-function overlapBytes$1(a, b) {
+function overlapBytes(a, b) {
 	if (!a.byteLength || !b.byteLength) return false;
 	return a.buffer === b.buffer && a.byteOffset < b.byteOffset + b.byteLength && b.byteOffset < a.byteOffset + a.byteLength;
 }
@@ -311,8 +311,8 @@ function overlapBytes$1(a, b) {
 * complexOverlapBytes(buffer.subarray(0, 4), buffer.subarray(2, 6));
 * ```
 */
-function complexOverlapBytes$1(input, output) {
-	if (overlapBytes$1(input, output) && input.byteOffset < output.byteOffset) throw new Error("complex overlap of input and output is not supported");
+function complexOverlapBytes(input, output) {
+	if (overlapBytes(input, output) && input.byteOffset < output.byteOffset) throw new Error("complex overlap of input and output is not supported");
 }
 /**
 * Copies several Uint8Arrays into one.
@@ -330,7 +330,7 @@ function concatBytes(...arrays) {
 	let sum = 0;
 	for (let i = 0; i < arrays.length; i++) {
 		const a = arrays[i];
-		abytes$1(a);
+		abytes(a);
 		sum += a.length;
 	}
 	const res = new Uint8Array(sum);
@@ -376,8 +376,8 @@ function checkOpts(defaults, opts) {
 * ```
 */
 function equalBytes(a, b) {
-	a = abytes$1(a);
-	b = abytes$1(b);
+	a = abytes(a);
+	b = abytes(b);
 	if (a.length !== b.length) return false;
 	let diff = 0;
 	for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
@@ -414,24 +414,24 @@ function wrapMacConstructor(keyLen, macCons, fromMsg) {
 * @param constructor - Cipher constructor.
 * @returns Wrapped constructor with validation.
 */
-var wrapCipher$1 = (params, constructor) => {
+var wrapCipher = (params, constructor) => {
 	function wrappedCipher(key, ...args) {
-		abytes$1(key, void 0, "key");
+		abytes(key, void 0, "key");
 		if (params.nonceLength !== void 0) {
 			const nonce = args[0];
-			abytes$1(nonce, params.varSizeNonce ? void 0 : params.nonceLength, "nonce");
+			abytes(nonce, params.varSizeNonce ? void 0 : params.nonceLength, "nonce");
 		}
 		const tagl = params.tagLength;
 		const aadStart = params.nonceLength !== void 0 ? 1 : 0;
 		if (!params.withAAD) {
-			for (let i = aadStart; i < args.length; i++) if (isBytes$1(args[i])) throw new Error("AAD not supported");
+			for (let i = aadStart; i < args.length; i++) if (isBytes(args[i])) throw new Error("AAD not supported");
 		}
-		if (params.withAAD && args[aadStart] !== void 0) abytes$1(args[aadStart], void 0, "AAD");
+		if (params.withAAD && args[aadStart] !== void 0) abytes(args[aadStart], void 0, "AAD");
 		const cipher = constructor(key, ...args);
 		const checkOutput = (fnLength, output) => {
 			if (output !== void 0) {
 				if (fnLength !== 2) throw new Error("cipher output not supported");
-				abytes$1(output, void 0, "output");
+				abytes(output, void 0, "output");
 			}
 		};
 		let called = false;
@@ -439,12 +439,12 @@ var wrapCipher$1 = (params, constructor) => {
 			encrypt(data, output) {
 				if (called) throw new Error("cannot encrypt() twice with same key + nonce");
 				called = true;
-				abytes$1(data, void 0, "data");
+				abytes(data, void 0, "data");
 				checkOutput(cipher.encrypt.length, output);
 				return cipher.encrypt(data, output);
 			},
 			decrypt(data, output) {
-				abytes$1(data, void 0, "data");
+				abytes(data, void 0, "data");
 				if (tagl && data.length < tagl) throw new Error("\"ciphertext\" expected length >= tagLength=" + tagl);
 				checkOutput(cipher.decrypt.length, output);
 				return cipher.decrypt(data, output);
@@ -471,10 +471,10 @@ var wrapCipher$1 = (params, constructor) => {
 * getOutput(16, new Uint8Array(16));
 * ```
 */
-function getOutput$1(expectedLength, out, onlyAligned = true) {
+function getOutput(expectedLength, out, onlyAligned = true) {
 	if (out === void 0) return new Uint8Array(expectedLength);
-	abytes$1(out, expectedLength, "output");
-	if (onlyAligned && !isAligned32$1(out)) throw new Error("invalid output, must be aligned");
+	abytes(out, expectedLength, "output");
+	if (onlyAligned && !isAligned32(out)) throw new Error("invalid output, must be aligned");
 	return out;
 }
 /**
@@ -516,7 +516,7 @@ function u64Lengths(dataLength, aadLength, isLE) {
 * isAligned32(new Uint8Array(4));
 * ```
 */
-function isAligned32$1(bytes) {
+function isAligned32(bytes) {
 	return bytes.byteOffset % 4 === 0;
 }
 /**
@@ -531,8 +531,8 @@ function isAligned32$1(bytes) {
 * copyBytes(new Uint8Array([1, 2]));
 * ```
 */
-function copyBytes$1(bytes) {
-	return Uint8Array.from(abytes$1(bytes));
+function copyBytes(bytes) {
+	return Uint8Array.from(abytes(bytes));
 }
 /**
 * Cryptographically secure PRNG backed by `crypto.getRandomValues`.
@@ -594,19 +594,19 @@ function managedNonce(fn, randomBytes_ = randomBytes) {
 	anumber(nonceLength, "fn.nonceLength");
 	const addNonce = (nonce, ciphertext, plaintext) => {
 		const out = concatBytes(nonce, ciphertext);
-		if (!overlapBytes$1(plaintext, ciphertext)) ciphertext.fill(0);
+		if (!overlapBytes(plaintext, ciphertext)) ciphertext.fill(0);
 		return out;
 	};
 	const res = ((key, ...args) => ({
 		encrypt(plaintext) {
-			abytes$1(plaintext, void 0, "data");
+			abytes(plaintext, void 0, "data");
 			const nonce = randomBytes_(nonceLength);
 			const encrypted = fn(key, nonce, ...args).encrypt(plaintext);
 			if (encrypted instanceof Promise) return encrypted.then((ct) => addNonce(nonce, ct, plaintext));
 			return addNonce(nonce, encrypted, plaintext);
 		},
 		decrypt(ciphertext) {
-			abytes$1(ciphertext, void 0, "data");
+			abytes(ciphertext, void 0, "data");
 			const nonce = ciphertext.subarray(0, nonceLength);
 			const decrypted = ciphertext.subarray(nonceLength);
 			return fn(key, nonce, ...args).decrypt(decrypted);
@@ -660,8 +660,8 @@ See {@link https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-xchacha#appendi
 * @module
 */
 var encodeStr = (str) => Uint8Array.from(str.split(""), (c) => c.charCodeAt(0));
-var sigma16_32 = /* @__PURE__ */ (() => swap32IfBE(u32$1(encodeStr("expand 16-byte k"))))();
-var sigma32_32 = /* @__PURE__ */ (() => swap32IfBE(u32$1(encodeStr("expand 32-byte k"))))();
+var sigma16_32 = /* @__PURE__ */ (() => swap32IfBE(u32(encodeStr("expand 16-byte k"))))();
+var sigma32_32 = /* @__PURE__ */ (() => swap32IfBE(u32(encodeStr("expand 32-byte k"))))();
 /**
 * Rotates a 32-bit word left.
 * @param a - Input word.
@@ -683,11 +683,11 @@ var U32_EMPTY = /* @__PURE__ */ Uint32Array.of();
 function runCipher(core, sigma, key, nonce, data, output, counter, rounds) {
 	const len = data.length;
 	const block = new Uint8Array(BLOCK_LEN);
-	const b32 = u32$1(block);
-	const isAligned = isLE$1 && isAligned32$1(data) && isAligned32$1(output);
-	const d32 = isAligned ? u32$1(data) : U32_EMPTY;
-	const o32 = isAligned ? u32$1(output) : U32_EMPTY;
-	if (!isLE$1) {
+	const b32 = u32(block);
+	const isAligned = isLE && isAligned32(data) && isAligned32(output);
+	const d32 = isAligned ? u32(data) : U32_EMPTY;
+	const o32 = isAligned ? u32(output) : U32_EMPTY;
+	if (!isLE) {
 		for (let pos = 0; pos < len; counter++) {
 			core(sigma, key, nonce, b32, counter, rounds);
 			swap32IfBE(b32);
@@ -743,13 +743,13 @@ function createCipher(core, opts) {
 	abool(counterRight);
 	abool(allowShortKeys);
 	return (key, nonce, data, output, counter = 0) => {
-		abytes$1(key, void 0, "key");
-		abytes$1(nonce, void 0, "nonce");
-		abytes$1(data, void 0, "data");
+		abytes(key, void 0, "key");
+		abytes(nonce, void 0, "nonce");
+		abytes(data, void 0, "data");
 		const len = data.length;
 		const hasOutput = output !== void 0;
-		output = getOutput$1(len, output, false);
-		if (hasOutput) complexOverlapBytes$1(data, output);
+		output = getOutput(len, output, false);
+		if (hasOutput) complexOverlapBytes(data, output);
 		anumber(counter);
 		if (counter < 0 || counter >= MAX_COUNTER) throw new Error("arx: counter overflow");
 		const toClean = [];
@@ -757,7 +757,7 @@ function createCipher(core, opts) {
 		let k;
 		let sigma;
 		if (l === 32) {
-			toClean.push(k = copyBytes$1(key));
+			toClean.push(k = copyBytes(key));
 			sigma = sigma32_32;
 		} else if (l === 16 && allowShortKeys) {
 			k = /* @__PURE__ */ new Uint8Array(32);
@@ -766,23 +766,23 @@ function createCipher(core, opts) {
 			sigma = sigma16_32;
 			toClean.push(k);
 		} else {
-			abytes$1(key, 32, "arx key");
+			abytes(key, 32, "arx key");
 			throw new Error("invalid key size");
 		}
-		if (!isLE$1 || !isAligned32$1(nonce)) toClean.push(nonce = copyBytes$1(nonce));
-		let k32 = u32$1(k);
+		if (!isLE || !isAligned32(nonce)) toClean.push(nonce = copyBytes(nonce));
+		let k32 = u32(k);
 		if (extendNonceFn) {
 			if (nonce.length !== 24) throw new Error("arx: extended nonce must be 24 bytes");
 			const n16 = nonce.subarray(0, 16);
-			if (isLE$1) extendNonceFn(sigma, k32, u32$1(n16), k32);
+			if (isLE) extendNonceFn(sigma, k32, u32(n16), k32);
 			else {
 				const sigmaRaw = swap32IfBE(Uint32Array.from(sigma));
-				extendNonceFn(sigmaRaw, k32, u32$1(n16), k32);
-				clean$1(sigmaRaw);
+				extendNonceFn(sigmaRaw, k32, u32(n16), k32);
+				clean(sigmaRaw);
 				swap32IfBE(k32);
 			}
 			nonce = nonce.subarray(16);
-		} else if (!isLE$1) swap32IfBE(k32);
+		} else if (!isLE) swap32IfBE(k32);
 		const nonceNcLen = 16 - counterLength;
 		if (nonceNcLen !== nonce.length) throw new Error(`arx: nonce must be ${nonceNcLen} or 16 bytes`);
 		if (nonceNcLen !== 12) {
@@ -791,12 +791,12 @@ function createCipher(core, opts) {
 			nonce = nc;
 			toClean.push(nonce);
 		}
-		const n32 = swap32IfBE(u32$1(nonce));
+		const n32 = swap32IfBE(u32(nonce));
 		try {
 			runCipher(core, sigma, k32, n32, data, output, counter, rounds);
 			return output;
 		} finally {
-			clean$1(...toClean);
+			clean(...toClean);
 		}
 	};
 }
@@ -851,7 +851,7 @@ var Poly1305 = class {
 	finished = false;
 	destroyed = false;
 	constructor(key) {
-		key = copyBytes$1(abytes$1(key, 32, "key"));
+		key = copyBytes(abytes(key, 32, "key"));
 		const t0 = u8to16(key, 0);
 		const t1 = u8to16(key, 2);
 		const t2 = u8to16(key, 4);
@@ -1024,12 +1024,12 @@ var Poly1305 = class {
 			f = (h[i] + pad[i] | 0) + (f >>> 16) | 0;
 			h[i] = f & 65535;
 		}
-		clean$1(g);
+		clean(g);
 	}
 	update(data) {
 		aexists(this);
-		abytes$1(data);
-		data = copyBytes$1(data);
+		abytes(data);
+		data = copyBytes(data);
 		const { buffer, blockLen } = this;
 		const len = data.length;
 		for (let pos = 0; pos < len;) {
@@ -1050,7 +1050,7 @@ var Poly1305 = class {
 	}
 	destroy() {
 		this.destroyed = true;
-		clean$1(this.h, this.r, this.buffer, this.pad);
+		clean(this.h, this.r, this.buffer, this.pad);
 	}
 	digestInto(out) {
 		aexists(this);
@@ -1231,9 +1231,9 @@ function chachaCore(s, k, n, out, cnt, rounds = 20) {
 * ```
 */
 function hchacha(s, k, i, out) {
-	const s2 = isLE$1 ? s : swap32IfBE(s.slice(0, 4));
-	const k2 = isLE$1 ? k : swap32IfBE(k.slice(0, 8));
-	const i2 = isLE$1 ? i : swap32IfBE(i.slice(0, 4));
+	const s2 = isLE ? s : swap32IfBE(s.slice(0, 4));
+	const k2 = isLE ? k : swap32IfBE(k.slice(0, 8));
+	const i2 = isLE ? i : swap32IfBE(i.slice(0, 4));
 	const t = /* @__PURE__ */ new Uint32Array(16);
 	chachaCore(s2, k2, i2.subarray(1), t, i2[0]);
 	let oi = 0;
@@ -1246,8 +1246,8 @@ function hchacha(s, k, i, out) {
 	out[oi++] = t[14] - i2[2] | 0;
 	out[oi++] = t[15] - i2[3] | 0;
 	swap32IfBE(out);
-	if (!isLE$1) clean$1(s2, k2, i2);
-	clean$1(t);
+	if (!isLE) clean(s2, k2, i2);
+	clean(t);
 }
 /**
 * XChaCha eXtended-nonce ChaCha. With 24-byte nonce, it's safe to make it random (CSPRNG).
@@ -1286,7 +1286,7 @@ var updatePadded = (h, msg) => {
 };
 var ZEROS32 = /* @__PURE__ */ new Uint8Array(32);
 function computeTag(fn, key, nonce, ciphertext, AAD) {
-	if (AAD !== void 0) abytes$1(AAD, void 0, "AAD");
+	if (AAD !== void 0) abytes(AAD, void 0, "AAD");
 	const authKey = fn(key, nonce, ZEROS32);
 	const lengths = u64Lengths(ciphertext.length, AAD ? AAD.length : 0, true);
 	const h = poly1305.create(authKey);
@@ -1294,7 +1294,7 @@ function computeTag(fn, key, nonce, ciphertext, AAD) {
 	updatePadded(h, ciphertext);
 	h.update(lengths);
 	const res = h.digest();
-	clean$1(authKey, lengths);
+	clean(authKey, lengths);
 	return res;
 }
 /**
@@ -1309,27 +1309,27 @@ var _poly1305_aead = (xorStream) => (key, nonce, AAD) => {
 	return {
 		encrypt(plaintext, output) {
 			const plength = plaintext.length;
-			output = getOutput$1(plength + tagLength, output, false);
+			output = getOutput(plength + tagLength, output, false);
 			output.set(plaintext);
 			const oPlain = output.subarray(0, -16);
 			xorStream(key, nonce, oPlain, oPlain, 1);
 			const tag = computeTag(xorStream, key, nonce, oPlain, AAD);
 			output.set(tag, plength);
-			clean$1(tag);
+			clean(tag);
 			return output;
 		},
 		decrypt(ciphertext, output) {
-			output = getOutput$1(ciphertext.length - tagLength, output, false);
+			output = getOutput(ciphertext.length - tagLength, output, false);
 			const data = ciphertext.subarray(0, -16);
 			const passedTag = ciphertext.subarray(-16);
 			const tag = computeTag(xorStream, key, nonce, data, AAD);
 			if (!equalBytes(passedTag, tag)) {
-				clean$1(tag);
+				clean(tag);
 				throw new Error("invalid tag");
 			}
 			output.set(ciphertext.subarray(0, -16));
 			xorStream(key, nonce, output, output, 1);
-			clean$1(tag);
+			clean(tag);
 			return output;
 		}
 	};
@@ -1356,399 +1356,11 @@ var _poly1305_aead = (xorStream) => (key, nonce, AAD) => {
 * cipher.encrypt(new Uint8Array([1, 2, 3]));
 * ```
 */
-var xchacha20poly1305 = /* @__PURE__ */ wrapCipher$1({
+var xchacha20poly1305 = /* @__PURE__ */ wrapCipher({
 	blockSize: 64,
 	nonceLength: 24,
 	tagLength: 16,
 	withAAD: true
 }, /* @__PURE__ */ _poly1305_aead(xchacha20));
 //#endregion
-//#region node_modules/pdfkit/node_modules/@noble/ciphers/esm/utils.js
-/**
-* Utilities for hex, bytes, CSPRNG.
-* @module
-*/
-/*! noble-ciphers - MIT License (c) 2023 Paul Miller (paulmillr.com) */
-/** Checks if something is Uint8Array. Be careful: nodejs Buffer will return true. */
-function isBytes(a) {
-	return a instanceof Uint8Array || ArrayBuffer.isView(a) && a.constructor.name === "Uint8Array";
-}
-/** Asserts something is Uint8Array. */
-function abytes(b, ...lengths) {
-	if (!isBytes(b)) throw new Error("Uint8Array expected");
-	if (lengths.length > 0 && !lengths.includes(b.length)) throw new Error("Uint8Array expected of length " + lengths + ", got length=" + b.length);
-}
-/** Cast u8 / u16 / u32 to u32. */
-function u32(arr) {
-	return new Uint32Array(arr.buffer, arr.byteOffset, Math.floor(arr.byteLength / 4));
-}
-/** Zeroize a byte array. Warning: JS provides no guarantees. */
-function clean(...arrays) {
-	for (let i = 0; i < arrays.length; i++) arrays[i].fill(0);
-}
-/** Is current platform little-endian? Most are. Big-Endian platform: IBM */
-var isLE = /* @__PURE__ */ (() => new Uint8Array(new Uint32Array([287454020]).buffer)[0] === 68)();
-/**
-* Checks if two U8A use same underlying buffer and overlaps.
-* This is invalid and can corrupt data.
-*/
-function overlapBytes(a, b) {
-	return a.buffer === b.buffer && a.byteOffset < b.byteOffset + b.byteLength && b.byteOffset < a.byteOffset + a.byteLength;
-}
-/**
-* If input and output overlap and input starts before output, we will overwrite end of input before
-* we start processing it, so this is not supported for most ciphers (except chacha/salse, which designed with this)
-*/
-function complexOverlapBytes(input, output) {
-	if (overlapBytes(input, output) && input.byteOffset < output.byteOffset) throw new Error("complex overlap of input and output is not supported");
-}
-/**
-* Wraps a cipher: validates args, ensures encrypt() can only be called once.
-* @__NO_SIDE_EFFECTS__
-*/
-var wrapCipher = (params, constructor) => {
-	function wrappedCipher(key, ...args) {
-		abytes(key);
-		if (!isLE) throw new Error("Non little-endian hardware is not yet supported");
-		if (params.nonceLength !== void 0) {
-			const nonce = args[0];
-			if (!nonce) throw new Error("nonce / iv required");
-			if (params.varSizeNonce) abytes(nonce);
-			else abytes(nonce, params.nonceLength);
-		}
-		const tagl = params.tagLength;
-		if (tagl && args[1] !== void 0) abytes(args[1]);
-		const cipher = constructor(key, ...args);
-		const checkOutput = (fnLength, output) => {
-			if (output !== void 0) {
-				if (fnLength !== 2) throw new Error("cipher output not supported");
-				abytes(output);
-			}
-		};
-		let called = false;
-		return {
-			encrypt(data, output) {
-				if (called) throw new Error("cannot encrypt() twice with same key + nonce");
-				called = true;
-				abytes(data);
-				checkOutput(cipher.encrypt.length, output);
-				return cipher.encrypt(data, output);
-			},
-			decrypt(data, output) {
-				abytes(data);
-				if (tagl && data.length < tagl) throw new Error("invalid ciphertext length: smaller than tagLength=" + tagl);
-				checkOutput(cipher.decrypt.length, output);
-				return cipher.decrypt(data, output);
-			}
-		};
-	}
-	Object.assign(wrappedCipher, params);
-	return wrappedCipher;
-};
-/**
-* By default, returns u8a of length.
-* When out is available, it checks it for validity and uses it.
-*/
-function getOutput(expectedLength, out, onlyAligned = true) {
-	if (out === void 0) return new Uint8Array(expectedLength);
-	if (out.length !== expectedLength) throw new Error("invalid output length, expected " + expectedLength + ", got: " + out.length);
-	if (onlyAligned && !isAligned32(out)) throw new Error("invalid output, must be aligned");
-	return out;
-}
-function isAligned32(bytes) {
-	return bytes.byteOffset % 4 === 0;
-}
-function copyBytes(bytes) {
-	return Uint8Array.from(bytes);
-}
-//#endregion
-//#region node_modules/pdfkit/node_modules/@noble/ciphers/esm/aes.js
-var BLOCK_SIZE = 16;
-var POLY = 283;
-function mul2(n) {
-	return n << 1 ^ POLY & -(n >> 7);
-}
-function mul(a, b) {
-	let res = 0;
-	for (; b > 0; b >>= 1) {
-		res ^= a & -(b & 1);
-		a = mul2(a);
-	}
-	return res;
-}
-var sbox = /* @__PURE__ */ (() => {
-	const t = /* @__PURE__ */ new Uint8Array(256);
-	for (let i = 0, x = 1; i < 256; i++, x ^= mul2(x)) t[i] = x;
-	const box = /* @__PURE__ */ new Uint8Array(256);
-	box[0] = 99;
-	for (let i = 0; i < 255; i++) {
-		let x = t[255 - i];
-		x |= x << 8;
-		box[t[i]] = (x ^ x >> 4 ^ x >> 5 ^ x >> 6 ^ x >> 7 ^ 99) & 255;
-	}
-	clean(t);
-	return box;
-})();
-var invSbox = /* @__PURE__ */ sbox.map((_, j) => sbox.indexOf(j));
-var rotr32_8 = (n) => n << 24 | n >>> 8;
-var rotl32_8 = (n) => n << 8 | n >>> 24;
-function genTtable(sbox, fn) {
-	if (sbox.length !== 256) throw new Error("Wrong sbox length");
-	const T0 = (/* @__PURE__ */ new Uint32Array(256)).map((_, j) => fn(sbox[j]));
-	const T1 = T0.map(rotl32_8);
-	const T2 = T1.map(rotl32_8);
-	const T3 = T2.map(rotl32_8);
-	const T01 = /* @__PURE__ */ new Uint32Array(65536);
-	const T23 = /* @__PURE__ */ new Uint32Array(65536);
-	const sbox2 = /* @__PURE__ */ new Uint16Array(65536);
-	for (let i = 0; i < 256; i++) for (let j = 0; j < 256; j++) {
-		const idx = i * 256 + j;
-		T01[idx] = T0[i] ^ T1[j];
-		T23[idx] = T2[i] ^ T3[j];
-		sbox2[idx] = sbox[i] << 8 | sbox[j];
-	}
-	return {
-		sbox,
-		sbox2,
-		T0,
-		T1,
-		T2,
-		T3,
-		T01,
-		T23
-	};
-}
-var tableEncoding = /* @__PURE__ */ genTtable(sbox, (s) => mul(s, 3) << 24 | s << 16 | s << 8 | mul(s, 2));
-var tableDecoding = /* @__PURE__ */ genTtable(invSbox, (s) => mul(s, 11) << 24 | mul(s, 13) << 16 | mul(s, 9) << 8 | mul(s, 14));
-var xPowers = /* @__PURE__ */ (() => {
-	const p = /* @__PURE__ */ new Uint8Array(16);
-	for (let i = 0, x = 1; i < 16; i++, x = mul2(x)) p[i] = x;
-	return p;
-})();
-/** Key expansion used in CTR. */
-function expandKeyLE(key) {
-	abytes(key);
-	const len = key.length;
-	if (![
-		16,
-		24,
-		32
-	].includes(len)) throw new Error("aes: invalid key size, should be 16, 24 or 32, got " + len);
-	const { sbox2 } = tableEncoding;
-	const toClean = [];
-	if (!isAligned32(key)) toClean.push(key = copyBytes(key));
-	const k32 = u32(key);
-	const Nk = k32.length;
-	const subByte = (n) => applySbox(sbox2, n, n, n, n);
-	const xk = new Uint32Array(len + 28);
-	xk.set(k32);
-	for (let i = Nk; i < xk.length; i++) {
-		let t = xk[i - 1];
-		if (i % Nk === 0) t = subByte(rotr32_8(t)) ^ xPowers[i / Nk - 1];
-		else if (Nk > 6 && i % Nk === 4) t = subByte(t);
-		xk[i] = xk[i - Nk] ^ t;
-	}
-	clean(...toClean);
-	return xk;
-}
-function expandKeyDecLE(key) {
-	const encKey = expandKeyLE(key);
-	const xk = encKey.slice();
-	const Nk = encKey.length;
-	const { sbox2 } = tableEncoding;
-	const { T0, T1, T2, T3 } = tableDecoding;
-	for (let i = 0; i < Nk; i += 4) for (let j = 0; j < 4; j++) xk[i + j] = encKey[Nk - i - 4 + j];
-	clean(encKey);
-	for (let i = 4; i < Nk - 4; i++) {
-		const x = xk[i];
-		const w = applySbox(sbox2, x, x, x, x);
-		xk[i] = T0[w & 255] ^ T1[w >>> 8 & 255] ^ T2[w >>> 16 & 255] ^ T3[w >>> 24];
-	}
-	return xk;
-}
-function apply0123(T01, T23, s0, s1, s2, s3) {
-	return T01[s0 << 8 & 65280 | s1 >>> 8 & 255] ^ T23[s2 >>> 8 & 65280 | s3 >>> 24 & 255];
-}
-function applySbox(sbox2, s0, s1, s2, s3) {
-	return sbox2[s0 & 255 | s1 & 65280] | sbox2[s2 >>> 16 & 255 | s3 >>> 16 & 65280] << 16;
-}
-function encrypt(xk, s0, s1, s2, s3) {
-	const { sbox2, T01, T23 } = tableEncoding;
-	let k = 0;
-	s0 ^= xk[k++], s1 ^= xk[k++], s2 ^= xk[k++], s3 ^= xk[k++];
-	const rounds = xk.length / 4 - 2;
-	for (let i = 0; i < rounds; i++) {
-		const t0 = xk[k++] ^ apply0123(T01, T23, s0, s1, s2, s3);
-		const t1 = xk[k++] ^ apply0123(T01, T23, s1, s2, s3, s0);
-		const t2 = xk[k++] ^ apply0123(T01, T23, s2, s3, s0, s1);
-		const t3 = xk[k++] ^ apply0123(T01, T23, s3, s0, s1, s2);
-		s0 = t0, s1 = t1, s2 = t2, s3 = t3;
-	}
-	return {
-		s0: xk[k++] ^ applySbox(sbox2, s0, s1, s2, s3),
-		s1: xk[k++] ^ applySbox(sbox2, s1, s2, s3, s0),
-		s2: xk[k++] ^ applySbox(sbox2, s2, s3, s0, s1),
-		s3: xk[k++] ^ applySbox(sbox2, s3, s0, s1, s2)
-	};
-}
-function decrypt(xk, s0, s1, s2, s3) {
-	const { sbox2, T01, T23 } = tableDecoding;
-	let k = 0;
-	s0 ^= xk[k++], s1 ^= xk[k++], s2 ^= xk[k++], s3 ^= xk[k++];
-	const rounds = xk.length / 4 - 2;
-	for (let i = 0; i < rounds; i++) {
-		const t0 = xk[k++] ^ apply0123(T01, T23, s0, s3, s2, s1);
-		const t1 = xk[k++] ^ apply0123(T01, T23, s1, s0, s3, s2);
-		const t2 = xk[k++] ^ apply0123(T01, T23, s2, s1, s0, s3);
-		const t3 = xk[k++] ^ apply0123(T01, T23, s3, s2, s1, s0);
-		s0 = t0, s1 = t1, s2 = t2, s3 = t3;
-	}
-	return {
-		s0: xk[k++] ^ applySbox(sbox2, s0, s3, s2, s1),
-		s1: xk[k++] ^ applySbox(sbox2, s1, s0, s3, s2),
-		s2: xk[k++] ^ applySbox(sbox2, s2, s1, s0, s3),
-		s3: xk[k++] ^ applySbox(sbox2, s3, s2, s1, s0)
-	};
-}
-function validateBlockDecrypt(data) {
-	abytes(data);
-	if (data.length % BLOCK_SIZE !== 0) throw new Error("aes-(cbc/ecb).decrypt ciphertext should consist of blocks with size 16");
-}
-function validateBlockEncrypt(plaintext, pcks5, dst) {
-	abytes(plaintext);
-	let outLen = plaintext.length;
-	const remaining = outLen % BLOCK_SIZE;
-	if (!pcks5 && remaining !== 0) throw new Error("aec/(cbc-ecb): unpadded plaintext with disabled padding");
-	if (!isAligned32(plaintext)) plaintext = copyBytes(plaintext);
-	const b = u32(plaintext);
-	if (pcks5) {
-		let left = BLOCK_SIZE - remaining;
-		if (!left) left = BLOCK_SIZE;
-		outLen = outLen + left;
-	}
-	dst = getOutput(outLen, dst);
-	complexOverlapBytes(plaintext, dst);
-	return {
-		b,
-		o: u32(dst),
-		out: dst
-	};
-}
-function validatePCKS(data, pcks5) {
-	if (!pcks5) return data;
-	const len = data.length;
-	if (!len) throw new Error("aes/pcks5: empty ciphertext not allowed");
-	const lastByte = data[len - 1];
-	if (lastByte <= 0 || lastByte > 16) throw new Error("aes/pcks5: wrong padding");
-	const out = data.subarray(0, -lastByte);
-	for (let i = 0; i < lastByte; i++) if (data[len - i - 1] !== lastByte) throw new Error("aes/pcks5: wrong padding");
-	return out;
-}
-function padPCKS(left) {
-	const tmp = /* @__PURE__ */ new Uint8Array(16);
-	const tmp32 = u32(tmp);
-	tmp.set(left);
-	const paddingByte = BLOCK_SIZE - left.length;
-	for (let i = BLOCK_SIZE - paddingByte; i < BLOCK_SIZE; i++) tmp[i] = paddingByte;
-	return tmp32;
-}
-/**
-* ECB: Electronic CodeBook. Simple deterministic replacement.
-* Dangerous: always map x to y. See [AES Penguin](https://words.filippo.io/the-ecb-penguin/).
-*/
-var ecb = /* @__PURE__ */ wrapCipher({ blockSize: 16 }, function aesecb(key, opts = {}) {
-	const pcks5 = !opts.disablePadding;
-	return {
-		encrypt(plaintext, dst) {
-			const { b, o, out: _out } = validateBlockEncrypt(plaintext, pcks5, dst);
-			const xk = expandKeyLE(key);
-			let i = 0;
-			for (; i + 4 <= b.length;) {
-				const { s0, s1, s2, s3 } = encrypt(xk, b[i + 0], b[i + 1], b[i + 2], b[i + 3]);
-				o[i++] = s0, o[i++] = s1, o[i++] = s2, o[i++] = s3;
-			}
-			if (pcks5) {
-				const tmp32 = padPCKS(plaintext.subarray(i * 4));
-				const { s0, s1, s2, s3 } = encrypt(xk, tmp32[0], tmp32[1], tmp32[2], tmp32[3]);
-				o[i++] = s0, o[i++] = s1, o[i++] = s2, o[i++] = s3;
-			}
-			clean(xk);
-			return _out;
-		},
-		decrypt(ciphertext, dst) {
-			validateBlockDecrypt(ciphertext);
-			const xk = expandKeyDecLE(key);
-			dst = getOutput(ciphertext.length, dst);
-			const toClean = [xk];
-			if (!isAligned32(ciphertext)) toClean.push(ciphertext = copyBytes(ciphertext));
-			complexOverlapBytes(ciphertext, dst);
-			const b = u32(ciphertext);
-			const o = u32(dst);
-			for (let i = 0; i + 4 <= b.length;) {
-				const { s0, s1, s2, s3 } = decrypt(xk, b[i + 0], b[i + 1], b[i + 2], b[i + 3]);
-				o[i++] = s0, o[i++] = s1, o[i++] = s2, o[i++] = s3;
-			}
-			clean(...toClean);
-			return validatePCKS(dst, pcks5);
-		}
-	};
-});
-/**
-* CBC: Cipher-Block-Chaining. Key is previous round’s block.
-* Fragile: needs proper padding. Unauthenticated: needs MAC.
-*/
-var cbc = /* @__PURE__ */ wrapCipher({
-	blockSize: 16,
-	nonceLength: 16
-}, function aescbc(key, iv, opts = {}) {
-	const pcks5 = !opts.disablePadding;
-	return {
-		encrypt(plaintext, dst) {
-			const xk = expandKeyLE(key);
-			const { b, o, out: _out } = validateBlockEncrypt(plaintext, pcks5, dst);
-			let _iv = iv;
-			const toClean = [xk];
-			if (!isAligned32(_iv)) toClean.push(_iv = copyBytes(_iv));
-			const n32 = u32(_iv);
-			let s0 = n32[0], s1 = n32[1], s2 = n32[2], s3 = n32[3];
-			let i = 0;
-			for (; i + 4 <= b.length;) {
-				s0 ^= b[i + 0], s1 ^= b[i + 1], s2 ^= b[i + 2], s3 ^= b[i + 3];
-				({s0, s1, s2, s3} = encrypt(xk, s0, s1, s2, s3));
-				o[i++] = s0, o[i++] = s1, o[i++] = s2, o[i++] = s3;
-			}
-			if (pcks5) {
-				const tmp32 = padPCKS(plaintext.subarray(i * 4));
-				s0 ^= tmp32[0], s1 ^= tmp32[1], s2 ^= tmp32[2], s3 ^= tmp32[3];
-				({s0, s1, s2, s3} = encrypt(xk, s0, s1, s2, s3));
-				o[i++] = s0, o[i++] = s1, o[i++] = s2, o[i++] = s3;
-			}
-			clean(...toClean);
-			return _out;
-		},
-		decrypt(ciphertext, dst) {
-			validateBlockDecrypt(ciphertext);
-			const xk = expandKeyDecLE(key);
-			let _iv = iv;
-			const toClean = [xk];
-			if (!isAligned32(_iv)) toClean.push(_iv = copyBytes(_iv));
-			const n32 = u32(_iv);
-			dst = getOutput(ciphertext.length, dst);
-			if (!isAligned32(ciphertext)) toClean.push(ciphertext = copyBytes(ciphertext));
-			complexOverlapBytes(ciphertext, dst);
-			const b = u32(ciphertext);
-			const o = u32(dst);
-			let s0 = n32[0], s1 = n32[1], s2 = n32[2], s3 = n32[3];
-			for (let i = 0; i + 4 <= b.length;) {
-				const ps0 = s0, ps1 = s1, ps2 = s2, ps3 = s3;
-				s0 = b[i + 0], s1 = b[i + 1], s2 = b[i + 2], s3 = b[i + 3];
-				const { s0: o0, s1: o1, s2: o2, s3: o3 } = decrypt(xk, s0, s1, s2, s3);
-				o[i++] = o0 ^ ps0, o[i++] = o1 ^ ps1, o[i++] = o2 ^ ps2, o[i++] = o3 ^ ps3;
-			}
-			clean(...toClean);
-			return validatePCKS(dst, pcks5);
-		}
-	};
-});
-//#endregion
-export { hexToBytes as a, bytesToHex as i, ecb as n, managedNonce as o, xchacha20poly1305 as r, utf8ToBytes as s, cbc as t };
+export { utf8ToBytes as a, managedNonce as i, bytesToHex as n, hexToBytes as r, xchacha20poly1305 as t };

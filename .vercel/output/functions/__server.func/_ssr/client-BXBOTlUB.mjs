@@ -1,6 +1,6 @@
 import { o as __toESM, r as __exportAll } from "../_runtime.mjs";
 import { t as __exportAll$1 } from "./rolldown-runtime-D7D4PA-g.mjs";
-import { H as require_react } from "../_libs/@tanstack/react-router+[...].mjs";
+import { U as require_react } from "../_libs/@tanstack/react-router+[...].mjs";
 import { G as isSafeUrlScheme, J as toKebabCase, W as createFetch, q as capitalizeFirstLetter } from "../_libs/@better-auth/core+[...].mjs";
 import { n as PACKAGE_VERSION, r as getBaseURL, t as GENERIC_OAUTH_ERROR_CODES } from "./url-DwGxbmbA.mjs";
 import { n as defu } from "../_libs/defu.mjs";

@@ -1,5 +1,5 @@
 import { o as __toESM } from "../_runtime.mjs";
-import { H as require_react } from "./@tanstack/react-router+[...].mjs";
+import { U as require_react } from "./@tanstack/react-router+[...].mjs";
 //#region node_modules/lucide-react/dist/esm/shared/src/utils.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 /**
@@ -466,6 +466,26 @@ var Headset = createLucideIcon("headset", [["path", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var Import = createLucideIcon("import", [
+	["path", {
+		d: "M12 3v12",
+		key: "1x0j5s"
+	}],
+	["path", {
+		d: "m8 11 4 4 4-4",
+		key: "1dohi6"
+	}],
+	["path", {
+		d: "M8 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4",
+		key: "1ywtjm"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var LayoutDashboard = createLucideIcon("layout-dashboard", [
 	["rect", {
 		width: "7",
@@ -498,6 +518,78 @@ var LayoutDashboard = createLucideIcon("layout-dashboard", [
 		y: "16",
 		rx: "1",
 		key: "ldoo1y"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var LayoutGrid = createLucideIcon("layout-grid", [
+	["rect", {
+		width: "7",
+		height: "7",
+		x: "3",
+		y: "3",
+		rx: "1",
+		key: "1g98yp"
+	}],
+	["rect", {
+		width: "7",
+		height: "7",
+		x: "14",
+		y: "3",
+		rx: "1",
+		key: "6d4xhi"
+	}],
+	["rect", {
+		width: "7",
+		height: "7",
+		x: "14",
+		y: "14",
+		rx: "1",
+		key: "nxv5o0"
+	}],
+	["rect", {
+		width: "7",
+		height: "7",
+		x: "3",
+		y: "14",
+		rx: "1",
+		key: "1bb6yr"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var List = createLucideIcon("list", [
+	["path", {
+		d: "M3 12h.01",
+		key: "nlz23k"
+	}],
+	["path", {
+		d: "M3 18h.01",
+		key: "1tta3j"
+	}],
+	["path", {
+		d: "M3 6h.01",
+		key: "1rqtza"
+	}],
+	["path", {
+		d: "M8 12h13",
+		key: "1za7za"
+	}],
+	["path", {
+		d: "M8 18h13",
+		key: "1lx6n3"
+	}],
+	["path", {
+		d: "M8 6h13",
+		key: "ik3vkj"
 	}]
 ]);
 /**
@@ -1160,4 +1252,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { Headset as A, Bell as B, Network as C, MapPinned as D, Menu as E, Check as F, Archive as G, ArrowRight as H, ChartColumn as I, ArchiveRestore as K, Cable as L, Eye as M, Download as N, Mail as O, CreditCard as P, Building2 as R, Plus as S, Monitor as T, ArrowDown as U, ArrowUpRight as V, ArrowDownRight as W, Search as _, Users as a, Radio as b, TriangleAlert as c, Sparkles as d, Smartphone as f, Server as g, Settings as h, Wallet as i, Handshake as j, LayoutDashboard as k, Ticket as l, Share2 as m, Wrench as n, UserPlus as o, Shield as p, Activity as q, Wifi as r, Upload as s, X as t, Sun as u, Router as v, Moon as w, Printer as x, Receipt as y, Boxes as z };
+export { LayoutGrid as A, Cable as B, Network as C, MapPinned as D, Menu as E, Eye as F, ArrowRight as G, Boxes as H, Download as I, Archive as J, ArrowDown as K, CreditCard as L, Import as M, Headset as N, Mail as O, Handshake as P, Check as R, Plus as S, Monitor as T, Bell as U, Building2 as V, ArrowUpRight as W, Activity as X, ArchiveRestore as Y, Search as _, Users as a, Radio as b, TriangleAlert as c, Sparkles as d, Smartphone as f, Server as g, Settings as h, Wallet as i, LayoutDashboard as j, List as k, Ticket as l, Share2 as m, Wrench as n, UserPlus as o, Shield as p, ArrowDownRight as q, Wifi as r, Upload as s, X as t, Sun as u, Router as v, Moon as w, Printer as x, Receipt as y, ChartColumn as z };

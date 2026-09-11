@@ -1,6 +1,6 @@
 import { r as __exportAll } from "../_runtime.mjs";
 import { t as __exportAll$1 } from "./rolldown-runtime-D7D4PA-g.mjs";
-import { A as resolveManifestCssLink, B as rootRouteId, D as getScriptPreloadAttrs, H as require_react, I as isRedirect, L as isResolvedRedirect, M as executeRewriteInput, N as invariant, O as getStylesheetHref, R as parseRedirect, S as require_jsx_runtime, V as isNotFound, a as isSsrResponse, c as stripSsrResponseBody, f as RouterProvider, i as disposeSsrResponseDetached, j as _getRenderedMatches, k as resolveManifestAssetLink, n as bindSsrResponseToRequest, o as normalizeSsrResponse, r as defineHandlerCallback, s as replaceSsrResponse, t as renderRouterToStream } from "../_libs/@tanstack/react-router+[...].mjs";
+import { A as resolveManifestAssetLink, C as require_jsx_runtime, H as isNotFound, L as isRedirect, M as _getRenderedMatches, N as executeRewriteInput, O as getScriptPreloadAttrs, P as invariant, R as isResolvedRedirect, U as require_react, V as rootRouteId, a as isSsrResponse, c as stripSsrResponseBody, i as disposeSsrResponseDetached, j as resolveManifestCssLink, k as getStylesheetHref, n as bindSsrResponseToRequest, o as normalizeSsrResponse, p as RouterProvider, r as defineHandlerCallback, s as replaceSsrResponse, t as renderRouterToStream, z as parseRedirect } from "../_libs/@tanstack/react-router+[...].mjs";
 import { n as createMemoryHistory } from "../_libs/tanstack__history.mjs";
 import { a as getOrigin, c as createSerializationAdapter, d as toCrossJSONAsync, f as toCrossJSONStream, i as getNormalizedURL, l as makeSerovalPlugin, n as mergeHeaders, o as defaultSerovalPlugins, r as attachRouterServerSsrUtils, s as createRawStreamRPCPlugin, t as waitForRequest, u as fromJSON } from "../_libs/@tanstack/router-core+[...].mjs";
 import { n as setCookie, r as toResponse, t as H3Event } from "../_libs/h3-v2+rou3.mjs";
@@ -106,7 +106,7 @@ var HEADERS = { TSS_SHELL: "X-TSS_SHELL" };
 * the dev styles URL for route-scoped CSS collection.
 */
 async function getStartManifest(matchedRoutes) {
-	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-Bgzh_DwG.mjs");
+	const { tsrStartManifest } = await import("../_tanstack-start-manifest_v-BXU92o-8.mjs");
 	const startManifest = tsrStartManifest();
 	let routes = startManifest.routes;
 	routes[rootRouteId];
@@ -128,667 +128,767 @@ async function getStartManifest(matchedRoutes) {
 var manifest = {
 	"00bf21dfa438a7a234d2696308f9344ecc742c0f583b7794c81610533797fa19": {
 		functionName: "adminResetPassword_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"01b10505a5114d752487e173a68294167cbf92c0333ce37812ae1a8187fcdd86": {
 		functionName: "getVpsPublishGuide_createServerFn_handler",
-		importer: () => import("./server-wg-DZpTg-4Y.mjs")
+		importer: () => import("./server-wg-j9SzbIgL.mjs")
+	},
+	"01d9a370f431d00b2239753d0892b99bdbb10ad8292c42b318acc1aa9b8ba698": {
+		functionName: "listCustomerTagsFn_createServerFn_handler",
+		importer: () => import("./server-tags-Dp5l-VIu.mjs")
 	},
 	"03a87dd3765c846fedf46e205b4458044cf97dcb6b78a0534a5138f8543601c0": {
 		functionName: "listAgentQueue_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"0574a099e85b0ffe882dd02d0c85145cabf5dafcc9e3581213ecb1405412ffe1": {
 		functionName: "updateNotificationTemplate_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"06a74cd76fa462be44603eee1b688c499626cd559aecb2d18fbe8dd56ed450b0": {
 		functionName: "getMessaging_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
+	},
+	"07b75a88f45b10d192a351b9566783c43f320ab2ab73613eb420e7225865135b": {
+		functionName: "saveCommTemplateFn_createServerFn_handler",
+		importer: () => import("./server-comms-Lnp4aTHM.mjs")
 	},
 	"07d199274f7a0f4d2adb69de171eabf357dabf7b05a4b0c5647c54d1de74eda0": {
 		functionName: "getWireGuardHub_createServerFn_handler",
-		importer: () => import("./server-wg-DZpTg-4Y.mjs")
+		importer: () => import("./server-wg-j9SzbIgL.mjs")
+	},
+	"0a472869a06c99550ab810f0d84ea8cc35b8d41f30b986e0ee9d2b0a4f307d87": {
+		functionName: "previewAudienceFn_createServerFn_handler",
+		importer: () => import("./server-comms-Lnp4aTHM.mjs")
 	},
 	"0a933c1d7147a260b0b7b06e923afe4666ce627387bcd37e42e1276b2128e23d": {
 		functionName: "getPortalHome_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"0bc37d6d424ebf3c443e4599d12e084e9058555818c83cd9a48911368e57c8fb": {
 		functionName: "listField_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
+	},
+	"0bcaaa88f8609a2a4834646a21ece46a3ea013f80bfe9fb7d38534a9078a3894": {
+		functionName: "getGracePolicyFn_createServerFn_handler",
+		importer: () => import("./server-grace-D0mW_8rd.mjs")
 	},
 	"0d2293f0d5ccf188af86767aeda6af8e5de702551bf04a4f45d9dc9a982e8cf7": {
 		functionName: "listSaasPlans_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"107df89607f4cf5642dd84e0b797075cd2a0d6ae8daf02cb91ea183e8afc75a8": {
 		functionName: "setServiceStatus_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
+	},
+	"11f261b5b46989587d024ed14c1f1b19a31fe8338874fb40001513738928feca": {
+		functionName: "updateCustomer_createServerFn_handler",
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"12b85a6313c5bb5fdfb7fd198576b91ef8c22d631ed1411bad6f589f92f66d16": {
 		functionName: "getSaasSettings_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"12b9094c5087afcc1d9bfae5c8dfdc7382133df3ef681bac797e668d052b8149": {
 		functionName: "getKopokopo_createServerFn_handler",
-		importer: () => import("./server-kopo-Cx4Lpauk.mjs")
+		importer: () => import("./server-kopo-DWqDISOX.mjs")
 	},
 	"13ab33f1cc1d5e511d9e4a1b9aa78f476539680d32af0bd48396cc83e93d6534": {
 		functionName: "copyRouterScript_createServerFn_handler",
-		importer: () => import("./server-routers-D51x0bwI.mjs")
+		importer: () => import("./server-routers-C5zs00DK.mjs")
 	},
 	"17c9a3fe57a18486bd60f5036522922767e22f7d861f22899deb3a17576e1220": {
 		functionName: "saveRouterApi_createServerFn_handler",
-		importer: () => import("./server-mikrotik-OwZVuNX6.mjs")
+		importer: () => import("./server-mikrotik-BMrqV_Uz.mjs")
 	},
 	"1aa96ec1e6bb8d28e3a1127203556244a59201e1e6d6c20845d8c0b966bb1727": {
 		functionName: "getPlatformOverview_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"1b6abb435e2aa24896e2c8e35bf8886c2482c692eee6e64c8d1403d9127b1f27": {
 		functionName: "sendStk_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"1d4e3e192be8d5c8714b57ea331a50b7398bed8c05d73917dec5c22a2217341c": {
 		functionName: "portalPasswordSignIn_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"1da6e3801cdc10c2df0cca6dc0e85b43356baa8aeef50bba4d00741b618b05c8": {
 		functionName: "addRouter_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"1f485c1f5b2bfdd985970ac324a520b507ffc3a073eea03e8918423cd3353fae": {
 		functionName: "getMyEntitlements_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"20b682a585126f1fdad57e194e964bf6cfd48cb577f54e4b24a1fa0aa73aa4aa": {
 		functionName: "getSaasReports_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"21aa30200fbb871771a87c4ace21132b156363e6170f90c2c46f9c3c37e47d6a": {
 		functionName: "recordPayment_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"22bcb5c3d5edf5875466ea542ef918f35683ee50e646baceb4461db13efc758c": {
 		functionName: "changeMemberRole_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"26c8353ca79f76fb563d0536d2b86f0d98d4350ec88d24a776bc06e4ab6de54d": {
 		functionName: "getSaasInfrastructure_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"275cc1578c2202d9318f729cbfca95f41d806544527a4cce8e6b21bce54d17d1": {
 		functionName: "completePasswordReset_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"2b212a7204c4f24261e5a7c2e580746ee78f2d7b5d6ee6e1d9ee23611609ad88": {
 		functionName: "portalChangePassword_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"2c34c4620cfd9f683aea8bfbfb5e7ec53c964195a6507cf296a2af20756424cf": {
 		functionName: "verifyPortalLogin_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"2c4985e96c199268f7f639534cb5e8e31d6b19d43286bf77416413db60ffde26": {
 		functionName: "fetchSessionUser_createServerFn_handler",
-		importer: () => import("../__root-dW-T7mxj.mjs")
+		importer: () => import("../__root-BHFDHNws.mjs")
 	},
 	"2c7d38a323f7060a64084bb37c50743b4eacce5a84b2ef1d83801a66ed1bae2f": {
 		functionName: "getRouterApi_createServerFn_handler",
-		importer: () => import("./server-mikrotik-OwZVuNX6.mjs")
+		importer: () => import("./server-mikrotik-BMrqV_Uz.mjs")
 	},
 	"3038cd6cc8f6f407e8479001e53c68728b0cc653d5648490041e1270e05909e0": {
 		functionName: "listBilling_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"31ef43063c3a0dedbeef55e8bcd870df78e8ecd0560b492d6e861ae738d9101a": {
 		functionName: "listHotspot_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
+	},
+	"34b498d816e667b155a7a9c62e29651e293f074d3658c5c3135f6d3aedbc83b6": {
+		functionName: "setCustomerTagsFn_createServerFn_handler",
+		importer: () => import("./server-tags-Dp5l-VIu.mjs")
 	},
 	"3762011a8a863609d7f25b338b4d0962c3e62f545e3bb44f47ed98ae61a8e611": {
 		functionName: "portalPay_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"37bd806d5240020f312999afc0775fa9092a66748917e0f191b6316f77becaa6": {
 		functionName: "submitPublicInquiry_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"3825925e23a9dece455fd2f6bcc5f43649814004fa58a30552ba1bafb125c8c9": {
 		functionName: "listRadius_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"3827f211bbd82335627e9c0710c0cf44850078235f38fff50f2902091fb86b86": {
 		functionName: "previewRouterCommand_createServerFn_handler",
-		importer: () => import("./server-mikrotik-OwZVuNX6.mjs")
+		importer: () => import("./server-mikrotik-BMrqV_Uz.mjs")
 	},
 	"3959b3d82909bb7d1001585144c237851b353f257c716ea0005a72f487ad5cb0": {
 		functionName: "setCustomerPortalPassword_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"39d80ed4b6e680362a6b0ddb220628cd592bae56116a4bfe15c30944622089d0": {
 		functionName: "platformStatus_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"3a6582f59dc2ac5b4363870f425d3af715f3ed79cb13247b2a0621e7c9702163": {
 		functionName: "cancelSaasSubscription_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"3b65fa76427794bb9db6711fd25b659a0e5b0ecc27036dacb059f0d7a236dc44": {
 		functionName: "linkReseller_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"3c65b46088be7203c998b3448a079188a6221248c6354fc379a276a05265dc4a": {
 		functionName: "getPublicSite_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"3cd2cda27fc0b96acc2e818b8b8fa5942d8cdf01fcc5916eeaec565b1a53bcb2": {
 		functionName: "queueRouterCommand_createServerFn_handler",
-		importer: () => import("./server-mikrotik-OwZVuNX6.mjs")
+		importer: () => import("./server-mikrotik-BMrqV_Uz.mjs")
 	},
 	"3cf9a221aefd7efd12a061d772cafde5ec8fec397a3324f653e61c8e8a41d7b9": {
 		functionName: "saveDocumentBranding_createServerFn_handler",
-		importer: () => import("./server-docs-BTfSrvOO.mjs")
+		importer: () => import("./server-docs-BRUsLCsO.mjs")
 	},
 	"3e89b2607399ba88f8a16e73ff3cd6f647b1d0137deff4437ceafc701539493d": {
 		functionName: "saveMessaging_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"40f0f06646f256fd88980085c17d1f2c6ba247dde6f33b71c9643a8fa5403ce2": {
 		functionName: "getStatementPdf_createServerFn_handler",
-		importer: () => import("./server-docs-BTfSrvOO.mjs")
+		importer: () => import("./server-docs-BRUsLCsO.mjs")
 	},
 	"434b7e52924a49ba3d2c02bf57e5bf1795c736f54b2d161bbd9ff232e34c4bea": {
 		functionName: "getReports_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
+	},
+	"43748ba334d00d3bda70f1cc4318063ad655e3305138033e08be98d5646c6246": {
+		functionName: "revokeGraceFn_createServerFn_handler",
+		importer: () => import("./server-grace-D0mW_8rd.mjs")
 	},
 	"44bdca23f66a1d52231da0da296d5040669368f258656441c934c0b8c374f172": {
 		functionName: "listPublicPlans_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"466274032826f563db7ba08698de7091c5fc1c6bd8b44c3beed296fbe5da632c": {
 		functionName: "updateSaasTenant_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"46b7725df2f9b6388c4819befb9a4adb94f3695115803b79e6888ecdc704e00a": {
 		functionName: "getInvoicePdf_createServerFn_handler",
-		importer: () => import("./server-docs-BTfSrvOO.mjs")
+		importer: () => import("./server-docs-BRUsLCsO.mjs")
 	},
 	"4705278a71002e45514d8b3e5552e20794aa2a7bfed773f93945781607fcadc2": {
 		functionName: "enrollSaasNode_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"478f5a2cbe7fb162522f17a4b64a839c3d313854f8d22bf41c1209c001869e42": {
 		functionName: "testKopokopo_createServerFn_handler",
-		importer: () => import("./server-kopo-Cx4Lpauk.mjs")
+		importer: () => import("./server-kopo-DWqDISOX.mjs")
+	},
+	"47c9a69fa5646be2202f8cd330078144d9fd12ba2afad8f737ed4331143ff9ca": {
+		functionName: "createCustomerTagFn_createServerFn_handler",
+		importer: () => import("./server-tags-Dp5l-VIu.mjs")
 	},
 	"488aeb1b613d5a353f9687b41c41eace61a8605b7d1d0269a9ce9d162b095b32": {
 		functionName: "simulateAgentPull_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"48a0e790a8d1ae7d3d96adf83377a4c29339af9348cfbbe18dd818d8f19c6cd4": {
 		functionName: "queueCpeTask_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"4cdcbc4d92e44f708c9ad19679788d00e050ec32d37b244e75e96e6be971c79b": {
 		functionName: "importCustomers_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"4d0960c8a1c10db2929d477a1b3d252a733b4e4dc2bb7acb7ef6a1ed1495f026": {
 		functionName: "getSaasActivity_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"4d32188543180f0a451d089415ae552aa21a70f71e011a089a5568013018bfa8": {
 		functionName: "createVouchers_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"4f0b05ba56a0dcde26445f41ef827f51f0fa6dd880c08857a010fb893d90746b": {
 		functionName: "getBranches_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"5139ec72ef7cd95594c293eae3021b86b86a3c91020bab91f8cdcf531ddefbb1": {
 		functionName: "listRouters_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"549cf5839ef219b859689e0569f5ba00a24821a493894a81b3718668e8b92b31": {
 		functionName: "rotateRadiusKey_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
+	},
+	"585a675b300597194e639a29217ce1237b6a1d92315195c74e284f51754d3081": {
+		functionName: "setCustomerTagEnabledFn_createServerFn_handler",
+		importer: () => import("./server-tags-Dp5l-VIu.mjs")
 	},
 	"5df8987459be47db7012716158196d8446f4c78c9e37c54fe59ac95f96aa6213": {
 		functionName: "savePublicBase_createServerFn_handler",
-		importer: () => import("./server-mpesa-o9w2ic7W.mjs")
+		importer: () => import("./server-mpesa-BlH3anSv.mjs")
 	},
 	"5e8272460fe47527feaf3e116670788a887c20b3c720f0d3244c5706512a7d73": {
 		functionName: "downloadWireGuardServer_createServerFn_handler",
-		importer: () => import("./server-wg-DZpTg-4Y.mjs")
+		importer: () => import("./server-wg-j9SzbIgL.mjs")
 	},
 	"5f38edbc2bb46f39fb882efe9ac573666125d8847ea7a0c2192872cd2a2facc5": {
 		functionName: "resetSaasOperatorPassword_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"5f9cf45bb6f1e783c44c9b2bf8ae0c24895b7f5c3c9dd273d115216220cbbd59": {
 		functionName: "listTicketStaff_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"62d491c28a0138cce95d6e2308a645a7f64ca6995edf437037e657745f604d3f": {
 		functionName: "workspaceSlug_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"62f12a16c4a9fbb6f3114600ea27fcf4af4d5fa62aea2d9bab5e729f32e46b02": {
 		functionName: "createPackage_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"634284e4631fc030e5d32c02aeb3cd4bc41fb897c028cade42cda34b823391d1": {
 		functionName: "verifyResellerLogin_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"63f94eec1029d32e25fcb9dcc8b669a069d656e663f6888e5ee4528293b5a740": {
 		functionName: "getSaasTenant_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"65ffed348c746e4fa38b133584e47a6a978e2f30a88da4619948de0699a612ed": {
 		functionName: "setPlan_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
+	},
+	"6934b4ca91cc2a9df76718145023a97502e058c976a53e9c4c4bbf2bf3905911": {
+		functionName: "tickCampaignFn_createServerFn_handler",
+		importer: () => import("./server-comms-Lnp4aTHM.mjs")
 	},
 	"693fd802704e726683002a77e5c7d01d54fcd47f4b02a0094f28d5248b95924e": {
 		functionName: "listAcs_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"6a88e38a76ab45f9b3bd545076de5dca7a1c8e894e5cf2c824a687763893288a": {
 		functionName: "createInvoice_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
+	},
+	"6c7d7212bcb5ca68a8dd5917efe87c2ce00d848cd2d14c1cba14a35009e624fa": {
+		functionName: "bulkCustomerTagsFn_createServerFn_handler",
+		importer: () => import("./server-tags-Dp5l-VIu.mjs")
 	},
 	"6c9de35413d7ffde4b62bd9492dac623db9bced2fd387a87d98d1a58cd58e1b2": {
 		functionName: "disconnectRadius_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"6cc57261e98985e29d9ad06b62b90ee399d17f030af756dabfcb1fc62758ae07": {
 		functionName: "commentOpenTicket_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"6dc3a12f614ad2143321f5f24d068bfc75df5f073d111dea1f2d907e95cc4c4f": {
 		functionName: "listServices_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"6ecd7131ef3df227430d4eed137b040c45cb60979ffa69576cec6be20fdcf378": {
 		functionName: "setSaasPlanStatus_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
+	},
+	"6f2dd74b052e6f8336d93164fe33861ba862bd9242ed87cd93d4a50e8f0817de": {
+		functionName: "deleteCustomerTagFn_createServerFn_handler",
+		importer: () => import("./server-tags-Dp5l-VIu.mjs")
 	},
 	"7333f74816133aef0c5a756e38329e0b8ebbd9bf77e991cdefd304a698570ff3": {
 		functionName: "createCustomer_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"7478a129405d9c349b39946b965b6155d28251cb47ec72c6da88570730a1dbab": {
 		functionName: "requestPasswordReset_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"749688580f75f39a1f55afbaa68dcfef33818711f3bc3c826843a7ef13c0955b": {
 		functionName: "suspendSaasTenant_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"78778dc6f040cb781915956ffc448402fb71db00bbedd78e601ef7e78e6d1540": {
 		functionName: "recordPlanPayment_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"7a3ed4d70dd42c8971f07ea7d475b02f46118d1ca553da1a080f150da6061b47": {
 		functionName: "sendPlanStk_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"7c0bf9bf3e07600e39acb97104366144d1ad6877b8c0305f174fe324a8913e2d": {
 		functionName: "endSaasSupport_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"8189f346456057568a37dde47fdf2a26d0c291ad3b07ca011b3e642c4eddade6": {
 		functionName: "assignOpenTicket_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"830e682f10512ee2eee1cd75d71f0db022bb8c479fea20858c2e35a1f11eb0d9": {
 		functionName: "createTicket_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"88ab3927a37c1a5fb45d409fb855f48ce6963999678eb1a80ed60a8639a99c99": {
 		functionName: "updateRouter_createServerFn_handler",
-		importer: () => import("./server-routers-D51x0bwI.mjs")
+		importer: () => import("./server-routers-C5zs00DK.mjs")
 	},
 	"8929e8e5986deeb9ce8e7ffa5893daae647c195cd73a4c594d7ce92cb7b58654": {
 		functionName: "listMyTenants_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"8b3476929d1049c30cbfbf66421622361c24fba683ee2d4893beada42f811bb8": {
 		functionName: "saveTenantThemeFn_createServerFn_handler",
-		importer: () => import("./server-theme-CIrp5Zav.mjs")
+		importer: () => import("./server-theme-DIqUORu8.mjs")
 	},
 	"8b44fd85d5a9faba91b802ea8f5d3e0211c9b7620c10325617c1d0584c69dd7f": {
 		functionName: "assignSaasPlan_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
+	},
+	"8b4d75d7aba47cd27a00f58c573ce78a823995059b5125b8bb3f8ed090004280": {
+		functionName: "resendFailedFn_createServerFn_handler",
+		importer: () => import("./server-comms-Lnp4aTHM.mjs")
 	},
 	"8bf82b607ed5461071bd9fc9539e6c819010bc8ba4f354f81dafc9ea489868b4": {
 		functionName: "listSaasTenants_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"8c453e30ee61eff4202a8239eb1e3ae5af09315d29765a50dc8a0a74d2c29223": {
 		functionName: "reactivateSaasTenant_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"8ca589381c089c0ceaafbba885034c9c61b9ac8a4d424584d0d66cedc1b27350": {
 		functionName: "saveSaasSettings_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"8d55894f738b772309598ee421788e6709822a98ada9e6b61d10f94c10eb3753": {
 		functionName: "toggleProvider_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"8e1392816efb0d87ed30324df30d5fde33bbb12011442e0e1c4bc495f53c00c3": {
 		functionName: "getPlan_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"8f352dc5bd73dc8380f4c67d0a244450949973a3c457bf418e8ca70182166d71": {
 		functionName: "saveAcsSettings_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"913200ff77f29304ee30fd95bdce91cf50202f8ad6a7cffc52bff073a94e9f25": {
 		functionName: "saveMpesa_createServerFn_handler",
-		importer: () => import("./server-mpesa-o9w2ic7W.mjs")
+		importer: () => import("./server-mpesa-BlH3anSv.mjs")
 	},
 	"9164e3f538383b8feb6ada8e62c05f8dda9ca99b5ca51c9e1027f887df58ecc4": {
 		functionName: "getIncomingPayments_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"927c7845d2692853774f93db8a0bf205fde11794f72073a81ed2f971cc41d4dd": {
 		functionName: "renameTenant_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"92a4ab570feb67e233c0d3a749a2570aa9516889cff59783e912dfd5123d559f": {
 		functionName: "addSaasOperator_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
+	},
+	"9384cbd43c0092f493f0f09852f99743b9dda1ec498cfa6ae2ae273dc35f6502": {
+		functionName: "saveGracePolicyFn_createServerFn_handler",
+		importer: () => import("./server-grace-D0mW_8rd.mjs")
+	},
+	"965ce366b708fde96a80534dbee18bc88bc149c4ec6d7110e492239285aa31ec": {
+		functionName: "listCommTemplatesFn_createServerFn_handler",
+		importer: () => import("./server-comms-Lnp4aTHM.mjs")
 	},
 	"96acc94f456a915586d54310f214eae9040f47bacbd19137ab0f191ebc3cf969": {
 		functionName: "startSaasSupport_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"96c696639b4e84c81207205c3437928944646a07d66a6800eca5f5ee5fd7357b": {
 		functionName: "emailStatementPdf_createServerFn_handler",
-		importer: () => import("./server-docs-BTfSrvOO.mjs")
+		importer: () => import("./server-docs-BRUsLCsO.mjs")
 	},
 	"98e4e95f7fa179bd1267b242d5ca25fc1dc568a316603db027f0487f48e8234e": {
 		functionName: "getStatementDocument_createServerFn_handler",
-		importer: () => import("./server-docs-BTfSrvOO.mjs")
+		importer: () => import("./server-docs-BRUsLCsO.mjs")
 	},
 	"990333dbf23e6550cd986e3e5ef073cf9327280beb4569e280874e04d7d58e91": {
 		functionName: "getMpesa_createServerFn_handler",
-		importer: () => import("./server-mpesa-o9w2ic7W.mjs")
+		importer: () => import("./server-mpesa-BlH3anSv.mjs")
 	},
 	"9cb7069991d792125d9fa6cef27b8221211dbe1658c23ed02fdcaff14e11d073": {
 		functionName: "listNotifications_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
+	},
+	"9d426eff2ff340d394f431246126a7911921d3542f06a4e3e3574368df9163f4": {
+		functionName: "grantGraceFn_createServerFn_handler",
+		importer: () => import("./server-grace-D0mW_8rd.mjs")
 	},
 	"9dee39d4fd2d27ce30ac377dc62a55edac44617b8da966df91c157c853d4ba6a": {
 		functionName: "rotateServiceSecret_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"9f22ac761f3885e9157652a1b6472e6e6ae76548e42fc0a8ea03e999587dd762": {
 		functionName: "exportCustomersCsv_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"a20611a7f7f3bdaa247dc1fe23e47513ec20777296774808872163e80ea17713": {
 		functionName: "requestPortalOtp_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"a3b90f4522ea74aaf3263ed50e2e6e64308ecb25ee1b8deaf507f4eedcdc888e": {
 		functionName: "emailInvoicePdf_createServerFn_handler",
-		importer: () => import("./server-docs-BTfSrvOO.mjs")
+		importer: () => import("./server-docs-BRUsLCsO.mjs")
 	},
 	"a4276df6051847507687b2c60b80786fcb29007a418aed8bf97a7793326fe460": {
 		functionName: "listCpeTasks_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
+	},
+	"a4d733d35c608e1b64ef6e2c584e63ca7865697e316a6be9e7cd0ac8805ed393": {
+		functionName: "listCampaignsFn_createServerFn_handler",
+		importer: () => import("./server-comms-Lnp4aTHM.mjs")
 	},
 	"a51779c6cac87f3eab85b8d9d511f5d1e76dbc9fbe42ae946556d155deadaf4e": {
 		functionName: "runAutomatedBilling_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"a634b9e860990cf06fea3c0534afc623dcd29ed4717195c19fefd71202f90797": {
 		functionName: "exportRadiusUsers_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"a76066a1f6300a7123c531d2650d60ffef5733ded90f846ea2670ac6e693f0e0": {
 		functionName: "assignPaybillPayments_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"ad3b59d344956234e702d3c96c30ffd11ca87a555f01cee906ead15a555a80d2": {
 		functionName: "activateHotspotVoucher_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
+	},
+	"b133c9d2281c87a19ad4dc4fdb2adec6ab8dbd3bafc4069c469dabddaf08a1a1": {
+		functionName: "getCampaignFn_createServerFn_handler",
+		importer: () => import("./server-comms-Lnp4aTHM.mjs")
 	},
 	"b4dcbf82b4bf84ba2b6f2bd159223569688d730940310a7318b304e4a5b4078e": {
 		functionName: "checkSmsAccount_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
+	},
+	"b582b0375ef59646fde49b719190b2c5a99f39a58ec87faf15a70c06f69b7316": {
+		functionName: "broadcastCustomersFn_createServerFn_handler",
+		importer: () => import("./server-tags-Dp5l-VIu.mjs")
+	},
+	"b593c1668ada7a7d3fd992a0b9822fac074f0bb798281a59787551829e429531": {
+		functionName: "extendGraceFn_createServerFn_handler",
+		importer: () => import("./server-grace-D0mW_8rd.mjs")
+	},
+	"b7d818503ab327c5550cf5a44adc05a588eee3aae1556873826b617075df126d": {
+		functionName: "getCommsMetaFn_createServerFn_handler",
+		importer: () => import("./server-comms-Lnp4aTHM.mjs")
 	},
 	"b82b9e563917b8ca5c159855fbc036e93fae3ccf99f0f58fdfb124f9e0633d05": {
 		functionName: "bootstrapWorkspace_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"b82f6c5d4d7c9cda154c3316f0754d633de311765d8ba3edde7e8c2deb0f5ba9": {
 		functionName: "confirmStk_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"b8cdd856e4723bd8691e891996a289b24615758ae420af7b40146abda15964ac": {
 		functionName: "askRouterOs_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"b923f07b4b4fa0d4e93188fd249a30703fef1cedc4b3e0d414bf7ce756503493": {
 		functionName: "disconnectService_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"b9e2f864ed9e659f04e84c867dfddaaa943b0067a7bb328f27e2557d6158d00c": {
 		functionName: "informCpe_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"ba96a44f28cb314113fd2de99355278a9e4682505f11c38fb1fbe6d5e019b2b2": {
 		functionName: "approveRouterCommand_createServerFn_handler",
-		importer: () => import("./server-mikrotik-OwZVuNX6.mjs")
+		importer: () => import("./server-mikrotik-BMrqV_Uz.mjs")
 	},
 	"bcb442d75d8d4c0de9feb0b2de64ac86f75fc24881de015b22754c94211bdf86": {
 		functionName: "createStaffAccount_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"bcbc4de96ff7eb6982474e24253af7c422b2f107db5561a7c3ef874b31a402ec": {
 		functionName: "saveWireGuardHub_createServerFn_handler",
-		importer: () => import("./server-wg-DZpTg-4Y.mjs")
+		importer: () => import("./server-wg-j9SzbIgL.mjs")
 	},
 	"c037d1381ac27bd2e0c81c325fe731f04b1579979eef42077962c0a961b4ae53": {
 		functionName: "portalInvoicePdf_createServerFn_handler",
-		importer: () => import("./server-docs-BTfSrvOO.mjs")
+		importer: () => import("./server-docs-BRUsLCsO.mjs")
 	},
 	"c10d454b7b316764260bb4a2596617dcd331001d92da03657cf912069f30bc71": {
 		functionName: "syncAcsFromNbi_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"c1520bcc010bb4ebf1d67f2a10bcb57a56664034ab50a2c439c081e57d5b658b": {
 		functionName: "addReferral_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"c1f8f6abd400cff69c71744e2921567e8c2f3b9709fbd9168556069264c948e0": {
 		functionName: "getStatement_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"c31edd8c55cd710d0891392a0052d0e316abb9ad7cd02307b2d748d2ec212580": {
 		functionName: "requestResellerOtp_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"c8c89d4b52f204e1aa3c069694f76ae89143c716f7213999748c3c2ce819ba1d": {
 		functionName: "runRouterApi_createServerFn_handler",
-		importer: () => import("./server-mikrotik-OwZVuNX6.mjs")
+		importer: () => import("./server-mikrotik-BMrqV_Uz.mjs")
 	},
 	"cb0a572eb9356911f9f3e76366206dc0242d0bce25cc9dd2ed0a14acbe0a95dd": {
 		functionName: "getDashboard_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"cb742ca04824157339969c950edad77bd51c50934e44112a1ef506e8e8caf911": {
 		functionName: "listSaasSubscriptions_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"cedb1c0654f1ec316cc9c7488219b88a706c691918e199b938f3351a5ec204cb": {
 		functionName: "extendSaasTrial_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
+	},
+	"cf13f985b8dcd8e22d8bffb584d5c71a1ed93fbac8b1f1faf4380bee306d84b9": {
+		functionName: "renameCustomerTagFn_createServerFn_handler",
+		importer: () => import("./server-tags-Dp5l-VIu.mjs")
 	},
 	"d09c5cf0bf37e8391b2e939a9da6fc5488a8a8f5ee95ff5358d12dda9b9c4b4c": {
 		functionName: "getInvoiceDocument_createServerFn_handler",
-		importer: () => import("./server-docs-BTfSrvOO.mjs")
+		importer: () => import("./server-docs-BRUsLCsO.mjs")
 	},
 	"d10de407eff592c85952061661ba87d1fba7422d507030cb442c829f990cc222": {
 		functionName: "saveBillingSettings_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"d235537725464ec7faf2e44a6c286c946a553ab15aea762cb670d66b94dfb3d1": {
 		functionName: "changeMyPassword_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"d26c18f5e005678a0a92ba783fbea70f752a7d5e40a31c68987737d4c79f78b0": {
 		functionName: "getPublicBranding_createServerFn_handler",
-		importer: () => import("./server-theme-CIrp5Zav.mjs")
+		importer: () => import("./server-theme-DIqUORu8.mjs")
 	},
 	"d28e5ebec9ec7ee946a0ba9e0ebdca5794d4920752440d50b25a4e5af069f34a": {
 		functionName: "exportSaasReportsCsv_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"d29992f7e813ce2a2df10e18aa1531c7a7662ea27648ba573b424d6e6a12e10a": {
 		functionName: "getInvoice_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"d42debbe35d08a84f809c102bc9a795caba9b10c809e89a8a0bae236b375c870": {
 		functionName: "listPartners_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
+	},
+	"d45375937a6888331a2306c32a65db49eb516ff9ff1742f9490cd03f9489c598": {
+		functionName: "deleteCommTemplateFn_createServerFn_handler",
+		importer: () => import("./server-comms-Lnp4aTHM.mjs")
 	},
 	"d6f465a9cb00252e75b84dd823dca040faee861feaa400efdeb65dcbca570c78": {
 		functionName: "setStaffPassword_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
+	},
+	"d923b150a75c2fff8dd70439e7a139eee5367b02afd83b2fba16911c2b01c39f": {
+		functionName: "sendCampaignFn_createServerFn_handler",
+		importer: () => import("./server-comms-Lnp4aTHM.mjs")
 	},
 	"d9ccbd4f5a0898071d3ab80984bcb61c7b2a00b209d5be98fb6e08e98e1e05df": {
 		functionName: "listPlatformTenants_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"d9d3c88c37b6987ccdc28add8b12626a91aa49ac24954d749898588ad38cfc0b": {
 		functionName: "listCustomers_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"dc6c00b3a1df2860e149b926675af6275a2500ba3e242177ae1e5dd559aa1f44": {
 		functionName: "portalOpenTicket_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"dca568a5575de21b69b2e844fe3531e89215694ffcbf914e4655369e397cbba6": {
 		functionName: "addCpe_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"dcb1b21a6e1d2194348428c3ff84b387445c4cbaad2e52add04ef0966a3991a3": {
 		functionName: "getDocumentBranding_createServerFn_handler",
-		importer: () => import("./server-docs-BTfSrvOO.mjs")
+		importer: () => import("./server-docs-BRUsLCsO.mjs")
 	},
 	"dd13d2bc9f9bcb42f78a7414db6e05fe055853339d21cd5d811c699534789059": {
 		functionName: "rotateWireGuardHub_createServerFn_handler",
-		importer: () => import("./server-wg-DZpTg-4Y.mjs")
+		importer: () => import("./server-wg-j9SzbIgL.mjs")
 	},
 	"dd66a2f2e88a97fde4c7bc456d49abbf04aebacbae551f33b6db26c17eeab899": {
 		functionName: "getAuditLog_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
+	},
+	"ded815bbda8adc79c3ceb83c0ecdf6eadc523be27d0d534096e955d906731122": {
+		functionName: "portalRequestGrace_createServerFn_handler",
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"e2fe93fbeec90c7b90207fcb5f255ccbf30aae4915fe179d00bddd42186899e8": {
 		functionName: "createBranch_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"e47f313db27528c49b039deed2d49908a05112b3224ec28d138b2af87ebf5c1f": {
 		functionName: "createSaasTenant_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"e65599353cff8378ba7f5c98cc7f095dcb460665b9867c90c662fc9e2bea655d": {
 		functionName: "getPlatformGate_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"e761a3d9f77c10bf3a83db411f3f4bd2bca663f2dc6062e7cc9d479dbd070250": {
 		functionName: "completePortalPasswordResetFn_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"e78843982652677c66d853dedd123a6a16bf73e7398cde1a3c81a6f0678c1e37": {
 		functionName: "listPackages_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"e7e284ff2420e2291330090fd2754623ea0c40c1b4ceffcaf98716e174a022f2": {
 		functionName: "createIspAsAdmin_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"e8aa2836b3a89aeb7cd471b7107b01b460c43f28c428d4a29f1af48041c826ae": {
 		functionName: "listProviders_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"e9fea7d3fb26d0ce3ed0ab5c1b326b94f06fb029464099c575e71aa5434682e1": {
 		functionName: "getResellerHome_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"ea6691fb42982b9ab59590a4bd3913dbd6e207bc04e494e931d021f2fb5f65fc": {
 		functionName: "revokeHotspotVoucher_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"eca8eea30ac0436609c1dbe175fdc0164ab0dca2185b68f9ab65994386cc791c": {
 		functionName: "addReseller_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"ef583255205c89735dd158fd64bc064a009a8614456fb7ce4c3e37ba94355fc2": {
 		functionName: "searchSaas_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"f075398e94e2bd2fb3b94ced67a1ef8694a805d176a93f1385c1909df18a6d50": {
 		functionName: "testMessaging_createServerFn_handler",
-		importer: () => import("./server-ops-D7DzDcST.mjs")
+		importer: () => import("./server-ops-D4klcitd.mjs")
 	},
 	"f0d807a698d32edcb199283a08d28db6460e51f1ebcb7800b41f38cae22eb518": {
 		functionName: "testMpesa_createServerFn_handler",
-		importer: () => import("./server-mpesa-o9w2ic7W.mjs")
+		importer: () => import("./server-mpesa-BlH3anSv.mjs")
 	},
 	"f191e0976790b49a0f7b7d9c0bb41868d24dacf683d4bbea75bdf81b4568538a": {
 		functionName: "redeemPoints_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"f1f826d101b04a91c5fdd2e35199b7539cd86e4c622bfa16db8d9ab3470a43b3": {
 		functionName: "getSaasRevenue_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	},
 	"f23584ea5f35348bbc5dd5ff7a16f82a0903084ccd9f2b228374fd11b020e7bd": {
 		functionName: "getTenantTheme_createServerFn_handler",
-		importer: () => import("./server-theme-CIrp5Zav.mjs")
+		importer: () => import("./server-theme-DIqUORu8.mjs")
 	},
 	"f343a29b60bea3cb975580feb1062e80abbf518b4cb5c670f5ade0de000536ba": {
 		functionName: "inviteMember_createServerFn_handler",
-		importer: () => import("./server-more-DGbGXoKH.mjs")
+		importer: () => import("./server-more-DKklYTXH.mjs")
 	},
 	"f8152056cc910d521a7b215c86a67025896f3f669f7546d227d9af72f86ff250": {
 		functionName: "updatePackage_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"f953d0c914d0090460292b04ae97b9a85879f43955ccd44d3aa35bec7b7b9b4c": {
 		functionName: "switchTenant_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"f9b3f332043676708e8c1ab892b6e537af272e6db59123681b5b45ef00a5250a": {
 		functionName: "saveKopokopo_createServerFn_handler",
-		importer: () => import("./server-kopo-Cx4Lpauk.mjs")
+		importer: () => import("./server-kopo-DWqDISOX.mjs")
 	},
 	"f9f4f5cc635047ddc6b6f5a986c941472688c45a108340df6f8c5cba87355c52": {
 		functionName: "setTicketStatus_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"fb8f4084dd5b89df9ed7de4fee9d7846f044eceed9cafadec3e9fc9138dc4d5e": {
 		functionName: "createService_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"fbbe28f960b118c4ac3fcbc69927b1048dd832e6275e0258b170198c07a264bf": {
 		functionName: "listTickets_createServerFn_handler",
-		importer: () => import("./server-DQutSko7.mjs")
+		importer: () => import("./server-B981gDhT.mjs")
 	},
 	"feb832028bcb2b49efe4ef8ccb162a315a0f144ff2e315b285217f114c8cba2c": {
 		functionName: "portalStatementPdf_createServerFn_handler",
-		importer: () => import("./server-docs-BTfSrvOO.mjs")
+		importer: () => import("./server-docs-BRUsLCsO.mjs")
 	},
 	"ff64478e9389fd6817783c965aa21c9a83ab8ae142f068dd442151bd4717af8e": {
 		functionName: "saveSaasPlan_createServerFn_handler",
-		importer: () => import("./server-platform-BRYAbpK6.mjs")
+		importer: () => import("./server-platform-B1GBzjKL.mjs")
 	}
 };
 async function getServerFnById(id, access) {
@@ -2058,7 +2158,7 @@ var getBaseManifest = getProdBaseManifest;
 var createEarlyHintsForRequest = createEarlyHintsCollector;
 async function loadEntries() {
 	const [routerEntry, startEntry, pluginAdapters] = await Promise.all([
-		import("./router-DAEgKskc.mjs").then((n) => n.t),
+		import("./router-CZoe1CmJ.mjs").then((n) => n.t),
 		import("./start-5Z2QO8AU.mjs"),
 		import("./empty-plugin-adapters-D9UWiqvJ.mjs")
 	]);

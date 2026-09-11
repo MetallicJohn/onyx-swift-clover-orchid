@@ -125,6 +125,12 @@ function SettingsPage() {
   const [testPhone, setTestPhone] = useState("");
   const [testOut, setTestOut] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  const [companyNote, setCompanyNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const [smsNote, setSmsNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const [waNote, setWaNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const [companyBusy, setCompanyBusy] = useState(false);
+  const [smsBusy, setSmsBusy] = useState(false);
+  const [waBusy, setWaBusy] = useState(false);
   const [kopo, setKopo] = useState({
     enabled: true,
     sandbox: true,
@@ -277,12 +283,75 @@ function SettingsPage() {
     load().catch(console.error);
   }, []);
 
-  async function saveMsg(e: React.FormEvent) {
+  async function saveSms(e: React.FormEvent) {
     e.preventDefault();
-    setSaved(null);
-    await saveMessaging({ data: msg });
-    setSaved("Messaging saved.");
-    await load();
+    setSmsNote(null);
+    const sender = msg.sms_sender_id.trim();
+    if (!msg.sms_provider) {
+      setSmsNote({ ok: false, text: "Choose an SMS provider." });
+      return;
+    }
+    if (msg.sms_provider === "talksasa" && sender.length > 11) {
+      setSmsNote({ ok: false, text: "Talksasa sender ID must be 11 characters or fewer." });
+      return;
+    }
+    if (!msg.sms_sandbox && !msg.sms_api_key.trim() && !smsHint) {
+      setSmsNote({ ok: false, text: "Enter an API key, or keep sandbox on until you go live." });
+      return;
+    }
+    setSmsBusy(true);
+    try {
+      await saveMessaging({
+        data: {
+          payment_sms: msg.payment_sms,
+          billing_sms: msg.billing_sms,
+          sms_provider: msg.sms_provider,
+          sms_sender_id: sender,
+          sms_username: msg.sms_username.trim(),
+          sms_api_key: msg.sms_api_key,
+          sms_sandbox: msg.sms_sandbox,
+        },
+      });
+      setSmsNote({ ok: true, text: "SMS settings applied." });
+      await load();
+    } catch (err) {
+      setSmsNote({ ok: false, text: err instanceof Error ? err.message : "Could not save SMS settings" });
+    } finally {
+      setSmsBusy(false);
+    }
+  }
+
+  async function saveWhatsApp(e: React.FormEvent) {
+    e.preventDefault();
+    setWaNote(null);
+    if (!msg.wa_sandbox && !msg.wa_phone_id.trim()) {
+      setWaNote({ ok: false, text: "Enter the Meta phone number ID, or keep sandbox on." });
+      return;
+    }
+    if (!msg.wa_sandbox && !msg.wa_access_token.trim() && !waHint) {
+      setWaNote({ ok: false, text: "Enter an access token, or keep sandbox on until you go live." });
+      return;
+    }
+    setWaBusy(true);
+    try {
+      await saveMessaging({
+        data: {
+          payment_whatsapp: msg.payment_whatsapp,
+          billing_whatsapp: msg.billing_whatsapp,
+          wa_provider: msg.wa_provider || "meta",
+          wa_phone_id: msg.wa_phone_id.trim(),
+          wa_business_id: msg.wa_business_id.trim(),
+          wa_access_token: msg.wa_access_token,
+          wa_sandbox: msg.wa_sandbox,
+        },
+      });
+      setWaNote({ ok: true, text: "WhatsApp settings applied." });
+      await load();
+    } catch (err) {
+      setWaNote({ ok: false, text: err instanceof Error ? err.message : "Could not save WhatsApp settings" });
+    } finally {
+      setWaBusy(false);
+    }
   }
 
   return (
@@ -310,6 +379,9 @@ function SettingsPage() {
             onClick={() => {
               void navigate({ search: { tab: t.id }, replace: true });
               setSaved(null);
+              setCompanyNote(null);
+              setSmsNote(null);
+              setWaNote(null);
             }}
           >
             {t.label}
@@ -322,13 +394,26 @@ function SettingsPage() {
           className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4"
           onSubmit={async (e) => {
             e.preventDefault();
-            await renameTenant({ data: form });
-            await load();
+            setCompanyNote(null);
+            if (!form.name.trim()) {
+              setCompanyNote({ ok: false, text: "Enter the ISP name." });
+              return;
+            }
+            setCompanyBusy(true);
+            try {
+              await renameTenant({ data: form });
+              setCompanyNote({ ok: true, text: "Company settings applied." });
+              await load();
+            } catch (err) {
+              setCompanyNote({ ok: false, text: err instanceof Error ? err.message : "Could not save company" });
+            } finally {
+              setCompanyBusy(false);
+            }
           }}
         >
           <h2 className="font-medium">Company info</h2>
           <Field label="ISP name">
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
           <Field label="Support email">
             <Input value={form.supportEmail} onChange={(e) => setForm({ ...form, supportEmail: e.target.value })} />
@@ -347,7 +432,14 @@ function SettingsPage() {
             </Link>
             .
           </p>
-          <Button type="submit">Save company</Button>
+          {companyNote ? (
+            <p role="status" className={companyNote.ok ? "text-sm text-ok" : "text-sm text-danger"}>
+              {companyNote.text}
+            </p>
+          ) : null}
+          <Button type="submit" disabled={companyBusy}>
+            {companyBusy ? "Saving…" : "Save company"}
+          </Button>
         </form>
       ) : null}
 
@@ -638,136 +730,180 @@ function SettingsPage() {
       ) : null}
 
       {tab === "sms" ? (
-        <form className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4" onSubmit={saveMsg}>
-          <h2 className="font-medium">SMS</h2>
-          <p className="text-sm text-muted">Gateway used for receipts and billing reminders. WhatsApp is on the same save.</p>
+        <div className="space-y-6">
+          <form className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4" onSubmit={saveSms}>
+            <div>
+              <h2 className="font-medium">SMS gateway</h2>
+              <p className="text-sm text-muted">Provider used for receipts, billing reminders, and staff campaigns.</p>
+            </div>
 
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Check label="Payment receipts · SMS" checked={msg.payment_sms} onChange={(v) => setMsg({ ...msg, payment_sms: v })} />
-            <Check label="Billing reminders · SMS" checked={msg.billing_sms} onChange={(v) => setMsg({ ...msg, billing_sms: v })} />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Check label="Payment receipts · SMS" checked={msg.payment_sms} onChange={(v) => setMsg({ ...msg, payment_sms: v })} />
+              <Check label="Billing reminders · SMS" checked={msg.billing_sms} onChange={(v) => setMsg({ ...msg, billing_sms: v })} />
+            </div>
+
+            <Field label="Provider">
+              <Select value={msg.sms_provider} onChange={(e) => setMsg({ ...msg, sms_provider: e.target.value })}>
+                <option value="blessedtexts">Blessed Texts</option>
+                <option value="talksasa">Talksasa</option>
+                <option value="webfam">Webfam SMS</option>
+                <option value="africastalking">Africa's Talking</option>
+                <option value="advanta">Advanta SMS</option>
+                <option value="twilio">Twilio</option>
+              </Select>
+            </Field>
+            <p className="text-xs text-subtle">
+              {msg.sms_provider === "talksasa"
+                ? "Talksasa: API token from bulksms.talksasa.com. Sender ID max 11 characters."
+                : msg.sms_provider === "blessedtexts"
+                  ? "Blessed Texts: Partner ID + API key. Sender ID is your approved short name."
+                  : msg.sms_provider === "webfam"
+                    ? "WebfamSMS: Bearer API key (WFK-…). POST /api/v1/sms/send"
+                    : msg.sms_provider === "twilio"
+                      ? "Twilio: Account SID as username, Auth Token as API key."
+                      : "Username / partner ID plus API key from the provider dashboard."}
+            </p>
+            <Field label="Sender ID / shortcode">
+              <Input
+                placeholder="GRIDLINE"
+                value={msg.sms_sender_id}
+                onChange={(e) => setMsg({ ...msg, sms_sender_id: e.target.value })}
+              />
+            </Field>
+            <Field
+              label={
+                msg.sms_provider === "twilio"
+                  ? "Account SID"
+                  : msg.sms_provider === "talksasa" || msg.sms_provider === "webfam"
+                    ? "Account (optional)"
+                    : "Partner ID / username"
+              }
+            >
+              <Input value={msg.sms_username} onChange={(e) => setMsg({ ...msg, sms_username: e.target.value })} />
+            </Field>
+            <Field label="API key">
+              <Input
+                type="password"
+                autoComplete="off"
+                placeholder={smsHint || (msg.sms_provider === "webfam" ? "WFK-…" : "Paste key")}
+                value={msg.sms_api_key}
+                onChange={(e) => setMsg({ ...msg, sms_api_key: e.target.value })}
+              />
+            </Field>
             <Check
-              label="Payment receipts · WhatsApp"
-              checked={msg.payment_whatsapp}
-              onChange={(v) => setMsg({ ...msg, payment_whatsapp: v })}
+              label="SMS sandbox (log only, do not hit live API)"
+              checked={msg.sms_sandbox}
+              onChange={(v) => setMsg({ ...msg, sms_sandbox: v })}
             />
+
+            {smsNote ? (
+              <p role="status" className={smsNote.ok ? "text-sm text-ok" : "text-sm text-danger"}>
+                {smsNote.text}
+              </p>
+            ) : null}
+            <Button type="submit" disabled={smsBusy}>
+              {smsBusy ? "Saving…" : "Save SMS"}
+            </Button>
+
+            <h3 className="mt-2 text-sm font-medium">Send a test SMS</h3>
+            <Field label="Phone">
+              <Input placeholder="+2547…" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} />
+            </Field>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={async () => {
+                  const r = await testMessaging({ data: { channel: "sms", phone: testPhone } });
+                  setTestOut(`SMS ${r.status} · ${r.detail}`);
+                }}
+              >
+                Test SMS
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={async () => {
+                  const r = await checkSmsAccount();
+                  setTestOut(`Account ${r.ok ? "ok" : "error"} · ${r.detail}`);
+                }}
+              >
+                Check Webfam balance
+              </Button>
+            </div>
+            {testOut && !testOut.startsWith("WhatsApp") ? <p className="text-sm text-muted">{testOut}</p> : null}
+          </form>
+
+          <form className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4" onSubmit={saveWhatsApp}>
+            <div>
+              <h2 className="font-medium">WhatsApp gateway</h2>
+              <p className="text-sm text-muted">Meta Cloud API for payment receipts and billing reminders.</p>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Check
+                label="Payment receipts · WhatsApp"
+                checked={msg.payment_whatsapp}
+                onChange={(v) => setMsg({ ...msg, payment_whatsapp: v })}
+              />
+              <Check
+                label="Billing reminders · WhatsApp"
+                checked={msg.billing_whatsapp}
+                onChange={(v) => setMsg({ ...msg, billing_whatsapp: v })}
+              />
+            </div>
+
+            <Field label="Phone number ID">
+              <Input
+                placeholder="Meta phone number ID"
+                value={msg.wa_phone_id}
+                onChange={(e) => setMsg({ ...msg, wa_phone_id: e.target.value })}
+              />
+            </Field>
+            <Field label="WhatsApp Business Account ID">
+              <Input value={msg.wa_business_id} onChange={(e) => setMsg({ ...msg, wa_business_id: e.target.value })} />
+            </Field>
+            <Field label="Access token">
+              <Input
+                type="password"
+                autoComplete="off"
+                placeholder={waHint || "Paste token"}
+                value={msg.wa_access_token}
+                onChange={(e) => setMsg({ ...msg, wa_access_token: e.target.value })}
+              />
+            </Field>
             <Check
-              label="Billing reminders · WhatsApp"
-              checked={msg.billing_whatsapp}
-              onChange={(v) => setMsg({ ...msg, billing_whatsapp: v })}
+              label="WhatsApp sandbox (log only until go-live)"
+              checked={msg.wa_sandbox}
+              onChange={(v) => setMsg({ ...msg, wa_sandbox: v })}
             />
-          </div>
 
-          <Field label="Provider">
-            <Select value={msg.sms_provider} onChange={(e) => setMsg({ ...msg, sms_provider: e.target.value })}>
-              <option value="blessedtexts">Blessed Texts</option>
-              <option value="talksasa">Talksasa</option>
-              <option value="webfam">Webfam SMS</option>
-              <option value="africastalking">Africa's Talking</option>
-              <option value="advanta">Advanta SMS</option>
-              <option value="twilio">Twilio</option>
-            </Select>
-          </Field>
-          <p className="text-xs text-subtle">
-            {msg.sms_provider === "talksasa"
-              ? "Talksasa: API token from bulksms.talksasa.com. Sender ID max 11 characters."
-              : msg.sms_provider === "blessedtexts"
-                ? "Blessed Texts: Partner ID + API key. Sender ID is your approved short name."
-                : msg.sms_provider === "webfam"
-                  ? "WebfamSMS: Bearer API key (WFK-…). POST /api/v1/sms/send"
-                  : msg.sms_provider === "twilio"
-                    ? "Twilio: Account SID as username, Auth Token as API key."
-                    : "Username / partner ID plus API key from the provider dashboard."}
-          </p>
-          <Field label="Sender ID / shortcode">
-            <Input
-              placeholder="GRIDLINE"
-              value={msg.sms_sender_id}
-              onChange={(e) => setMsg({ ...msg, sms_sender_id: e.target.value })}
-            />
-          </Field>
-          <Field
-            label={
-              msg.sms_provider === "twilio"
-                ? "Account SID"
-                : msg.sms_provider === "talksasa" || msg.sms_provider === "webfam"
-                  ? "Account (optional)"
-                  : "Partner ID / username"
-            }
-          >
-            <Input value={msg.sms_username} onChange={(e) => setMsg({ ...msg, sms_username: e.target.value })} />
-          </Field>
-          <Field label="API key">
-            <Input
-              type="password"
-              autoComplete="off"
-              placeholder={smsHint || (msg.sms_provider === "webfam" ? "WFK-…" : "Paste key")}
-              value={msg.sms_api_key}
-              onChange={(e) => setMsg({ ...msg, sms_api_key: e.target.value })}
-            />
-          </Field>
-          <Check
-            label="SMS sandbox (log only, do not hit live API)"
-            checked={msg.sms_sandbox}
-            onChange={(v) => setMsg({ ...msg, sms_sandbox: v })}
-          />
+            {waNote ? (
+              <p role="status" className={waNote.ok ? "text-sm text-ok" : "text-sm text-danger"}>
+                {waNote.text}
+              </p>
+            ) : null}
+            <Button type="submit" disabled={waBusy}>
+              {waBusy ? "Saving…" : "Save WhatsApp"}
+            </Button>
 
-          <h3 className="mt-2 text-sm font-medium">WhatsApp Cloud API</h3>
-          <Field label="Phone number ID">
-            <Input
-              placeholder="Meta phone number ID"
-              value={msg.wa_phone_id}
-              onChange={(e) => setMsg({ ...msg, wa_phone_id: e.target.value })}
-            />
-          </Field>
-          <Field label="WhatsApp Business Account ID">
-            <Input value={msg.wa_business_id} onChange={(e) => setMsg({ ...msg, wa_business_id: e.target.value })} />
-          </Field>
-          <Field label="Access token">
-            <Input
-              type="password"
-              autoComplete="off"
-              placeholder={waHint || "Paste token"}
-              value={msg.wa_access_token}
-              onChange={(e) => setMsg({ ...msg, wa_access_token: e.target.value })}
-            />
-          </Field>
-          <Check
-            label="WhatsApp sandbox (log only until go-live)"
-            checked={msg.wa_sandbox}
-            onChange={(v) => setMsg({ ...msg, wa_sandbox: v })}
-          />
-
-          {saved ? <p className="text-sm text-accent">{saved}</p> : null}
-          <Button type="submit">Save messaging</Button>
-
-          <h3 className="mt-2 text-sm font-medium">Send a test</h3>
-          <Field label="Phone">
-            <Input placeholder="+2547…" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} />
-          </Field>
-          <div className="flex flex-wrap gap-2">
+            <h3 className="mt-2 text-sm font-medium">Send a test WhatsApp</h3>
+            <Field label="Phone">
+              <Input placeholder="+2547…" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} />
+            </Field>
             <Button
               type="button"
               variant="secondary"
               onClick={async () => {
-                const r = await testMessaging({ data: { channel: "sms", phone: testPhone } });
-                setTestOut(`SMS ${r.status} · ${r.detail}`);
+                const r = await testMessaging({ data: { channel: "whatsapp", phone: testPhone } });
+                setTestOut(`WhatsApp ${r.status} · ${r.detail}`);
               }}
             >
-              Test SMS
+              Test WhatsApp
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={async () => {
-                const r = await checkSmsAccount();
-                setTestOut(`Account ${r.ok ? "ok" : "error"} · ${r.detail}`);
-              }}
-            >
-              Check Webfam balance
-            </Button>
-          </div>
-          {testOut ? <p className="text-sm text-muted">{testOut}</p> : null}
-        </form>
+            {testOut?.startsWith("WhatsApp") ? <p className="text-sm text-muted">{testOut}</p> : null}
+          </form>
+        </div>
       ) : null}
 
       {tab === "notifications" ? <NotificationsSettings /> : null}

@@ -663,22 +663,24 @@ export const getMessaging = createServerFn({ method: "GET" })
 
 export const saveMessaging = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: {
-    payment_sms: boolean;
-    payment_whatsapp: boolean;
-    billing_sms: boolean;
-    billing_whatsapp: boolean;
-    sms_provider: string;
-    sms_sender_id: string;
-    sms_username: string;
-    sms_api_key: string;
-    sms_sandbox: boolean;
-    wa_provider: string;
-    wa_phone_id: string;
-    wa_access_token: string;
-    wa_business_id: string;
-    wa_sandbox: boolean;
-  }) => d)
+  .validator(
+    (d: {
+      payment_sms?: boolean;
+      payment_whatsapp?: boolean;
+      billing_sms?: boolean;
+      billing_whatsapp?: boolean;
+      sms_provider?: string;
+      sms_sender_id?: string;
+      sms_username?: string;
+      sms_api_key?: string;
+      sms_sandbox?: boolean;
+      wa_provider?: string;
+      wa_phone_id?: string;
+      wa_access_token?: string;
+      wa_business_id?: string;
+      wa_sandbox?: boolean;
+    }) => d,
+  )
   .handler(async ({ context, data }) => {
     const { sql, tenantId } = await requireWs(context.userId);
     return toPublic(await saveMessagingSettings(sql, tenantId, data));
