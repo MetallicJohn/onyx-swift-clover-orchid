@@ -4,6 +4,7 @@ import {
   Boxes,
   CreditCard,
   Handshake,
+  Import,
   LayoutDashboard,
   Menu,
   Radio,
@@ -11,7 +12,6 @@ import {
   Settings,
   Sparkles,
   Ticket,
-  Upload,
   Users,
   Wifi,
   Wrench,
@@ -43,7 +43,7 @@ const NAV = [
   { to: "/app/field", label: "Field", icon: Wrench },
   { to: "/app/tickets", label: "Tickets", icon: Ticket },
   { to: "/app/partners", label: "Partners", icon: Handshake },
-  { to: "/app/import", label: "Import", icon: Upload },
+  { to: "/app/import", label: "Import", icon: Import },
   { to: "/app/settings", label: "Settings", icon: Settings },
 ];
 

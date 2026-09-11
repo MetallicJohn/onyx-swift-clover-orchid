@@ -58,3 +58,12 @@ test("customer care can grant grace; technician cannot", () => {
   assert.equal(hasPermission("support", "services.grace.revoke"), false);
   assert.throws(() => assertPermission("technician", "services.grace.grant"), /Forbidden/);
 });
+
+test("communications send is not implied by viewing customers", () => {
+  assert.equal(hasPermission("technician", "customers.read"), true);
+  assert.equal(hasPermission("technician", "communications.send"), false);
+  assert.equal(hasPermission("support", "communications.view"), true);
+  assert.equal(hasPermission("support", "communications.send"), false);
+  assert.equal(hasPermission("customer_care", "communications.send"), true);
+  assert.throws(() => assertPermission("technician", "communications.send"), /Forbidden/);
+});

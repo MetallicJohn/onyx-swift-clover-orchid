@@ -5,6 +5,8 @@ import { StatementPreview } from "@/components/isp/document-preview";
 import { PdfActions } from "@/components/isp/pdf-actions";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { VirtualGrid } from "@/components/ui/virtual-scroller";
+import { useColumnCount } from "@/components/ui/use-virtual-scroller";
 import type { StatementDocument } from "@/lib/isp/document-format";
 import { downloadPdf, printPdf, viewPdf } from "@/lib/isp/pdf-client";
 import { emailStatementPdf, getStatementDocument, getStatementPdf } from "@/lib/isp/server-docs";
@@ -22,6 +24,7 @@ function StatementsPage() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const columns = useColumnCount(1, 2, 3);
 
   async function loadDoc(customerId: string) {
     if (!customerId) {
@@ -98,8 +101,11 @@ function StatementsPage() {
       ) : filtered.length === 0 ? (
         <p className="text-sm text-muted">No customers match “{query.trim()}”.</p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((c) => {
+        <VirtualGrid
+          items={filtered}
+          columns={columns}
+          estimateSize={168}
+          renderItem={(c) => {
             const selected = c.id === id;
             return (
               <button
@@ -107,7 +113,7 @@ function StatementsPage() {
                 type="button"
                 onClick={() => void selectCustomer(c.id)}
                 className={cn(
-                  "min-h-11 rounded-xl border bg-surface p-4 text-left transition-colors",
+                  "min-h-11 w-full rounded-xl border bg-surface p-4 text-left transition-colors",
                   selected
                     ? "border-accent ring-2 ring-accent/40"
                     : "border-border hover:border-accent/40 hover:bg-elevated/40",
@@ -133,8 +139,8 @@ function StatementsPage() {
                 </div>
               </button>
             );
-          })}
-        </div>
+          }}
+        />
       )}
 
       {doc ? (

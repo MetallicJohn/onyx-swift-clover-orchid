@@ -265,5 +265,7 @@ export async function runBillingCycle(sql: Sql, tenantId: string, ispName: strin
   }
   const { applyAccessPolicy } = await import("./access-policy.ts");
   const access = await applyAccessPolicy(sql, tenantId, ispName);
-  return { issued: created.length, ...access };
+  const { dispatchPendingCampaigns } = await import("./comms.ts");
+  const campaigns = await dispatchPendingCampaigns(sql, tenantId);
+  return { issued: created.length, ...access, campaigns: campaigns.length };
 }

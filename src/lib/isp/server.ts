@@ -22,6 +22,7 @@ import { emit } from "./events";
 import { listInbox } from "./inbox";
 import { applyConfirmedPayment } from "./payments";
 import { consumeActiveGrantsForCustomer, getGracePolicy } from "./grace";
+import { groupAssignments, listTags, loadAssignments, setCustomerTags } from "./tags";
 import { assertPermission } from "./rbac";
 import { assertCustomerQuota, assertRouterQuota, assertServiceQuota, assertTenantOperable } from "./saas";
 import { assertFeature, featureForAccess } from "./plans";
@@ -203,23 +204,55 @@ export const listCustomers = createServerFn({ method: "GET" })
       order by c.created_at desc`;
     const churn = await loadChurnScores(sql, workspace.tenantId);
     const byId = new Map(churn.map((c) => [c.customerId, c]));
+    const tagRows = await loadAssignments(sql, workspace.tenantId);
+    const tagsByCustomer = groupAssignments(tagRows);
+    const catalog = await listTags(sql, workspace.tenantId);
+    const services = await sql<{
+      customer_id: string;
+      access_method: string;
+      status: string;
+      period_end: string | null;
+      package_name: string;
+    }>`
+      select s.customer_id, s.access_method, s.status, s.period_end::text as period_end, p.name as package_name
+      from services s
+      join packages p on p.id = s.package_id
+      where s.tenant_id = ${workspace.tenantId}`;
+    const svcByCustomer = new Map<string, typeof services>();
+    for (const s of services) {
+      const list = svcByCustomer.get(s.customer_id) ?? [];
+      list.push(s);
+      svcByCustomer.set(s.customer_id, list);
+    }
     const customers = rows.map((r) => {
       const hit = byId.get(r.id);
+      const lines = svcByCustomer.get(r.id) ?? [];
+      const now = Date.now();
+      let line_status: CustomerRow["line_status"] = "none";
+      if (lines.some((s) => s.status === "active" || s.status === "grace")) line_status = "active";
+      else if (lines.some((s) => s.period_end && Date.parse(s.period_end) < now)) line_status = "expired";
+      else if (lines.some((s) => s.status === "suspended") || r.status === "suspended") line_status = "suspended";
       return {
         ...r,
         churn_score: hit?.score ?? 0,
         churn_band: hit?.band ?? "low",
         churn_reason: hit?.reasons[0] ?? "",
+        tags: tagsByCustomer.get(r.id) ?? [],
+        access_methods: [...new Set(lines.map((s) => s.access_method))],
+        package_names: [...new Set(lines.map((s) => s.package_name))],
+        line_status,
       };
     });
-    return { workspace, customers };
+    const packages = [...new Set(services.map((s) => s.package_name))].sort();
+    return { workspace, customers, tags: catalog, packages };
   });
 
 export const createCustomer = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { name: string; phone: string; email: string; address: string; type: string; portal_password?: string }) => d)
+  .validator((d: { name: string; phone: string; email: string; address: string; type: string; portal_password?: string; tag_ids?: string[] }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "customers.manage");
     const name = data.name.trim();
     if (!name) throw new Error("Name is required");
     await assertCustomerQuota(sql, workspace.tenantId);
@@ -230,6 +263,7 @@ export const createCustomer = createServerFn({ method: "POST" })
       const { setPortalPassword } = await import("./portal");
       await setPortalPassword(sql, workspace.tenantId, id, data.portal_password);
     }
+    if (data.tag_ids?.length) await setCustomerTags(sql, workspace.tenantId, id, data.tag_ids);
     await emit(sql, {
       type: "customer.created",
       tenantId: workspace.tenantId,
@@ -237,6 +271,25 @@ export const createCustomer = createServerFn({ method: "POST" })
     });
     await audit(sql, workspace.tenantId, context.userId, "customer.created", "customer", id);
     return { id };
+  });
+
+export const updateCustomer = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string; name: string; phone: string; email: string; address: string; type: string; tag_ids?: string[] }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "customers.manage");
+    const name = data.name.trim();
+    if (!name) throw new Error("Name is required");
+    const rows = await sql<{ id: string }>`
+      update customers
+      set name = ${name}, phone = ${data.phone.trim()}, email = ${data.email.trim()}, address = ${data.address.trim()}, type = ${data.type || "individual"}
+      where id = ${data.id} and tenant_id = ${workspace.tenantId}
+      returning id`;
+    if (!rows[0]) throw new Error("Customer not found");
+    if (data.tag_ids) await setCustomerTags(sql, workspace.tenantId, data.id, data.tag_ids);
+    await audit(sql, workspace.tenantId, context.userId, "customer.updated", "customer", data.id);
+    return { id: data.id };
   });
 
 export const listPackages = createServerFn({ method: "GET" })

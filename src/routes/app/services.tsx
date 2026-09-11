@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
+import { TablePad, VirtualTableFrame } from "@/components/ui/virtual-scroller";
+import { useTableVirtualizer } from "@/components/ui/use-virtual-scroller";
 import { extendGraceFn, grantGraceFn, revokeGraceFn } from "@/lib/isp/server-grace";
 import { createService, disconnectService, listServices, rotateServiceSecret, setServiceStatus } from "@/lib/isp/server";
 import { hasPermission } from "@/lib/isp/rbac";
@@ -86,6 +88,7 @@ function ServicesPage() {
   const canExtend = hasPermission(role, "services.grace.extend");
   const canRevoke = hasPermission(role, "services.grace.revoke");
   const presets = policy?.staff_preset_days?.length ? policy.staff_preset_days : [1, 2, 3, 5, 7];
+  const { parentRef, virtualizer, rows: vis, padTop, padBottom } = useTableVirtualizer(services.length, 96);
 
   async function submitGrace(e: React.FormEvent) {
     e.preventDefault();
@@ -162,9 +165,9 @@ function ServicesPage() {
 
       {secretNote ? <p className="text-sm text-accent">{secretNote}</p> : null}
 
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <VirtualTableFrame parentRef={parentRef} className="rounded-xl border border-border">
         <table className="w-full min-w-[60rem] text-left text-sm">
-          <thead className="bg-surface text-xs text-muted">
+          <thead className="sticky top-0 z-10 bg-surface text-xs text-muted">
             <tr>
               <th className="px-4 py-3 font-medium">Customer</th>
               <th className="px-4 py-3 font-medium">Access</th>
@@ -178,10 +181,12 @@ function ServicesPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {services.map((s) => {
+            <TablePad height={padTop} colSpan={9} />
+            {vis.map((v) => {
+              const s = services[v.index];
               const activeGrace = Boolean(s.grace_active && s.grace_expires_at);
               return (
-                <tr key={s.id}>
+                <tr key={s.id} data-index={v.index} ref={virtualizer.measureElement}>
                   <td className="px-4 py-3">{s.customer_name}</td>
                   <td className="px-4 py-3 uppercase">{s.access_method}</td>
                   <td className="px-4 py-3 font-mono text-xs">{s.username || s.static_ip || "—"}</td>
@@ -346,9 +351,10 @@ function ServicesPage() {
                 </tr>
               );
             })}
+            <TablePad height={padBottom} colSpan={9} />
           </tbody>
         </table>
-      </div>
+      </VirtualTableFrame>
     </div>
   );
 }

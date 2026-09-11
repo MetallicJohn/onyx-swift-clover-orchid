@@ -35,8 +35,27 @@ export function Badge({
 export function statusTone(status: string) {
   const s = status.toLowerCase();
   if (["active", "paid", "connected", "resolved", "closed", "confirmed", "online", "sent", "healthy"].includes(s)) return "ok";
-  if (["grace", "due", "issued", "pending", "assigned", "travelling", "degraded", "on_site", "partial", "trial", "past_due", "warning"].includes(s))
+  if (
+    [
+      "grace",
+      "due",
+      "issued",
+      "pending",
+      "assigned",
+      "travelling",
+      "degraded",
+      "on_site",
+      "partial",
+      "trial",
+      "past_due",
+      "warning",
+      "queued",
+      "sending",
+      "skipped",
+    ].includes(s)
+  )
     return "warn";
-  if (["suspended", "overdue", "offline", "urgent", "terminated", "error", "expired", "cancelled", "critical"].includes(s)) return "danger";
+  if (["suspended", "overdue", "offline", "urgent", "terminated", "error", "expired", "cancelled", "critical", "failed"].includes(s))
+    return "danger";
   return "muted";
 }

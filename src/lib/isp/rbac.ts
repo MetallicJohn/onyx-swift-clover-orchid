@@ -26,6 +26,9 @@ export const PERMISSIONS = [
   "jobs.update",
   "settings.manage",
   "audit.read",
+  "communications.view",
+  "communications.send",
+  "communications.templates.manage",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number] | "*";
@@ -45,6 +48,8 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "services.grace.grant",
     "services.grace.extend",
     "services.grace.revoke",
+    "communications.view",
+    "communications.send",
   ],
   customer_care: [
     "customers.read",
@@ -58,6 +63,9 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "tickets.read",
     "tickets.manage",
     "packages.read",
+    "communications.view",
+    "communications.send",
+    "communications.templates.manage",
   ],
   network_engineer: [
     "customers.read",
@@ -71,6 +79,8 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "radius.manage",
     "wireguard.manage",
     "packages.read",
+    "communications.view",
+    "communications.send",
   ],
   technician: ["tickets.assigned.read", "jobs.update", "customers.read", "services.read", "tickets.read"],
   support: [
@@ -83,6 +93,7 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "network.read",
     "tickets.read",
     "audit.read",
+    "communications.view",
   ],
 };
 

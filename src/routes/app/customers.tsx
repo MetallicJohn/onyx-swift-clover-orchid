@@ -1,13 +1,40 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Communications } from "@/components/isp/communications";
+import { TagList, TagPicker } from "@/components/isp/tag-picker";
 import { Button } from "@/components/ui/button";
 import { Badge, statusTone } from "@/components/ui/badge";
-import { Field, Input, Select } from "@/components/ui/input";
-import { createCustomer, listCustomers, setCustomerPortalPassword } from "@/lib/isp/server";
+import { Field, Input, Select, Textarea } from "@/components/ui/input";
+import { TablePad, VirtualTableFrame } from "@/components/ui/virtual-scroller";
+import { useTableVirtualizer } from "@/components/ui/use-virtual-scroller";
+import { createCustomer, listCustomers, setCustomerPortalPassword, updateCustomer } from "@/lib/isp/server";
+import { broadcastCustomersFn, bulkCustomerTagsFn } from "@/lib/isp/server-tags";
 import type { CustomerRow } from "@/lib/isp/types";
-import { kes } from "@/lib/utils";
+import { cn, kes } from "@/lib/utils";
 
-export const Route = createFileRoute("/app/customers")({ component: CustomersPage });
+type PageTab = "customers" | "communications";
+
+export const Route = createFileRoute("/app/customers")({
+  validateSearch: (search: Record<string, unknown>): { tab?: PageTab } => ({
+    tab: search.tab === "communications" ? "communications" : undefined,
+  }),
+  component: CustomersPage,
+});
+
+type CatalogTag = { id: string; name: string; slug: string; enabled: boolean; customer_count: number };
+type BulkMode = "tags-add" | "tags-remove" | "sms" | "notify" | null;
+type StatusFilter = "all" | "active" | "suspended" | "expired";
+type AccessFilter = "all" | "pppoe" | "static" | "hotspot";
+
+const EMPTY_FORM = {
+  name: "",
+  phone: "",
+  email: "",
+  address: "",
+  type: "individual",
+  portal_password: "",
+  tag_ids: [] as string[],
+};
 
 function churnTone(band: string) {
   if (band === "high" || band === "churned") return "danger" as const;
@@ -15,136 +42,69 @@ function churnTone(band: string) {
   return "ok" as const;
 }
 
-function CustomersPage() {
-  const [rows, setRows] = useState<CustomerRow[]>([]);
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const [risk, setRisk] = useState<"all" | "watch">("all");
-  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", type: "individual", portal_password: "" });
-  const [busy, setBusy] = useState(false);
-  const [portalFor, setPortalFor] = useState<string | null>(null);
-  const [portalPass, setPortalPass] = useState("");
+function hasTags(assigned: string[], selected: string[], mode: "any" | "all") {
+  if (!selected.length) return true;
+  if (mode === "all") return selected.every((id) => assigned.includes(id));
+  return selected.some((id) => assigned.includes(id));
+}
 
-  async function load() {
-    const res = await listCustomers();
-    setRows(res.customers);
-  }
-
-  useEffect(() => {
-    load().catch(console.error);
-  }, []);
-
-  const filtered = rows.filter((r) => {
-    const hit = `${r.name} ${r.phone} ${r.email}`.toLowerCase().includes(q.toLowerCase());
-    if (!hit) return false;
-    if (risk === "watch") return r.churn_band !== "low";
-    return true;
-  });
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      await createCustomer({
-        data: {
-          name: form.name,
-          phone: form.phone,
-          email: form.email,
-          address: form.address,
-          type: form.type,
-          portal_password: form.portal_password || undefined,
-        },
-      });
-      setOpen(false);
-      setForm({ name: "", phone: "", email: "", address: "", type: "individual", portal_password: "" });
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const watching = rows.filter((r) => r.churn_band !== "low").length;
-
+function CustomerTable({
+  rows,
+  selected,
+  onToggle,
+  onToggleAll,
+  allSelected,
+  portalFor,
+  portalPass,
+  setPortalFor,
+  setPortalPass,
+  onEdit,
+}: {
+  rows: CustomerRow[];
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+  onToggleAll: () => void;
+  allSelected: boolean;
+  portalFor: string | null;
+  portalPass: string;
+  setPortalFor: (id: string | null) => void;
+  setPortalPass: (value: string) => void;
+  onEdit: (c: CustomerRow) => void;
+}) {
+  const { parentRef, virtualizer, rows: vis, padTop, padBottom } = useTableVirtualizer(rows.length, 96);
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Customers</h1>
-          <p className="text-sm text-muted">
-            CRM with balances and a live churn score from billing, access, and tickets.
-          </p>
-        </div>
-        <Button onClick={() => setOpen(true)}>New customer</Button>
-      </div>
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Input placeholder="Search name, phone, email" value={q} onChange={(e) => setQ(e.target.value)} />
-        <div className="flex gap-2">
-          <Button size="sm" variant={risk === "all" ? "default" : "secondary"} onClick={() => setRisk("all")}>
-            All
-          </Button>
-          <Button size="sm" variant={risk === "watch" ? "default" : "secondary"} onClick={() => setRisk("watch")}>
-            At risk ({watching})
-          </Button>
-        </div>
-      </div>
-
-      {open ? (
-        <form onSubmit={submit} className="grid gap-3 rounded-xl bg-surface p-5 shadow-card md:grid-cols-2 md:p-6">
-          <Field label="Name">
-            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </Field>
-          <Field label="Type">
-            <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-              <option value="individual">Individual</option>
-              <option value="business">Business</option>
-            </Select>
-          </Field>
-          <Field label="Phone">
-            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          </Field>
-          <Field label="Email">
-            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          </Field>
-          <Field label="Address">
-            <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-          </Field>
-          <Field label="Portal password (optional)">
-            <Input
-              type="password"
-              minLength={8}
-              value={form.portal_password}
-              onChange={(e) => setForm({ ...form, portal_password: e.target.value })}
-              placeholder="Customer can sign in at /portal"
-            />
-          </Field>
-          <div className="flex items-end gap-2">
-            <Button type="submit" disabled={busy}>
-              Save
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-          </div>
-        </form>
-      ) : null}
-
-      <div className="overflow-x-auto rounded-xl bg-surface shadow-card">
-        <table className="w-full min-w-[44rem] text-left text-sm">
-          <thead className="text-xs text-muted">
-            <tr>
-              <th className="px-4 py-3 font-medium">Customer</th>
-              <th className="px-4 py-3 font-medium">Contact</th>
-              <th className="px-4 py-3 font-medium">Services</th>
-              <th className="px-4 py-3 font-medium">Balance</th>
-              <th className="px-4 py-3 font-medium">Churn</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {filtered.map((c) => (
-              <tr key={c.id}>
+    <VirtualTableFrame parentRef={parentRef} className="rounded-xl bg-surface shadow-card">
+      <table className="w-full min-w-[56rem] text-left text-sm">
+        <thead className="sticky top-0 z-10 bg-surface text-xs text-muted">
+          <tr>
+            <th className="px-3 py-3">
+              <input type="checkbox" className="size-4" checked={allSelected} onChange={onToggleAll} aria-label="Select all filtered customers" />
+            </th>
+            <th className="px-4 py-3 font-medium">Customer</th>
+            <th className="px-4 py-3 font-medium">Contact</th>
+            <th className="px-4 py-3 font-medium">Tags</th>
+            <th className="px-4 py-3 font-medium">Services</th>
+            <th className="px-4 py-3 font-medium">Balance</th>
+            <th className="px-4 py-3 font-medium">Churn</th>
+            <th className="px-4 py-3 font-medium">Status</th>
+            <th className="px-4 py-3 font-medium" />
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          <TablePad height={padTop} colSpan={9} />
+          {vis.map((v) => {
+            const c = rows[v.index];
+            return (
+              <tr key={c.id} data-index={v.index} ref={virtualizer.measureElement}>
+                <td className="px-3 py-3">
+                  <input
+                    type="checkbox"
+                    className="size-4"
+                    checked={selected.has(c.id)}
+                    onChange={() => onToggle(c.id)}
+                    aria-label={`Select ${c.name}`}
+                  />
+                </td>
                 <td className="px-4 py-3">
                   <div className="font-medium">{c.name}</div>
                   <div className="text-xs text-muted capitalize">{c.type}</div>
@@ -152,6 +112,9 @@ function CustomersPage() {
                 <td className="px-4 py-3 text-muted">
                   <div>{c.phone}</div>
                   <div className="text-xs">{c.email}</div>
+                </td>
+                <td className="px-4 py-3">
+                  <TagList tags={c.tags ?? []} />
                 </td>
                 <td className="px-4 py-3 font-mono tabular-nums">{c.service_count}</td>
                 <td className="px-4 py-3 font-mono tabular-nums">{kes(c.balance_kes)}</td>
@@ -163,10 +126,13 @@ function CustomersPage() {
                   {c.churn_reason ? <div className="mt-1 max-w-[12rem] truncate text-xs text-subtle">{c.churn_reason}</div> : null}
                 </td>
                 <td className="px-4 py-3">
-                  <Badge tone={statusTone(c.status)}>{c.status}</Badge>
+                  <Badge tone={statusTone(c.line_status || c.status)}>{c.line_status || c.status}</Badge>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-col items-start gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => onEdit(c)}>
+                      Edit
+                    </Button>
                     <a href={`/app/statements?customer=${c.id}`} className="inline-flex min-h-11 items-center text-sm text-accent hover:underline">
                       Statement
                     </a>
@@ -208,10 +174,422 @@ function CustomersPage() {
                   </div>
                 </td>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            );
+          })}
+          <TablePad height={padBottom} colSpan={9} />
+        </tbody>
+      </table>
+    </VirtualTableFrame>
+  );
+}
+
+function CustomersPage() {
+  const navigate = Route.useNavigate();
+  const { tab: tabParam } = Route.useSearch();
+  const tab: PageTab = tabParam === "communications" ? "communications" : "customers";
+  const [rows, setRows] = useState<CustomerRow[]>([]);
+  const [tags, setTags] = useState<CatalogTag[]>([]);
+  const [packages, setPackages] = useState<string[]>([]);
+  const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [risk, setRisk] = useState<"all" | "watch">("all");
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [access, setAccess] = useState<AccessFilter>("all");
+  const [pkg, setPkg] = useState("all");
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [tagMode, setTagMode] = useState<"any" | "all">("any");
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [busy, setBusy] = useState(false);
+  const [portalFor, setPortalFor] = useState<string | null>(null);
+  const [portalPass, setPortalPass] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState<BulkMode>(null);
+  const [bulkTags, setBulkTags] = useState<string[]>([]);
+  const [bulkSubject, setBulkSubject] = useState("");
+  const [bulkBody, setBulkBody] = useState("");
+  const [bulkNote, setBulkNote] = useState<string | null>(null);
+
+  async function load() {
+    const res = await listCustomers();
+    setRows(res.customers);
+    setTags(res.tags ?? []);
+    setPackages(res.packages ?? []);
+  }
+
+  useEffect(() => {
+    load().catch(console.error);
+  }, []);
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (risk === "watch" && r.churn_band === "low") return false;
+      if (status !== "all" && (r.line_status || r.status) !== status) return false;
+      if (access !== "all" && !(r.access_methods ?? []).includes(access)) return false;
+      if (pkg !== "all" && !(r.package_names ?? []).includes(pkg)) return false;
+      const assigned = (r.tags ?? []).map((t) => t.id);
+      if (!hasTags(assigned, tagFilter, tagMode)) return false;
+      if (!needle) return true;
+      const hay = `${r.name} ${r.phone} ${r.email} ${r.address} ${(r.tags ?? []).map((t) => t.name).join(" ")}`.toLowerCase();
+      return hay.includes(needle);
+    });
+  }, [rows, q, risk, status, access, pkg, tagFilter, tagMode]);
+
+  const watching = rows.filter((r) => r.churn_band !== "low").length;
+  const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selected.has(c.id));
+  const selectedIds = filtered.filter((c) => selected.has(c.id)).map((c) => c.id);
+
+  function startCreate() {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setOpen(true);
+  }
+
+  function startEdit(c: CustomerRow) {
+    setEditingId(c.id);
+    setForm({
+      name: c.name,
+      phone: c.phone,
+      email: c.email,
+      address: c.address,
+      type: c.type,
+      portal_password: "",
+      tag_ids: (c.tags ?? []).map((t) => t.id),
+    });
+    setOpen(true);
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      if (editingId) {
+        await updateCustomer({
+          data: {
+            id: editingId,
+            name: form.name,
+            phone: form.phone,
+            email: form.email,
+            address: form.address,
+            type: form.type,
+            tag_ids: form.tag_ids,
+          },
+        });
+      } else {
+        await createCustomer({
+          data: {
+            name: form.name,
+            phone: form.phone,
+            email: form.email,
+            address: form.address,
+            type: form.type,
+            portal_password: form.portal_password || undefined,
+            tag_ids: form.tag_ids,
+          },
+        });
+      }
+      setOpen(false);
+      setEditingId(null);
+      setForm(EMPTY_FORM);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runBulk() {
+    if (!selectedIds.length) return;
+    setBusy(true);
+    setBulkNote(null);
+    try {
+      if (bulk === "tags-add" || bulk === "tags-remove") {
+        const res = await bulkCustomerTagsFn({
+          data: { customer_ids: selectedIds, tag_ids: bulkTags, op: bulk === "tags-add" ? "add" : "remove" },
+        });
+        setBulkNote(`${bulk === "tags-add" ? "Assigned" : "Removed"} on ${res.customers} customers.`);
+      } else if (bulk === "sms" || bulk === "notify") {
+        const res = await broadcastCustomersFn({
+          data: {
+            customer_ids: selectedIds,
+            channels: bulk === "sms" ? ["sms"] : ["in_app"],
+            subject: bulkSubject,
+            body: bulkBody,
+          },
+        });
+        setBulkNote(
+          bulk === "sms"
+            ? `SMS queued for ${res.sms} · failed ${res.failed}`
+            : `Notification sent to ${res.inbox} customers`,
+        );
+      }
+      setBulk(null);
+      setBulkTags([]);
+      setBulkBody("");
+      setBulkSubject("");
+      await load();
+    } catch (err) {
+      setBulkNote(err instanceof Error ? err.message : "Could not complete");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Customers</h1>
+          <p className="text-sm text-muted">
+            {tab === "communications"
+              ? "Bulk SMS alerts and announcements to the right group of customers."
+              : "CRM with balances, tags, and a live churn score from billing, access, and tickets."}
+          </p>
+        </div>
+        {tab === "customers" ? <Button onClick={startCreate}>New customer</Button> : null}
       </div>
+
+      <div
+        role="tablist"
+        aria-label="Customer sections"
+        className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-surface p-1"
+      >
+        {(
+          [
+            ["customers", "Customers"],
+            ["communications", "Communications"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            className={cn(
+              "h-11 shrink-0 rounded-lg px-4 text-sm font-medium transition-colors",
+              tab === id ? "bg-accent text-accent-fg" : "text-muted hover:bg-elevated hover:text-fg",
+            )}
+            onClick={() => void navigate({ search: { tab: id === "customers" ? undefined : id }, replace: true })}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "communications" ? <Communications /> : null}
+
+      {tab === "customers" ? (
+      <>
+      <div className="space-y-3">
+        <Input placeholder="Search name, phone, email, address, or tag" value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant={risk === "all" && status === "all" ? "default" : "secondary"} onClick={() => { setRisk("all"); setStatus("all"); }}>
+            All ({rows.length})
+          </Button>
+          <Button size="sm" variant={status === "active" ? "default" : "secondary"} onClick={() => setStatus(status === "active" ? "all" : "active")}>
+            Active
+          </Button>
+          <Button size="sm" variant={status === "suspended" ? "default" : "secondary"} onClick={() => setStatus(status === "suspended" ? "all" : "suspended")}>
+            Suspended
+          </Button>
+          <Button size="sm" variant={status === "expired" ? "default" : "secondary"} onClick={() => setStatus(status === "expired" ? "all" : "expired")}>
+            Expired
+          </Button>
+          <Button size="sm" variant={risk === "watch" ? "default" : "secondary"} onClick={() => setRisk(risk === "watch" ? "all" : "watch")}>
+            At risk ({watching})
+          </Button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <Select aria-label="Filter by access" value={access} onChange={(e) => setAccess(e.target.value as AccessFilter)}>
+            <option value="all">Any access</option>
+            <option value="pppoe">PPPoE</option>
+            <option value="static">Static IP</option>
+            <option value="hotspot">Hotspot</option>
+          </Select>
+          <Select aria-label="Filter by package" value={pkg} onChange={(e) => setPkg(e.target.value)}>
+            <option value="all">Any package</option>
+            {packages.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </Select>
+          <Select aria-label="Tag match" value={tagMode} onChange={(e) => setTagMode(e.target.value as "any" | "all")}>
+            <option value="any">Any selected tag</option>
+            <option value="all">All selected tags</option>
+          </Select>
+        </div>
+        {tags.length ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {tags.map((t) => {
+              const on = tagFilter.includes(t.id);
+              return (
+                <Button
+                  key={t.id}
+                  size="sm"
+                  variant={on ? "default" : "secondary"}
+                  className={!t.enabled ? "opacity-60" : undefined}
+                  onClick={() => setTagFilter(on ? tagFilter.filter((id) => id !== t.id) : [...tagFilter, t.id])}
+                >
+                  {t.name} ({t.customer_count})
+                </Button>
+              );
+            })}
+            <Link to="/app/settings" search={{ tab: "tags" }} className="text-sm text-accent hover:underline">
+              Manage tags
+            </Link>
+          </div>
+        ) : (
+          <p className="text-sm text-muted">
+            No tags yet.{" "}
+            <Link to="/app/settings" search={{ tab: "tags" }} className="text-accent hover:underline">
+              Create customer tags
+            </Link>
+          </p>
+        )}
+      </div>
+
+      {selectedIds.length ? (
+        <div className="space-y-3 rounded-xl border border-border bg-surface p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm">
+              {selectedIds.length} selected of {filtered.length} matching
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant={bulk === "tags-add" ? "default" : "secondary"} onClick={() => setBulk("tags-add")}>
+                Assign tags
+              </Button>
+              <Button size="sm" variant={bulk === "tags-remove" ? "default" : "secondary"} onClick={() => setBulk("tags-remove")}>
+                Remove tags
+              </Button>
+              <Button size="sm" variant={bulk === "sms" ? "default" : "secondary"} onClick={() => setBulk("sms")}>
+                Send SMS
+              </Button>
+              <Button size="sm" variant={bulk === "notify" ? "default" : "secondary"} onClick={() => setBulk("notify")}>
+                Send notification
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setSelected(new Set());
+                  setBulk(null);
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+          {bulk === "tags-add" || bulk === "tags-remove" ? (
+            <div className="space-y-3">
+              <TagPicker tags={tags} selected={bulkTags} onChange={setBulkTags} />
+              <Button disabled={busy || !bulkTags.length} onClick={() => void runBulk()}>
+                {bulk === "tags-add" ? "Assign to selected" : "Remove from selected"}
+              </Button>
+            </div>
+          ) : null}
+          {bulk === "sms" || bulk === "notify" ? (
+            <div className="grid gap-3 md:max-w-xl">
+              {bulk === "notify" ? (
+                <Field label="Subject">
+                  <Input value={bulkSubject} onChange={(e) => setBulkSubject(e.target.value)} />
+                </Field>
+              ) : null}
+              <Field label={bulk === "sms" ? "SMS" : "Message"}>
+                <Textarea value={bulkBody} onChange={(e) => setBulkBody(e.target.value)} required />
+              </Field>
+              <Button disabled={busy || !bulkBody.trim()} onClick={() => void runBulk()}>
+                {bulk === "sms" ? "Send SMS" : "Send notification"}
+              </Button>
+            </div>
+          ) : null}
+          {bulkNote ? <p className="text-sm text-accent">{bulkNote}</p> : null}
+        </div>
+      ) : null}
+
+      {open ? (
+        <form onSubmit={submit} className="grid gap-3 rounded-xl bg-surface p-5 shadow-card md:grid-cols-2 md:p-6">
+          <h2 className="font-medium md:col-span-2">{editingId ? "Edit customer" : "New customer"}</h2>
+          <Field label="Name">
+            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </Field>
+          <Field label="Type">
+            <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+              <option value="individual">Individual</option>
+              <option value="business">Business</option>
+            </Select>
+          </Field>
+          <Field label="Phone">
+            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+          </Field>
+          <Field label="Email">
+            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          </Field>
+          <Field label="Address / location">
+            <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+          </Field>
+          {!editingId ? (
+            <Field label="Portal password (optional)">
+              <Input
+                type="password"
+                minLength={8}
+                value={form.portal_password}
+                onChange={(e) => setForm({ ...form, portal_password: e.target.value })}
+                placeholder="Customer can sign in at /portal"
+              />
+            </Field>
+          ) : null}
+          <div className="md:col-span-2">
+            <Field label="Tags">
+              <TagPicker tags={tags} selected={form.tag_ids} onChange={(tag_ids) => setForm({ ...form, tag_ids })} />
+            </Field>
+          </div>
+          <div className="flex items-end gap-2">
+            <Button type="submit" disabled={busy}>
+              Save
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      ) : null}
+
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted">No customers yet. Click New customer to add one.</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-muted">No customers match these filters.</p>
+      ) : (
+        <CustomerTable
+          rows={filtered}
+          selected={selected}
+          allSelected={allFilteredSelected}
+          onToggle={(id) => {
+            const next = new Set(selected);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            setSelected(next);
+          }}
+          onToggleAll={() => {
+            if (allFilteredSelected) {
+              const next = new Set(selected);
+              for (const c of filtered) next.delete(c.id);
+              setSelected(next);
+            } else {
+              const next = new Set(selected);
+              for (const c of filtered) next.add(c.id);
+              setSelected(next);
+            }
+          }}
+          portalFor={portalFor}
+          portalPass={portalPass}
+          setPortalFor={setPortalFor}
+          setPortalPass={setPortalPass}
+          onEdit={startEdit}
+        />
+      )}
+      </>
+      ) : null}
     </div>
   );
 }

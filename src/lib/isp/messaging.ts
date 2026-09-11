@@ -103,7 +103,7 @@ export function channelAllowed(event: BillingEvent, channel: NotifyChannel, s: M
   return false;
 }
 
-function e164(phone: string) {
+export function e164(phone: string) {
   const d = phone.replace(/\D/g, "");
   if (!d) return "";
   if (d.startsWith("254")) return `+${d}`;

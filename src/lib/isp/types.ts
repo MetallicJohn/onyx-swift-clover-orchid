@@ -75,6 +75,10 @@ export type CustomerRow = {
   churn_score: number;
   churn_band: "low" | "medium" | "high" | "churned";
   churn_reason: string;
+  tags?: { id: string; name: string; enabled: boolean }[];
+  access_methods?: string[];
+  package_names?: string[];
+  line_status?: "active" | "suspended" | "expired" | "none";
 };
 
 export type ServiceRow = {

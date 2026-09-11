@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { APP_NAME } from "@/lib/brand";
 import { AppearanceSettings } from "@/components/isp/appearance-settings";
+import { CustomerTagsSettings } from "@/components/isp/customer-tags-settings";
 import { NotificationsSettings } from "@/components/isp/notifications-settings";
 import { hasPermission } from "@/lib/isp/rbac";
 import { changeMyPassword, getDashboard, renameTenant, setStaffPassword } from "@/lib/isp/server";
@@ -26,7 +27,7 @@ export const Route = createFileRoute("/app/settings")({
   component: SettingsPage,
 });
 
-type TabId = "company" | "appearance" | "network" | "sms" | "notifications" | "payment" | "plan" | "staff" | "grace";
+type TabId = "company" | "appearance" | "network" | "sms" | "notifications" | "payment" | "plan" | "staff" | "grace" | "tags";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "company", label: "Company info" },
@@ -38,6 +39,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "plan", label: "Plan" },
   { id: "staff", label: "Staff" },
   { id: "grace", label: "Grace period" },
+  { id: "tags", label: "Customer tags" },
 ];
 
 function isTabId(value: unknown): value is TabId {
@@ -1407,6 +1409,8 @@ function SettingsPage() {
           </div>
         </form>
       ) : null}
+
+      {tab === "tags" ? <CustomerTagsSettings /> : null}
     </div>
   );
 }
