@@ -34,6 +34,8 @@
 
   --shadow-card: 0 0 0 1px color-mix(in oklab, var(--color-fg) 8%, transparent);
   --shadow-card-hover: 0 0 0 1px color-mix(in oklab, var(--color-fg) 14%, transparent);
+
+  --ease-out-smooth: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @layer base {
@@ -65,10 +67,6 @@
     --header: var(--color-header);
   }
 
-  html[data-appearance="light"] {
-    color-scheme: light;
-  }
-
   html,
   body {
     background: var(--color-bg);
@@ -82,6 +80,30 @@
   }
 }
 
+html[data-appearance="light"] {
+  color-scheme: light;
+  --color-bg: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-elevated: #eef1f4;
+  --color-fg: #1b232c;
+  --color-muted: #5e6a74;
+  --color-subtle: #7a868f;
+  --color-border: #d5dde3;
+  --color-accent: #4aa8a0;
+  --color-accent-fg: #061014;
+  --color-warn: #b47a20;
+  --color-danger: #c44545;
+  --color-ok: #2f8a57;
+  --color-info: #2b6cb0;
+  --color-sidebar: #ffffff;
+  --color-header: #f4f6f8;
+  --color-chart: #4aa8a0;
+  --shadow-card: 0 1px 2px color-mix(in oklab, var(--color-fg) 6%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--color-fg) 8%, transparent);
+  --shadow-card-hover: 0 8px 24px color-mix(in oklab, var(--color-fg) 8%, transparent),
+    0 0 0 1px color-mix(in oklab, var(--color-fg) 12%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -90,3 +112,75 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+.landing-hero-wash {
+  background: radial-gradient(
+    ellipse 70% 55% at 80% -10%,
+    color-mix(in oklab, var(--color-accent) 16%, transparent),
+    transparent 62%
+  );
+}
+
+.landing-reveal {
+  animation: landing-rise 500ms var(--ease-out-smooth, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+.landing-reveal-2 {
+  animation-delay: 80ms;
+}
+.landing-reveal-3 {
+  animation-delay: 160ms;
+}
+.landing-reveal-4 {
+  animation-delay: 240ms;
+}
+
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.landing-float {
+  animation: landing-float 6.5s ease-in-out infinite;
+}
+.landing-float-slow {
+  animation: landing-float 8s ease-in-out infinite;
+  animation-delay: -2s;
+}
+
+@keyframes landing-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.landing-product-frame {
+  --color-bg: #0a0e13;
+  --color-surface: #11181f;
+  --color-elevated: #172028;
+  --color-fg: #e8eef4;
+  --color-muted: #8b98a5;
+  --color-subtle: #66707a;
+  --color-border: #24303a;
+  --color-accent: #4aa8a0;
+  --color-accent-fg: #061014;
+  --color-ok: #6db58a;
+  --color-warn: #d4a35c;
+  color: var(--color-fg);
+  background: var(--color-bg);
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+

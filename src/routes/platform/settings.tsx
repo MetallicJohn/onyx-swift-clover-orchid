@@ -15,6 +15,9 @@ function SettingsPage() {
     trial_days: 14,
     support_access_enabled: false,
     support_access_minutes: 30,
+    sales_email: "",
+    support_email: "",
+    contact_phone: "",
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +82,33 @@ function SettingsPage() {
           </label>
           <p className="text-xs text-muted">
             Off by default. When on, a Superadmin can open a read-mostly, audited session in an ISP console. They never become the owner account.
+          </p>
+          <p className="mt-2 text-xs font-medium tracking-wide text-muted uppercase">Public site</p>
+          <Field label="Sales email">
+            <Input
+              type="email"
+              placeholder="sales@your-domain"
+              value={form.sales_email}
+              onChange={(e) => setForm({ ...form, sales_email: e.target.value })}
+            />
+          </Field>
+          <Field label="Support email">
+            <Input
+              type="email"
+              placeholder="support@your-domain"
+              value={form.support_email}
+              onChange={(e) => setForm({ ...form, support_email: e.target.value })}
+            />
+          </Field>
+          <Field label="Contact phone">
+            <Input
+              placeholder="Shown on the public homepage when set"
+              value={form.contact_phone}
+              onChange={(e) => setForm({ ...form, contact_phone: e.target.value })}
+            />
+          </Field>
+          <p className="text-xs text-muted">
+            These appear on the public homepage contact section. Leave blank to hide them. Enquiries from the form are stored on the platform.
           </p>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
           {ok ? <p className="text-sm text-ok">{ok}</p> : null}

@@ -6,7 +6,7 @@ import {
   isPlatformAdmin,
   provisionTenant,
 } from "./accounts.ts";
-import { assertFeature, listPlans, publicCatalog, upsertPlan } from "./plans.ts";
+import { annualSavingsPct, assertFeature, isSalesContactPlan, listPlans, publicCatalog, upsertPlan } from "./plans.ts";
 import {
   assignTenantPlan,
   archiveCatalogPlan,
@@ -117,6 +117,11 @@ test("plans are database-driven and entitlements are enforced", async () => {
     assert.ok(publicPlans.some((p) => p.code === "pro_plus"));
     assert.ok(!publicPlans.some((p) => p.code === "starter"));
     assert.ok(publicPlans.find((p) => p.code === "growth")?.features.some((f) => f.id === "whatsapp"));
+    assert.equal(annualSavingsPct(4999, 49990), 17);
+    assert.equal(annualSavingsPct(1000, 12000), 0);
+    assert.equal(isSalesContactPlan({ monthly_kes: 0, annual_kes: 0, trial_days: 0 }), true);
+    assert.equal(isSalesContactPlan({ monthly_kes: 0, annual_kes: 0, trial_days: 14 }), false);
+
   } finally {
     await close();
   }

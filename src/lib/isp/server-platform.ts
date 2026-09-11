@@ -214,6 +214,44 @@ export const listPublicPlans = createServerFn({ method: "GET" }).handler(async (
   return { plans };
 });
 
+export const getPublicSite = createServerFn({ method: "GET" }).handler(async () => {
+  const sql = await getSql();
+  await applyRls(sql, { bypass: true });
+  const { publicSiteContact } = await import("./public-site");
+  const contact = await publicSiteContact(sql);
+  await applyRls(sql, { bypass: false });
+  return contact;
+});
+
+export const submitPublicInquiry = createServerFn({ method: "POST" })
+  .validator(
+    (d: {
+      name: string;
+      company: string;
+      email: string;
+      phone: string;
+      topic: string;
+      message: string;
+      website?: string;
+    }) => d,
+  )
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    await applyRls(sql, { bypass: true });
+    let ip = "";
+    try {
+      const { getRequest } = await import("@tanstack/react-start/server");
+      const req = getRequest();
+      ip = (req?.headers.get("x-forwarded-for") || "").split(",")[0]?.trim() || req?.headers.get("x-real-ip") || "";
+    } catch {
+      /* tests */
+    }
+    const { submitInquiry } = await import("./public-site");
+    const result = await submitInquiry(sql, { ...data, ip });
+    await applyRls(sql, { bypass: false });
+    return result;
+  });
+
 export const listSaasPlans = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
@@ -315,6 +353,9 @@ export const saveSaasSettings = createServerFn({ method: "POST" })
       trial_days?: number;
       support_access_enabled?: boolean;
       support_access_minutes?: number;
+      sales_email?: string;
+      support_email?: string;
+      contact_phone?: string;
     }) => d,
   )
   .handler(async ({ context, data }) => {

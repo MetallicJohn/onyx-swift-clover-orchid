@@ -13,7 +13,9 @@ var install_page_default = "<!DOCTYPE html>\n<html lang=\"en\" class=\"device-de
 //#region \0virtual:grok-og-identity
 var grokOgIdentity = { "site": {
 	"title": "ISP Solutions",
-	"color": "4AA8A0"
+	"color": "4AA8A0",
+	"card": "custom",
+	"image": "/og.jpg"
 } };
 //#endregion
 //#region scripts/grok-pwa-shared.mjs

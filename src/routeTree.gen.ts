@@ -10,12 +10,16 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AboutRouteImport } from './routes/about'
+import { Route as AcceptableUseRouteImport } from './routes/acceptable-use'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PlatformRouteImport } from './routes/platform'
 import { Route as PortalRouteImport } from './routes/portal'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ResellerRouteImport } from './routes/reseller'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAcsRouteImport } from './routes/app/acs'
 import { Route as AppAdminRouteImport } from './routes/app/admin'
@@ -64,6 +68,16 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AcceptableUseRoute = AcceptableUseRouteImport.update({
+  id: '/acceptable-use',
+  path: '/acceptable-use',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/app',
   path: '/app',
@@ -84,6 +98,11 @@ const PortalRoute = PortalRouteImport.update({
   path: '/portal',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResellerRoute = ResellerRouteImport.update({
   id: '/reseller',
   path: '/reseller',
@@ -92,6 +111,11 @@ const ResellerRoute = ResellerRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -307,12 +331,16 @@ const ApiV1RadiusActionSlugRoute = ApiV1RadiusActionSlugRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/acceptable-use': typeof AcceptableUseRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/platform': typeof PlatformRouteWithChildren
   '/portal': typeof PortalRouteWithChildren
+  '/privacy': typeof PrivacyRoute
   '/reseller': typeof ResellerRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
+  '/terms': typeof TermsRoute
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
@@ -358,8 +386,12 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/acceptable-use': typeof AcceptableUseRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/terms': typeof TermsRoute
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
@@ -406,12 +438,16 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
+  '/acceptable-use': typeof AcceptableUseRoute
   '/app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/platform': typeof PlatformRouteWithChildren
   '/portal': typeof PortalRouteWithChildren
+  '/privacy': typeof PrivacyRoute
   '/reseller': typeof ResellerRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
+  '/terms': typeof TermsRoute
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
@@ -459,12 +495,16 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/about'
+    | '/acceptable-use'
     | '/app'
     | '/login'
     | '/platform'
     | '/portal'
+    | '/privacy'
     | '/reseller'
     | '/reset-password'
+    | '/terms'
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
@@ -510,8 +550,12 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/about'
+    | '/acceptable-use'
     | '/login'
+    | '/privacy'
     | '/reset-password'
+    | '/terms'
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
@@ -557,12 +601,16 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/about'
+    | '/acceptable-use'
     | '/app'
     | '/login'
     | '/platform'
     | '/portal'
+    | '/privacy'
     | '/reseller'
     | '/reset-password'
+    | '/terms'
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
@@ -609,12 +657,16 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
+  AcceptableUseRoute: typeof AcceptableUseRoute
   AppRoute: typeof AppRouteWithChildren
   LoginRoute: typeof LoginRoute
   PlatformRoute: typeof PlatformRouteWithChildren
   PortalRoute: typeof PortalRouteWithChildren
+  PrivacyRoute: typeof PrivacyRoute
   ResellerRoute: typeof ResellerRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
+  TermsRoute: typeof TermsRoute
   ApiAgentAckRoute: typeof ApiAgentAckRoute
   ApiAgentHeartbeatRoute: typeof ApiAgentHeartbeatRoute
   ApiAgentPullRoute: typeof ApiAgentPullRoute
@@ -635,6 +687,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/acceptable-use': {
+      id: '/acceptable-use'
+      path: '/acceptable-use'
+      fullPath: '/acceptable-use'
+      preLoaderRoute: typeof AcceptableUseRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app': {
@@ -665,6 +731,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reseller': {
       id: '/reseller'
       path: '/reseller'
@@ -677,6 +750,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/': {
@@ -1087,12 +1167,16 @@ const ResellerRouteWithChildren = ResellerRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
+  AcceptableUseRoute: AcceptableUseRoute,
   AppRoute: AppRouteWithChildren,
   LoginRoute: LoginRoute,
   PlatformRoute: PlatformRouteWithChildren,
   PortalRoute: PortalRouteWithChildren,
+  PrivacyRoute: PrivacyRoute,
   ResellerRoute: ResellerRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
+  TermsRoute: TermsRoute,
   ApiAgentAckRoute: ApiAgentAckRoute,
   ApiAgentHeartbeatRoute: ApiAgentHeartbeatRoute,
   ApiAgentPullRoute: ApiAgentPullRoute,

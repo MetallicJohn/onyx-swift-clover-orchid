@@ -1,12 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
+import { buttonVariants } from "@/components/ui/button";
 import { listPublicPlans } from "@/lib/isp/server-platform";
-import type { PublicPlan } from "@/lib/isp/plans";
+import { annualSavingsPct, isSalesContactPlan, type PublicPlan } from "@/lib/isp/plans";
 import { cn, kes } from "@/lib/utils";
 
 function cap(n: number, unit: string) {
-  if (n <= 0) return `Unlimited ${unit}`;
+  if (n <= 0) return `No limit on ${unit}`;
   return `${n.toLocaleString("en-KE")} ${unit}`;
 }
 
@@ -17,11 +18,15 @@ function featuredCode(plans: PublicPlan[]) {
 }
 
 function priceLabel(plan: PublicPlan, cycle: "monthly" | "annual") {
+  if (isSalesContactPlan(plan)) {
+    return { headline: "Ask us", suffix: "", note: "Limits and onboarding are agreed separately" };
+  }
   if (cycle === "annual" && plan.annual_kes > 0) {
+    const save = annualSavingsPct(plan.monthly_kes, plan.annual_kes);
     return {
       headline: kes(plan.annual_kes),
       suffix: "/yr",
-      note: `${kes(Math.round(plan.annual_kes / 12))}/mo billed annually`,
+      note: `${kes(Math.round(plan.annual_kes / 12))}/mo billed yearly${save > 0 ? ` · ${save}% less than monthly` : ""}`,
     };
   }
   if (plan.monthly_kes <= 0) {
@@ -32,6 +37,12 @@ function priceLabel(plan: PublicPlan, cycle: "monthly" | "annual") {
     };
   }
   return { headline: kes(plan.monthly_kes), suffix: "/mo", note: "" };
+}
+
+function planCta(plan: PublicPlan) {
+  if (isSalesContactPlan(plan)) return { href: "/#contact", label: "Send a message", trial: false };
+  if (plan.trial_days > 0 && plan.monthly_kes <= 0) return { href: "/login?mode=up", label: "Start trial", trial: true };
+  return { href: "/login?mode=up", label: "Get started", trial: false };
 }
 
 export function PublicPricing() {
@@ -50,32 +61,41 @@ export function PublicPricing() {
 
   const hasAnnual = plans.some((p) => p.annual_kes > 0);
   const featured = featuredCode(plans);
+  const maxSave = plans.reduce((n, p) => Math.max(n, annualSavingsPct(p.monthly_kes, p.annual_kes)), 0);
 
   return (
-    <section className="mx-auto max-w-6xl px-4 pb-20">
+    <section id="pricing" className="mx-auto max-w-6xl scroll-mt-24 px-4 py-16 md:py-24">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-medium tracking-[0.2em] text-accent uppercase">Pricing</p>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Plans that match your network</h2>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Pay for the size of the operation</h2>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted md:text-base">
-            Prices, limits, and included modules follow the live subscription catalog.
+            Each plan sets customer, router, and staff limits, and which modules you can use. The figures below
+            come from the live catalogue — if a plan changes, this page changes with it.
           </p>
         </div>
         {hasAnnual ? (
-          <div className="flex h-11 rounded-md border border-border bg-surface p-1">
-            {(["monthly", "annual"] as const).map((id) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setCycle(id)}
-                className={cn(
-                  "min-h-9 rounded-sm px-4 text-sm capitalize transition-colors duration-150",
-                  cycle === id ? "bg-accent text-accent-fg" : "text-muted hover:text-fg",
-                )}
-              >
-                {id}
-              </button>
-            ))}
+          <div>
+            <div className="flex h-11 rounded-md border border-border bg-surface p-1">
+              {(["monthly", "annual"] as const).map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setCycle(id)}
+                  className={cn(
+                    "min-h-9 rounded-sm px-4 text-sm capitalize transition-colors duration-150",
+                    cycle === id ? "bg-accent text-accent-fg" : "text-muted hover:text-fg",
+                  )}
+                >
+                  {id === "monthly" ? "Monthly" : "Yearly"}
+                </button>
+              ))}
+            </div>
+            {maxSave > 0 ? (
+              <p className="mt-2 text-right text-xs text-muted">
+                Yearly billing is up to {maxSave}% less where a yearly price is listed
+              </p>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -86,11 +106,13 @@ export function PublicPricing() {
           : plans.map((plan) => {
               const price = priceLabel(plan, cycle);
               const highlight = plan.code === featured;
+              const cta = planCta(plan);
+              const save = cycle === "annual" ? annualSavingsPct(plan.monthly_kes, plan.annual_kes) : 0;
               return (
                 <article
                   key={plan.code}
                   className={cn(
-                    "flex flex-col rounded-xl border bg-surface p-5 md:p-6",
+                    "flex flex-col rounded-xl border bg-surface p-5 shadow-card md:p-6",
                     highlight ? "border-accent" : "border-border",
                   )}
                 >
@@ -101,7 +123,7 @@ export function PublicPricing() {
                     </div>
                     {highlight ? (
                       <span className="shrink-0 rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-medium text-accent">
-                        Popular
+                        Common pick
                       </span>
                     ) : null}
                   </div>
@@ -115,6 +137,7 @@ export function PublicPricing() {
                     {plan.trial_days > 0 && plan.monthly_kes > 0 ? (
                       <p className="mt-1 text-xs text-muted">{plan.trial_days}-day trial</p>
                     ) : null}
+                    {save > 0 ? <p className="mt-1 text-xs text-accent">{save}% less than paying monthly</p> : null}
                   </div>
 
                   <ul className="mt-5 grid gap-2 text-sm">
@@ -133,19 +156,35 @@ export function PublicPricing() {
                     ))}
                   </ul>
 
-                  <Link
-                    to="/login"
-                    className={cn(
-                      "mt-6 inline-flex h-11 items-center justify-center rounded-md px-4 text-sm font-medium",
-                      highlight ? "bg-accent text-accent-fg" : "border border-border hover:bg-elevated",
-                    )}
-                  >
-                    {plan.monthly_kes <= 0 ? "Start trial" : "Get started"}
-                  </Link>
+                  {cta.href.startsWith("/login") ? (
+                    <a
+                      href={cta.href}
+                      className={cn(
+                        buttonVariants({ variant: highlight ? "default" : "secondary", size: "md" }),
+                        "mt-6",
+                      )}
+                    >
+                      {cta.label}
+                    </a>
+                  ) : (
+                    <a
+                      href={cta.href}
+                      className={cn(buttonVariants({ variant: "secondary", size: "md" }), "mt-6")}
+                    >
+                      {cta.label}
+                    </a>
+                  )}
                 </article>
               );
             })}
       </div>
+      <p className="mt-6 text-center text-xs text-subtle">
+        Already have an account? <Link to="/login">Sign in</Link>
+        {" · "}
+        <a href="/#contact" className="hover:text-muted">
+          Ask a question
+        </a>
+      </p>
     </section>
   );
 }

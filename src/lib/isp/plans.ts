@@ -370,3 +370,14 @@ export async function publicCatalog(sql: Sql) {
 
 export type PublicPlan = Awaited<ReturnType<typeof publicCatalog>>[number];
 
+export function annualSavingsPct(monthlyKes: number, annualKes: number) {
+  if (monthlyKes <= 0 || annualKes <= 0) return 0;
+  const full = monthlyKes * 12;
+  if (annualKes >= full) return 0;
+  return Math.round((1 - annualKes / full) * 100);
+}
+
+export function isSalesContactPlan(plan: { monthly_kes: number; annual_kes: number; trial_days: number }) {
+  return plan.monthly_kes <= 0 && plan.annual_kes <= 0 && plan.trial_days <= 0;
+}
+

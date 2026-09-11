@@ -1,4 +1,4 @@
-import { m as Outlet, x as require_jsx_runtime } from "../_libs/@tanstack/react-router+[...].mjs";
+import { S as require_jsx_runtime, m as Outlet } from "../_libs/@tanstack/react-router+[...].mjs";
 //#region node_modules/.nitro/vite/services/ssr/assets/portal-D2I_E28N.js
 var import_jsx_runtime = require_jsx_runtime();
 function PortalLayout() {

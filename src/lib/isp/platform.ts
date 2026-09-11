@@ -62,6 +62,9 @@ export async function getPlatformSettings(sql: Sql) {
     trial_days: Number(map.trial_days || 14),
     support_access_enabled: map.support_access_enabled === "true",
     support_access_minutes: Number(map.support_access_minutes || 30),
+    sales_email: (map.sales_email || "").trim(),
+    support_email: (map.support_email || "").trim(),
+    contact_phone: (map.contact_phone || "").trim(),
   };
 }
 
@@ -74,6 +77,9 @@ export async function savePlatformSettings(
     trial_days: number;
     support_access_enabled: boolean;
     support_access_minutes: number;
+    sales_email: string;
+    support_email: string;
+    contact_phone: string;
   }>,
 ) {
   await requirePlatformActor(sql, actorUserId);
@@ -85,6 +91,9 @@ export async function savePlatformSettings(
     entries.push(["support_access_enabled", patch.support_access_enabled ? "true" : "false"]);
   if (patch.support_access_minutes != null)
     entries.push(["support_access_minutes", String(Math.max(5, Math.round(patch.support_access_minutes)))]);
+  if (patch.sales_email != null) entries.push(["sales_email", patch.sales_email.trim().slice(0, 120)]);
+  if (patch.support_email != null) entries.push(["support_email", patch.support_email.trim().slice(0, 120)]);
+  if (patch.contact_phone != null) entries.push(["contact_phone", patch.contact_phone.trim().slice(0, 32)]);
   for (const [key, value] of entries) {
     await sql`insert into platform_settings (key, value, updated_at) values (${key}, ${value}, now())
       on conflict (key) do update set value = ${value}, updated_at = now()`;

@@ -31,7 +31,7 @@ export const Route = createRootRoute({
       { name: "theme-color", content: "#0a0e13" },
       {
         name: "description",
-        content: "Multi-tenant ISP operations, billing, and network management.",
+        content: "Multi-tenant ISP platform for customers, billing, M-Pesa, PPPoE, hotspot, MikroTik, RADIUS, and network operations.",
       },
     ],
     links: [
@@ -51,7 +51,7 @@ export const Route = createRootRoute({
         <HeadContent />
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{if(location.pathname.indexOf("/app")===0){var t=sessionStorage.getItem("isp-theme.v1");if(t){var p=JSON.parse(t);var r=document.documentElement;if(p&&p.vars){for(var k in p.vars)r.style.setProperty(k,p.vars[k]);r.dataset.appearance=p.appearance||"dark";r.style.colorScheme=p.appearance||"dark";}if(p&&p.fontHref){var l=document.getElementById("isp-tenant-font");if(!l){l=document.createElement("link");l.id="isp-tenant-font";l.rel="stylesheet";document.head.appendChild(l);}l.href=p.fontHref;}}}}catch(e){}`,
+            __html: `try{var p=location.pathname;if(p.indexOf("/app")===0){var t=sessionStorage.getItem("isp-theme.v1");if(t){var c=JSON.parse(t);var r=document.documentElement;if(c&&c.vars){for(var k in c.vars)r.style.setProperty(k,c.vars[k]);r.dataset.appearance=c.appearance||"dark";r.style.colorScheme=c.appearance||"dark";}if(c&&c.fontHref){var l=document.getElementById("isp-tenant-font");if(!l){l=document.createElement("link");l.id="isp-tenant-font";l.rel="stylesheet";document.head.appendChild(l);}l.href=c.fontHref;}}}else if(p==="/"||p==="/about"||p==="/privacy"||p==="/terms"||p==="/acceptable-use"){var a=localStorage.getItem("isp-site-appearance")||"system";var dark=!window.matchMedia||window.matchMedia("(prefers-color-scheme: dark)").matches;var resolved=a==="light"?"light":a==="dark"?"dark":dark?"dark":"light";document.documentElement.dataset.appearance=resolved;document.documentElement.style.colorScheme=resolved;}}catch(e){}`,
           }}
         />
       </head>

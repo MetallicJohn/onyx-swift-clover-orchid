@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useRouterState } from "@tanstack/react-router";
 import { getPublicBranding } from "@/lib/isp/server-theme";
+import { isMarketingPath, paintPlatformDefault, paintSiteAppearance } from "@/lib/isp/site-appearance";
 import { applyFontLink, googleStylesheet } from "@/lib/theme/fonts";
 import {
   THEME_CACHE_KEY,
@@ -60,8 +62,12 @@ function writeCache(tenantId: string, vars: Record<string, string>, appearance: 
 
 function paint(resolved: ResolvedTheme | null) {
   if (!resolved) {
-    applyCssVars(null, "dark");
-    applyFavicon(null, "#0a0e13");
+    if (typeof window !== "undefined" && isMarketingPath(window.location.pathname)) {
+      paintSiteAppearance();
+      applyFontLink(null);
+      return;
+    }
+    paintPlatformDefault();
     applyFontLink(null);
     return;
   }
@@ -88,6 +94,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [previewCfg, setPreviewCfg] = useState<ThemeConfig | null>(null);
   const [fallbackName, setFallbackName] = useState("ISP");
   const [dark, setDark] = useState(true);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
     paintCachedForApp();
@@ -115,7 +122,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
     if (onAppPath() && paintCachedForApp()) return;
     paint(null);
-  }, [resolved, committed, previewCfg]);
+  }, [resolved, committed, previewCfg, pathname]);
 
   const apply = useCallback((config: ThemeConfig | null, name = "ISP") => {
     setFallbackName(name);

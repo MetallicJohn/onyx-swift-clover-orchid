@@ -10,6 +10,7 @@ import { usePublicTheme } from "@/components/theme-provider";
 import { APP_NAME } from "@/lib/brand";
 import { hasOperatorBearer, loginPageAction, rememberAuthSession } from "@/lib/isp/auth-session";
 import { bootstrapWorkspace } from "@/lib/isp/server";
+import { loginDestination, loginModeFromSearch } from "@/lib/isp/login-next";
 
 export const Route = createFileRoute("/login")({ component: Login });
 
@@ -38,9 +39,12 @@ function Login() {
   const [ispName, setIspName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [mode, setMode] = useState<"in" | "up">("in");
+  const [mode, setMode] = useState<"in" | "up">(() => loginModeFromSearch(search));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const dest = loginDestination(search, mode);
+  const platformIntent = dest === "/platform" && mode === "in";
 
   const action = loginPageAction({
     isPending,
@@ -49,7 +53,7 @@ function Login() {
     hasGateSession: gateSession,
   });
 
-  if (action === "go_app") return <Navigate to="/app" />;
+  if (action === "go_app") return <Navigate to={dest} />;
 
   const switching = Boolean(user && gateSession);
 
@@ -82,7 +86,7 @@ function Login() {
         if (result.error) throw new Error(result.error.message || "Invalid email or password");
         rememberAuthSession(result);
       }
-      window.location.assign("/app");
+      window.location.assign(dest);
     } catch (err) {
       setError(signInErrorMessage(err));
     } finally {
@@ -98,14 +102,16 @@ function Login() {
           <span className="text-lg font-semibold tracking-tight">{brandName}</span>
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">
-          {mode === "up" ? "Create your ISP" : "Sign in to your ISP"}
+          {mode === "up" ? "Create your ISP" : platformIntent ? "Sign in to the platform" : "Sign in to your ISP"}
         </h1>
         <p className="mt-2 text-sm text-muted">
           {mode === "up"
             ? "Your email and password become the owner login for this workspace."
             : switching
               ? "Enter the email and password from signup or the login your superadmin created. That account replaces this Grok view."
-              : "Use the email and password from signup, or the owner/staff login your superadmin created."}
+              : platformIntent
+                ? "Use the platform administrator email and password. Tenant consoles stay separate."
+                : "Use the email and password from signup, or the owner/staff login your superadmin created."}
         </p>
 
         {authEnabled ? (
