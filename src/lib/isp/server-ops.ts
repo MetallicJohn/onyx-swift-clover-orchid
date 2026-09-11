@@ -22,6 +22,7 @@ import { ensureRadiusApiKey, radiusConfigBundle, rotateRadiusApiKey, defaultNasC
 import { open } from "./secrets";
 import { assertPermission } from "./rbac";
 import { changePortalPassword, issuePortalOtp, portalContext, portalPasswordLogin, verifyPortalOtp } from "./portal";
+import { customerGraceEligibility, customerSelfGrant } from "./grace";
 import { completePortalPasswordReset } from "./password-reset";
 import { issueResellerOtp, resellerHome, verifyResellerOtp } from "./reseller-portal";
 import { openTicket } from "./tickets";
@@ -547,13 +548,26 @@ export const getPortalHome = createServerFn({ method: "POST" })
     const sql = await getSql();
     const ctx = await portalContext(sql, data.token);
     const services = await sql<{
+      id: string;
       package_name: string;
       access_method: string;
       username: string | null;
       status: string;
-    }>`select p.name as package_name, s.access_method, s.username, s.status
+      period_end: string | null;
+      grace_expires_at: string | null;
+      grace_days_granted: number | null;
+      grace_status: string | null;
+    }>`select s.id, p.name as package_name, s.access_method, s.username, s.status,
+              s.period_end::text as period_end,
+              g.expires_at::text as grace_expires_at, g.days_granted as grace_days_granted,
+              g.status as grace_status
        from services s join packages p on p.id = s.package_id
+       left join service_grace_periods g
+         on g.service_id = s.id and g.tenant_id = s.tenant_id and g.status = 'active'
        where s.tenant_id = ${ctx.tenantId} and s.customer_id = ${ctx.customer.id}`;
+    const eligibility = await Promise.all(
+      services.map(async (s) => customerGraceEligibility(sql, ctx.tenantId, ctx.customer.id, s.id)),
+    );
     const invoices = await sql<{
       id: string;
       number: string;
@@ -570,7 +584,7 @@ export const getPortalHome = createServerFn({ method: "POST" })
     const [loy] = await sql<{ points: number }>`
       select points from loyalty_accounts where tenant_id = ${ctx.tenantId} and customer_id = ${ctx.customer.id}`;
     const inbox = await listCustomerInbox(sql, ctx.tenantId, ctx.customer.id);
-    return { ...ctx, services, invoices, points: loy?.points ?? 0, inbox };
+    return { ...ctx, services, invoices, points: loy?.points ?? 0, inbox, eligibility };
   });
 
 export const portalPay = createServerFn({ method: "POST" })
@@ -596,6 +610,20 @@ export const portalPay = createServerFn({ method: "POST" })
     } catch (e) {
       return { ...intent, paid: false, note: e instanceof Error ? e.message : "Waiting for payment" };
     }
+  });
+
+export const portalRequestGrace = createServerFn({ method: "POST" })
+  .validator((d: { token: string; service_id: string; days: number }) => d)
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    const ctx = await portalContext(sql, data.token);
+    return customerSelfGrant(sql, {
+      tenantId: ctx.tenantId,
+      customerId: ctx.customer.id,
+      serviceId: data.service_id,
+      days: data.days,
+      ispName: ctx.isp.name,
+    });
   });
 
 export const portalOpenTicket = createServerFn({ method: "POST" })

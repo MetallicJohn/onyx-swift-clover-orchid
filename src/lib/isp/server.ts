@@ -19,6 +19,7 @@ import { wgEnrollContext } from "./wireguard";
 import { emit } from "./events";
 import { listInbox } from "./inbox";
 import { applyConfirmedPayment } from "./payments";
+import { consumeActiveGrantsForCustomer, getGracePolicy } from "./grace";
 import { assertPermission } from "./rbac";
 import { assertCustomerQuota, assertRouterQuota, assertServiceQuota, assertTenantOperable } from "./saas";
 import { assertFeature, featureForAccess } from "./plans";
@@ -324,17 +325,23 @@ export const listServices = createServerFn({ method: "GET" })
     const services = await sql<ServiceRow>`
       select s.id, s.customer_id, c.name as customer_name, s.package_id, p.name as package_name,
              s.access_method, s.username, s.static_ip, s.status, s.created_at::text as created_at,
-             s.period_end::text as period_end, s.bundle_used_mb, p.bundle_mb, s.suspend_reason
+             s.period_end::text as period_end, s.bundle_used_mb, p.bundle_mb, s.suspend_reason,
+             (g.id is not null) as grace_active, g.days_granted as grace_days_granted,
+             g.starts_at::text as grace_starts_at, g.expires_at::text as grace_expires_at,
+             g.granted_by_label as grace_granted_by, g.reason as grace_reason, p.grace_days as package_grace_days
       from services s
       join customers c on c.id = s.customer_id
       join packages p on p.id = s.package_id
+      left join service_grace_periods g
+        on g.service_id = s.id and g.tenant_id = s.tenant_id and g.status = 'active'
       where s.tenant_id = ${workspace.tenantId}
       order by s.created_at desc`;
     const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${workspace.tenantId} order by name`;
     const packages = await sql<PackageRow>`
       select id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active
       from packages where tenant_id = ${workspace.tenantId} and active = true`;
-    return { workspace, services, customers, packages };
+    const gracePolicy = await getGracePolicy(sql, workspace.tenantId);
+    return { workspace, services, customers, packages, gracePolicy };
   });
 
 export const createService = createServerFn({ method: "POST" })
@@ -412,6 +419,7 @@ export const setServiceStatus = createServerFn({ method: "POST" })
       if (row) {
         const { grantPaidPeriod } = await import("./access-policy");
         await grantPaidPeriod(sql, workspace.tenantId, row.customer_id);
+        await consumeActiveGrantsForCustomer(sql, workspace.tenantId, row.customer_id);
       }
     }
     const reason = data.status === "suspended" ? "manual" : data.status === "active" ? "" : "invoice";

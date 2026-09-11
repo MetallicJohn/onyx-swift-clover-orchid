@@ -138,7 +138,7 @@ export function PublicShell({
               Superadmin
             </a>
             <Link to="/login" className={cn(buttonVariants({ variant: "ghost", size: "md" }))}>
-              ISP login
+              Log in
             </Link>
             <a href="/login?mode=up" className={cn(buttonVariants({ size: "md" }))}>
               Get started
@@ -182,7 +182,7 @@ export function PublicShell({
             </div>
             <div className="mt-4 grid gap-2">
               <Link to="/login" className={cn(buttonVariants({ variant: "secondary", size: "md" }), "w-full")}>
-                ISP login
+                Log in
               </Link>
               <a href="/login?mode=up" className={cn(buttonVariants({ size: "md" }), "w-full")}>
                 Get started
@@ -207,8 +207,8 @@ export function PublicShell({
               <span className="font-semibold tracking-tight">{APP_NAME}</span>
             </div>
             <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted">
-              Operations software for ISPs: customers, invoices, M-Pesa, and access control beside the network you
-              already run.
+              ISP management software for customers, services, billing, payments and network operations — from one
+              place.
             </p>
           </div>
           <FooterCol
@@ -241,7 +241,7 @@ export function PublicShell({
           <FooterCol
             title="Account"
             links={[
-              { href: "/login", label: "ISP login" },
+              { href: "/login", label: "Log in" },
               { href: "/login?mode=up", label: "Get started" },
               { href: "/login?next=/platform", label: "Superadmin login" },
             ]}
@@ -249,14 +249,14 @@ export function PublicShell({
         </div>
         <div className="mx-auto flex max-w-6xl flex-col gap-3 border-t border-border px-4 py-6 text-xs text-subtle sm:flex-row sm:items-center sm:justify-between">
           <p>
-            © {new Date().getFullYear()} {APP_NAME}
+            © {new Date().getFullYear()} {APP_NAME}. All rights reserved.
           </p>
           <div className="flex flex-wrap gap-4">
             <a href="/privacy" className={cn("hover:text-muted", current === "privacy" && "text-fg")}>
-              Privacy Policy
+              Privacy
             </a>
             <a href="/terms" className={cn("hover:text-muted", current === "terms" && "text-fg")}>
-              Terms of Service
+              Terms
             </a>
             <a href="/acceptable-use" className={cn("hover:text-muted", current === "aup" && "text-fg")}>
               Acceptable Use

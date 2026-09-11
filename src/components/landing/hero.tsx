@@ -7,12 +7,12 @@ import { cn } from "@/lib/utils";
 const CAPABILITIES = [
   "Customers",
   "Billing",
-  "M-Pesa",
+  "Payments",
   "PPPoE",
   "Hotspot",
   "MikroTik",
   "RADIUS",
-  "GenieACS",
+  "CPE",
   "SMS",
   "WhatsApp",
   "Resellers",
@@ -26,21 +26,21 @@ export function LandingHero() {
       <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 pt-12 pb-16 md:pt-20 md:pb-24 lg:grid-cols-[1.05fr_0.95fr]">
         <div>
           <p className="text-xs font-medium tracking-[0.2em] text-accent uppercase">
-            ISP operations software
+            ISP management software
           </p>
           <h1 className="mt-4 max-w-xl text-4xl leading-[1.12] font-semibold tracking-tight md:text-6xl">
-            Customers, billing, and the network — in one console.
+            Run your ISP from one place
           </h1>
           <p className="mt-5 max-w-lg text-base leading-relaxed text-muted md:text-lg">
-            Raise invoices, collect M-Pesa, and keep PPPoE and hotspot in step with the account. Your routers stay
-            yours; this is the operations layer that sits beside them.
+            Keep customers, billing, payments and network access connected — from signup through invoices, M-Pesa,
+            and whether the line is online. Your routers stay yours.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a href="/login?mode=up" className={cn(buttonVariants({ size: "lg" }))}>
               Get started <ArrowRight className="size-4" />
             </a>
             <Link to="/login" className={cn(buttonVariants({ variant: "secondary", size: "lg" }))}>
-              Sign in
+              Log in
             </Link>
             <SignedIn>
               <Link to="/app" className={cn(buttonVariants({ variant: "ghost", size: "lg" }))}>

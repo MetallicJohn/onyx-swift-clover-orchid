@@ -29,6 +29,7 @@ The access policy runs on the billing cron, on every console session (throttled 
 | Trigger | Effect |
 |---|---|
 | Invoice past due, inside `grace_days` | Service → `grace` (still online) |
+| Staff or eligible customer grants Grace Period | Temporary access until a **fixed** expiry. `period_end` / renewal date does not move. Unpaid invoices stay unpaid. |
 | Invoice past due + grace | Service → `suspended`, MikroTik disable queued |
 | `period_end` elapsed (+ grace) | Service → `grace` then `suspended` (`time`) |
 | `bundle_used_mb` ≥ package `bundle_mb` | Service → `suspended` (`bundle`) |
@@ -36,5 +37,7 @@ The access policy runs on the billing cron, on every console session (throttled 
 | Confirmed **full** payment | Paid-through date extends by interval/validity, bundle resets. Restores unless another invoice is still overdue. |
 
 Ledger credits are written on confirmed payment. Customer statements should sum `customer_ledger`, not a cached balance field.
+
+Grace Period is access-only. It never creates revenue, marks an invoice paid, changes package price, or adds days to the next paid period. Staff grant/extend/revoke live on Services. Eligibility for the customer portal is Settings → Grace period.
 
 RADIUS accounting (`POST /api/v1/radius/accounting/{slug}`) updates usage. A new `session_id` is treated as an increment; repeats of the same id are snapshots (delta from the previous octets).

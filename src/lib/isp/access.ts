@@ -37,7 +37,9 @@ export async function provisionServiceAccess(sql: Sql, tenantId: string, service
 
 export async function restoreCustomerAccess(sql: Sql, tenantId: string, customerId: string) {
   const { grantPaidPeriod } = await import("./access-policy.ts");
+  const { consumeActiveGrantsForCustomer } = await import("./grace.ts");
   await grantPaidPeriod(sql, tenantId, customerId);
+  await consumeActiveGrantsForCustomer(sql, tenantId, customerId);
   await sql`update services set status = 'active', suspend_reason = ''
     where customer_id = ${customerId} and tenant_id = ${tenantId} and status in ('grace','suspended','pending')`;
   const svcs = await sql<{ id: string }>`select id from services where tenant_id = ${tenantId} and customer_id = ${customerId}`;

@@ -20,6 +20,9 @@ export type NotifyVars = {
   amount?: string;
   due_date?: string;
   service_name?: string;
+  grace_until?: string;
+  renewal_date?: string;
+  days?: string;
   payment_reference?: string;
   isp_name?: string;
 };
@@ -94,7 +97,31 @@ const DEFAULTS: Array<{
     event_code: "grace.started",
     channel: "sms",
     subject: "Grace period",
-    body: "{customer_name}, your {service_name} is now on grace after unpaid {invoice_number}. Pay {amount} to avoid suspension. — {isp_name}",
+    body: "{customer_name}, your {service_name} is now on grace after unpaid {invoice_number}. Pay {amount} to avoid suspension. Renewal date stays {renewal_date}. — {isp_name}",
+  },
+  {
+    event_code: "grace.granted",
+    channel: "sms",
+    subject: "Grace period",
+    body: "{customer_name}, your service has been given a grace period until {grace_until}. Please make payment before then to avoid service interruption. Your renewal date remains {renewal_date}. — {isp_name}",
+  },
+  {
+    event_code: "grace.granted",
+    channel: "in_app",
+    subject: "Grace period granted",
+    body: "{service_name} is on grace until {grace_until}. Renewal date remains {renewal_date}.",
+  },
+  {
+    event_code: "grace.ending",
+    channel: "sms",
+    subject: "Grace period ending",
+    body: "{customer_name}, your service grace period ends on {grace_until}. Please make payment to keep your service active. — {isp_name}",
+  },
+  {
+    event_code: "grace.expired",
+    channel: "sms",
+    subject: "Grace period ended",
+    body: "{customer_name}, your grace period has ended and your service has been suspended. Please make payment to restore your service. — {isp_name}",
   },
   {
     event_code: "service.suspended",

@@ -1,5 +1,12 @@
 import { provisionServiceAccess } from "./access.ts";
 import { intervalDays } from "./billing.ts";
+import {
+  activeGrant,
+  consumeActiveGrantsForCustomer,
+  ensureSystemGrant,
+  expireDueGrants,
+  notifyNearingGrants,
+} from "./grace.ts";
 import { expireDueVouchers } from "./hotspot.ts";
 import { nid } from "../utils.ts";
 
@@ -48,7 +55,7 @@ async function notify(
   tenantId: string,
   ispName: string,
   customerId: string,
-  event: "invoice.due" | "invoice.overdue" | "grace.started" | "service.suspended",
+  event: "invoice.due" | "invoice.overdue" | "grace.started" | "grace.expired" | "service.suspended",
   entityId: string,
   vars: { invoice_number?: string; amount?: string; due_date?: string; service_name?: string },
 ) {
@@ -96,6 +103,7 @@ export async function restorePaidAccess(sql: Sql, tenantId: string, customerId: 
   if (await customerHasOverdue(sql, tenantId, customerId)) {
     return { restored: 0, held: true };
   }
+  await consumeActiveGrantsForCustomer(sql, tenantId, customerId);
   const svcs = await sql<{ id: string }>`
     select id from services
     where tenant_id = ${tenantId} and customer_id = ${customerId}
@@ -193,6 +201,7 @@ export async function recordAccounting(
 
 export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: string) {
   const vouchers = await expireDueVouchers(sql, tenantId);
+  await expireDueGrants(sql, tenantId, ispName);
   const invoices = await sql<{
     id: string;
     customer_id: string;
@@ -243,11 +252,28 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
 
     for (const svc of services) {
       const svcVars = { ...vars, service_name: svc.name };
-      if (daysPast <= svc.grace_days && svc.status === "active") {
-        await setServiceState(sql, tenantId, svc.id, "grace", "invoice");
-        notices += await notify(sql, tenantId, ispName, inv.customer_id, "grace.started", svc.id, svcVars);
-        grace += 1;
-      } else if (daysPast > svc.grace_days && svc.status !== "suspended") {
+      const grant = await activeGrant(sql, tenantId, svc.id);
+      const inGranted = Boolean(grant && Date.parse(grant.expires_at) > Date.now());
+      const inPackage = daysPast <= svc.grace_days;
+      if (inPackage || inGranted) {
+        if (svc.status === "active") {
+          await setServiceState(sql, tenantId, svc.id, "grace", "invoice");
+          if (inPackage && svc.grace_days > 0) {
+            const start = new Date(Date.parse(inv.due_date));
+            const until = new Date(Date.parse(inv.due_date) + svc.grace_days * 86400_000);
+            await ensureSystemGrant(sql, {
+              tenantId,
+              serviceId: svc.id,
+              customerId: inv.customer_id,
+              days: svc.grace_days,
+              startsAt: start,
+              expiresAt: until,
+            });
+          }
+          notices += await notify(sql, tenantId, ispName, inv.customer_id, "grace.started", svc.id, svcVars);
+          grace += 1;
+        }
+      } else if (svc.status !== "suspended") {
         await setServiceState(sql, tenantId, svc.id, "suspended", "invoice");
         notices += await notify(sql, tenantId, ispName, inv.customer_id, "service.suspended", svc.id, svcVars);
         suspended += 1;
@@ -272,9 +298,21 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
   for (const svc of timed) {
     const end = Date.parse(svc.period_end);
     const graceMs = Math.max(0, svc.grace_days) * 86400_000;
-    const pastGrace = Date.now() > end + graceMs;
-    if (!pastGrace && svc.status === "active" && svc.grace_days > 0) {
+    const grant = await activeGrant(sql, tenantId, svc.id);
+    const inGranted = Boolean(grant && Date.parse(grant.expires_at) > Date.now());
+    const pastGrace = Date.now() > end + graceMs && !inGranted;
+    if (!pastGrace && svc.status === "active" && (svc.grace_days > 0 || inGranted)) {
       await setServiceState(sql, tenantId, svc.id, "grace", "time");
+      if (svc.grace_days > 0) {
+        await ensureSystemGrant(sql, {
+          tenantId,
+          serviceId: svc.id,
+          customerId: svc.customer_id,
+          days: svc.grace_days,
+          startsAt: new Date(end),
+          expiresAt: new Date(end + graceMs),
+        });
+      }
       notices += await notify(sql, tenantId, ispName, svc.customer_id, "grace.started", svc.id, {
         service_name: svc.name,
       });
@@ -305,6 +343,8 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
     suspended += 1;
     bundle += 1;
   }
+
+  notices += await notifyNearingGrants(sql, tenantId, ispName);
 
   return {
     due,

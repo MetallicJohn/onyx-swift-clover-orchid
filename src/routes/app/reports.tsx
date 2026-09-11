@@ -224,6 +224,62 @@ function ReportsPage() {
               ))}
             </ul>
           </section>
+          <section className="rounded-xl border border-border bg-surface p-4 lg:col-span-2">
+            <h2 className="mb-3 font-medium">Grace Period</h2>
+            <ul className="text-sm">
+              <li className="flex justify-between py-1">
+                <span className="text-muted">Currently on grace</span>
+                <span className="font-mono">{data.grace?.counts.active ?? 0}</span>
+              </li>
+              <li className="flex justify-between py-1">
+                <span className="text-muted">Days granted (active)</span>
+                <span className="font-mono">{data.grace?.counts.days_granted ?? 0}</span>
+              </li>
+              <li className="flex justify-between py-1">
+                <span className="text-muted">Expired</span>
+                <span className="font-mono">{data.grace?.counts.expired ?? 0}</span>
+              </li>
+              <li className="flex justify-between py-1">
+                <span className="text-muted">Suspended after grace</span>
+                <span className="font-mono">{data.grace?.suspendedAfter ?? 0}</span>
+              </li>
+            </ul>
+            {(data.grace?.byStaff || []).length > 0 ? (
+              <div className="mt-3">
+                <p className="text-xs text-muted">Granted by staff</p>
+                <ul className="mt-1 text-sm">
+                  {data.grace.byStaff.map((s) => (
+                    <li key={s.label} className="flex justify-between py-1">
+                      <span className="text-muted">{s.label}</span>
+                      <span className="font-mono">
+                        {s.n} · {s.days}d
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {(data.grace?.current || []).filter((g) => g.status === "active").length > 0 ? (
+              <ul className="mt-3 divide-y divide-border text-sm">
+                {data.grace.current
+                  .filter((g) => g.status === "active")
+                  .slice(0, 8)
+                  .map((g) => (
+                    <li key={g.id} className="flex justify-between gap-3 py-2">
+                      <span>
+                        {g.customer_name} · {g.package_name}
+                        <span className="mt-0.5 block text-xs text-muted">
+                          Renewal {g.period_end ? g.period_end.slice(0, 10) : "—"} · access until {g.expires_at.slice(0, 10)}
+                        </span>
+                      </span>
+                      <span className="font-mono text-xs">{g.days_granted}d</span>
+                    </li>
+                  ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-muted">No customers currently on a granted grace period.</p>
+            )}
+          </section>
         </div>
       ) : null}
 

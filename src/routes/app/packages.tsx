@@ -185,7 +185,7 @@ function PackagesPage() {
               onChange={(e) => setForm({ ...form, price_kes: Number(e.target.value) })}
             />
           </Field>
-          <Field label="Grace days">
+          <Field label="Automatic grace days">
             <Input
               type="number"
               min={0}
@@ -254,7 +254,7 @@ function PackagesPage() {
             </div>
             <p className="mt-3 text-sm text-muted">
               {p.download_mbps}/{p.upload_mbps} Mbps · {p.billing_interval}
-              {p.validity_hours ? ` · ${p.validity_hours}h` : ""} · {p.grace_days}d grace
+              {p.validity_hours ? ` · ${p.validity_hours}h` : ""} · {p.grace_days}d automatic grace
               {p.bundle_mb ? ` · ${p.bundle_mb >= 1024 ? `${Math.round(p.bundle_mb / 1024)} GB` : `${p.bundle_mb} MB`}` : " · unlimited"}
             </p>
             {p.description ? <p className="mt-1 text-sm text-subtle">{p.description}</p> : null}

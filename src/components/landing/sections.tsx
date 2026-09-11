@@ -41,63 +41,63 @@ function SectionHead({
 const FEATURES: { icon: LucideIcon; title: string; body: string }[] = [
   {
     icon: Receipt,
-    title: "Billing and invoices",
-    body: "Recurring invoices, due dates, grace, and statements on one ledger. When an account expires, access can be suspended; when payment lands, the service can come back on.",
+    title: "Billing that follows your services",
+    body: "Recurring invoices, due dates, balances and statements stay tied to the package the customer actually has. When an account is overdue, access can be suspended; when payment lands, eligible services can come back on.",
   },
   {
     icon: Wallet,
-    title: "M-Pesa and collections",
-    body: "STK, paybill, and till payments are matched to the invoice, posted on the account, and kept in the history you check when a customer queries a balance.",
+    title: "M-Pesa and payments",
+    body: "A payment should not end as a text on someone's phone. STK, paybill and till hits are matched to the invoice, posted on the account, and kept in the history you check when a customer queries a balance.",
   },
   {
     icon: Router,
-    title: "MikroTik routers",
-    body: "Inventory and health through a WireGuard agent, so you are not opening Winbox to the public internet just to check a site.",
+    title: "MikroTik management",
+    body: "Connect the routers you already run. Inventory and health go through a WireGuard agent, so you are not opening Winbox to the public internet just to check a site.",
   },
   {
     icon: Radio,
     title: "RADIUS and PPPoE",
-    body: "Username, package, and session state stay tied to the customer. Authentication and accounting run against the same record you bill.",
+    body: "Subscriber authentication and accounting through FreeRADIUS, with the username, package and session tied to the same customer you bill.",
   },
   {
     icon: Cable,
     title: "Customer equipment",
-    body: "Where the plan includes it, compatible CPE is managed next to the account through GenieACS — useful on fibre installs and replacements.",
+    body: "Where the plan includes it, GenieACS keeps supported CPE next to the service it belongs to — useful on fibre installs and replacements.",
   },
   {
     icon: Bell,
-    title: "SMS, WhatsApp, and email",
-    body: "Confirm a payment, remind a due date, or tell a customer the line is suspended or restored. You choose the SMS house and WhatsApp account.",
+    title: "Customer communication",
+    body: "Payment confirmations, invoice reminders, suspension and restoration notices, and new-connection updates — by SMS, WhatsApp or email, using the providers you configure.",
   },
   {
     icon: Users,
-    title: "Customer accounts",
-    body: "Open an account, attach a package, and activate the service. The same record then carries invoices, payments, tickets, and whether the line is online.",
+    title: "Customer management",
+    body: "Keep details, services, packages, balances and history on one account. Your team can see what a customer is using and what needs attention without opening a second book.",
   },
   {
     icon: Network,
-    title: "Network operations",
-    body: "Router status, sessions, and field tickets for the people who actually climb the mast or visit the cabinet.",
+    title: "Tickets and field work",
+    body: "Give support and field teams a place to record issues, follow up visits, and keep that history on the customer — next to router status and sessions.",
   },
   {
     icon: Wifi,
     title: "Hotspot and vouchers",
-    body: "Walk-in users and voucher batches live beside PPPoE customers, so a hotspot site is not a second product.",
+    body: "Hotspot customers, vouchers and sessions live beside PPPoE, so you are not running a separate billing process for walk-ins.",
   },
   {
     icon: MapPinned,
-    title: "IP addresses",
-    body: "Pools, static assignments, and the address on the service — the same place you already keep the customer.",
+    title: "IP address management",
+    body: "Pools, static assignments and the address on the service — so the team can see what is in use and what is still free.",
   },
   {
     icon: Share2,
-    title: "Resellers and partners",
+    title: "Resellers",
     body: "When the plan includes the module, partners can manage their own customers and wallets without seeing the rest of your books.",
   },
   {
     icon: Boxes,
     title: "Reports and statements",
-    body: "Collections, outstanding balances, active services, and billing activity in the console. Invoice and statement PDFs when a customer wants paper.",
+    body: "Collections, outstanding balances, active services, customer growth and billing activity in the console. Invoice and statement PDFs when someone wants paper.",
   },
 ];
 
@@ -106,9 +106,9 @@ export function LandingFeatures() {
     <section className="mx-auto max-w-6xl px-4 py-16 md:py-24">
       <SectionHead
         id="features"
-        eyebrow="What you can run"
-        title="The work an ISP already does, in one console"
-        body="Which modules you see depends on the plan you are on. Nothing here is a separate product you have to stitch together later."
+        eyebrow="Features"
+        title="The tools you need to run the day-to-day"
+        body="From customer accounts and invoices to MikroTik and RADIUS, the important parts of the operation stay connected. What you see in the console follows the plan you are on."
       />
       <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {FEATURES.map((f) => (
@@ -131,8 +131,8 @@ export function LandingPayments() {
       <div className="mx-auto max-w-6xl px-4 py-16 md:py-24">
         <SectionHead
           eyebrow="Collections"
-          title="M-Pesa hits the account, not a spreadsheet"
-          body="A payment is checked, allocated to the invoice, written on the ledger, and used to renew the service. That is the same loop your cashier already does — without chasing a paybill SMS."
+          title="Payments that make sense in your accounts"
+          body="When a customer pays, your team needs to know who paid, what it was for, and whether the account is settled. A matched payment is allocated to the invoice, written on the ledger, and used to renew the service."
         />
         <ol className="mt-10 flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
           {PAY_FLOW.map((step, i) => (
@@ -150,10 +150,11 @@ export function LandingPayments() {
         </ol>
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
           <article className="rounded-xl border border-border bg-bg p-5">
-            <p className="text-sm font-medium">What is wired today</p>
+            <p className="text-sm font-medium">M-Pesa and supported gateways</p>
             <p className="mt-2 text-sm leading-relaxed text-muted">
-              Safaricom M-Pesa through Daraja — STK, paybill, and till — and Kopo Kopo. You put in your own
-              credentials for each ISP.
+              Safaricom M-Pesa through Daraja — STK, paybill and till — and Kopo Kopo. You put in your own
+              credentials for each ISP. Payment records, invoice allocation, balances and history stay on the
+              account.
             </p>
           </article>
           <article className="rounded-xl border border-border bg-bg p-5">
@@ -174,18 +175,18 @@ export function LandingMessaging() {
     <section id="messaging" className="mx-auto max-w-6xl scroll-mt-24 px-4 py-16 md:py-24">
       <SectionHead
         eyebrow="Customer messages"
-        title="Tell the customer what happened to the line"
-        body="Most of these messages already exist in the billing cycle. You pick SMS, WhatsApp, or email, and which provider sends them."
+        title="Keep customers informed"
+        body="Customers want to know when an invoice is due, whether M-Pesa went through, and why the line is off. Send those messages without keeping a separate list for every channel."
       />
       <div className="mt-10 grid gap-4 md:grid-cols-2">
         <ul className="grid gap-3 text-sm leading-relaxed text-muted">
           {[
-            "Payment received",
-            "Invoice due or overdue",
-            "Service suspended",
-            "Service restored after payment",
-            "New connection is live",
-            "General notices to a customer",
+            "Payment confirmations",
+            "Invoice reminders",
+            "Service suspension notices",
+            "Service restoration messages",
+            "New connection updates",
+            "General customer communication",
           ].map((item) => (
             <li key={item} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3">
               <Smartphone className="size-4 text-accent" />
@@ -194,7 +195,7 @@ export function LandingMessaging() {
           ))}
         </ul>
         <article className="rounded-xl border border-border bg-surface p-5 md:p-6">
-          <p className="text-sm font-medium">How messages go out</p>
+          <p className="text-sm font-medium">SMS, WhatsApp and email</p>
           <p className="mt-3 text-sm leading-relaxed text-muted">
             SMS can go through Africa’s Talking, Talksasa, Webfam, Blessed Texts / Hostpinnacle, Twilio, or
             Advanta. WhatsApp uses Meta Cloud API. Email is sent when a mail provider is configured; otherwise it
@@ -210,32 +211,32 @@ const SOLUTIONS: { icon: LucideIcon; title: string; body: string }[] = [
   {
     icon: Wifi,
     title: "Wireless ISPs",
-    body: "Packages, PPPoE usernames, and M-Pesa on a MikroTik last mile — the usual WISP day, without a second system for the money.",
+    body: "Customers, packages, billing and PPPoE on a MikroTik last mile — the usual WISP day, without a second system for the money.",
   },
   {
     icon: Cable,
     title: "Fibre ISPs",
-    body: "Activations, static IPs, invoices, and CPE work for FTTx crews who need the account and the ONT in the same place.",
+    body: "Keep fibre customers, services, payments and CPE work together as the base grows — account and ONT in the same place.",
   },
   {
     icon: Ticket,
     title: "Hotspot operators",
-    body: "Vouchers, sessions, and walk-in payments next to any PPPoE customers you also run. Not a standalone hotspot box.",
+    body: "Vouchers, customers, payments and access without a separate set of records for walk-ins.",
   },
   {
     icon: Users,
-    title: "Small and growing ISPs",
-    body: "Start with a handful of customers and add routers, staff, and modules as the plan allows. Existing accounts are not wiped when you change plan.",
+    title: "Growing ISPs",
+    body: "Start with what you need today. Add routers, staff and modules as the plan allows. Existing accounts are not wiped when you change plan.",
   },
   {
     icon: Network,
-    title: "Several sites, one ISP",
-    body: "Multiple routers and POPs sit under one ISP account. A different company should use its own account so the books stay apart.",
+    title: "Multi-site ISPs",
+    body: "Several routers and locations under one ISP account, so the team shares one view of customers and services. A different company should use its own account.",
   },
   {
     icon: Share2,
-    title: "Resellers and partners",
-    body: "Give a partner their customers and wallet without handing over your whole network, when the reseller module is on the plan.",
+    title: "Resellers",
+    body: "Customers, services and wallets for partners, without handing over the rest of the business, when the reseller module is on the plan.",
   },
 ];
 
@@ -246,8 +247,8 @@ export function LandingSolutions() {
         <SectionHead
           id="solutions"
           eyebrow="Who it is for"
-          title="The same console, used the way each ISP actually works"
-          body="Wireless, fibre, hotspot, and reseller businesses all bill customers and keep them online. The difference is the access method and how money comes in."
+          title="Built around the way ISPs work"
+          body="Different ISPs have different networks, but many of the daily jobs are the same: accounts, packages, money in, and who is allowed online."
         />
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {SOLUTIONS.map((s) => (
@@ -271,18 +272,18 @@ const STEPS = [
   },
   {
     n: "02",
-    title: "Set up the ISP",
-    body: "Add packages, staff, and the company details that appear on invoices. Branding, if you want it, is set here.",
+    title: "Add customers and services",
+    body: "Create the account, assign a package, and activate PPPoE, hotspot or a static service. You can import a customer CSV if you already have a list.",
   },
   {
     n: "03",
-    title: "Add customers and services",
-    body: "Create accounts, pick a package, and activate PPPoE, hotspot, or a static service. You can also import a customer CSV.",
+    title: "Connect what you already use",
+    body: "Enrol MikroTik over the WireGuard agent, point RADIUS at your access, and put in M-Pesa or Kopo Kopo keys. You do not rebuild the last mile.",
   },
   {
     n: "04",
-    title: "Connect routers and M-Pesa",
-    body: "Enrol MikroTik over the WireGuard agent, point RADIUS at your access, and put in Daraja or Kopo Kopo keys. Daily work then happens in the console.",
+    title: "Run the daily work",
+    body: "Invoices follow the service, payments update the account, and access can be suspended or restored from the same place.",
   },
 ];
 
@@ -291,8 +292,8 @@ export function LandingHow() {
     <section className="mx-auto max-w-6xl px-4 py-16 md:py-24">
       <SectionHead
         eyebrow="Getting started"
-        title="From signup to the first online customer"
-        body="You keep the radios, fibre, and routers you already have. This is the operations layer you log into after that."
+        title="Get started without changing everything at once"
+        body="You do not need to rebuild the network to keep better books. Set up the account, add customers and services, connect the routers and payments you already use, and run the day from here."
       />
       <ol className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {STEPS.map((s) => (
@@ -328,14 +329,14 @@ export function LandingArchitecture() {
     <section id="architecture" className="scroll-mt-24 border-y border-border bg-surface/60">
       <div className="mx-auto max-w-6xl px-4 py-16 md:py-24">
         <SectionHead
-          eyebrow="How it sits on the network"
-          title="It does not replace your radios or fibre"
-          body="The console sits between the office and the access network. Customers, invoices, and M-Pesa live here. RADIUS and the MikroTik agent tell the network who is allowed on. GenieACS, when you use it, talks to the CPE. If the office system is unreachable, the routers still forward traffic they already have."
+          eyebrow="How it fits"
+          title="How it fits into your network"
+          body="This software does not replace your routers, access points or last mile. The office side — customers, packages, billing and payments — sits here. MikroTik and FreeRADIUS handle who is allowed on. GenieACS, when you use it, talks to the CPE. If the office connection drops, the routers still forward the sessions they already have."
         />
         <div className="mt-10 grid gap-4 md:grid-cols-2">
           <Flow
-            title="Account to the internet"
-            steps={["Customer", "Invoice", "M-Pesa", "RADIUS", "MikroTik", "Internet"]}
+            title="In simple terms"
+            steps={["Customer", "Service", "Billing", "Payment", "Network access", "Internet"]}
           />
           <Flow title="Customer equipment" steps={["Customer", "CPE", "GenieACS", "Access network"]} />
         </div>
@@ -347,83 +348,31 @@ export function LandingArchitecture() {
 const FAQS: { q: string; a: string }[] = [
   {
     q: "What can I manage with ISP Solutions?",
-    a: "Customer accounts, packages, invoices, M-Pesa and Kopo Kopo payments, PPPoE and hotspot access, MikroTik routers, RADIUS sessions, tickets, notifications, and reports. CPE through GenieACS is available on plans that include it.",
+    a: "Customer accounts, packages, billing, payments, network access, MikroTik routers, RADIUS, hotspot, CPE through GenieACS where the plan includes it, notifications, reports, tickets and the rest of the day-to-day.",
   },
   {
-    q: "Can I connect my MikroTik routers?",
-    a: "Yes. Routers enrol through a WireGuard agent. You do not need to publish Winbox or the API to the internet to manage them from the console.",
+    q: "Can I connect my existing MikroTik network?",
+    a: "Yes. Enrol the routers you already run over a WireGuard agent. You do not rebuild the last mile, and you do not need to publish Winbox or the API to the internet.",
   },
   {
-    q: "Does it support PPPoE?",
-    a: "Yes. PPPoE is a normal access method: username, package, session, and the invoice sit on the same customer.",
+    q: "Does it support PPPoE, hotspot and FreeRADIUS?",
+    a: "Yes. PPPoE and hotspot sit on the same customer as the invoice. FreeRADIUS handles authentication and accounting. Hotspot users and vouchers are available on plans that include that module.",
   },
   {
-    q: "Can I use FreeRADIUS?",
-    a: "RADIUS is part of the system for authenticating and accounting PPPoE (and related) sessions against the subscriber record. You are not expected to run a separate billing RADIUS beside it.",
+    q: "Can payments update accounts and restore a suspended line?",
+    a: "Yes. A matched M-Pesa or Kopo Kopo payment is posted to the invoice. Billing follows due dates and grace; overdue access can be suspended, and a qualifying payment can bring an eligible service back on.",
   },
   {
-    q: "Can payments automatically update customer accounts?",
-    a: "Yes. A matched M-Pesa or Kopo Kopo payment is allocated to the invoice, posted on the ledger, and can restore a service that was waiting on that money.",
-  },
-  {
-    q: "Can the system suspend customers when their accounts expire?",
-    a: "Yes. Billing follows due dates and grace. When the account is past that window, access can be suspended so the line does not stay open on goodwill.",
-  },
-  {
-    q: "Can customers be restored after payment?",
-    a: "Yes. Once the payment is confirmed against the invoice, the service can be brought back without a manual queue on the router.",
-  },
-  {
-    q: "Can I manage Hotspot users and vouchers?",
-    a: "Yes, on plans that include hotspot. Users, vouchers, and sessions are in the same ISP account as any PPPoE customers.",
-  },
-  {
-    q: "Can I manage customer routers or CPE devices?",
-    a: "Compatible CPE can be managed through GenieACS when that module is on your plan. It sits next to the customer, not in a separate login.",
-  },
-  {
-    q: "Does it work with GenieACS?",
-    a: "Yes, as a plan entitlement. Device workflows stay beside billing rather than in another silo.",
-  },
-  {
-    q: "Can I send SMS, WhatsApp and email notifications?",
-    a: "Yes. SMS providers are configurable. WhatsApp uses Meta Cloud API. Email goes out when a mail provider is configured; otherwise messages stay queued for that ISP.",
-  },
-  {
-    q: "Can I manage more than one network location?",
-    a: "Yes. One ISP account can hold many routers and sites. A second company should have its own account so customers and money do not mix.",
-  },
-  {
-    q: "Can my staff have different permissions?",
-    a: "Yes. Owner and staff logins are separate, and staff seats follow the plan limit. People only see what their role allows in that ISP.",
+    q: "Can I send SMS, WhatsApp and email?",
+    a: "Yes, on the channels you configure — typically payment confirmations, invoice reminders and service notices. SMS providers, Meta Cloud WhatsApp, and email when a mail provider is set.",
   },
   {
     q: "Can I import existing customers?",
     a: "Yes. There is a customer CSV import in the console, and you can export the list the same way.",
   },
   {
-    q: "What happens if my internet connection to the management system is temporarily unavailable?",
-    a: "Routers keep forwarding sessions they already have. You will not see new M-Pesa, change accounts, or push provisioning until the console and agent can reach each other again.",
-  },
-  {
-    q: "Can I use my own branding?",
-    a: "Yes. Each ISP can set colours, fonts, logo, and favicon for the console, login, and customer-facing pages. This public website always uses ISP Solutions branding.",
-  },
-  {
-    q: "Can I connect my existing MikroTik network without rebuilding it?",
-    a: "Yes. Enrol the routers you already run. Packages and customers are created in the console; you are not asked to replace the last mile.",
-  },
-  {
-    q: "Is my customer data separated from other businesses using the software?",
-    a: "Yes. Each ISP works in its own workspace. Customer, invoice, router, and payment records are not shared with other ISPs. Superadmin sees ISP metadata, not your customer list.",
-  },
-  {
-    q: "How are payments and invoices recorded?",
-    a: "Invoices live on the customer ledger with amounts, due dates, and status. Payments are stored with provider, reference, and allocation. Unmatched paybill or till hits can be assigned by hand.",
-  },
-  {
-    q: "Can I see customer statements and outstanding balances?",
-    a: "Yes. Statements and invoice PDFs can be generated from the console. Ageing and outstanding balances are in reports, and the customer portal shows the account to the subscriber.",
+    q: "Is my customer information kept separate from other businesses?",
+    a: "Yes. Each ISP works in its own workspace. Customer, invoice, router and payment records are not shared with other ISPs.",
   },
 ];
 

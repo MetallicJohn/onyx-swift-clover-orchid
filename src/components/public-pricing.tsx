@@ -68,10 +68,10 @@ export function PublicPricing() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-medium tracking-[0.2em] text-accent uppercase">Pricing</p>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Pay for the size of the operation</h2>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Simple, transparent pricing</h2>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted md:text-base">
-            Each plan sets customer, router, and staff limits, and which modules you can use. The figures below
-            come from the live catalogue — if a plan changes, this page changes with it.
+            Choose the plan that fits the size of the ISP. Each plan sets customer, router and staff limits, and
+            which modules you can use. You can move plan later. Figures below come from the live catalogue.
           </p>
         </div>
         {hasAnnual ? (
@@ -93,7 +93,7 @@ export function PublicPricing() {
             </div>
             {maxSave > 0 ? (
               <p className="mt-2 text-right text-xs text-muted">
-                Yearly billing is up to {maxSave}% less where a yearly price is listed
+                Yearly billing is available where a yearly price is listed — up to {maxSave}% less
               </p>
             ) : null}
           </div>
@@ -179,10 +179,10 @@ export function PublicPricing() {
             })}
       </div>
       <p className="mt-6 text-center text-xs text-subtle">
-        Already have an account? <Link to="/login">Sign in</Link>
+        Already have an account? <Link to="/login">Log in</Link>
         {" · "}
         <a href="/#contact" className="hover:text-muted">
-          Ask a question
+          Send a message
         </a>
       </p>
     </section>

@@ -38,10 +38,10 @@ export function LandingContact() {
       <div className="mx-auto grid max-w-6xl gap-10 px-4 py-16 md:grid-cols-[0.9fr_1.1fr] md:py-24">
         <div>
           <p className="text-xs font-medium tracking-[0.2em] text-accent uppercase">Contact</p>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Have a question about how this fits your network?</h2>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Have a question?</h2>
           <p className="mt-3 text-sm leading-relaxed text-muted md:text-base">
-            Need help getting started, or want to walk through billing and MikroTik against a real site? Send a
-            message. Direct numbers and inboxes only appear here when they have been set.
+            Not sure how this would fit your current setup? Send a message. Tell us a little about the network, how
+            many customers you manage, and what you would like to improve.
           </p>
           {hasDetails ? (
             <dl className="mt-8 grid gap-4 text-sm">
@@ -73,7 +73,7 @@ export function LandingContact() {
               ) : null}
             </dl>
           ) : (
-            <p className="mt-6 text-sm text-muted">Use the form. Extra contact details show up here once they are configured.</p>
+            <p className="mt-6 text-sm text-muted">Use the form. Direct numbers and inboxes only appear here when they have been set.</p>
           )}
           <div className="mt-8">
             <LandingSupportNote />

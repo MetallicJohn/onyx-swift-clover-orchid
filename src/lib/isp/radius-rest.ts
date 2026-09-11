@@ -164,11 +164,21 @@ function acceptBody(opts: {
   return body;
 }
 
-function sessionTimeoutSec(periodEnd: string | null, graceDays: number, now = Date.now()) {
-  if (!periodEnd) return 0;
-  const end = Date.parse(periodEnd);
-  if (Number.isNaN(end)) return 0;
-  const hard = end + Math.max(0, graceDays) * 86400_000;
+function accessUntilMs(periodEnd: string | null, graceDays: number, grantExpiresAt: string | null | undefined) {
+  const paid = periodEnd ? Date.parse(periodEnd) : NaN;
+  const pkg = Number.isFinite(paid) ? paid + Math.max(0, graceDays) * 86400_000 : 0;
+  const granted = grantExpiresAt ? Date.parse(grantExpiresAt) : NaN;
+  return Math.max(pkg, Number.isFinite(granted) ? granted : 0);
+}
+
+function sessionTimeoutSec(
+  periodEnd: string | null,
+  graceDays: number,
+  grantExpiresAt?: string | null,
+  now = Date.now(),
+) {
+  const hard = accessUntilMs(periodEnd, graceDays, grantExpiresAt);
+  if (!hard) return 0;
   return Math.max(0, Math.floor((hard - now) / 1000));
 }
 
@@ -195,11 +205,15 @@ export async function authorizeRadius(
     bundle_used_mb: number;
     bundle_mb: number;
     grace_days: number;
+    grant_expires_at: string | null;
   }>`select a.username, a.password, a.enabled, a.framed_ip, a.group_name, a.rate_limit,
-            s.status, s.period_end::text as period_end, s.bundle_used_mb, p.bundle_mb, p.grace_days
+            s.status, s.period_end::text as period_end, s.bundle_used_mb, p.bundle_mb, p.grace_days,
+            g.expires_at::text as grant_expires_at
      from radius_accounts a
      join services s on s.id = a.service_id
      join packages p on p.id = s.package_id
+     left join service_grace_periods g
+       on g.service_id = s.id and g.tenant_id = a.tenant_id and g.status = 'active'
      where a.tenant_id = ${tenantId} and a.username = ${username}
      limit 1`;
   if (!row) {
@@ -209,7 +223,8 @@ export async function authorizeRadius(
   let reason = "";
   if (!row.enabled || row.status === "suspended" || row.status === "terminated") reason = "suspended";
   else if (row.bundle_mb > 0 && row.bundle_used_mb >= row.bundle_mb) reason = "bundle";
-  else if (row.period_end && Date.parse(row.period_end) + Math.max(0, row.grace_days) * 86400_000 <= Date.now()) {
+  else if (accessUntilMs(row.period_end, row.grace_days, row.grant_expires_at) > 0
+    && accessUntilMs(row.period_end, row.grace_days, row.grant_expires_at) <= Date.now()) {
     reason = "expired";
   }
   if (reason) {
@@ -228,7 +243,7 @@ export async function authorizeRadius(
       rateLimit: row.rate_limit,
       framedIp: row.framed_ip,
       group: row.group_name,
-      sessionTimeout: sessionTimeoutSec(row.period_end, row.grace_days),
+      sessionTimeout: sessionTimeoutSec(row.period_end, row.grace_days, row.grant_expires_at),
     }),
   };
 }

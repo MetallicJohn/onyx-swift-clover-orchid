@@ -11,6 +11,8 @@ import { getKopokopo, saveKopokopo, testKopokopo } from "@/lib/isp/server-kopo";
 import { getMpesa, saveMpesa, savePublicBase, testMpesa } from "@/lib/isp/server-mpesa";
 import { getPlan, listTicketStaff, recordPlanPayment, sendPlanStk, setPlan, createStaffAccount, changeMemberRole } from "@/lib/isp/server-more";
 import { checkSmsAccount, confirmStk, getMessaging, listProviders, saveMessaging, testMessaging, toggleProvider, workspaceSlug } from "@/lib/isp/server-ops";
+import { getGracePolicyFn, saveGracePolicyFn } from "@/lib/isp/server-grace";
+import type { GracePolicy } from "@/lib/isp/grace";
 import { downloadWireGuardServer, getVpsPublishGuide, getWireGuardHub, rotateWireGuardHub, saveWireGuardHub } from "@/lib/isp/server-wg";
 import { vpsInstallCommand, vpsUpdateCommand } from "@/lib/isp/vps-publish";
 import { cn, kes } from "@/lib/utils";
@@ -18,7 +20,7 @@ import type { Workspace } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app/settings")({ component: SettingsPage });
 
-type TabId = "company" | "appearance" | "network" | "sms" | "payment" | "plan" | "staff";
+type TabId = "company" | "appearance" | "network" | "sms" | "payment" | "plan" | "staff" | "grace";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "company", label: "Company info" },
@@ -28,6 +30,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "payment", label: "Payment" },
   { id: "plan", label: "Plan" },
   { id: "staff", label: "Staff" },
+  { id: "grace", label: "Grace period" },
 ];
 
 type MsgForm = {
@@ -163,9 +166,11 @@ function SettingsPage() {
     notes: string[];
   } | null>(null);
   const [vpsCopied, setVpsCopied] = useState<"install" | "update" | null>(null);
+  const [gracePolicy, setGracePolicy] = useState<GracePolicy | null>(null);
+  const [graceBusy, setGraceBusy] = useState(false);
 
   async function load() {
-    const [d, s, p, m, k, daraja, sub, st, branding] = await Promise.all([
+    const [d, s, p, m, k, daraja, sub, st, branding, gp] = await Promise.all([
       getDashboard(),
       workspaceSlug(),
       listProviders(),
@@ -175,8 +180,10 @@ function SettingsPage() {
       getPlan(),
       listTicketStaff(),
       getDocumentBranding(),
+      getGracePolicyFn(),
     ]);
     setWs(d.workspace);
+    setGracePolicy(gp);
     setSlug(s.slug);
     setProviders(p.providers);
     setForm({
@@ -1227,6 +1234,163 @@ function SettingsPage() {
             {staff.length === 0 ? <li className="px-4 py-6 text-sm text-muted">No members yet.</li> : null}
           </ul>
         </div>
+      ) : null}
+
+      {tab === "grace" && gracePolicy ? (
+        <form
+          className="grid gap-4 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setGraceBusy(true);
+            setSaved(null);
+            try {
+              const next = await saveGracePolicyFn({
+                data: {
+                  staff_max_days: gracePolicy.staff_max_days,
+                  staff_preset_days: gracePolicy.staff_preset_days,
+                  allow_custom_days: gracePolicy.allow_custom_days,
+                  customer_self_service: gracePolicy.customer_self_service,
+                  customer_max_days: gracePolicy.customer_max_days,
+                  customer_preset_days: gracePolicy.customer_preset_days,
+                  customer_max_uses_per_period: gracePolicy.customer_max_uses_per_period,
+                  customer_min_account_days: gracePolicy.customer_min_account_days,
+                  customer_require_prior_payment: gracePolicy.customer_require_prior_payment,
+                  customer_block_if_already_grace: gracePolicy.customer_block_if_already_grace,
+                  customer_cooldown_days: gracePolicy.customer_cooldown_days,
+                  notify_nearing_hours: gracePolicy.notify_nearing_hours,
+                },
+              });
+              setGracePolicy(next);
+              setSaved("Grace period terms saved.");
+            } catch (err) {
+              setSaved(err instanceof Error ? err.message : "Could not save grace terms");
+            } finally {
+              setGraceBusy(false);
+            }
+          }}
+        >
+          <div className="sm:col-span-2">
+            <h2 className="font-medium">Grace Period terms</h2>
+            <p className="mt-1 text-sm text-muted">
+              Staff can grant temporary access after expiry without changing the renewal date. Customers can add
+              grace themselves only when they meet the terms below.
+            </p>
+          </div>
+          <Field label="Staff maximum days">
+            <Input
+              type="number"
+              min={1}
+              max={30}
+              value={gracePolicy.staff_max_days}
+              onChange={(e) => setGracePolicy({ ...gracePolicy, staff_max_days: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Staff day options (comma separated)">
+            <Input
+              value={gracePolicy.staff_preset_days.join(",")}
+              onChange={(e) =>
+                setGracePolicy({
+                  ...gracePolicy,
+                  staff_preset_days: e.target.value.split(/[,\s]+/).map(Number).filter((n) => n > 0),
+                })
+              }
+            />
+          </Field>
+          <label className="flex h-11 items-center gap-2 rounded-md border border-border bg-bg px-3 text-sm sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={gracePolicy.allow_custom_days}
+              onChange={(e) => setGracePolicy({ ...gracePolicy, allow_custom_days: e.target.checked })}
+            />
+            Allow staff to enter a custom number of days
+          </label>
+          <label className="flex h-11 items-center gap-2 rounded-md border border-border bg-bg px-3 text-sm sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={gracePolicy.customer_self_service}
+              onChange={(e) => setGracePolicy({ ...gracePolicy, customer_self_service: e.target.checked })}
+            />
+            Allow eligible customers to add grace from the portal
+          </label>
+          <Field label="Customer maximum days">
+            <Input
+              type="number"
+              min={1}
+              max={30}
+              value={gracePolicy.customer_max_days}
+              onChange={(e) => setGracePolicy({ ...gracePolicy, customer_max_days: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Customer day options (comma separated)">
+            <Input
+              value={gracePolicy.customer_preset_days.join(",")}
+              onChange={(e) =>
+                setGracePolicy({
+                  ...gracePolicy,
+                  customer_preset_days: e.target.value.split(/[,\s]+/).map(Number).filter((n) => n > 0),
+                })
+              }
+            />
+          </Field>
+          <Field label="Uses allowed per period">
+            <Input
+              type="number"
+              min={1}
+              max={12}
+              value={gracePolicy.customer_max_uses_per_period}
+              onChange={(e) => setGracePolicy({ ...gracePolicy, customer_max_uses_per_period: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Minimum account age (days)">
+            <Input
+              type="number"
+              min={0}
+              max={365}
+              value={gracePolicy.customer_min_account_days}
+              onChange={(e) => setGracePolicy({ ...gracePolicy, customer_min_account_days: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Days between customer requests">
+            <Input
+              type="number"
+              min={0}
+              max={365}
+              value={gracePolicy.customer_cooldown_days}
+              onChange={(e) => setGracePolicy({ ...gracePolicy, customer_cooldown_days: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Remind before expiry (hours)">
+            <Input
+              type="number"
+              min={1}
+              max={72}
+              value={gracePolicy.notify_nearing_hours}
+              onChange={(e) => setGracePolicy({ ...gracePolicy, notify_nearing_hours: Number(e.target.value) })}
+            />
+          </Field>
+          <label className="flex h-11 items-center gap-2 rounded-md border border-border bg-bg px-3 text-sm sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={gracePolicy.customer_require_prior_payment}
+              onChange={(e) => setGracePolicy({ ...gracePolicy, customer_require_prior_payment: e.target.checked })}
+            />
+            Require a previous confirmed payment
+          </label>
+          <label className="flex h-11 items-center gap-2 rounded-md border border-border bg-bg px-3 text-sm sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={gracePolicy.customer_block_if_already_grace}
+              onChange={(e) => setGracePolicy({ ...gracePolicy, customer_block_if_already_grace: e.target.checked })}
+            />
+            Block a second grace request while one is already active
+          </label>
+          {saved && tab === "grace" ? <p className="text-sm text-accent sm:col-span-2">{saved}</p> : null}
+          <div className="sm:col-span-2">
+            <Button type="submit" disabled={graceBusy || !hasPermission(ws?.role || "", "settings.manage")}>
+              Save terms
+            </Button>
+          </div>
+        </form>
       ) : null}
     </div>
   );

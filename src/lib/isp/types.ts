@@ -17,6 +17,9 @@ export type BillingEvent =
   | "invoice.overdue"
   | "payment.received"
   | "grace.started"
+  | "grace.granted"
+  | "grace.ending"
+  | "grace.expired"
   | "service.suspended"
   | "service.restored";
 
@@ -89,6 +92,13 @@ export type ServiceRow = {
   bundle_used_mb: number;
   bundle_mb: number;
   suspend_reason: string;
+  grace_active?: boolean;
+  grace_days_granted?: number | null;
+  grace_starts_at?: string | null;
+  grace_expires_at?: string | null;
+  grace_granted_by?: string | null;
+  grace_reason?: string | null;
+  package_grace_days?: number;
 };
 
 export type InvoiceRow = {

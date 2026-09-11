@@ -1,4 +1,5 @@
 import { tallyAging } from "./aging";
+import { listGraceReport } from "./grace";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -39,7 +40,8 @@ export async function loadReports(sql: Sql, tenantId: string) {
     select status, count(*)::int as n from tickets where tenant_id = ${tenantId} group by status`;
   const routers = await sql<{ wg_status: string; n: number }>`
     select wg_status, count(*)::int as n from routers where tenant_id = ${tenantId} group by wg_status`;
-  return { aging, daily, methods: [...methods.values()], tickets, routers };
+  const grace = await listGraceReport(sql, tenantId);
+  return { aging, daily, methods: [...methods.values()], tickets, routers, grace };
 }
 
 export async function loadAudit(sql: Sql, tenantId: string) {

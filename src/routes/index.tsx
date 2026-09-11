@@ -18,11 +18,11 @@ export const Route = createFileRoute("/")({
   component: Home,
   head: () => ({
     meta: [
-      { title: `${APP_NAME} — Customers, billing, and network operations` },
+      { title: `${APP_NAME} — Run your ISP from one place` },
       {
         name: "description",
         content:
-          "Operations software for ISPs: customers, invoices, M-Pesa, PPPoE, hotspot, MikroTik, RADIUS, and reports. Each ISP works in its own workspace.",
+          "Keep customers, billing, payments and network operations connected. ISP software for M-Pesa, PPPoE, hotspot, MikroTik, RADIUS and reports.",
       },
     ],
   }),

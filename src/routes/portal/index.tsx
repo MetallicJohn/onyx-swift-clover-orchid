@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { BrandMark } from "@/components/isp/brand-mark";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/input";
+import { Field, Input, Select } from "@/components/ui/input";
 import { usePublicTheme } from "@/components/theme-provider";
 import { APP_NAME } from "@/lib/brand";
 import { downloadPdf } from "@/lib/isp/pdf-client";
@@ -15,6 +15,7 @@ import {
   portalOpenTicket,
   portalPasswordSignIn,
   portalPay,
+  portalRequestGrace,
   requestPortalOtp,
   verifyPortalLogin,
 } from "@/lib/isp/server-ops";
@@ -37,6 +38,8 @@ function PortalHome() {
   const [home, setHome] = useState<Awaited<ReturnType<typeof getPortalHome>> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ticket, setTicket] = useState("");
+  const [graceDays, setGraceDays] = useState<Record<string, number>>({});
+  const [graceMsg, setGraceMsg] = useState<string | null>(null);
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [pwMsg, setPwMsg] = useState<string | null>(null);
 
@@ -175,15 +178,74 @@ function PortalHome() {
       <section className="mt-8 rounded-xl bg-surface p-5 shadow-card">
         <h2 className="font-medium">Services</h2>
         <ul className="mt-3 divide-y divide-border">
-          {home.services.map((s, i) => (
-            <li key={`${s.username}-${i}`} className="flex items-center justify-between py-3 text-sm">
-              <span>
-                {s.package_name} · {s.access_method}
-              </span>
-              <Badge tone={statusTone(s.status)}>{s.status}</Badge>
-            </li>
-          ))}
+          {home.services.map((s) => {
+            const elig = home.eligibility?.find((e) => e.service_id === s.id);
+            return (
+              <li key={`${s.username}-${s.id}`} className="py-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span>
+                    {s.package_name} · {s.access_method}
+                  </span>
+                  <Badge tone={statusTone(s.status === "grace" ? "grace" : s.status)}>
+                    {s.status === "grace" ? "Grace Period" : s.status}
+                  </Badge>
+                </div>
+                <div className="mt-2 space-y-1 text-xs text-muted">
+                  <div>Renewal date: {s.period_end ? s.period_end.slice(0, 10) : "—"}</div>
+                  {s.grace_expires_at ? (
+                    <div>
+                      Grace access until: {s.grace_expires_at.slice(0, 10)}
+                      {s.grace_days_granted ? ` · ${s.grace_days_granted} days granted` : ""}
+                    </div>
+                  ) : s.status === "suspended" ? (
+                    <div>Grace Period expired — service suspended</div>
+                  ) : null}
+                  {s.period_end && s.status !== "active" ? (
+                    <div>Service expired: {s.period_end.slice(0, 10)}</div>
+                  ) : null}
+                </div>
+                {elig?.ok ? (
+                  <form
+                    className="mt-3 flex flex-wrap items-end gap-2"
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      setGraceMsg(null);
+                      setError(null);
+                      try {
+                        const days = graceDays[s.id] || elig.allowed_days[0];
+                        const r = await portalRequestGrace({ data: { token, service_id: s.id, days } });
+                        setGraceMsg(`Grace Period granted until ${r.expires_at.slice(0, 10)}. Renewal date stays ${r.period_end?.slice(0, 10) || "unchanged"}.`);
+                        await refresh(token);
+                      } catch (ex) {
+                        setError(ex instanceof Error ? ex.message : "Could not add grace");
+                      }
+                    }}
+                  >
+                    <Field label="Add Grace Period">
+                      <Select
+                        value={String(graceDays[s.id] || elig.allowed_days[0])}
+                        onChange={(e) => setGraceDays((m) => ({ ...m, [s.id]: Number(e.target.value) }))}
+                      >
+                        {elig.allowed_days.map((d) => (
+                          <option key={d} value={d}>
+                            {d} day{d === 1 ? "" : "s"}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Button type="submit" size="sm">
+                      Add grace
+                    </Button>
+                  </form>
+                ) : elig?.reason ? (
+                  <p className="mt-2 text-xs text-subtle">{elig.reason}</p>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
+        {graceMsg ? <p className="mt-3 text-sm text-ok">{graceMsg}</p> : null}
+        {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
       </section>
       <section className="mt-4 rounded-xl bg-surface p-5 shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-2">

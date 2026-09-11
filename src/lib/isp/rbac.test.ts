@@ -48,3 +48,13 @@ test("support access is read-only", () => {
   assert.equal(hasPermission("support", "settings.manage"), false);
   assert.equal(hasPermission("support", "radius.manage"), false);
 });
+
+test("customer care can grant grace; technician cannot", () => {
+  assert.equal(hasPermission("customer_care", "services.grace.grant"), true);
+  assert.equal(hasPermission("customer_care", "services.grace.extend"), true);
+  assert.equal(hasPermission("customer_care", "services.grace.revoke"), true);
+  assert.equal(hasPermission("finance", "services.grace.grant"), true);
+  assert.equal(hasPermission("technician", "services.grace.grant"), false);
+  assert.equal(hasPermission("support", "services.grace.revoke"), false);
+  assert.throws(() => assertPermission("technician", "services.grace.grant"), /Forbidden/);
+});
