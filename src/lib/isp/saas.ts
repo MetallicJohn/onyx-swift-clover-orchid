@@ -2,6 +2,12 @@ import { APP_NAME } from "../brand.ts";
 import { nid } from "../utils.ts";
 import { getPlan, listPlans, PLANS as SEEDED_PLANS, type PlanRecord } from "./plans";
 import { stkAdapter } from "./providers";
+import {
+  recordTrialClaims,
+  tenantTrialIdentity,
+  trialAlreadyUsed,
+  TRIAL_USED_MESSAGE,
+} from "./trial-claims";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -149,24 +155,29 @@ export async function readSubscription(sql: Sql, tenantId: string) {
   return rows[0] ?? null;
 }
 
-export async function ensureSubscription(sql: Sql, tenantId: string): Promise<PlanSnapshot> {
-  const row = await readSubscription(sql, tenantId);
-  if (row) {
-    const catalog = await getPlan(sql, row.plan);
-    return asSnapshot(row, catalog?.annual_kes ?? 0);
-  }
-  const spec = await loadPlanOrThrow(sql, "trial");
-  const end = new Date(Date.now() + (spec.trial_days || 14) * 86400_000);
+function liveTrial(snap: PlanSnapshot) {
+  return snap.plan === "trial" && snap.status === "trial" && !snap.trial_expired;
+}
+
+async function insertSubscription(
+  sql: Sql,
+  tenantId: string,
+  spec: PlanRecord,
+  opts: { status: string; periodEnd: Date; trialEndsAt: Date | null },
+) {
   const id = nid("sub");
+  const period = opts.periodEnd.toISOString();
+  const trialEnd = opts.trialEndsAt ? opts.trialEndsAt.toISOString() : null;
   await sql.query(
     `insert into tenant_subscriptions (
        id, tenant_id, plan, status, max_customers, max_routers, max_services, max_admins,
        max_storage_gb, api_requests_per_day, monthly_kes, period_end, billing_cycle, support_level,
        entitlements, started_at, trial_ends_at
-     ) values ($1,$2,'trial','trial',$3,$4,$5,$6,$7,$8,$9,$10,'monthly',$11,$12,now(),$10)`,
+     ) values ($1,$2,'trial',$3,$4,$5,$6,$7,$8,$9,$10,$11,'monthly',$12,$13,now(),$14)`,
     [
       id,
       tenantId,
+      opts.status,
       spec.max_customers,
       spec.max_routers,
       spec.max_services,
@@ -174,29 +185,59 @@ export async function ensureSubscription(sql: Sql, tenantId: string): Promise<Pl
       spec.max_storage_gb,
       spec.api_requests_per_day,
       spec.monthly_kes,
-      end.toISOString(),
+      period,
       spec.support_level,
       JSON.stringify(spec.entitlements),
+      trialEnd,
     ],
   );
-  return asSnapshot({
-    id,
-    plan: "trial",
+  return asSnapshot(
+    {
+      id,
+      plan: "trial",
+      status: opts.status,
+      max_customers: spec.max_customers,
+      max_routers: spec.max_routers,
+      max_services: spec.max_services,
+      max_admins: spec.max_admins,
+      monthly_kes: spec.monthly_kes,
+      billing_cycle: "monthly",
+      period_end: period,
+      pending_plan: "",
+      pending_invoice_id: "",
+      trial_ends_at: trialEnd,
+      entitlements: spec.entitlements,
+      support_level: spec.support_level,
+      started_at: new Date().toISOString(),
+    },
+    spec.annual_kes,
+  );
+}
+
+export async function ensureSubscription(sql: Sql, tenantId: string): Promise<PlanSnapshot> {
+  const row = await readSubscription(sql, tenantId);
+  if (row) {
+    const catalog = await getPlan(sql, row.plan);
+    return asSnapshot(row, catalog?.annual_kes ?? 0);
+  }
+  const spec = await loadPlanOrThrow(sql, "trial");
+  const identity = await tenantTrialIdentity(sql, tenantId);
+  if (await trialAlreadyUsed(sql, identity)) {
+    const ended = new Date(Date.now() - 86400_000);
+    return insertSubscription(sql, tenantId, spec, {
+      status: "expired",
+      periodEnd: ended,
+      trialEndsAt: ended,
+    });
+  }
+  const end = new Date(Date.now() + (spec.trial_days || 14) * 86400_000);
+  const snap = await insertSubscription(sql, tenantId, spec, {
     status: "trial",
-    max_customers: spec.max_customers,
-    max_routers: spec.max_routers,
-    max_services: spec.max_services,
-    max_admins: spec.max_admins,
-    monthly_kes: spec.monthly_kes,
-    billing_cycle: "monthly",
-    period_end: end.toISOString(),
-    pending_plan: "",
-    pending_invoice_id: "",
-    trial_ends_at: end.toISOString(),
-    entitlements: spec.entitlements,
-    support_level: spec.support_level,
-    started_at: new Date().toISOString(),
-  }, spec.annual_kes);
+    periodEnd: end,
+    trialEndsAt: end,
+  });
+  await recordTrialClaims(sql, { ...identity, tenantId });
+  return snap;
 }
 
 function periodEndFor(plan: PlanRecord, cycle: string) {
@@ -248,6 +289,8 @@ export async function activatePlan(
   );
   if (status === "trial") {
     await sql`update tenants set status = 'trial', suspended_reason = '', suspended_at = null where id = ${tenantId}`;
+    const identity = await tenantTrialIdentity(sql, tenantId);
+    await recordTrialClaims(sql, { ...identity, tenantId });
   } else {
     await sql`update tenants set status = 'active', suspended_reason = '', suspended_at = null
       where id = ${tenantId}`;
@@ -306,10 +349,21 @@ export async function requestPlanChange(sql: Sql, tenantId: string, plan: PlanCo
   const spec = await loadPlanOrThrow(sql, plan);
   const sub = await ensureSubscription(sql, tenantId);
   if (spec.monthly_kes === 0 || spec.code === "trial") {
-    if (sub.pending_invoice_id) await voidOpenSaasInvoice(sql, tenantId, sub.pending_invoice_id);
-    if (sub.plan === spec.code && !sub.pending_plan) {
-      return { ...sub, invoice: null as SaasInvoiceRow | null, invoices: await listSaasInvoices(sql, tenantId) };
+    if (liveTrial(sub)) {
+      if (sub.pending_invoice_id) await voidOpenSaasInvoice(sql, tenantId, sub.pending_invoice_id);
+      if (sub.plan === spec.code && !sub.pending_plan) {
+        return { ...sub, invoice: null as SaasInvoiceRow | null, invoices: await listSaasInvoices(sql, tenantId) };
+      }
+      await sql`update tenant_subscriptions set pending_plan = '', pending_invoice_id = ''
+        where tenant_id = ${tenantId}`;
+      const next = await ensureSubscription(sql, tenantId);
+      return { ...next, invoice: null as SaasInvoiceRow | null, invoices: await listSaasInvoices(sql, tenantId) };
     }
+    const identity = await tenantTrialIdentity(sql, tenantId);
+    if ((await trialAlreadyUsed(sql, identity)) || sub.trial_ends_at) {
+      throw new Error(TRIAL_USED_MESSAGE);
+    }
+    if (sub.pending_invoice_id) await voidOpenSaasInvoice(sql, tenantId, sub.pending_invoice_id);
     const next = await activatePlan(sql, tenantId, spec.code);
     return { ...next, invoice: null as SaasInvoiceRow | null, invoices: await listSaasInvoices(sql, tenantId) };
   }
@@ -464,11 +518,15 @@ export async function loadPlanDesk(sql: Sql, tenantId: string) {
     annual_kes: p.annual_kes,
     entitlements: p.entitlements,
   }));
+  const identity = await tenantTrialIdentity(sql, tenantId);
+  const claimed = await trialAlreadyUsed(sql, identity);
+  const trialAvailable = liveTrial(current) || (!claimed && !current.trial_ends_at);
   return {
     ...current,
     catalog,
     invoice: pending,
     invoices,
+    trial_available: trialAvailable,
   };
 }
 
@@ -476,6 +534,12 @@ export async function assertTenantOperable(sql: Sql, tenantId: string) {
   const [row] = await sql<{ status: string }>`select status from tenants where id = ${tenantId}`;
   if (row?.status === "suspended") {
     throw new Error(`This ISP is suspended. Contact ${APP_NAME} support.`);
+  }
+  const sub = await readSubscription(sql, tenantId);
+  if (!sub) return;
+  const left = daysLeft(sub.period_end);
+  if (sub.status === "expired" || (sub.plan === "trial" && left < 0)) {
+    throw new Error("Your free trial has ended. Choose a paid plan in Settings → Plan.");
   }
 }
 

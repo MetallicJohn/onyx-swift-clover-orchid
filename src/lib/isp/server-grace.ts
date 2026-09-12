@@ -20,7 +20,8 @@ async function actorLabel(sql: Awaited<ReturnType<typeof requireWs>>["sql"], use
 export const getGracePolicyFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     return getGracePolicy(sql, tenantId);
   });
 

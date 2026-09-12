@@ -9,11 +9,13 @@ test("signup always lands in the ISP console", () => {
 
 test("superadmin login may continue to /platform only", () => {
   assert.equal(loginDestination("?next=/platform", "in"), "/platform");
+  assert.equal(loginDestination("?next=/superadmin", "in"), "/platform");
   assert.equal(loginDestination("?next=/platform/tenants", "in"), "/app");
   assert.equal(loginDestination("?next=https://evil.example", "in"), "/app");
   assert.equal(loginDestination("?next=//evil.example", "in"), "/app");
   assert.equal(loginDestination("", "in"), "/app");
   assert.equal(isAllowedLoginNext("/platform"), true);
+  assert.equal(isAllowedLoginNext("/superadmin"), true);
   assert.equal(isAllowedLoginNext("/app"), true);
   assert.equal(isAllowedLoginNext("/login"), false);
 });

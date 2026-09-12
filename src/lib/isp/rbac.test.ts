@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { assertPermission, assertTenantMatch, hasPermission } from "./rbac.ts";
+import {
+  assertPermission,
+  assertTenantMatch,
+  canAccessAppPath,
+  hasPermission,
+  permissionForAppPath,
+  ROLE_GUIDE,
+  STAFF_ROLES,
+} from "./rbac.ts";
 
 test("technician cannot manage payments or routers", () => {
   assert.equal(hasPermission("technician", "payments.manage"), false);
@@ -66,4 +75,55 @@ test("communications send is not implied by viewing customers", () => {
   assert.equal(hasPermission("support", "communications.send"), false);
   assert.equal(hasPermission("customer_care", "communications.send"), true);
   assert.throws(() => assertPermission("technician", "communications.send"), /Forbidden/);
+});
+
+test("app paths follow the role, not the URL", () => {
+  assert.equal(canAccessAppPath("technician", "/app"), true);
+  assert.equal(canAccessAppPath("technician", "/app/tickets"), true);
+  assert.equal(canAccessAppPath("technician", "/app/field"), true);
+  assert.equal(canAccessAppPath("technician", "/app/customers"), true);
+  assert.equal(canAccessAppPath("technician", "/app/billing"), false);
+  assert.equal(canAccessAppPath("technician", "/app/settings"), false);
+  assert.equal(canAccessAppPath("technician", "/app/routers"), false);
+  assert.equal(canAccessAppPath("finance", "/app/billing"), true);
+  assert.equal(canAccessAppPath("finance", "/app/statements"), true);
+  assert.equal(canAccessAppPath("finance", "/app/radius"), false);
+  assert.equal(canAccessAppPath("network_engineer", "/app/routers"), true);
+  assert.equal(canAccessAppPath("network_engineer", "/app/hotspot"), true);
+  assert.equal(canAccessAppPath("network_engineer", "/app/billing"), false);
+  assert.equal(canAccessAppPath("customer_care", "/app/customers"), true);
+  assert.equal(canAccessAppPath("customer_care", "/app/import"), true);
+  assert.equal(canAccessAppPath("customer_care", "/app/settings"), false);
+  assert.equal(canAccessAppPath("isp_owner", "/app/settings"), true);
+  assert.equal(canAccessAppPath("support", "/app/customers"), true);
+  assert.equal(canAccessAppPath("support", "/app/settings"), false);
+  assert.equal(canAccessAppPath("technician", "/app/notifications"), false);
+  assert.equal(permissionForAppPath("/app"), null);
+});
+
+test("staff guide covers every inviteable role and excludes support", () => {
+  assert.deepEqual(
+    ROLE_GUIDE.map((r) => r.role),
+    ["isp_owner", "isp_admin", "finance", "customer_care", "network_engineer", "technician", "support"],
+  );
+  assert.equal(STAFF_ROLES.some((r) => r.role === "support"), false);
+  assert.equal(STAFF_ROLES.length, 6);
+});
+
+test("sensitive list and export endpoints assert a permission", () => {
+  const server = readFileSync(new URL("./server.ts", import.meta.url), "utf8");
+  assert.match(server, /export const exportCustomersCsv[\s\S]+?assertPermission\(workspace.role, "customers.read"\)/);
+  assert.match(server, /export const renameTenant[\s\S]+?assertPermission\(workspace.role, "settings.manage"\)/);
+  const more = readFileSync(new URL("./server-more.ts", import.meta.url), "utf8");
+  assert.match(more, /export const listTicketStaff[\s\S]+?assertPermission\(role, "tickets.read"\)/);
+  assert.match(more, /export const getReports[\s\S]+?assertPermission\(role, "invoices.read"\)/);
+  const ops = readFileSync(new URL("./server-ops.ts", import.meta.url), "utf8");
+  assert.match(ops, /export const listRadius[\s\S]+?assertPermission\(role, "radius.manage"\)/);
+  assert.match(ops, /export const listHotspot[\s\S]+?assertPermission\(role, "radius.manage"\)/);
+  assert.match(ops, /export const listField[\s\S]+?assertPermission\(role, "jobs.update"\)/);
+  assert.match(ops, /export const getMessaging[\s\S]+?assertPermission\(role, "settings.manage"\)/);
+  const mpesa = readFileSync(new URL("./server-mpesa.ts", import.meta.url), "utf8");
+  assert.match(mpesa, /export const getMpesa[\s\S]+?assertPermission\(role, "settings.manage"\)/);
+  const mikrotik = readFileSync(new URL("./server-mikrotik.ts", import.meta.url), "utf8");
+  assert.match(mikrotik, /export const getRouterApi[\s\S]+?assertPermission\(role, "routers.manage"\)/);
 });

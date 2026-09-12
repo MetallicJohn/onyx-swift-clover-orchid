@@ -19,6 +19,7 @@ import { Route as PortalRouteImport } from './routes/portal'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ResellerRouteImport } from './routes/reseller'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as SuperadminRouteImport } from './routes/superadmin'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAcsRouteImport } from './routes/app/acs'
@@ -111,6 +112,11 @@ const ResellerRoute = ResellerRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SuperadminRoute = SuperadminRouteImport.update({
+  id: '/superadmin',
+  path: '/superadmin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TermsRoute = TermsRouteImport.update({
@@ -340,6 +346,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/reseller': typeof ResellerRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
+  '/superadmin': typeof SuperadminRoute
   '/terms': typeof TermsRoute
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
@@ -391,6 +398,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/superadmin': typeof SuperadminRoute
   '/terms': typeof TermsRoute
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
@@ -447,6 +455,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/reseller': typeof ResellerRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
+  '/superadmin': typeof SuperadminRoute
   '/terms': typeof TermsRoute
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
@@ -504,6 +513,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/reseller'
     | '/reset-password'
+    | '/superadmin'
     | '/terms'
     | '/app/acs'
     | '/app/admin'
@@ -555,6 +565,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/privacy'
     | '/reset-password'
+    | '/superadmin'
     | '/terms'
     | '/app/acs'
     | '/app/admin'
@@ -610,6 +621,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/reseller'
     | '/reset-password'
+    | '/superadmin'
     | '/terms'
     | '/app/acs'
     | '/app/admin'
@@ -666,6 +678,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   ResellerRoute: typeof ResellerRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
+  SuperadminRoute: typeof SuperadminRoute
   TermsRoute: typeof TermsRoute
   ApiAgentAckRoute: typeof ApiAgentAckRoute
   ApiAgentHeartbeatRoute: typeof ApiAgentHeartbeatRoute
@@ -750,6 +763,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/superadmin': {
+      id: '/superadmin'
+      path: '/superadmin'
+      fullPath: '/superadmin'
+      preLoaderRoute: typeof SuperadminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/terms': {
@@ -1176,6 +1196,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   ResellerRoute: ResellerRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
+  SuperadminRoute: SuperadminRoute,
   TermsRoute: TermsRoute,
   ApiAgentAckRoute: ApiAgentAckRoute,
   ApiAgentHeartbeatRoute: ApiAgentHeartbeatRoute,

@@ -30,7 +30,7 @@ begin
     join pg_namespace n on n.oid = c.relnamespace
     join pg_attribute a on a.attrelid = c.oid and a.attname = 'tenant_id' and not a.attisdropped
     where n.nspname = 'public' and c.relkind = 'r'
-      and c.relname not in ('tenant_members', 'user_active_tenant')
+      and c.relname not in ('tenant_members', 'user_active_tenant', 'saas_trial_claims')
   loop
     execute format('alter table %I enable row level security', r.table_name);
     execute format('alter table %I force row level security', r.table_name);

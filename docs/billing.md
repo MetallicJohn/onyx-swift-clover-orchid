@@ -18,9 +18,9 @@ Invoices: issued / due / overdue / partial / paid.
 
 ISP Solutions charges the ISP tenant. Stripe is not used.
 
-- Trial is immediate (14 days).
+- Trial is immediate (14 days) and can be used **once per email or phone**. A second ISP with the same email or mobile does not get another trial — they must pick a paid plan.
 - Starter / Growth issue a platform invoice (`SUB-…`). The plan does **not** change until that invoice is paid in full via M-Pesa (STK to the company phone) or a recorded receipt.
-- Switching back to trial voids an unpaid platform invoice and reactivates trial immediately.
+- Cancelling a pending paid invoice while the trial is still running keeps the original trial dates. After a trial has been used, switching back to trial is blocked.
 
 ## Automatic access
 

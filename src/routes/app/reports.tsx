@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { assignPaybillPayments, getAuditLog, getIncomingPayments, getReports } from "@/lib/isp/server-more";
+import { hasPermission } from "@/lib/isp/rbac";
 import { kes } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/reports")({ component: ReportsPage });
@@ -51,6 +52,9 @@ function ReportsPage() {
   const [customerQ, setCustomerQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const role = data?.role || "";
+  const canReconcile = hasPermission(role, "payments.reconcile");
+  const canAudit = hasPermission(role, "audit.read");
 
   async function loadDesk() {
     try {
@@ -149,6 +153,7 @@ function ReportsPage() {
             <span className="ml-1 rounded-full bg-danger/20 px-2 py-0.5 text-xs text-danger">{desk.unmatched}</span>
           ) : null}
         </Button>
+        {canAudit ? (
         <Button
           size="sm"
           variant={tab === "audit" ? "default" : "secondary"}
@@ -163,6 +168,7 @@ function ReportsPage() {
         >
           Audit
         </Button>
+        ) : null}
       </div>
 
       {tab === "ops" && data ? (
@@ -312,10 +318,11 @@ function ReportsPage() {
           toggle={toggle}
           setSelected={setSelected}
           onAssign={() => void assign()}
+          canReconcile={canReconcile}
         />
       ) : null}
 
-      {tab === "audit" ? (
+      {tab === "audit" && canAudit ? (
         <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
           {audit.length === 0 ? <li className="px-4 py-6 text-sm text-muted">No audit rows, or you cannot read audit.</li> : null}
           {audit.map((a) => (
@@ -357,6 +364,7 @@ function PaybillDesk({
   toggle,
   setSelected,
   onAssign,
+  canReconcile,
 }: {
   desk: IncomingDesk | null;
   deskErr: string | null;
@@ -382,6 +390,7 @@ function PaybillDesk({
   toggle: (id: string, on: boolean) => void;
   setSelected: (ids: string[]) => void;
   onAssign: () => void;
+  canReconcile: boolean;
 }) {
   if (deskErr) {
     return <p className="text-sm text-danger">{deskErr === "Forbidden" ? "You cannot read payments." : deskErr}</p>;
@@ -425,6 +434,7 @@ function PaybillDesk({
         </div>
       </div>
 
+      {canReconcile ? (
       <section className="space-y-3 rounded-xl border border-border bg-surface p-4 md:p-5">
         <div>
           <h2 className="font-medium">Assign unmatched</h2>
@@ -477,6 +487,7 @@ function PaybillDesk({
         </div>
         {note ? <p className="text-sm text-muted">{note}</p> : null}
       </section>
+      ) : null}
 
       {visible.length === 0 ? (
         <p className="rounded-xl border border-border bg-surface px-4 py-8 text-center text-sm text-muted">
@@ -490,6 +501,7 @@ function PaybillDesk({
             <thead className="text-xs text-muted">
               <tr>
                 <th className="px-4 py-3">
+                  {canReconcile ? (
                   <label className="inline-flex h-11 items-center gap-2">
                     <input
                       type="checkbox"
@@ -502,6 +514,7 @@ function PaybillDesk({
                     />
                     <span className="sr-only">Select unmatched</span>
                   </label>
+                  ) : null}
                 </th>
                 <th className="px-4 py-3 font-medium">When</th>
                 <th className="px-4 py-3 font-medium">Channel</th>
@@ -517,7 +530,7 @@ function PaybillDesk({
               {visible.map((r) => (
                 <tr key={r.id} className={r.status === "unmatched" ? "bg-danger/5" : undefined}>
                   <td className="px-4 py-2">
-                    {r.status === "unmatched" ? (
+                    {canReconcile && r.status === "unmatched" ? (
                       <label className="inline-flex h-11 items-center">
                         <input
                           type="checkbox"

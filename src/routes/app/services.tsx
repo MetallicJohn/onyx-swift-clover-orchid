@@ -87,6 +87,7 @@ function ServicesPage() {
   const canGrant = hasPermission(role, "services.grace.grant");
   const canExtend = hasPermission(role, "services.grace.extend");
   const canRevoke = hasPermission(role, "services.grace.revoke");
+  const canManage = hasPermission(role, "services.manage");
   const presets = policy?.staff_preset_days?.length ? policy.staff_preset_days : [1, 2, 3, 5, 7];
   const { parentRef, virtualizer, rows: vis, padTop, padBottom } = useTableVirtualizer(services.length, 96);
 
@@ -125,10 +126,10 @@ function ServicesPage() {
             and extends the period. Grace Period keeps a line online temporarily without changing the renewal date.
           </p>
         </div>
-        <Button onClick={() => setOpen(true)}>Provision service</Button>
+        {canManage ? <Button onClick={() => setOpen(true)}>Provision service</Button> : null}
       </div>
 
-      {open ? (
+      {canManage && open ? (
         <form onSubmit={submit} className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2">
           <Field label="Customer">
             <Select value={form.customer_id} onChange={(e) => setForm({ ...form, customer_id: e.target.value })}>
@@ -221,15 +222,16 @@ function ServicesPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
-                      {s.status !== "active" ? (
+                      {canManage && s.status !== "active" ? (
                         <Button size="sm" variant="secondary" onClick={() => setStatus(s.id, "active")}>
                           Restore
                         </Button>
-                      ) : (
+                      ) : null}
+                      {canManage && s.status === "active" ? (
                         <Button size="sm" variant="ghost" onClick={() => setStatus(s.id, "suspended")}>
                           Suspend
                         </Button>
-                      )}
+                      ) : null}
                       {canGrant && !activeGrace && s.status !== "terminated" ? (
                         <Button
                           size="sm"
@@ -268,6 +270,7 @@ function ServicesPage() {
                           Revoke Grace Period
                         </Button>
                       ) : null}
+                      {canManage ? (
                       <Button
                         size="sm"
                         variant="ghost"
@@ -278,7 +281,8 @@ function ServicesPage() {
                       >
                         Disconnect
                       </Button>
-                      {s.access_method === "pppoe" ? (
+                      ) : null}
+                      {canManage && s.access_method === "pppoe" ? (
                         <Button
                           size="sm"
                           variant="ghost"

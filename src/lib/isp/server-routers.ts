@@ -3,6 +3,7 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import { agentPullUrl, agentScript, enrollFields } from "./agent";
 import { wgEnrollContext } from "./wireguard";
 import { requireWorkspace as requireWs } from "./workspace";
+import { assertPermission } from "./rbac";
 
 type RouterEnroll = {
   id: string;
@@ -47,7 +48,8 @@ export const updateRouter = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { id: string; name: string; location: string; identity: string; role: string }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
     if (!data.name.trim()) throw new Error("Name is required");
     const r = await loadRouter(sql, tenantId, data.id);
     const identity = data.identity.trim() || data.name.trim().toLowerCase();
@@ -65,7 +67,8 @@ export const copyRouterScript = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { id: string; rotate?: boolean }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
     const r = await loadRouter(sql, tenantId, data.id);
     if (data.rotate) {
       const enroll = enrollFields(r.name);

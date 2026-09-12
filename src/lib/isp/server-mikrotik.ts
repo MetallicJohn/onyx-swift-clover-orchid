@@ -13,7 +13,8 @@ export const getRouterApi = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .validator((d: { router_id: string }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
     const [r] = await sql<{
       id: string;
       name: string;
@@ -48,7 +49,8 @@ export const saveRouterApi = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { router_id: string; api_user: string; api_password: string; api_port: number; api_host: string }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
     const [r] = await sql<{ id: string; api_password: string }>`
       select id, api_password from routers where id = ${data.router_id} and tenant_id = ${tenantId}`;
     if (!r) throw new Error("Router not found");

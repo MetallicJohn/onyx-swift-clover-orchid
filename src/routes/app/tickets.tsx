@@ -8,6 +8,7 @@ import { TablePad, VirtualGrid, VirtualTableFrame } from "@/components/ui/virtua
 import { useColumnCount, useTableVirtualizer } from "@/components/ui/use-virtual-scroller";
 import { assignOpenTicket, commentOpenTicket, listTicketStaff } from "@/lib/isp/server-more";
 import { createTicket, listTickets, setTicketStatus } from "@/lib/isp/server";
+import { hasPermission } from "@/lib/isp/rbac";
 import type { TicketRow } from "@/lib/isp/types";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +42,8 @@ function TicketActions({
   onStatus,
   onCommentChange,
   onSaveNote,
+  canAssign,
+  canUpdate,
 }: {
   ticket: TicketRow;
   staff: StaffMember[];
@@ -52,11 +55,15 @@ function TicketActions({
   onStatus: (status: string) => void;
   onCommentChange: (value: string) => void;
   onSaveNote: () => void;
+  canAssign: boolean;
+  canUpdate: boolean;
 }) {
   const done = CLOSED.has(ticket.status);
   return (
     <div className="grid gap-2">
+      {canAssign || canUpdate ? (
       <div className="flex items-center gap-2">
+        {canAssign ? (
         <Select
           className="h-9 min-w-0 flex-1"
           aria-label="Assign ticket"
@@ -73,14 +80,20 @@ function TicketActions({
             </option>
           ))}
         </Select>
+        ) : null}
+        {canUpdate ? (
         <Button size="sm" variant="secondary" className="shrink-0" disabled={done} onClick={onToggleUpdate}>
           Update
         </Button>
+        ) : null}
+        {canUpdate ? (
         <Button size="sm" variant={done ? "ghost" : "secondary"} className="shrink-0" disabled={done} onClick={onClose}>
           Close
         </Button>
+        ) : null}
       </div>
-      {updating && !done ? (
+      ) : null}
+      {canUpdate && updating && !done ? (
         <div className="grid gap-2">
           <Select className="h-9" aria-label="Update status" value={ticket.status} onChange={(e) => onStatus(e.target.value)}>
             {STATUSES.map((s) => (
@@ -175,12 +188,14 @@ function TicketsPage() {
   const [view, setView] = useState<ViewMode>("grid");
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(20);
   const [page, setPage] = useState(1);
+  const [role, setRole] = useState("");
 
   async function load() {
     const [res, s] = await Promise.all([listTickets(), listTicketStaff()]);
     setTickets(res.tickets);
     setCustomers(res.customers);
     setStaff(s.staff);
+    setRole(res.workspace.role);
   }
   useEffect(() => {
     load().catch(console.error);
@@ -216,6 +231,7 @@ function TicketsPage() {
   const pageRows = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const from = filtered.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const to = Math.min(currentPage * pageSize, filtered.length);
+  const canCreate = hasPermission(role, "tickets.manage");
 
   useEffect(() => {
     setPage(1);
@@ -249,6 +265,8 @@ function TicketsPage() {
           setComment({ ...comment, [t.id]: "" });
           setUpdating(null);
         }}
+        canAssign={hasPermission(role, "tickets.manage")}
+        canUpdate={hasPermission(role, "tickets.manage") || hasPermission(role, "jobs.update")}
       />
     );
   }
@@ -260,6 +278,7 @@ function TicketsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Tickets</h1>
           <p className="text-sm text-muted">Dispatch with SLA, assignment, and comments. Field app only sees assigned jobs.</p>
         </div>
+        {canCreate ? (
         <Button
           onClick={() => {
             setOpen(true);
@@ -268,6 +287,7 @@ function TicketsPage() {
         >
           New ticket
         </Button>
+        ) : null}
       </div>
 
       <div className="space-y-3">
@@ -385,7 +405,7 @@ function TicketsPage() {
         </div>
       </div>
 
-      {open ? (
+      {canCreate && open ? (
         <form
           className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2"
           onSubmit={async (e) => {
@@ -444,7 +464,7 @@ function TicketsPage() {
       ) : null}
 
       {tickets.length === 0 ? (
-        <p className="text-sm text-muted">No tickets yet. Click New ticket to open one.</p>
+        <p className="text-sm text-muted">No tickets yet.{canCreate ? " Click New ticket to open one." : ""}</p>
       ) : filtered.length === 0 ? (
         <p className="text-sm text-muted">No tickets match these filters.</p>
       ) : view === "grid" ? (

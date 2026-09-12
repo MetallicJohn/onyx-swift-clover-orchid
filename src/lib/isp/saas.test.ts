@@ -56,3 +56,20 @@ test("switching back to trial is immediate and voids the pending invoice", async
     await close();
   }
 });
+
+test("expired trial cannot be restarted", async () => {
+  const { sql, bypass, asRole, close } = await openTestDb();
+  try {
+    await bypass();
+    await sql`insert into tenants (id, name, slug, support_email, support_phone)
+      values ('ten_x', 'X', 'xco', 'x@isp.test', '0712999000')`;
+    await asRole("ten_x");
+    const trial = await ensureSubscription(sql, "ten_x");
+    assert.equal(trial.status, "trial");
+    await sql`update tenant_subscriptions set period_end = ${new Date(Date.now() - 86400_000).toISOString()},
+      status = 'expired' where tenant_id = ${"ten_x"}`;
+    await assert.rejects(() => requestPlanChange(sql, "ten_x", "trial"), /already used a free trial/);
+  } finally {
+    await close();
+  }
+});

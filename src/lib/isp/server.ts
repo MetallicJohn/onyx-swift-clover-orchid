@@ -24,7 +24,7 @@ import { applyConfirmedPayment } from "./payments";
 import { consumeActiveGrantsForCustomer, getGracePolicy } from "./grace";
 import { groupAssignments, listTags, loadAssignments, setCustomerTags } from "./tags";
 import { assertPermission } from "./rbac";
-import { assertCustomerQuota, assertRouterQuota, assertServiceQuota, assertTenantOperable } from "./saas";
+import { assertCustomerQuota, assertRouterQuota, assertTenantOperable } from "./saas";
 import { assertFeature, featureForAccess } from "./plans";
 import { applyRls } from "./rls";
 import { loadAuthUser, provisionTenant, setCredentialPassword, changeOwnPassword, isPlatformAdmin } from "./accounts";
@@ -64,6 +64,7 @@ async function ensureWorkspace(
   displayName: string | null,
   email: string | null,
   ispName?: string | null,
+  phone?: string | null,
 ): Promise<Workspace> {
   await applyRls(sql, { bypass: true });
   const profile = await loadAuthUser(sql, userId);
@@ -79,7 +80,7 @@ async function ensureWorkspace(
   }
   const workspace =
     active ??
-    (await provisionTenant(sql, userId, { ispName, personName: person, email: mail }));
+    (await provisionTenant(sql, userId, { ispName, personName: person, email: mail, phone }));
 
   await applyRls(sql, { tenantId: workspace.tenantId, bypass: false });
   await ensureDefaultTemplates(sql, workspace.tenantId);
@@ -92,17 +93,21 @@ async function requireTenant(
   displayName?: string | null,
   email?: string | null,
   ispName?: string | null,
+  phone?: string | null,
 ) {
   const sql = await getSql();
-  const workspace = await ensureWorkspace(sql, userId, displayName ?? null, email ?? null, ispName);
+  const workspace = await ensureWorkspace(sql, userId, displayName ?? null, email ?? null, ispName, phone);
   return { sql, workspace };
 }
 
 export const bootstrapWorkspace = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { isp_name?: string }) => d)
+  .validator((d: { isp_name?: string; phone?: string }) => d)
   .handler(async ({ context, data }) => {
-    const { workspace } = await requireTenant(context.userId, null, null, data.isp_name);
+    const { assertSignupPhone } = await import("./trial-claims");
+    const phone = data.phone ? assertSignupPhone(data.phone) : "";
+    if (!phone) throw new Error("Enter a mobile number. One free trial is allowed per email or phone.");
+    const { workspace } = await requireTenant(context.userId, null, null, data.isp_name, phone);
     return workspace;
   });
 
@@ -195,6 +200,7 @@ export const listCustomers = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "customers.read");
     const rows = await sql<CustomerRow>`
       select c.id, c.type, c.name, c.phone, c.email, c.address, c.status, c.created_at::text as created_at,
         (select count(*)::int from services s where s.customer_id = c.id) as service_count,
@@ -296,6 +302,7 @@ export const listPackages = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "packages.read");
     const packages = await sql<PackageRow>`
       select id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active
       from packages where tenant_id = ${workspace.tenantId} order by price_kes`;
@@ -318,6 +325,7 @@ export const createPackage = createServerFn({ method: "POST" })
   }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "packages.manage");
     if (!data.name.trim()) throw new Error("Name is required");
     if (!["pppoe", "static", "hotspot"].includes(data.access_method)) {
       throw new Error("Access method must be PPPoE, static, or hotspot");
@@ -355,6 +363,7 @@ export const updatePackage = createServerFn({ method: "POST" })
   }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "packages.manage");
     if (!data.name.trim()) throw new Error("Name is required");
     if (!["pppoe", "static", "hotspot"].includes(data.access_method)) {
       throw new Error("Access method must be PPPoE, static, or hotspot");
@@ -395,6 +404,7 @@ export const listServices = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "services.read");
     const services = await sql<ServiceRow>`
       select s.id, s.customer_id, c.name as customer_name, s.package_id, p.name as package_name,
              s.access_method, s.username, s.static_ip, s.status, s.created_at::text as created_at,
@@ -427,8 +437,8 @@ export const createService = createServerFn({ method: "POST" })
   }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "services.manage");
     const tid = workspace.tenantId;
-    await assertServiceQuota(sql, tid);
     const [pkg] = await sql<{
       name: string;
       access_method: AccessMethod;
@@ -486,6 +496,7 @@ export const setServiceStatus = createServerFn({ method: "POST" })
   .validator((d: { id: string; status: ServiceStatus }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "services.manage");
     if (data.status === "active") {
       const [row] = await sql<{ customer_id: string }>`
         select customer_id from services where id = ${data.id} and tenant_id = ${workspace.tenantId}`;
@@ -550,6 +561,7 @@ export const listBilling = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "invoices.read");
     const tid = workspace.tenantId;
     const invoices = await sql<InvoiceRow>`
       select i.id, i.customer_id, c.name as customer_name, i.number, i.amount_kes,
@@ -606,6 +618,7 @@ export const getInvoice = createServerFn({ method: "POST" })
   .validator((d: { id: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "invoices.read");
     const tid = workspace.tenantId;
     const [invoice] = await sql<InvoiceRow & { notes: string }>`
       select i.id, i.customer_id, c.name as customer_name, i.number, i.amount_kes,
@@ -730,6 +743,7 @@ export const listRouters = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "routers.read");
     const routers = await sql<RouterRow>`
       select id, name, location, identity, role, wg_status, last_seen::text as last_seen, cpu_pct, uptime_hours,
              wg_public, wg_address, agent_version
@@ -773,6 +787,7 @@ export const listTickets = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "tickets.read");
     const tickets = await sql<TicketRow>`
       select t.id, t.customer_id, c.name as customer_name, t.title, t.category, t.priority, t.status, t.assigned_to, t.created_at::text as created_at
       from tickets t left join customers c on c.id = t.customer_id
@@ -814,9 +829,7 @@ export const renameTenant = createServerFn({ method: "POST" })
   .validator((d: { name: string; supportEmail: string; supportPhone: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
-    if (workspace.role !== "isp_owner" && workspace.role !== "isp_admin") {
-      throw new Error("Not allowed");
-    }
+    assertPermission(workspace.role, "settings.manage");
     const name = data.name.trim();
     if (!name) throw new Error("Name is required");
     await sql`update tenants set name = ${name}, support_email = ${data.supportEmail.trim()}, support_phone = ${data.supportPhone.trim()}
@@ -840,6 +853,7 @@ export const importCustomers = createServerFn({ method: "POST" })
   .validator((d: { rows: ImportRow[] }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "customers.manage");
     const tid = workspace.tenantId;
     const pkgs = await sql<{ id: string; name: string; access_method: AccessMethod }>`
       select id, name, access_method from packages where tenant_id = ${tid}`;
@@ -890,6 +904,7 @@ export const exportCustomersCsv = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "customers.read");
     const rows = await sql<{
       name: string;
       phone: string;
@@ -944,6 +959,7 @@ export const listNotifications = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "settings.manage");
     await ensureDefaultTemplates(sql, workspace.tenantId);
     const logs = await sql<NotificationLogRow>`
       select n.id, n.customer_id, c.name as customer_name, n.event_code, n.channel, n.subject, n.body,
@@ -966,6 +982,7 @@ export const updateNotificationTemplate = createServerFn({ method: "POST" })
   .validator((d: { id: string; subject: string; body: string; enabled: boolean }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "settings.manage");
     const rows = await sql<{ id: string }>`
       update notification_templates
       set subject = ${data.subject}, body = ${data.body}, enabled = ${data.enabled}
@@ -979,6 +996,7 @@ export const runAutomatedBilling = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "invoices.manage");
     const result = await runBillingCycle(sql, workspace.tenantId, workspace.tenantName);
     await audit(sql, workspace.tenantId, context.userId, "billing.cycle", "billing", workspace.tenantId);
     return result;

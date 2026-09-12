@@ -4,6 +4,7 @@ import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { addRouter, listRouters } from "@/lib/isp/server";
+import { hasPermission } from "@/lib/isp/rbac";
 import { approveRouterCommand, getRouterApi, previewRouterCommand, queueRouterCommand, runRouterApi, saveRouterApi } from "@/lib/isp/server-mikrotik";
 import { listAgentQueue, simulateAgentPull } from "@/lib/isp/server-ops";
 import { getWireGuardHub } from "@/lib/isp/server-wg";
@@ -52,6 +53,7 @@ function RoutersPage() {
   const [preview, setPreview] = useState("");
   const [apiOut, setApiOut] = useState<string | null>(null);
   const [hubReady, setHubReady] = useState(true);
+  const [role, setRole] = useState("");
 
   async function load() {
     const [res, q, hub] = await Promise.all([listRouters(), listAgentQueue(), getWireGuardHub().catch(() => null)]);
@@ -59,6 +61,7 @@ function RoutersPage() {
     setCommands(q.commands);
     setApiRouter((current) => current || res.routers[0]?.id || "");
     setHubReady(Boolean(hub?.ready));
+    setRole(res.workspace.role);
   }
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +72,7 @@ function RoutersPage() {
       setCommands(q.commands);
       setApiRouter((current) => current || res.routers[0]?.id || "");
       setHubReady(Boolean(hub?.ready));
+      setRole(res.workspace.role);
     })().catch(console.error);
     return () => {
       cancelled = true;
@@ -76,7 +80,7 @@ function RoutersPage() {
   }, []);
 
   useEffect(() => {
-    if (!apiRouter) return;
+    if (!apiRouter || !hasPermission(role, "routers.manage")) return;
     getRouterApi({ data: { router_id: apiRouter } })
       .then((info) => {
         setApi({
@@ -90,7 +94,7 @@ function RoutersPage() {
         });
       })
       .catch(console.error);
-  }, [apiRouter]);
+  }, [apiRouter, role]);
 
   async function showScript(text: string, label: string, copy = true) {
     setScript(text);
@@ -129,6 +133,8 @@ function RoutersPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  const canManage = hasPermission(role, "routers.manage");
+
   return (
     <div className="space-y-6">
       <div>
@@ -150,6 +156,7 @@ function RoutersPage() {
         </div>
       ) : null}
 
+      {canManage ? (
       <form onSubmit={submit} className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2">
         <h2 className="md:col-span-2 font-medium">{editingId ? "Edit router" : "Add router"}</h2>
         <Field label="Name">
@@ -185,6 +192,7 @@ function RoutersPage() {
           ) : null}
         </div>
       </form>
+      ) : null}
 
       {script ? (
         <section className="space-y-2">
@@ -237,6 +245,7 @@ function RoutersPage() {
                 <td className="px-4 py-3 font-mono">{r.cpu_pct}%</td>
                 <td className="px-4 py-3 font-mono">{r.uptime_hours}h</td>
                 <td className="px-4 py-3">
+                  {canManage ? (
                   <div className="flex flex-wrap justify-end gap-2">
                     <Button size="sm" variant="secondary" onClick={() => startEdit(r)}>
                       Edit
@@ -277,6 +286,7 @@ function RoutersPage() {
                       Agent pull
                     </Button>
                   </div>
+                  ) : null}
                 </td>
               </tr>
             ))}
@@ -284,6 +294,8 @@ function RoutersPage() {
         </table>
       </div>
 
+      {canManage ? (
+      <>
       <form
         className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2"
         onSubmit={async (e) => {
@@ -535,6 +547,8 @@ function RoutersPage() {
           ))}
         </ul>
       </section>
+      </>
+      ) : null}
     </div>
   );
 }

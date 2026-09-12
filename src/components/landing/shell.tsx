@@ -131,12 +131,6 @@ export function PublicShell({
           </nav>
           <div className="hidden items-center gap-2 lg:flex">
             <AppearanceToggle />
-            <a
-              href="/login?next=/platform"
-              className="inline-flex h-11 items-center px-2 text-xs text-subtle hover:text-muted"
-            >
-              Superadmin
-            </a>
             <Link to="/login" className={cn(buttonVariants({ variant: "ghost", size: "md" }))}>
               Log in
             </Link>
@@ -176,9 +170,6 @@ export function PublicShell({
             </nav>
             <div className="mt-4 flex items-center justify-between gap-3">
               <AppearanceToggle />
-              <a href="/login?next=/platform" className="text-xs text-subtle">
-                Superadmin login
-              </a>
             </div>
             <div className="mt-4 grid gap-2">
               <Link to="/login" className={cn(buttonVariants({ variant: "secondary", size: "md" }), "w-full")}>
@@ -243,7 +234,6 @@ export function PublicShell({
             links={[
               { href: "/login", label: "Log in" },
               { href: "/login?mode=up", label: "Get started" },
-              { href: "/login?next=/platform", label: "Superadmin login" },
             ]}
           />
         </div>

@@ -8,6 +8,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { TablePad, VirtualTableFrame } from "@/components/ui/virtual-scroller";
 import { useTableVirtualizer } from "@/components/ui/use-virtual-scroller";
 import { createCustomer, listCustomers, setCustomerPortalPassword, updateCustomer } from "@/lib/isp/server";
+import { hasPermission } from "@/lib/isp/rbac";
 import { broadcastCustomersFn, bulkCustomerTagsFn } from "@/lib/isp/server-tags";
 import type { CustomerRow } from "@/lib/isp/types";
 import { cn, kes } from "@/lib/utils";
@@ -59,6 +60,8 @@ function CustomerTable({
   setPortalFor,
   setPortalPass,
   onEdit,
+  canManage,
+  canStatements,
 }: {
   rows: CustomerRow[];
   selected: Set<string>;
@@ -70,6 +73,8 @@ function CustomerTable({
   setPortalFor: (id: string | null) => void;
   setPortalPass: (value: string) => void;
   onEdit: (c: CustomerRow) => void;
+  canManage: boolean;
+  canStatements: boolean;
 }) {
   const { parentRef, virtualizer, rows: vis, padTop, padBottom } = useTableVirtualizer(rows.length, 96);
   return (
@@ -78,7 +83,9 @@ function CustomerTable({
         <thead className="sticky top-0 z-10 bg-surface text-xs text-muted">
           <tr>
             <th className="px-3 py-3">
-              <input type="checkbox" className="size-4" checked={allSelected} onChange={onToggleAll} aria-label="Select all filtered customers" />
+              {canManage ? (
+                <input type="checkbox" className="size-4" checked={allSelected} onChange={onToggleAll} aria-label="Select all filtered customers" />
+              ) : null}
             </th>
             <th className="px-4 py-3 font-medium">Customer</th>
             <th className="px-4 py-3 font-medium">Contact</th>
@@ -97,13 +104,15 @@ function CustomerTable({
             return (
               <tr key={c.id} data-index={v.index} ref={virtualizer.measureElement}>
                 <td className="px-3 py-3">
-                  <input
-                    type="checkbox"
-                    className="size-4"
-                    checked={selected.has(c.id)}
-                    onChange={() => onToggle(c.id)}
-                    aria-label={`Select ${c.name}`}
-                  />
+                  {canManage ? (
+                    <input
+                      type="checkbox"
+                      className="size-4"
+                      checked={selected.has(c.id)}
+                      onChange={() => onToggle(c.id)}
+                      aria-label={`Select ${c.name}`}
+                    />
+                  ) : null}
                 </td>
                 <td className="px-4 py-3">
                   <div className="font-medium">{c.name}</div>
@@ -130,13 +139,18 @@ function CustomerTable({
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-col items-start gap-2">
-                    <Button size="sm" variant="ghost" onClick={() => onEdit(c)}>
-                      Edit
-                    </Button>
-                    <a href={`/app/statements?customer=${c.id}`} className="inline-flex min-h-11 items-center text-sm text-accent hover:underline">
-                      Statement
-                    </a>
-                    {portalFor === c.id ? (
+                    {canManage ? (
+                      <Button size="sm" variant="ghost" onClick={() => onEdit(c)}>
+                        Edit
+                      </Button>
+                    ) : null}
+                    {canStatements ? (
+                      <a href={`/app/statements?customer=${c.id}`} className="inline-flex min-h-11 items-center text-sm text-accent hover:underline">
+                        Statement
+                      </a>
+                    ) : null}
+                    {canManage ? (
+                      portalFor === c.id ? (
                       <form
                         className="flex flex-col gap-2 sm:flex-row"
                         onSubmit={async (e) => {
@@ -170,7 +184,8 @@ function CustomerTable({
                       >
                         Portal password
                       </button>
-                    )}
+                    )
+                    ) : null}
                   </div>
                 </td>
               </tr>
@@ -186,7 +201,6 @@ function CustomerTable({
 function CustomersPage() {
   const navigate = Route.useNavigate();
   const { tab: tabParam } = Route.useSearch();
-  const tab: PageTab = tabParam === "communications" ? "communications" : "customers";
   const [rows, setRows] = useState<CustomerRow[]>([]);
   const [tags, setTags] = useState<CatalogTag[]>([]);
   const [packages, setPackages] = useState<string[]>([]);
@@ -209,12 +223,14 @@ function CustomersPage() {
   const [bulkSubject, setBulkSubject] = useState("");
   const [bulkBody, setBulkBody] = useState("");
   const [bulkNote, setBulkNote] = useState<string | null>(null);
+  const [role, setRole] = useState("");
 
   async function load() {
     const res = await listCustomers();
     setRows(res.customers);
     setTags(res.tags ?? []);
     setPackages(res.packages ?? []);
+    setRole(res.workspace.role);
   }
 
   useEffect(() => {
@@ -239,6 +255,11 @@ function CustomersPage() {
   const watching = rows.filter((r) => r.churn_band !== "low").length;
   const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selected.has(c.id));
   const selectedIds = filtered.filter((c) => selected.has(c.id)).map((c) => c.id);
+  const canManage = hasPermission(role, "customers.manage");
+  const canStatements = hasPermission(role, "invoices.read");
+  const canComms = hasPermission(role, "communications.view");
+  const canSettings = hasPermission(role, "settings.manage");
+  const tab: PageTab = tabParam === "communications" && canComms ? "communications" : "customers";
 
   function startCreate() {
     setEditingId(null);
@@ -346,7 +367,7 @@ function CustomersPage() {
               : "CRM with balances, tags, and a live churn score from billing, access, and tickets."}
           </p>
         </div>
-        {tab === "customers" ? <Button onClick={startCreate}>New customer</Button> : null}
+        {tab === "customers" && canManage ? <Button onClick={startCreate}>New customer</Button> : null}
       </div>
 
       <div
@@ -357,7 +378,7 @@ function CustomersPage() {
         {(
           [
             ["customers", "Customers"],
-            ["communications", "Communications"],
+            ...(canComms ? [["communications", "Communications"] as const] : []),
           ] as const
         ).map(([id, label]) => (
           <button
@@ -435,21 +456,28 @@ function CustomersPage() {
                 </Button>
               );
             })}
-            <Link to="/app/settings" search={{ tab: "tags" }} className="text-sm text-accent hover:underline">
-              Manage tags
-            </Link>
+            {canSettings ? (
+              <Link to="/app/settings" search={{ tab: "tags" }} className="text-sm text-accent hover:underline">
+                Manage tags
+              </Link>
+            ) : null}
           </div>
         ) : (
           <p className="text-sm text-muted">
-            No tags yet.{" "}
-            <Link to="/app/settings" search={{ tab: "tags" }} className="text-accent hover:underline">
-              Create customer tags
-            </Link>
+            No tags yet.
+            {canSettings ? (
+              <>
+                {" "}
+                <Link to="/app/settings" search={{ tab: "tags" }} className="text-accent hover:underline">
+                  Create customer tags
+                </Link>
+              </>
+            ) : null}
           </p>
         )}
       </div>
 
-      {selectedIds.length ? (
+      {canManage && selectedIds.length ? (
         <div className="space-y-3 rounded-xl border border-border bg-surface p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm">
@@ -507,7 +535,7 @@ function CustomersPage() {
         </div>
       ) : null}
 
-      {open ? (
+      {canManage && open ? (
         <form onSubmit={submit} className="grid gap-3 rounded-xl bg-surface p-5 shadow-card md:grid-cols-2 md:p-6">
           <h2 className="font-medium md:col-span-2">{editingId ? "Edit customer" : "New customer"}</h2>
           <Field label="Name">
@@ -556,7 +584,7 @@ function CustomersPage() {
       ) : null}
 
       {rows.length === 0 ? (
-        <p className="text-sm text-muted">No customers yet. Click New customer to add one.</p>
+        <p className="text-sm text-muted">No customers yet.{canManage ? " Click New customer to add one." : ""}</p>
       ) : filtered.length === 0 ? (
         <p className="text-sm text-muted">No customers match these filters.</p>
       ) : (
@@ -586,6 +614,8 @@ function CustomersPage() {
           setPortalFor={setPortalFor}
           setPortalPass={setPortalPass}
           onEdit={startEdit}
+          canManage={canManage}
+          canStatements={canStatements}
         />
       )}
       </>

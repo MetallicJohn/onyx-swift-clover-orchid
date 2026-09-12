@@ -6,11 +6,13 @@ import { loadMpesa, mpesaAccessToken } from "./mpesa";
 import { hint, seal } from "./secrets";
 import { tenantPayUrls } from "./webhooks";
 import { requireWorkspace as requireWs } from "./workspace";
+import { assertPermission } from "./rbac";
 
 export const getMpesa = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     const [row] = await sql<{
       enabled: boolean;
       sandbox: boolean;
@@ -64,7 +66,8 @@ export const saveMpesa = createServerFn({ method: "POST" })
     stk_type: string;
   }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     const [row] = await sql<{ id: string; client_secret: string; passkey: string }>`
       select id, client_secret, passkey from payment_providers where tenant_id = ${tenantId} and kind = 'mpesa'`;
     const keep = (incoming: string, existing: string) =>
@@ -92,7 +95,8 @@ export const saveMpesa = createServerFn({ method: "POST" })
 export const testMpesa = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     const cfg = await loadMpesa(sql, tenantId);
     if (!cfg?.client_id || !cfg.client_secret) throw new Error("Save consumer key and secret first");
     const token = await mpesaAccessToken(cfg);
@@ -107,7 +111,8 @@ export const savePublicBase = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { public_base_url: string }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     const url = data.public_base_url.trim().replace(/\/$/, "");
     if (url && !/^https:\/\//i.test(url)) throw new Error("Public site URL must start with https://");
     await sql`update tenants set public_base_url = ${url} where id = ${tenantId}`;

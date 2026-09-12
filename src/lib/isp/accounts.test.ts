@@ -49,6 +49,7 @@ test("signup provisions an ISP the owner can use", async () => {
       ispName: "Imani Networks",
       personName: "Jane Wanjiku",
       email: user.email,
+      phone: "0712000100",
     });
     assert.equal(ws.tenantName, "Imani Networks");
     assert.equal(ws.role, "isp_owner");

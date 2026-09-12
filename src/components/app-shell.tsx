@@ -24,6 +24,7 @@ import { BrandMark } from "@/components/isp/brand-mark";
 import { UserButton } from "@/lib/auth/gates";
 import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
 import { APP_NAME } from "@/lib/brand";
+import { canAccessAppPath, ROLE_GUIDE } from "@/lib/isp/rbac";
 import { endSaasSupport, getMyEntitlements } from "@/lib/isp/server-platform";
 import { cn } from "@/lib/utils";
 
@@ -94,11 +95,12 @@ export function AppShell({
   };
   const visible = NAV.filter((item) => {
     const feat = featureNav[item.to];
-    if (!feat) return true;
-    if (Object.keys(features).length === 0) return true;
-    return Boolean(features[feat]);
+    if (feat && Object.keys(features).length > 0 && !features[feat]) return false;
+    return canAccessAppPath(role, item.to);
   });
   const nav = visible;
+  const allowed = canAccessAppPath(role, pathname);
+  const roleLabel = ROLE_GUIDE.find((row) => row.role === role)?.label || role?.replaceAll("_", " ");
   const gateSession = useSyncExternalStore(
     subscribeToNothing,
     hasGateSessionMarker,
@@ -163,7 +165,7 @@ export function AppShell({
               SaaS Management
             </Link>
           ) : null}
-          <div className="px-3 text-[11px] uppercase tracking-wider text-subtle">{role?.replace("_", " ")}</div>
+          <div className="px-3 text-[11px] uppercase tracking-wider text-subtle">{roleLabel}</div>
         </div>
       </aside>
 
@@ -228,7 +230,22 @@ export function AppShell({
           </div>
         </header>
         <main className="p-4 md:p-6">
-          <Outlet />
+          {allowed ? (
+            <Outlet />
+          ) : (
+            <div className="max-w-lg rounded-xl border border-border bg-surface p-6">
+              <h1 className="text-lg font-medium">You don’t have access</h1>
+              <p className="mt-2 text-sm text-muted">
+                This page is limited to another role. Use the menu, or go back to Overview.
+              </p>
+              <Link
+                to="/app"
+                className="mt-4 inline-flex h-11 items-center text-sm font-medium text-accent hover:underline"
+              >
+                Back to overview
+              </Link>
+            </div>
+          )}
         </main>
       </div>
     </div>

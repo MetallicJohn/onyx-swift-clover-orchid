@@ -37,7 +37,8 @@ export const commentOpenTicket = createServerFn({ method: "POST" })
 export const listTicketStaff = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "tickets.read");
     return { staff: await listStaff(sql, tenantId) };
   });
 
@@ -54,7 +55,8 @@ export const queueCpeTask = createServerFn({ method: "POST" })
 export const listCpeTasks = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
     const tasks = await sql<{
       id: string;
       kind: string;
@@ -91,7 +93,8 @@ export const linkReseller = createServerFn({ method: "POST" })
 export const getPlan = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     return loadPlanDesk(sql, tenantId);
   });
 
@@ -146,9 +149,10 @@ export const askRouterOs = createServerFn({ method: "POST" })
 export const getReports = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "invoices.read");
     await assertFeature(sql, tenantId, "reports");
-    return loadReports(sql, tenantId);
+    return { ...(await loadReports(sql, tenantId)), role };
   });
 
 export const getAuditLog = createServerFn({ method: "GET" })
@@ -195,7 +199,8 @@ export const getStatement = createServerFn({ method: "POST" })
 export const getBranches = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     return { branches: await listBranches(sql, tenantId) };
   });
 

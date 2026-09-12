@@ -4,6 +4,7 @@ import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { createPackage, listPackages, updatePackage } from "@/lib/isp/server";
+import { hasPermission } from "@/lib/isp/rbac";
 import type { AccessMethod, PackageRow } from "@/lib/isp/types";
 import { kes } from "@/lib/utils";
 
@@ -90,10 +91,12 @@ function PackagesPage() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [role, setRole] = useState("");
 
   async function load() {
     const res = await listPackages();
     setPackages(res.packages);
+    setRole(res.workspace.role);
   }
 
   useEffect(() => {
@@ -181,6 +184,7 @@ function PackagesPage() {
 
   const visible = packages.filter((p) => filter === "all" || p.access_method === filter);
   const lockMethod = !editingId && filter !== "all";
+  const canManage = hasPermission(role, "packages.manage");
 
   return (
     <div className="space-y-6">
@@ -191,7 +195,7 @@ function PackagesPage() {
             Product catalog for PPPoE, static IP, and hotspot. Each package is one PCQ profile on the router — not a simple queue per customer. Unpaid invoices, expired time, or a used-up data cap suspend access automatically. Payment restores it.
           </p>
         </div>
-        <Button onClick={startCreate}>New package</Button>
+        {canManage ? <Button onClick={startCreate}>New package</Button> : null}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -202,7 +206,7 @@ function PackagesPage() {
         ))}
       </div>
 
-      {open ? (
+      {canManage && open ? (
         <form onSubmit={submit} className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2">
           <h2 className="font-medium md:col-span-2">{editingId ? "Edit package" : "Create package"}</h2>
           <Field label="Name">
@@ -360,6 +364,7 @@ function PackagesPage() {
               {formatCap(p.bundle_mb)}
             </p>
             {p.description ? <p className="mt-1 text-sm text-subtle">{p.description}</p> : null}
+            {canManage ? (
             <div className="mt-4 flex flex-wrap gap-2">
               <Button size="sm" variant="secondary" onClick={() => startEdit(p)}>
                 Edit
@@ -368,13 +373,14 @@ function PackagesPage() {
                 {p.active ? "Deactivate" : "Activate"}
               </Button>
             </div>
+            ) : null}
           </article>
         ))}
       </div>
       {visible.length === 0 ? (
         <p className="text-sm text-muted">
           No packages in this mode yet.
-          {filter !== "all" ? ` New package will create a ${methodLabel(filter)} plan.` : ""}
+          {filter !== "all" && canManage ? ` New package will create a ${methodLabel(filter)} plan.` : ""}
         </p>
       ) : null}
     </div>

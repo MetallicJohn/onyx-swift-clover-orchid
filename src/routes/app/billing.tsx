@@ -10,6 +10,7 @@ import { invoiceStatusLabel, type InvoiceDocument } from "@/lib/isp/document-for
 import { downloadPdf, printPdf, viewPdf } from "@/lib/isp/pdf-client";
 import { emailInvoicePdf, getInvoiceDocument, getInvoicePdf } from "@/lib/isp/server-docs";
 import { createInvoice, listBilling, recordPayment, saveBillingSettings } from "@/lib/isp/server";
+import { hasPermission } from "@/lib/isp/rbac";
 import { confirmStk, sendStk } from "@/lib/isp/server-ops";
 import type { InvoiceRow, PaymentRow } from "@/lib/isp/types";
 import { kes } from "@/lib/utils";
@@ -53,6 +54,7 @@ function BillingPage() {
   const [stk, setStk] = useState<{ checkout_id: string; note?: string } | null>(null);
   const [detail, setDetail] = useState<InvoiceDetail | null>(null);
   const [busy, setBusy] = useState(false);
+  const [role, setRole] = useState("");
 
   const preview = useMemo(() => {
     const subtotal = lines.reduce((sum, line) => sum + Math.max(1, line.quantity || 1) * Math.max(0, line.unit_kes || 0), 0);
@@ -82,6 +84,7 @@ function BillingPage() {
     setVatRate(res.vat_rate_pct);
     setTotals(res.totals);
     setAging(res.aging);
+    setRole(res.workspace.role);
     if (!form.customer_id && res.customers[0]) {
       setForm((f) => ({ ...f, customer_id: res.customers[0].id }));
       setLines(quotesForCustomer(res.quotes, res.customers[0].id));
@@ -103,6 +106,8 @@ function BillingPage() {
     if (filter === "open") return i.remaining_kes > 0;
     return i.status === filter;
   });
+  const canInvoice = hasPermission(role, "invoices.manage");
+  const canPay = hasPermission(role, "payments.manage");
 
   async function openInvoice(id: string) {
     setErr(null);
@@ -125,6 +130,7 @@ function BillingPage() {
             invoice is still overdue.
           </p>
         </div>
+        {canInvoice ? (
         <label className="flex h-11 items-center gap-2 rounded-md border border-border bg-surface px-3 text-sm">
           <input
             type="checkbox"
@@ -137,6 +143,9 @@ function BillingPage() {
           />
           Add {vatRate}% VAT (exclusive)
         </label>
+        ) : vatEnabled ? (
+          <p className="text-sm text-muted">VAT {vatRate}% exclusive</p>
+        ) : null}
       </div>
 
       {err ? <p className="text-sm text-danger print:hidden">{err}</p> : null}
@@ -164,6 +173,7 @@ function BillingPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2 print:hidden">
+        {canInvoice ? (
         <form
           className="grid gap-3 rounded-xl border border-border bg-surface p-4"
           onSubmit={async (e) => {
@@ -257,7 +267,9 @@ function BillingPage() {
             </Button>
           </div>
         </form>
+        ) : null}
 
+        {canPay ? (
         <form
           className="grid gap-3 rounded-xl border border-border bg-surface p-4"
           onSubmit={async (e) => {
@@ -353,6 +365,7 @@ function BillingPage() {
             </Button>
           </div>
         </form>
+        ) : null}
       </div>
 
       {stk ? (

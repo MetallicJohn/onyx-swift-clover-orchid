@@ -71,7 +71,7 @@ export function PublicPricing() {
           <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Simple, transparent pricing</h2>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted md:text-base">
             Choose the plan that fits the size of the ISP. Each plan sets customer, router and staff limits, and
-            which modules you can use. You can move plan later. Figures below come from the live catalogue.
+            which modules you can use. One free trial per email or phone; after that a subscription is required.
           </p>
         </div>
         {hasAnnual ? (

@@ -14,7 +14,8 @@ function pdfPayload(filename: string, pdf: Buffer) {
 export const getDocumentBranding = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     const [ten] = await sql<{
       name: string;
       address: string;

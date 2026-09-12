@@ -12,7 +12,14 @@ import { hasOperatorBearer, loginPageAction, rememberAuthSession } from "@/lib/i
 import { bootstrapWorkspace } from "@/lib/isp/server";
 import { loginDestination, loginModeFromSearch } from "@/lib/isp/login-next";
 
-export const Route = createFileRoute("/login")({ component: Login });
+export const Route = createFileRoute("/login")({
+  validateSearch: (search: Record<string, unknown>): { next?: string; mode?: string; isp?: string } => ({
+    next: typeof search.next === "string" && search.next ? search.next : undefined,
+    mode: typeof search.mode === "string" && search.mode ? search.mode : undefined,
+    isp: typeof search.isp === "string" && search.isp ? search.isp : undefined,
+  }),
+  component: Login,
+});
 
 const subscribeToNothing = () => () => {};
 
@@ -38,6 +45,7 @@ function Login() {
   const [name, setName] = useState("");
   const [ispName, setIspName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"in" | "up">(() => loginModeFromSearch(search));
   const [error, setError] = useState<string | null>(null);
@@ -77,9 +85,9 @@ function Login() {
         if (result.error) throw new Error(result.error.message || "Could not create the account");
         rememberAuthSession(result);
         try {
-          await bootstrapWorkspace({ data: { isp_name: ispName.trim() } });
-        } catch {
-          /* first /app load also provisions the workspace */
+          await bootstrapWorkspace({ data: { isp_name: ispName.trim(), phone: phone.trim() } });
+        } catch (err) {
+          throw err instanceof Error ? err : new Error("Could not start the workspace");
         }
       } else {
         const result = await authClient.signIn.email({ email, password, fetchOptions });
@@ -106,7 +114,7 @@ function Login() {
         </h1>
         <p className="mt-2 text-sm text-muted">
           {mode === "up"
-            ? "Your email and password become the owner login for this workspace."
+            ? "Your email, mobile number, and password become the owner login. One free trial per email or phone — after that you choose a paid plan."
             : switching
               ? "Enter the email and password from signup or the login your superadmin created. That account replaces this Grok view."
               : platformIntent
@@ -155,6 +163,18 @@ function Login() {
                       value={ispName}
                       onChange={(e) => setIspName(e.target.value)}
                       name="isp_name"
+                    />
+                  </Field>
+                  <Field label="Mobile number">
+                    <Input
+                      type="tel"
+                      required
+                      inputMode="tel"
+                      placeholder="0712 000 000"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      autoComplete="tel"
+                      name="phone"
                     />
                   </Field>
                 </>

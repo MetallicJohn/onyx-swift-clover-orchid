@@ -5,6 +5,7 @@ import { permissionsFor } from "./rbac.ts";
 import { applyRls } from "./rls.ts";
 import { resolveActiveTenant, setActiveTenant, type TenantContext } from "./tenant-context.ts";
 import { assertAdminQuota } from "./saas.ts";
+import { assertSignupPhone } from "./trial-claims.ts";
 import type { TenantRole } from "./types.ts";
 
 type Sql = {
@@ -163,7 +164,7 @@ function toWorkspace(opts: {
 export async function provisionTenant(
   sql: Sql,
   userId: string,
-  opts: { ispName?: string | null; personName?: string | null; email?: string | null } = {},
+  opts: { ispName?: string | null; personName?: string | null; email?: string | null; phone?: string | null } = {},
 ): Promise<TenantContext> {
   await applyRls(sql, { bypass: true });
   const existing = await resolveActiveTenant(sql, userId);
@@ -172,12 +173,13 @@ export async function provisionTenant(
   const profile = await loadAuthUser(sql, userId);
   const person = (opts.personName || profile?.name || opts.email || profile?.email || "New ISP").trim();
   const email = (opts.email || profile?.email || "").trim();
+  const phone = opts.phone ? assertSignupPhone(opts.phone) : "";
   const ispName = (opts.ispName || "").trim() || `${person.split("@")[0]}'s Network`;
   const tenantId = nid("ten");
   const slug = `${slugify(ispName)}-${tenantId.slice(-6)}`;
 
-  await sql`insert into tenants (id, name, slug, status, currency, timezone, support_email)
-    values (${tenantId}, ${ispName}, ${slug}, 'trial', 'KES', 'Africa/Nairobi', ${email})`;
+  await sql`insert into tenants (id, name, slug, status, currency, timezone, support_email, support_phone)
+    values (${tenantId}, ${ispName}, ${slug}, 'trial', 'KES', 'Africa/Nairobi', ${email}, ${phone})`;
   await sql`insert into tenant_members (id, tenant_id, user_id, role)
     values (${nid("mem")}, ${tenantId}, ${userId}, 'isp_owner')`;
   await setActiveTenant(sql, userId, tenantId);
@@ -224,7 +226,7 @@ export async function addStaffMember(
 
 export async function createIspWithOwner(
   sql: Sql,
-  opts: { ispName: string; ownerName: string; ownerEmail: string; ownerPassword: string },
+  opts: { ispName: string; ownerName: string; ownerEmail: string; ownerPassword: string; ownerPhone?: string },
 ) {
   const ispName = opts.ispName.trim();
   if (!ispName) throw new Error("ISP name is required");
@@ -241,8 +243,9 @@ export async function createIspWithOwner(
   }
   const tenantId = nid("ten");
   const slug = `${slugify(ispName)}-${tenantId.slice(-6)}`;
-  await sql`insert into tenants (id, name, slug, status, currency, timezone, support_email)
-    values (${tenantId}, ${ispName}, ${slug}, 'trial', 'KES', 'Africa/Nairobi', ${owner.email})`;
+  const phone = opts.ownerPhone ? assertSignupPhone(opts.ownerPhone) : "";
+  await sql`insert into tenants (id, name, slug, status, currency, timezone, support_email, support_phone)
+    values (${tenantId}, ${ispName}, ${slug}, 'trial', 'KES', 'Africa/Nairobi', ${owner.email}, ${phone})`;
   await sql`insert into tenant_members (id, tenant_id, user_id, role)
     values (${nid("mem")}, ${tenantId}, ${owner.id}, 'isp_owner')`;
   await setActiveTenant(sql, owner.id, tenantId);

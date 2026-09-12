@@ -34,7 +34,8 @@ import { requireWorkspace as requireWs } from "./workspace";
 export const listRadius = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "radius.manage");
     const key = await ensureRadiusApiKey(sql, tenantId);
     const [tenant] = await sql<{ slug: string; public_base_url: string; radius_api_key: string }>`
       select slug, public_base_url, radius_api_key from tenants where id = ${tenantId}`;
@@ -168,7 +169,8 @@ export const exportRadiusUsers = createServerFn({ method: "GET" })
 export const listHotspot = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "radius.manage");
     await expireDueVouchers(sql, tenantId);
     const vouchers = await sql<{
       id: string;
@@ -227,7 +229,8 @@ export const createVouchers = createServerFn({ method: "POST" })
 export const listAgentQueue = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.read");
     const commands = await sql<{
       id: string;
       router_name: string;
@@ -246,7 +249,8 @@ export const simulateAgentPull = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { router_id: string }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
     const [r] = await sql<{
       id: string;
       enroll_token: string;
@@ -286,7 +290,8 @@ export const simulateAgentPull = createServerFn({ method: "POST" })
 export const listProviders = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     const providers = await sql<{ id: string; kind: string; label: string; enabled: boolean; sandbox: boolean }>`
       select id, kind, label, enabled, sandbox from payment_providers where tenant_id = ${tenantId}`;
     const intents = await sql<{
@@ -306,7 +311,8 @@ export const toggleProvider = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { id: string; enabled: boolean }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     await sql`update payment_providers set enabled = ${data.enabled} where id = ${data.id} and tenant_id = ${tenantId}`;
     return { ok: true };
   });
@@ -338,6 +344,7 @@ export const listField = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "jobs.update");
     const tickets =
       role === "technician"
         ? await sql<{
@@ -377,7 +384,8 @@ export const listField = createServerFn({ method: "GET" })
 export const listAcs = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
     const devices = await sql<{
       id: string;
       serial: string;
@@ -418,7 +426,8 @@ export const addCpe = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { serial: string; product_class: string; ssid: string; customer_id?: string }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
     if (!data.serial.trim()) throw new Error("Serial is required");
     const cfg = await loadAcsConfig(sql, tenantId);
     const acsId = genieDeviceId(cfg.oui, data.product_class || "Router", data.serial.trim());
@@ -431,14 +440,16 @@ export const informCpe = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { id: string }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
     return refreshCpeInform(sql, tenantId, data.id);
   });
 
 export const listPartners = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     const loyalty = await sql<{ customer_id: string; customer_name: string; phone: string; points: number }>`
       select c.id as customer_id, c.name as customer_name, c.phone, l.points
       from loyalty_accounts l join customers c on c.id = l.customer_id
@@ -472,7 +483,8 @@ export const addReferral = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { referrer_id: string; referee_name: string; referee_phone: string }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     if (!data.referee_name.trim()) throw new Error("Name required");
     await sql`insert into referrals (id, tenant_id, referrer_id, referee_name, referee_phone, status, points)
       values (${nid("ref")}, ${tenantId}, ${data.referrer_id}, ${data.referee_name.trim()}, ${data.referee_phone.trim()}, 'pending', 200)`;
@@ -483,7 +495,8 @@ export const addReseller = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { name: string; phone: string; commission_pct: number }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     if (!data.name.trim()) throw new Error("Name required");
     await sql`insert into resellers (id, tenant_id, name, phone, commission_pct, status)
       values (${nid("rsl")}, ${tenantId}, ${data.name.trim()}, ${data.phone.trim()}, ${data.commission_pct || 10}, 'active')`;
@@ -493,7 +506,8 @@ export const addReseller = createServerFn({ method: "POST" })
 export const workspaceSlug = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     const [t] = await sql<{ slug: string; name: string }>`select slug, name from tenants where id = ${tenantId}`;
     return t ?? { slug: "", name: "" };
   });
@@ -657,7 +671,8 @@ export const portalOpenTicket = createServerFn({ method: "POST" })
 export const getMessaging = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     return toPublic(await getMessagingSettings(sql, tenantId));
   });
 
@@ -682,7 +697,8 @@ export const saveMessaging = createServerFn({ method: "POST" })
     }) => d,
   )
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     return toPublic(await saveMessagingSettings(sql, tenantId, data));
   });
 
@@ -690,7 +706,8 @@ export const testMessaging = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((d: { channel: "sms" | "whatsapp"; phone: string }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId, tenantName } = await requireWs(context.userId);
+    const { sql, tenantId, tenantName, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     const settings = await getMessagingSettings(sql, tenantId);
     const phone = data.phone.trim();
     if (!phone) throw new Error("Enter a test phone number");
@@ -704,7 +721,8 @@ export const testMessaging = createServerFn({ method: "POST" })
 export const checkSmsAccount = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     const settings = await getMessagingSettings(sql, tenantId);
     if (settings.sms_provider !== "webfam") {
       return { ok: false as const, detail: "Balance check is available for Webfam SMS." };

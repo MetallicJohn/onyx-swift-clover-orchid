@@ -4,11 +4,13 @@ import { nid } from "@/lib/utils";
 import { hint, seal } from "./secrets";
 import { kopoAccessToken, loadKopo } from "./kopokopo";
 import { requireWorkspace as requireWs } from "./workspace";
+import { assertPermission } from "./rbac";
 
 export const getKopokopo = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     const [row] = await sql<{
       id: string;
       enabled: boolean;
@@ -51,7 +53,8 @@ export const saveKopokopo = createServerFn({ method: "POST" })
     till_number: string;
   }) => d)
   .handler(async ({ context, data }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     const [row] = await sql<{ id: string; client_secret: string }>`
       select id, client_secret from payment_providers where tenant_id = ${tenantId} and kind = 'kopokopo'`;
     const keep = !data.client_secret || data.client_secret.startsWith("••••");
@@ -74,7 +77,8 @@ export const saveKopokopo = createServerFn({ method: "POST" })
 export const testKopokopo = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    const { sql, tenantId } = await requireWs(context.userId);
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
     const cfg = await loadKopo(sql, tenantId);
     if (!cfg?.client_id || !cfg.client_secret) throw new Error("Save client id and secret first");
     const token = await kopoAccessToken(cfg);

@@ -6,7 +6,7 @@ import { APP_NAME } from "@/lib/brand";
 import { AppearanceSettings } from "@/components/isp/appearance-settings";
 import { CustomerTagsSettings } from "@/components/isp/customer-tags-settings";
 import { NotificationsSettings } from "@/components/isp/notifications-settings";
-import { hasPermission } from "@/lib/isp/rbac";
+import { hasPermission, STAFF_ROLES } from "@/lib/isp/rbac";
 import { changeMyPassword, getDashboard, renameTenant, setStaffPassword } from "@/lib/isp/server";
 import { getDocumentBranding, saveDocumentBranding } from "@/lib/isp/server-docs";
 import { getKopokopo, saveKopokopo, testKopokopo } from "@/lib/isp/server-kopo";
@@ -1109,20 +1109,26 @@ function SettingsPage() {
                 </div>
                 <div className="text-muted">
                   {plan.plan === "trial"
-                    ? plan.trial_expired
-                      ? "Trial ended"
+                    ? plan.trial_expired || plan.status === "expired"
+                      ? "Trial ended — choose a paid plan"
                       : `${plan.days_left} day${plan.days_left === 1 ? "" : "s"} left`
                     : plan.period_end
                       ? `Renews ${plan.period_end.slice(0, 10)}`
                       : null}
                 </div>
               </div>
+              {!plan.trial_available && plan.plan === "trial" ? (
+                <p className="mt-2 text-sm text-muted">
+                  This email or phone already used a free trial. Subscribe to keep using the console.
+                </p>
+              ) : null}
             </div>
           ) : null}
           <div className="grid gap-3 md:grid-cols-3">
             {(plan?.catalog ?? []).map((p) => {
               const current = plan?.plan === p.code && !plan.pending_plan;
               const pending = plan?.pending_plan === p.code;
+              const trialAvailable = Boolean(plan?.trial_available);
               return (
                 <div key={p.code} className="flex flex-col rounded-xl border border-border bg-surface p-4">
                   <div className="text-xs tracking-wide text-accent uppercase">{p.label}</div>
@@ -1134,7 +1140,7 @@ function SettingsPage() {
                   <Button
                     className="mt-4"
                     variant={current ? "default" : "secondary"}
-                    disabled={current}
+                    disabled={current || (p.monthly_kes === 0 && !trialAvailable && !current)}
                     onClick={async () => {
                       setPlanErr(null);
                       setSaved(null);
@@ -1153,7 +1159,15 @@ function SettingsPage() {
                       }
                     }}
                   >
-                    {current ? "Current" : pending ? "Pay to activate" : p.monthly_kes === 0 ? "Switch to trial" : "Select"}
+                    {current
+                      ? "Current"
+                      : pending
+                        ? "Pay to activate"
+                        : p.monthly_kes === 0
+                          ? trialAvailable
+                            ? "Switch to trial"
+                            : "Trial already used"
+                          : "Select"}
                   </Button>
                 </div>
               );
@@ -1247,6 +1261,21 @@ function SettingsPage() {
 
       {tab === "staff" ? (
         <div className="space-y-6">
+          <div className="rounded-xl border border-border bg-surface p-4">
+            <h2 className="font-medium">What each role can do</h2>
+            <p className="mt-1 text-sm text-muted">
+              Access follows these permissions. Support is read-only and only used when {APP_NAME} staff is inside this
+              workspace — you cannot invite it.
+            </p>
+            <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+              {STAFF_ROLES.map((r) => (
+                <li key={r.role} className="rounded-lg border border-border bg-bg px-3 py-2">
+                  <div className="text-sm font-medium">{r.label}</div>
+                  <p className="mt-1 text-sm text-muted">{r.summary}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
           <form
             className="grid gap-3 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2"
             onSubmit={async (e) => {
@@ -1311,12 +1340,11 @@ function SettingsPage() {
                 value={staffForm.role}
                 onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })}
               >
-                <option value="isp_admin">Admin</option>
-                <option value="finance">Finance</option>
-                <option value="customer_care">Customer care</option>
-                <option value="network_engineer">Network engineer</option>
-                <option value="technician">Technician</option>
-                <option value="isp_owner">Owner</option>
+                {STAFF_ROLES.map((r) => (
+                  <option key={r.role} value={r.role}>
+                    {r.label}
+                  </option>
+                ))}
               </Select>
             </Field>
             {staffErr ? <p className="text-sm text-danger sm:col-span-2">{staffErr}</p> : null}
@@ -1346,12 +1374,11 @@ function SettingsPage() {
                     }
                   }}
                 >
-                  <option value="isp_owner">Owner</option>
-                  <option value="isp_admin">Admin</option>
-                  <option value="finance">Finance</option>
-                  <option value="customer_care">Customer care</option>
-                  <option value="network_engineer">Network engineer</option>
-                  <option value="technician">Technician</option>
+                  {STAFF_ROLES.map((r) => (
+                    <option key={r.role} value={r.role}>
+                      {r.label}
+                    </option>
+                  ))}
                 </Select>
                 <form
                   className="flex flex-col gap-2 sm:flex-row sm:items-center"
