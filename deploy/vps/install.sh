@@ -95,6 +95,8 @@ GRIDLINE_INTERNAL_URL=http://web:3000
 GRIDLINE_SLUG=
 RADIUS_API_KEY=
 RADIUS_NAS_SECRET=$(openssl rand -hex 16)
+ACS_EDGE_TOKEN=$(openssl rand -hex 32)
+ACS_PUBLIC_HOST=$DOMAIN
 EOF
   chmod 600 "$ENV_FILE"
 else
@@ -118,6 +120,12 @@ else
     echo "RADIUS_API_KEY=" >>"$ENV_FILE"
     echo "RADIUS_NAS_SECRET=$(openssl rand -hex 16)" >>"$ENV_FILE"
   fi
+  if ! grep -q '^ACS_EDGE_TOKEN=' "$ENV_FILE"; then
+    echo "ACS_EDGE_TOKEN=$(openssl rand -hex 32)" >>"$ENV_FILE"
+  fi
+  if ! grep -q '^ACS_PUBLIC_HOST=' "$ENV_FILE"; then
+    echo "ACS_PUBLIC_HOST=$DOMAIN" >>"$ENV_FILE"
+  fi
 fi
 
 if command -v ufw >/dev/null 2>&1; then
@@ -125,8 +133,7 @@ if command -v ufw >/dev/null 2>&1; then
   ufw allow 80/tcp || true
   ufw allow 443/tcp || true
   ufw allow 51820/udp || true
-  ufw allow 7547/tcp || true
-  ufw allow 7567/tcp || true
+  ufw allow 7551:7999/tcp || true
   ufw allow 1812/udp || true
   ufw allow 1813/udp || true
   ufw --force enable || true
@@ -145,10 +152,12 @@ echo "  1. Sign in at https://$DOMAIN/login (signup creates the first ISP owner)
 echo "  2. Settings → Public URL = https://$DOMAIN"
 echo "  3. Settings → Network: hub endpoint = this VPS public IP or $DOMAIN, then copy wg-gridline.conf to /etc/wireguard/ and wg-quick up wg-gridline"
 echo "  4. Routers → Copy script onto each MikroTik"
-echo "  5. Point acs.$DOMAIN at this VPS. CPE ACS URL = http://$DOMAIN:7547/"
-echo "  6. ISP Solutions → GenieACS → Save NBI (http://genieacs:7557) → Sync from ACS"
-echo "  7. RADIUS → Copy VPS env into gridline.env, then restart the freeradius container"
-echo "  8. Publish now: sudo bash $INSTALL_DIR/deploy/vps/update.sh"
+echo "  5. Point DNS at this VPS. In ISP Solutions → System settings set ACS public host to the VPS IP or $DOMAIN."
+echo "  6. Each ISP is assigned a unique TR-069 port (7551–7999). CPE ACS URL = http://\$ACS_HOST:\$PORT/ from ACS → Credentials."
+echo "  7. Firewall: TCP 80, 443, 7551-7999, UDP 1812, 1813, 51820. Do not publish GenieACS NBI (7557), Mongo, or Redis."
+echo "  8. ISP Solutions → GenieACS → NBI (http://genieacs:7557, internal only) → Sync from ACS"
+echo "  9. RADIUS → Copy VPS env into gridline.env, then restart the freeradius container"
+echo " 10. Publish now: sudo bash $INSTALL_DIR/deploy/vps/update.sh"
 echo
 echo "Health: curl -fsS https://$DOMAIN/api/v1/health"
 echo "Logs:   docker compose -f $INSTALL_DIR/deploy/vps/docker-compose.yml logs -f web"

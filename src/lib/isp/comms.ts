@@ -1,5 +1,5 @@
 import { nid } from "../utils.ts";
-import { accountNumber } from "./document-format.ts";
+import { resolveAccountNumber } from "./document-format.ts";
 import { e164, deliverSms, getMessagingSettings } from "./messaging.ts";
 import {
   type AudienceFilter,
@@ -26,6 +26,7 @@ export type AudienceRow = {
   address: string;
   type: string;
   created_at: string;
+  account_number?: string;
   service_status: string;
   access_method: string;
   package_id: string;
@@ -131,7 +132,8 @@ export async function resolveAudience(sql: Sql, tenantId: string, filter: Audien
     address: string;
     type: string;
     created_at: string;
-  }>`select id, name, phone, address, type, created_at::text as created_at from customers where tenant_id = ${tenantId}`;
+    account_number: string;
+  }>`select id, name, phone, address, type, created_at::text as created_at, coalesce(account_number,'') as account_number from customers where tenant_id = ${tenantId}`;
   const services = await sql<{
     customer_id: string;
     status: string;
@@ -204,6 +206,7 @@ export async function resolveAudience(sql: Sql, tenantId: string, filter: Audien
       address: c.address,
       type: c.type,
       created_at: c.created_at,
+      account_number: c.account_number,
       service_status: use ? lineStatus(use.status, use.period_end, now) : "none",
       access_method: use?.access_method ?? "",
       package_id: use?.package_id ?? "",
@@ -228,7 +231,7 @@ function campaignVars(
 ): CommVars {
   return {
     customer_name: row.name,
-    account_number: accountNumber(ctx.slug, row.customer_id),
+    account_number: resolveAccountNumber(ctx.slug, row.customer_id, row.account_number),
     service_name: row.package_name || row.access_method,
     package_name: row.package_name,
     service_expiry: row.period_end ? row.period_end.slice(0, 10) : "",

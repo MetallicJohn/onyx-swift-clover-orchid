@@ -356,12 +356,41 @@ export const saveSaasSettings = createServerFn({ method: "POST" })
       sales_email?: string;
       support_email?: string;
       contact_phone?: string;
+      acs_public_host?: string;
+      acs_dns_host?: string;
+      acs_port_start?: number;
+      acs_port_end?: number;
     }) => d,
   )
   .handler(async ({ context, data }) => {
     const { sql } = await platformSql(context.userId);
     return savePlatformSettings(sql, context.userId, data);
   });
+
+export const assignSaasAcsPort = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { tenant_id: string; port?: number; confirm?: boolean }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql } = await platformSql(context.userId);
+    const { assignTenantAcsPort } = await import("./acs-credentials");
+    const { writePlatformAudit } = await import("./platform");
+    const row = await assignTenantAcsPort(sql, {
+      tenantId: data.tenant_id,
+      port: data.port,
+      confirmChange: Boolean(data.confirm),
+      actorUserId: context.userId,
+    });
+    await writePlatformAudit(sql, {
+      actorUserId: context.userId,
+      action: "acs.port_assigned",
+      entityType: "acs_credentials",
+      entityId: data.tenant_id,
+      tenantId: data.tenant_id,
+      metadata: { port: row?.cwmp_port ?? null },
+    });
+    return row;
+  });
+
 
 export const startSaasSupport = createServerFn({ method: "POST" })
   .middleware([authMiddleware])

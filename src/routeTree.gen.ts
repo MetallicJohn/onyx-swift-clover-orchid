@@ -56,6 +56,7 @@ import { Route as ApiAgentHeartbeatRouteImport } from './routes/api/agent/heartb
 import { Route as ApiAgentPullRouteImport } from './routes/api/agent/pull'
 import { Route as ApiAgentScriptRouteImport } from './routes/api/agent/script'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiInternalAcsPortsRouteImport } from './routes/api/internal/acs-ports'
 import { Route as ApiPlatformTelemetryRouteImport } from './routes/api/platform/telemetry'
 import { Route as ApiV1HealthRouteImport } from './routes/api/v1/health'
 import { Route as PlatformTenantsTenantIdRouteImport } from './routes/platform/tenants.$tenantId'
@@ -299,6 +300,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalAcsPortsRoute = ApiInternalAcsPortsRouteImport.update({
+  id: '/api/internal/acs-ports',
+  path: '/api/internal/acs-ports',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPlatformTelemetryRoute = ApiPlatformTelemetryRouteImport.update({
   id: '/api/platform/telemetry',
   path: '/api/platform/telemetry',
@@ -383,6 +389,7 @@ export interface FileRoutesByFullPath {
   '/api/agent/pull': typeof ApiAgentPullRoute
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/internal/acs-ports': typeof ApiInternalAcsPortsRoute
   '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
   '/api/v1/health': typeof ApiV1HealthRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
@@ -435,6 +442,7 @@ export interface FileRoutesByTo {
   '/api/agent/pull': typeof ApiAgentPullRoute
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/internal/acs-ports': typeof ApiInternalAcsPortsRoute
   '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
   '/api/v1/health': typeof ApiV1HealthRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
@@ -492,6 +500,7 @@ export interface FileRoutesById {
   '/api/agent/pull': typeof ApiAgentPullRoute
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/internal/acs-ports': typeof ApiInternalAcsPortsRoute
   '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
   '/api/v1/health': typeof ApiV1HealthRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
@@ -550,6 +559,7 @@ export interface FileRouteTypes {
     | '/api/agent/pull'
     | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/internal/acs-ports'
     | '/api/platform/telemetry'
     | '/api/v1/health'
     | '/platform/tenants/$tenantId'
@@ -602,6 +612,7 @@ export interface FileRouteTypes {
     | '/api/agent/pull'
     | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/internal/acs-ports'
     | '/api/platform/telemetry'
     | '/api/v1/health'
     | '/platform/tenants/$tenantId'
@@ -658,6 +669,7 @@ export interface FileRouteTypes {
     | '/api/agent/pull'
     | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/internal/acs-ports'
     | '/api/platform/telemetry'
     | '/api/v1/health'
     | '/platform/tenants/$tenantId'
@@ -685,6 +697,7 @@ export interface RootRouteChildren {
   ApiAgentPullRoute: typeof ApiAgentPullRoute
   ApiAgentScriptRoute: typeof ApiAgentScriptRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiInternalAcsPortsRoute: typeof ApiInternalAcsPortsRoute
   ApiPlatformTelemetryRoute: typeof ApiPlatformTelemetryRoute
   ApiV1HealthRoute: typeof ApiV1HealthRoute
   ApiV1CronBillingRoute: typeof ApiV1CronBillingRoute
@@ -1024,6 +1037,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/acs-ports': {
+      id: '/api/internal/acs-ports'
+      path: '/api/internal/acs-ports'
+      fullPath: '/api/internal/acs-ports'
+      preLoaderRoute: typeof ApiInternalAcsPortsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/platform/telemetry': {
       id: '/api/platform/telemetry'
       path: '/api/platform/telemetry'
@@ -1203,6 +1223,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAgentPullRoute: ApiAgentPullRoute,
   ApiAgentScriptRoute: ApiAgentScriptRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiInternalAcsPortsRoute: ApiInternalAcsPortsRoute,
   ApiPlatformTelemetryRoute: ApiPlatformTelemetryRoute,
   ApiV1HealthRoute: ApiV1HealthRoute,
   ApiV1CronBillingRoute: ApiV1CronBillingRoute,

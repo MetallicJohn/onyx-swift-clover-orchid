@@ -11,6 +11,7 @@ import {
   ouiFromGenieDevice,
   productClassFromGenieDevice,
   serialFromGenieDevice,
+  acsUsernameFromGenieDevice,
   type AcsNbiConfig,
   type NbiFetch,
 } from "./acs-nbi.ts";
@@ -156,23 +157,34 @@ export async function dispatchAcsTask(sql: Sql, tenantId: string, taskId: string
 export async function syncAcsDevices(sql: Sql, tenantId: string, fetchImpl: NbiFetch = fetch) {
   const cfg = await loadAcsConfig(sql, tenantId);
   if (!nbiOrigin(cfg)) throw new Error("Set the GenieACS NBI URL first");
+  const [creds] = await sql<{ username: string }>`
+    select username from acs_isp_credentials where tenant_id = ${tenantId}`;
+  const myUser = (creds?.username || "").trim();
   const devices = await nbiListDevices(cfg, fetchImpl);
   let upserted = 0;
+  let skipped = 0;
   for (const doc of devices) {
     const serial = serialFromGenieDevice(doc).trim();
     if (!serial) continue;
+    const reportedUser = acsUsernameFromGenieDevice(doc).trim();
+    const [mine] = await sql<{ id: string }>`
+      select id from cpe_devices where tenant_id = ${tenantId} and (serial = ${serial} or acs_device_id = ${String(doc._id || "")})`;
+    if (!mine) {
+      if (!myUser || !reportedUser || reportedUser !== myUser) {
+        skipped += 1;
+        continue;
+      }
+    }
     const product = productClassFromGenieDevice(doc);
     const oui = ouiFromGenieDevice(doc);
     const acsId = String(doc._id || genieDeviceId(oui, product, serial));
     const last = lastInformFromGenieDevice(doc);
     const status = informStatus(last);
-    const raw = JSON.stringify({ _id: acsId, _lastInform: last });
-    const [existing] = await sql<{ id: string }>`
-      select id from cpe_devices where tenant_id = ${tenantId} and serial = ${serial}`;
-    if (existing) {
+    const raw = JSON.stringify({ _id: acsId, _lastInform: last, acs_username: reportedUser });
+    if (mine) {
       await sql`update cpe_devices set product_class = ${product}, manufacturer_oui = ${oui},
         acs_device_id = ${acsId}, status = ${status}, last_inform = ${last || null}::timestamptz,
-        last_inform_raw = ${raw} where id = ${existing.id}`;
+        last_inform_raw = ${raw} where id = ${mine.id}`;
     } else {
       await sql`insert into cpe_devices
         (id, tenant_id, serial, product_class, manufacturer_oui, acs_device_id, status, last_inform, last_inform_raw)
@@ -181,7 +193,7 @@ export async function syncAcsDevices(sql: Sql, tenantId: string, fetchImpl: NbiF
     }
     upserted += 1;
   }
-  return { upserted, total: devices.length };
+  return { upserted, total: devices.length, skipped };
 }
 
 export async function refreshCpeInform(sql: Sql, tenantId: string, cpeId: string, fetchImpl?: NbiFetch) {

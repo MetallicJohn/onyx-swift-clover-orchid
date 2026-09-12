@@ -21,14 +21,24 @@ import { disconnectRadiusUser, publicRadiusAccount, renderFreeRadiusUsers } from
 import { mikrotikProfileName } from "./pcq";
 import { ensureRadiusApiKey, radiusConfigBundle, rotateRadiusApiKey, defaultNasClients, ensureRadiusNasSecret, radiusVpsEnv, internalRadiusBaseUrl } from "./radius-rest";
 import { open } from "./secrets";
-import { assertPermission } from "./rbac";
+import { assertPermission, hasPermission } from "./rbac";
 import { changePortalPassword, issuePortalOtp, portalContext, portalPasswordLogin, verifyPortalOtp } from "./portal";
 import { customerGraceEligibility, customerSelfGrant } from "./grace";
 import { completePortalPasswordReset } from "./password-reset";
 import { issueResellerOtp, resellerHome, verifyResellerOtp } from "./reseller-portal";
 import { openTicket } from "./tickets";
 import { acsConnection, loadAcsConfig, refreshCpeInform, saveAcsConfig, syncAcsDevices } from "./acs";
-import { genieDeviceId } from "./acs-nbi";
+import {
+  completeAcsConfigText,
+  generateAcsCredentials,
+  loadAcsCredentials,
+  oltSnippets,
+  recordAcsVerify,
+  revealAcsSecrets,
+  saveAcsCredentialSettings,
+} from "./acs-credentials";
+import { genieDeviceId, nbiOrigin, nbiPing } from "./acs-nbi";
+import { rateLimit } from "./rate-limit";
 import { requireWorkspace as requireWs } from "./workspace";
 
 export const listRadius = createServerFn({ method: "GET" })
@@ -444,6 +454,108 @@ export const informCpe = createServerFn({ method: "POST" })
     assertPermission(role, "routers.manage");
     return refreshCpeInform(sql, tenantId, data.id);
   });
+
+function packAcsCredentials(
+  row: NonNullable<Awaited<ReturnType<typeof loadAcsCredentials>>>,
+  opts: { secrets?: boolean } = {},
+) {
+  const safe = opts.secrets
+    ? row
+    : { ...row, password: "", connreq_password: "" };
+  return {
+    ...safe,
+    snippets: oltSnippets(safe),
+    config_text: opts.secrets ? completeAcsConfigText(row) : completeAcsConfigText({ ...row, password: "********", connreq_password: "********" }),
+  };
+}
+
+export const getAcsCredentialsFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenantId, workspace, role } = await requireWs(context.userId);
+    assertPermission(role, "acs.credentials.view");
+    const [ten] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${tenantId}`;
+    const row = await loadAcsCredentials(sql, tenantId, { publicBase: ten?.public_base_url || "" });
+    const nbi = await loadAcsConfig(sql, tenantId);
+    return {
+      credentials: row ? packAcsCredentials(row) : null,
+      slug: workspace.slug,
+      nbi_configured: Boolean(nbiOrigin(nbi)),
+      can: {
+        manage: hasPermission(role, "acs.credentials.manage"),
+        reveal: hasPermission(role, "acs.credentials.reveal"),
+        rotate: hasPermission(role, "acs.credentials.rotate"),
+        test: hasPermission(role, "acs.connection.test"),
+      },
+    };
+  });
+
+export const generateAcsCredentialsFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d?: { rotate?: boolean }) => d ?? {})
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, workspace, role } = await requireWs(context.userId);
+    if (data?.rotate) assertPermission(role, "acs.credentials.rotate");
+    else assertPermission(role, "acs.credentials.manage");
+    const [ten] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${tenantId}`;
+    const row = await generateAcsCredentials(sql, {
+      tenantId,
+      slug: workspace.slug,
+      publicBase: ten?.public_base_url || "",
+      userId: context.userId,
+      rotate: Boolean(data?.rotate),
+    });
+    return packAcsCredentials(row, { secrets: true });
+  });
+
+export const saveAcsCredentialsFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { enabled?: boolean; inform_interval?: number }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "acs.credentials.manage");
+    const row = await saveAcsCredentialSettings(sql, tenantId, {
+      enabled: data.enabled,
+      inform_interval: data.inform_interval,
+      userId: context.userId,
+    });
+    if (!row) throw new Error("Generate ACS credentials first.");
+    return packAcsCredentials(row);
+  });
+
+export const revealAcsCredentialsFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "acs.credentials.reveal");
+    const lim = rateLimit(`acs-reveal:${tenantId}`, 5, 5 * 60_000);
+    if (!lim.ok) throw new Error("Too many password reveals. Try again in a few minutes.");
+    const row = await revealAcsSecrets(sql, tenantId, context.userId);
+    return packAcsCredentials(row, { secrets: true });
+  });
+
+export const testAcsConnectionFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "acs.connection.test");
+    const lim = rateLimit(`acs-test:${tenantId}`, 8, 5 * 60_000);
+    if (!lim.ok) throw new Error("Too many ACS tests. Try again in a few minutes.");
+    const cfg = await loadAcsConfig(sql, tenantId);
+    if (!nbiOrigin(cfg)) {
+      const row = await recordAcsVerify(sql, tenantId, { ok: false, error: "GenieACS NBI is not configured" }, context.userId);
+      return { ok: false, error: "GenieACS NBI is not configured. Save the NBI connection first.", credentials: row ? packAcsCredentials(row) : null };
+    }
+    const ping = await nbiPing(cfg);
+    const error = ping.ok ? "" : "error" in ping ? ping.error : `GenieACS NBI HTTP ${ping.status}`;
+    const row = await recordAcsVerify(sql, tenantId, { ok: ping.ok, error }, context.userId);
+    return {
+      ok: ping.ok,
+      error: error || "",
+      credentials: row ? packAcsCredentials(row) : null,
+    };
+  });
+
 
 export const listPartners = createServerFn({ method: "GET" })
   .middleware([authMiddleware])

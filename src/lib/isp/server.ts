@@ -26,6 +26,7 @@ import { groupAssignments, listTags, loadAssignments, setCustomerTags } from "./
 import { assertPermission } from "./rbac";
 import { assertCustomerQuota, assertRouterQuota, assertTenantOperable } from "./saas";
 import { assertFeature, featureForAccess } from "./plans";
+import { allocateAccountNumber, changeCustomerAccountNumber, getAccountNumberSettings } from "./account-numbers";
 import { applyRls } from "./rls";
 import { loadAuthUser, provisionTenant, setCredentialPassword, changeOwnPassword, isPlatformAdmin } from "./accounts";
 import { resolveActiveTenant, setActiveTenant } from "./tenant-context";
@@ -53,9 +54,10 @@ async function audit(
   action: string,
   entityType = "",
   entityId = "",
+  details = "",
 ) {
-  await sql`insert into audit_logs (id, tenant_id, user_id, action, entity_type, entity_id)
-    values (${nid("aud")}, ${tenantId}, ${userId}, ${action}, ${entityType}, ${entityId})`;
+  await sql`insert into audit_logs (id, tenant_id, user_id, action, entity_type, entity_id, details)
+    values (${nid("aud")}, ${tenantId}, ${userId}, ${action}, ${entityType}, ${entityId}, ${details})`;
 }
 
 async function ensureWorkspace(
@@ -202,7 +204,7 @@ export const listCustomers = createServerFn({ method: "GET" })
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "customers.read");
     const rows = await sql<CustomerRow>`
-      select c.id, c.type, c.name, c.phone, c.email, c.address, c.status, c.created_at::text as created_at,
+      select c.id, c.type, c.name, c.phone, c.email, c.address, c.status, coalesce(c.account_number,'') as account_number, c.created_at::text as created_at,
         (select count(*)::int from services s where s.customer_id = c.id) as service_count,
         (select coalesce(sum(greatest(0, i.amount_kes - i.paid_kes)),0)::int from invoices i where i.customer_id = c.id and i.status in ('due','overdue','issued','partial')) as balance_kes
       from customers c
@@ -255,7 +257,7 @@ export const listCustomers = createServerFn({ method: "GET" })
 
 export const createCustomer = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { name: string; phone: string; email: string; address: string; type: string; portal_password?: string; tag_ids?: string[] }) => d)
+  .validator((d: { name: string; phone: string; email: string; address: string; type: string; portal_password?: string; tag_ids?: string[]; account_number?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "customers.manage");
@@ -263,8 +265,15 @@ export const createCustomer = createServerFn({ method: "POST" })
     if (!name) throw new Error("Name is required");
     await assertCustomerQuota(sql, workspace.tenantId);
     const id = nid("cus");
-    await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status)
-      values (${id}, ${workspace.tenantId}, ${data.type || "individual"}, ${name}, ${data.phone.trim()}, ${data.email.trim()}, ${data.address.trim()}, 'active')`;
+    const accountNumber = await allocateAccountNumber(sql, workspace.tenantId, data.account_number);
+    try {
+      await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status, account_number)
+        values (${id}, ${workspace.tenantId}, ${data.type || "individual"}, ${name}, ${data.phone.trim()}, ${data.email.trim()}, ${data.address.trim()}, 'active', ${accountNumber})`;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/account_number|unique/i.test(msg)) throw new Error("Account number already assigned.");
+      throw err;
+    }
     if (data.portal_password) {
       const { setPortalPassword } = await import("./portal");
       await setPortalPassword(sql, workspace.tenantId, id, data.portal_password);
@@ -281,19 +290,37 @@ export const createCustomer = createServerFn({ method: "POST" })
 
 export const updateCustomer = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { id: string; name: string; phone: string; email: string; address: string; type: string; tag_ids?: string[] }) => d)
+  .validator((d: { id: string; name: string; phone: string; email: string; address: string; type: string; tag_ids?: string[]; account_number?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "customers.manage");
     const name = data.name.trim();
     if (!name) throw new Error("Name is required");
-    const rows = await sql<{ id: string }>`
+    const rows = await sql<{ id: string; account_number: string }>`
       update customers
       set name = ${name}, phone = ${data.phone.trim()}, email = ${data.email.trim()}, address = ${data.address.trim()}, type = ${data.type || "individual"}
       where id = ${data.id} and tenant_id = ${workspace.tenantId}
-      returning id`;
+      returning id, coalesce(account_number,'') as account_number`;
     if (!rows[0]) throw new Error("Customer not found");
     if (data.tag_ids) await setCustomerTags(sql, workspace.tenantId, data.id, data.tag_ids);
+    if (data.account_number !== undefined && data.account_number !== rows[0].account_number) {
+      const settings = await getAccountNumberSettings(sql, workspace.tenantId, workspace.slug);
+      const changed = await changeCustomerAccountNumber(sql, {
+        tenantId: workspace.tenantId,
+        customerId: data.id,
+        next: data.account_number,
+        allowManual: settings.allow_manual,
+      });
+      await audit(
+        sql,
+        workspace.tenantId,
+        context.userId,
+        "customer.account_number_changed",
+        "customer",
+        data.id,
+        `${changed.previous || "(none)"} → ${changed.next || "(none)"}`,
+      );
+    }
     await audit(sql, workspace.tenantId, context.userId, "customer.updated", "customer", data.id);
     return { id: data.id };
   });
@@ -887,8 +914,9 @@ export const importCustomers = createServerFn({ method: "POST" })
         continue;
       }
       const cid = nid("cus");
-      await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status)
-        values (${cid}, ${tid}, 'individual', ${row.name.trim()}, ${row.phone || ""}, ${row.email || ""}, ${row.address || ""}, 'active')`;
+      const accountNumber = await allocateAccountNumber(sql, tid, undefined);
+      await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status, account_number)
+        values (${cid}, ${tid}, 'individual', ${row.name.trim()}, ${row.phone || ""}, ${row.email || ""}, ${row.address || ""}, 'active', ${accountNumber})`;
       const sid = nid("svc");
       const periodEnd = new Date(Date.now() + 30 * 86400_000).toISOString();
       await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end)
@@ -910,22 +938,23 @@ export const exportCustomersCsv = createServerFn({ method: "GET" })
       phone: string;
       email: string;
       address: string;
+      account_number: string;
       access_method: string | null;
       username: string | null;
       static_ip: string | null;
       package_name: string | null;
       service_status: string | null;
     }>`
-      select c.name, c.phone, c.email, c.address, s.access_method, s.username, s.static_ip, p.name as package_name, s.status as service_status
+      select c.name, c.phone, c.email, c.address, coalesce(c.account_number,'') as account_number, s.access_method, s.username, s.static_ip, p.name as package_name, s.status as service_status
       from customers c
       left join services s on s.customer_id = c.id
       left join packages p on p.id = s.package_id
       where c.tenant_id = ${workspace.tenantId}
       order by c.name`;
-    const header = "name,phone,email,address,access_method,username,static_ip,package_name,service_status";
+    const header = "name,phone,email,address,account_number,access_method,username,static_ip,package_name,service_status";
     const body = rows
       .map((r) =>
-        [r.name, r.phone, r.email, r.address, r.access_method ?? "", r.username ?? "", r.static_ip ?? "", r.package_name ?? "", r.service_status ?? ""]
+        [r.name, r.phone, r.email, r.address, r.account_number ?? "", r.access_method ?? "", r.username ?? "", r.static_ip ?? "", r.package_name ?? "", r.service_status ?? ""]
           .map((v) => `"${String(v).replaceAll('"', '""')}"`)
           .join(","),
       )

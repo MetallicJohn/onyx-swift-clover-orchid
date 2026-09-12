@@ -19,6 +19,12 @@ test("account numbers are derived from the tenant slug, not a hardcoded ISP", ()
   assert.notEqual(accountNumber("imani-networks", "cus_x"), accountNumber("coast-fiber", "cus_x"));
 });
 
+test("stored account numbers win over the derived slug code", async () => {
+  const { resolveAccountNumber } = await import("./document-format.ts");
+  assert.equal(resolveAccountNumber("imani-networks", "cus_x", "IMN1000"), "IMN1000");
+  assert.equal(resolveAccountNumber("imani-networks", "cus_abcdef123456", ""), accountNumber("imani-networks", "cus_abcdef123456"));
+});
+
 test("statement running balance, credit closing, and invoice status labels", () => {
   const { rows, summary } = buildStatementRows([
     { created_at: "2026-08-01", entry_type: "invoice", debit_kes: 2500, credit_kes: 0, memo: "INV-1" },

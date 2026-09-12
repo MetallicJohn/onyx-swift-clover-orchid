@@ -186,6 +186,12 @@ export async function provisionTenant(
   await ensureFirstPlatformAdmin(sql, userId);
   const { ensureSubscription } = await import("./saas");
   await ensureSubscription(sql, tenantId);
+  try {
+    const { ensureTenantAcsPort } = await import("./acs-ports");
+    await ensureTenantAcsPort(sql, { tenantId, slug });
+  } catch {
+    /* port table missing on very old DBs; generate later */
+  }
   await applyRls(sql, { tenantId, bypass: false });
   return toWorkspace({ tenantId, name: ispName, slug, email, role: "isp_owner" });
 }
@@ -252,6 +258,12 @@ export async function createIspWithOwner(
   await ensureFirstPlatformAdmin(sql, owner.id);
   const { ensureSubscription } = await import("./saas");
   await ensureSubscription(sql, tenantId);
+  try {
+    const { ensureTenantAcsPort } = await import("./acs-ports");
+    await ensureTenantAcsPort(sql, { tenantId, slug });
+  } catch {
+    /* ignore */
+  }
   return {
     tenant_id: tenantId,
     tenant_name: ispName,

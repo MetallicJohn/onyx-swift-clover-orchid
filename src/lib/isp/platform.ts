@@ -65,6 +65,10 @@ export async function getPlatformSettings(sql: Sql) {
     sales_email: (map.sales_email || "").trim(),
     support_email: (map.support_email || "").trim(),
     contact_phone: (map.contact_phone || "").trim(),
+    acs_public_host: (map.acs_public_host || "").trim(),
+    acs_dns_host: (map.acs_dns_host || "").trim(),
+    acs_port_start: Number(map.acs_port_start || 7551),
+    acs_port_end: Number(map.acs_port_end || 7999),
   };
 }
 
@@ -80,6 +84,10 @@ export async function savePlatformSettings(
     sales_email: string;
     support_email: string;
     contact_phone: string;
+    acs_public_host: string;
+    acs_dns_host: string;
+    acs_port_start: number;
+    acs_port_end: number;
   }>,
 ) {
   await requirePlatformActor(sql, actorUserId);
@@ -94,6 +102,24 @@ export async function savePlatformSettings(
   if (patch.sales_email != null) entries.push(["sales_email", patch.sales_email.trim().slice(0, 120)]);
   if (patch.support_email != null) entries.push(["support_email", patch.support_email.trim().slice(0, 120)]);
   if (patch.contact_phone != null) entries.push(["contact_phone", patch.contact_phone.trim().slice(0, 32)]);
+  if (patch.acs_public_host != null) {
+    const { normalizeAcsHost } = await import("./acs-ports");
+    entries.push(["acs_public_host", normalizeAcsHost(patch.acs_public_host)]);
+  }
+  if (patch.acs_dns_host != null) {
+    const { normalizeAcsHost } = await import("./acs-ports");
+    entries.push(["acs_dns_host", patch.acs_dns_host.trim() ? normalizeAcsHost(patch.acs_dns_host) : ""]);
+  }
+  if (patch.acs_port_start != null || patch.acs_port_end != null) {
+    const current = await getPlatformSettings(sql);
+    const { parsePortRange } = await import("./acs-ports");
+    const range = parsePortRange(
+      patch.acs_port_start ?? current.acs_port_start,
+      patch.acs_port_end ?? current.acs_port_end,
+    );
+    entries.push(["acs_port_start", String(range.start)]);
+    entries.push(["acs_port_end", String(range.end)]);
+  }
   for (const [key, value] of entries) {
     await sql`insert into platform_settings (key, value, updated_at) values (${key}, ${value}, now())
       on conflict (key) do update set value = ${value}, updated_at = now()`;
@@ -332,6 +358,8 @@ export async function loadTenantDetail(sql: Sql, actorUserId: string, tenantId: 
     created_at: string;
   }>`select id, actor_email, action, entity_type, created_at::text as created_at
      from platform_audit_log where tenant_id = ${tenantId} order by created_at desc limit 20`;
+  const { loadAcsCredentials } = await import("./acs-credentials");
+  const acs = await loadAcsCredentials(sql, tenantId);
   const online = routers.filter((r) => nodeHealth(r.last_seen, r.cpu_pct, null, null) !== "offline");
   const cpuVals = routers.filter((r) => r.last_seen).map((r) => r.cpu_pct);
   return {
@@ -355,6 +383,17 @@ export async function loadTenantDetail(sql: Sql, actorUserId: string, tenantId: 
       tickets_open: counts?.tickets_open ?? 0,
     },
     operators,
+    acs: acs
+      ? {
+          enabled: acs.enabled,
+          cwmp_url: acs.cwmp_url,
+          cwmp_port: acs.cwmp_port,
+          public_host: acs.public_host,
+          username: acs.username,
+          last_verified_at: acs.last_verified_at,
+          last_verify_ok: acs.last_verify_ok,
+        }
+      : null,
     routers: routers.map((r) => ({
       ...r,
       health: nodeHealth(r.last_seen, r.cpu_pct, null, null),

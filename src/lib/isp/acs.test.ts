@@ -6,7 +6,7 @@ import {
   saveAcsConfig,
   syncAcsDevices,
 } from "./acs.ts";
-import { genieDeviceId, nbiTaskBody, serialFromGenieDevice } from "./acs-nbi.ts";
+import { acsUsernameFromGenieDevice, genieDeviceId, nbiTaskBody, serialFromGenieDevice } from "./acs-nbi.ts";
 import { openTestDb } from "./test-db.ts";
 
 test("GenieACS device id and SSID task body", () => {
@@ -14,6 +14,12 @@ test("GenieACS device id and SSID task body", () => {
   const body = nbiTaskBody("setSsid", { ssid: "Imani-Home" });
   assert.equal(body.name, "setParameterValues");
   assert.equal(serialFromGenieDevice({ _deviceId: { _SerialNumber: "ABC" }, _id: "x" }), "ABC");
+  assert.equal(
+    acsUsernameFromGenieDevice({
+      InternetGatewayDevice: { ManagementServer: { Username: { _value: "tenant_alpha" } } },
+    }),
+    "tenant_alpha",
+  );
 });
 
 function mockNbi(opts?: { failPost?: boolean; devices?: Record<string, unknown>[] }) {
@@ -85,6 +91,46 @@ test("SSID task posts both TR-069 paths and sync upserts from NBI", async () => 
       select acs_device_id, status from cpe_devices where serial = 'SN001'`;
     assert.equal(after?.acs_device_id, "1A2B3C-F670L-SN001");
     assert.equal(after?.status, "online");
+  } finally {
+    await close();
+  }
+});
+
+test("sync does not import another ISP's CPE", async () => {
+  const { sql, bypass, asRole, close } = await openTestDb();
+  try {
+    await bypass();
+    await sql`insert into tenants (id, name, slug) values ('ten_acs_a', 'A', 'alpha'), ('ten_acs_b', 'B', 'beta')`;
+    await sql`insert into acs_isp_credentials (tenant_id, username) values ('ten_acs_a', 'tenant_alpha'), ('ten_acs_b', 'tenant_beta')`;
+    await saveAcsConfig(sql, "ten_acs_a", { nbiUrl: "http://nbi.local", user: "", oui: "1A2B3C" });
+    await saveAcsConfig(sql, "ten_acs_b", { nbiUrl: "http://nbi.local", user: "", oui: "1A2B3C" });
+    const devices = [
+      {
+        _id: "1A2B3C-F670L-SN-A",
+        _lastInform: new Date().toISOString(),
+        _deviceId: { _OUI: "1A2B3C", _ProductClass: "F670L", _SerialNumber: "SN-A" },
+        InternetGatewayDevice: { ManagementServer: { Username: { _value: "tenant_alpha" } } },
+      },
+      {
+        _id: "1A2B3C-F670L-SN-B",
+        _lastInform: new Date().toISOString(),
+        _deviceId: { _OUI: "1A2B3C", _ProductClass: "F670L", _SerialNumber: "SN-B" },
+        InternetGatewayDevice: { ManagementServer: { Username: { _value: "tenant_beta" } } },
+      },
+    ];
+    const { fetchImpl } = mockNbi({ devices });
+    await asRole("ten_acs_a");
+    const a = await syncAcsDevices(sql, "ten_acs_a", fetchImpl);
+    assert.equal(a.upserted, 1);
+    const [mine] = await sql<{ n: number }>`select count(*)::int as n from cpe_devices where tenant_id = 'ten_acs_a'`;
+    assert.equal(mine?.n, 1);
+    const [serial] = await sql<{ serial: string }>`select serial from cpe_devices where tenant_id = 'ten_acs_a'`;
+    assert.equal(serial?.serial, "SN-A");
+    await asRole("ten_acs_b");
+    const b = await syncAcsDevices(sql, "ten_acs_b", fetchImpl);
+    assert.equal(b.upserted, 1);
+    const [theirs] = await sql<{ serial: string }>`select serial from cpe_devices where tenant_id = 'ten_acs_b'`;
+    assert.equal(theirs?.serial, "SN-B");
   } finally {
     await close();
   }

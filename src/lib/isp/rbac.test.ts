@@ -127,3 +127,19 @@ test("sensitive list and export endpoints assert a permission", () => {
   const mikrotik = readFileSync(new URL("./server-mikrotik.ts", import.meta.url), "utf8");
   assert.match(mikrotik, /export const getRouterApi[\s\S]+?assertPermission\(role, "routers.manage"\)/);
 });
+
+test("ACS credentials are for network staff, not finance or technicians", () => {
+  assert.equal(hasPermission("network_engineer", "acs.credentials.view"), true);
+  assert.equal(hasPermission("network_engineer", "acs.credentials.reveal"), true);
+  assert.equal(hasPermission("network_engineer", "acs.credentials.rotate"), true);
+  assert.equal(hasPermission("network_engineer", "acs.connection.test"), true);
+  assert.equal(hasPermission("finance", "acs.credentials.view"), false);
+  assert.equal(hasPermission("technician", "acs.credentials.reveal"), false);
+  assert.equal(hasPermission("support", "acs.credentials.view"), true);
+  assert.equal(hasPermission("support", "acs.credentials.manage"), false);
+  assert.throws(() => assertPermission("technician", "acs.credentials.reveal"), /Forbidden/);
+  const ops = readFileSync(new URL("./server-ops.ts", import.meta.url), "utf8");
+  assert.match(ops, /export const getAcsCredentialsFn[\s\S]+?assertPermission\(role, "acs.credentials.view"\)/);
+  assert.match(ops, /export const revealAcsCredentialsFn[\s\S]+?assertPermission\(role, "acs.credentials.reveal"\)/);
+  assert.match(ops, /export const testAcsConnectionFn[\s\S]+?assertPermission\(role, "acs.connection.test"\)/);
+});

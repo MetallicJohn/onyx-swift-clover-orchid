@@ -8,6 +8,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { TablePad, VirtualTableFrame } from "@/components/ui/virtual-scroller";
 import { useTableVirtualizer } from "@/components/ui/use-virtual-scroller";
 import { createCustomer, listCustomers, setCustomerPortalPassword, updateCustomer } from "@/lib/isp/server";
+import { getAccountNumberSettingsFn } from "@/lib/isp/server-account-numbers";
 import { hasPermission } from "@/lib/isp/rbac";
 import { broadcastCustomersFn, bulkCustomerTagsFn } from "@/lib/isp/server-tags";
 import type { CustomerRow } from "@/lib/isp/types";
@@ -35,6 +36,7 @@ const EMPTY_FORM = {
   type: "individual",
   portal_password: "",
   tag_ids: [] as string[],
+  account_number: "",
 };
 
 function churnTone(band: string) {
@@ -79,7 +81,7 @@ function CustomerTable({
   const { parentRef, virtualizer, rows: vis, padTop, padBottom } = useTableVirtualizer(rows.length, 96);
   return (
     <VirtualTableFrame parentRef={parentRef} className="rounded-xl bg-surface shadow-card">
-      <table className="w-full min-w-[56rem] text-left text-sm">
+      <table className="w-full min-w-[62rem] text-left text-sm">
         <thead className="sticky top-0 z-10 bg-surface text-xs text-muted">
           <tr>
             <th className="px-3 py-3">
@@ -88,6 +90,7 @@ function CustomerTable({
               ) : null}
             </th>
             <th className="px-4 py-3 font-medium">Customer</th>
+            <th className="px-4 py-3 font-medium">Account</th>
             <th className="px-4 py-3 font-medium">Contact</th>
             <th className="px-4 py-3 font-medium">Tags</th>
             <th className="px-4 py-3 font-medium">Services</th>
@@ -98,7 +101,7 @@ function CustomerTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          <TablePad height={padTop} colSpan={9} />
+          <TablePad height={padTop} colSpan={10} />
           {vis.map((v) => {
             const c = rows[v.index];
             return (
@@ -118,6 +121,7 @@ function CustomerTable({
                   <div className="font-medium">{c.name}</div>
                   <div className="text-xs text-muted capitalize">{c.type}</div>
                 </td>
+                <td className="px-4 py-3 font-mono text-xs">{c.account_number || "—"}</td>
                 <td className="px-4 py-3 text-muted">
                   <div>{c.phone}</div>
                   <div className="text-xs">{c.email}</div>
@@ -191,7 +195,7 @@ function CustomerTable({
               </tr>
             );
           })}
-          <TablePad height={padBottom} colSpan={9} />
+          <TablePad height={padBottom} colSpan={10} />
         </tbody>
       </table>
     </VirtualTableFrame>
@@ -215,6 +219,11 @@ function CustomersPage() {
   const [tagMode, setTagMode] = useState<"any" | "all">("any");
   const [form, setForm] = useState(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
+  const [accPolicy, setAccPolicy] = useState<{ enabled: boolean; allow_manual: boolean; preview: string }>({
+    enabled: false,
+    allow_manual: false,
+    preview: "",
+  });
   const [portalFor, setPortalFor] = useState<string | null>(null);
   const [portalPass, setPortalPass] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -231,6 +240,12 @@ function CustomersPage() {
     setTags(res.tags ?? []);
     setPackages(res.packages ?? []);
     setRole(res.workspace.role);
+    try {
+      const policy = await getAccountNumberSettingsFn();
+      setAccPolicy({ enabled: policy.enabled, allow_manual: policy.allow_manual, preview: policy.preview });
+    } catch {
+      setAccPolicy({ enabled: false, allow_manual: false, preview: "" });
+    }
   }
 
   useEffect(() => {
@@ -247,7 +262,7 @@ function CustomersPage() {
       const assigned = (r.tags ?? []).map((t) => t.id);
       if (!hasTags(assigned, tagFilter, tagMode)) return false;
       if (!needle) return true;
-      const hay = `${r.name} ${r.phone} ${r.email} ${r.address} ${(r.tags ?? []).map((t) => t.name).join(" ")}`.toLowerCase();
+      const hay = `${r.name} ${r.phone} ${r.email} ${r.address} ${r.account_number ?? ""} ${(r.tags ?? []).map((t) => t.name).join(" ")}`.toLowerCase();
       return hay.includes(needle);
     });
   }, [rows, q, risk, status, access, pkg, tagFilter, tagMode]);
@@ -263,7 +278,7 @@ function CustomersPage() {
 
   function startCreate() {
     setEditingId(null);
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, account_number: accPolicy.enabled ? accPolicy.preview : "" });
     setOpen(true);
   }
 
@@ -277,6 +292,7 @@ function CustomersPage() {
       type: c.type,
       portal_password: "",
       tag_ids: (c.tags ?? []).map((t) => t.id),
+      account_number: c.account_number || "",
     });
     setOpen(true);
   }
@@ -286,6 +302,20 @@ function CustomersPage() {
     setBusy(true);
     try {
       if (editingId) {
+        const previous = rows.find((r) => r.id === editingId)?.account_number || "";
+        if (form.account_number !== previous) {
+          if (!accPolicy.allow_manual) {
+            throw new Error("Manual editing of account numbers is turned off.");
+          }
+          if (
+            !window.confirm(
+              `Change account number from ${previous || "(none)"} to ${form.account_number || "(none)"}? Invoices, services, and history stay on this customer.`,
+            )
+          ) {
+            setBusy(false);
+            return;
+          }
+        }
         await updateCustomer({
           data: {
             id: editingId,
@@ -295,6 +325,7 @@ function CustomersPage() {
             address: form.address,
             type: form.type,
             tag_ids: form.tag_ids,
+            account_number: form.account_number,
           },
         });
       } else {
@@ -307,6 +338,7 @@ function CustomersPage() {
             type: form.type,
             portal_password: form.portal_password || undefined,
             tag_ids: form.tag_ids,
+            account_number: form.account_number || undefined,
           },
         });
       }
@@ -314,6 +346,8 @@ function CustomersPage() {
       setEditingId(null);
       setForm(EMPTY_FORM);
       await load();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Could not save customer");
     } finally {
       setBusy(false);
     }
@@ -402,7 +436,7 @@ function CustomersPage() {
       {tab === "customers" ? (
       <>
       <div className="space-y-3">
-        <Input placeholder="Search name, phone, email, address, or tag" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Input placeholder="Search name, account number, phone, email, address, or tag" value={q} onChange={(e) => setQ(e.target.value)} />
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant={risk === "all" && status === "all" ? "default" : "secondary"} onClick={() => { setRisk("all"); setStatus("all"); }}>
             All ({rows.length})
@@ -556,6 +590,29 @@ function CustomersPage() {
           <Field label="Address / location">
             <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
           </Field>
+          {accPolicy.enabled || accPolicy.allow_manual || (editingId && form.account_number) ? (
+            <Field label="Account number">
+              <Input
+                value={form.account_number}
+                readOnly={editingId ? !accPolicy.allow_manual : accPolicy.enabled && !accPolicy.allow_manual}
+                onChange={(e) => setForm({ ...form, account_number: e.target.value.toUpperCase() })}
+                placeholder={accPolicy.enabled ? accPolicy.preview : "Optional"}
+              />
+            </Field>
+          ) : null}
+          {accPolicy.enabled && !editingId ? (
+            <p className="text-xs text-subtle md:col-span-2">
+              Next number {accPolicy.preview}. It is reserved when you save, so two staff cannot get the same account.
+              {canSettings ? (
+                <>
+                  {" "}
+                  <Link to="/app/settings" search={{ tab: "accounts" }} className="text-accent hover:underline">
+                    Change format
+                  </Link>
+                </>
+              ) : null}
+            </p>
+          ) : null}
           {!editingId ? (
             <Field label="Portal password (optional)">
               <Input

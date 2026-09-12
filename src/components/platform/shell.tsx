@@ -15,12 +15,12 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { BrandMark } from "@/components/isp/brand-mark";
+import { SidebarNav, type SidebarNavItem } from "@/components/sidebar-nav";
 import { UserButton } from "@/lib/auth/gates";
 import { APP_NAME } from "@/lib/brand";
 import { searchSaas } from "@/lib/isp/server-platform";
-import { cn } from "@/lib/utils";
 
-const NAV = [
+const NAV: SidebarNavItem[] = [
   { to: "/platform", label: "Dashboard", icon: LayoutDashboard },
   { to: "/platform/tenants", label: "Tenants", icon: Building2 },
   { to: "/platform/plans", label: "Subscription Plans", icon: CreditCard },
@@ -59,29 +59,6 @@ export function PlatformShell({ email }: { email?: string }) {
     return () => window.clearTimeout(t);
   }, [q]);
 
-  const Nav = () => (
-    <nav className="flex flex-col gap-0.5">
-      {NAV.map((item) => {
-        const active = item.to === "/platform" ? pathname === "/platform" : pathname.startsWith(item.to);
-        const Icon = item.icon;
-        return (
-          <Link
-            key={item.to}
-            to={item.to}
-            onClick={() => setOpen(false)}
-            className={cn(
-              "flex h-11 items-center gap-3 rounded-md px-3 text-sm transition-colors",
-              active ? "bg-accent/10 text-fg" : "text-muted hover:bg-elevated/60 hover:text-fg",
-            )}
-          >
-            <Icon className={cn("size-4 shrink-0", active && "text-accent")} strokeWidth={1.75} />
-            {item.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-
   return (
     <div className="min-h-dvh bg-bg text-fg">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-sidebar p-4 md:flex">
@@ -92,9 +69,13 @@ export function PlatformShell({ email }: { email?: string }) {
             <div className="text-[11px] text-muted">SaaS Management</div>
           </div>
         </Link>
-        <Nav />
+        <SidebarNav items={NAV} pathname={pathname} root="/platform" />
         <div className="mt-auto space-y-2 border-t border-border pt-3">
-          <Link to="/app" className="flex h-11 items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-elevated/60 hover:text-fg">
+          <Link
+            to="/app"
+            preload={false}
+            className="flex h-11 items-center gap-2 rounded-md px-3 text-sm text-muted transition-[background-color,color] duration-150 hover:bg-elevated hover:text-fg"
+          >
             <Shield className="size-4" />
             ISP console
           </Link>
@@ -112,13 +93,13 @@ export function PlatformShell({ email }: { email?: string }) {
                 <X className="size-5" />
               </button>
             </div>
-            <Nav />
+            <SidebarNav items={NAV} pathname={pathname} root="/platform" onNavigate={() => setOpen(false)} />
           </div>
         </div>
       ) : null}
 
       <div className="md:pl-60">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-header/90 px-4 backdrop-blur">
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-header px-4">
           <button className="grid size-11 place-items-center md:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
             <Menu className="size-5" />
           </button>

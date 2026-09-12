@@ -11,3 +11,8 @@ acs.{$GRIDLINE_DOMAIN} {
 	encode gzip zstd
 	reverse_proxy genieacs:3000
 }
+
+# TR-069 / CWMP is NOT terminated here. Each ISP gets a unique host port in 7551–7999
+# (cwmp-edge → genieacs:7547). Do not assume HTTPS on those ports until TLS is added.
+# GenieACS NBI (7557), Mongo, and Redis stay off the public internet.
+

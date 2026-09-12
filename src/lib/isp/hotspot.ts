@@ -1,5 +1,6 @@
 import { nid } from "../utils.ts";
 import { enqueueAgentCommand } from "./agent";
+import { allocateAccountNumber } from "./account-numbers";
 import { emit } from "./events";
 import { activateVoucherClock, canActivate, canRevoke, nextVoucherStatus } from "./voucher-lifecycle";
 
@@ -13,8 +14,9 @@ async function walkInCustomer(sql: Sql, tenantId: string) {
     select id from customers where tenant_id = ${tenantId} and name = 'Hotspot walk-in'`;
   if (c) return c.id;
   const id = nid("cus");
-  await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status)
-    values (${id}, ${tenantId}, 'individual', 'Hotspot walk-in', '', '', '', 'active')`;
+  const accountNumber = await allocateAccountNumber(sql, tenantId);
+  await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status, account_number)
+    values (${id}, ${tenantId}, 'individual', 'Hotspot walk-in', '', '', '', 'active', ${accountNumber})`;
   return id;
 }
 

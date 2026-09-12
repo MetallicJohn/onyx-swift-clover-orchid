@@ -64,6 +64,35 @@ export function lastInformFromGenieDevice(doc: Record<string, unknown>) {
   return "";
 }
 
+function nestedParam(doc: Record<string, unknown>, path: string) {
+  const parts = path.split(".");
+  let cur: unknown = doc;
+  for (const part of parts) {
+    if (!cur || typeof cur !== "object") return "";
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  if (cur && typeof cur === "object" && cur !== null && "_value" in cur) {
+    return String((cur as { _value?: unknown })._value ?? "");
+  }
+  if (typeof cur === "string" || typeof cur === "number") return String(cur);
+  return "";
+}
+
+export function acsUsernameFromGenieDevice(doc: Record<string, unknown>) {
+  return (
+    nestedParam(doc, "InternetGatewayDevice.ManagementServer.Username") ||
+    nestedParam(doc, "Device.ManagementServer.Username") ||
+    ""
+  );
+}
+
+export function genieDeviceTags(doc: Record<string, unknown>) {
+  const tags = doc._tags;
+  if (!Array.isArray(tags)) return [] as string[];
+  return tags.map((t) => String(t));
+}
+
+
 export function informStatus(lastInformIso: string, now = Date.now()) {
   if (!lastInformIso) return "unknown";
   const t = Date.parse(lastInformIso);

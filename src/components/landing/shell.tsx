@@ -112,7 +112,7 @@ export function PublicShell({
       >
         Skip to content
       </a>
-      <header className="sticky top-0 z-40 border-b border-border bg-bg/85 backdrop-blur-md">
+      <header className="sticky top-0 z-40 border-b border-border bg-bg">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4">
           <Link to="/" className="flex min-h-11 items-center gap-2">
             <BrandMark name={APP_NAME} size={32} />

@@ -5,6 +5,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { APP_NAME } from "@/lib/brand";
 import { AppearanceSettings } from "@/components/isp/appearance-settings";
 import { CustomerTagsSettings } from "@/components/isp/customer-tags-settings";
+import { AccountNumberSettings } from "@/components/isp/account-number-settings";
 import { NotificationsSettings } from "@/components/isp/notifications-settings";
 import { hasPermission, STAFF_ROLES } from "@/lib/isp/rbac";
 import { changeMyPassword, getDashboard, renameTenant, setStaffPassword } from "@/lib/isp/server";
@@ -27,7 +28,7 @@ export const Route = createFileRoute("/app/settings")({
   component: SettingsPage,
 });
 
-type TabId = "company" | "appearance" | "network" | "sms" | "notifications" | "payment" | "plan" | "staff" | "grace" | "tags";
+type TabId = "company" | "appearance" | "network" | "sms" | "notifications" | "payment" | "plan" | "staff" | "grace" | "tags" | "accounts";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "company", label: "Company info" },
@@ -40,6 +41,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "staff", label: "Staff" },
   { id: "grace", label: "Grace period" },
   { id: "tags", label: "Customer tags" },
+  { id: "accounts", label: "Account numbers" },
 ];
 
 function isTabId(value: unknown): value is TabId {
@@ -1574,6 +1576,7 @@ function SettingsPage() {
       ) : null}
 
       {tab === "tags" ? <CustomerTagsSettings /> : null}
+      {tab === "accounts" ? <AccountNumberSettings /> : null}
     </div>
   );
 }

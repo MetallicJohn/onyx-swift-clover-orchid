@@ -110,6 +110,14 @@ export function accountNumber(slug: string, customerId: string) {
   return `${pre}-${tail}`;
 }
 
+/** Prefer the stored ISP-assigned number; fall back to the derived slug code. */
+export function resolveAccountNumber(slug: string, customerId: string, stored?: string | null) {
+  const n = (stored || "").trim();
+  if (n) return n;
+  return accountNumber(slug, customerId);
+}
+
+
 export function invoiceStatusLabel(status: string) {
   const map: Record<string, string> = {
     draft: "Draft",

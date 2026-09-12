@@ -29,6 +29,11 @@ export const PERMISSIONS = [
   "communications.view",
   "communications.send",
   "communications.templates.manage",
+  "acs.credentials.view",
+  "acs.credentials.manage",
+  "acs.credentials.reveal",
+  "acs.credentials.rotate",
+  "acs.connection.test",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number] | "*";
@@ -81,6 +86,11 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "packages.read",
     "communications.view",
     "communications.send",
+    "acs.credentials.view",
+    "acs.credentials.manage",
+    "acs.credentials.reveal",
+    "acs.credentials.rotate",
+    "acs.connection.test",
   ],
   technician: ["tickets.assigned.read", "jobs.update", "customers.read", "services.read", "tickets.read"],
   support: [
@@ -94,6 +104,7 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "tickets.read",
     "audit.read",
     "communications.view",
+    "acs.credentials.view",
   ],
 };
 

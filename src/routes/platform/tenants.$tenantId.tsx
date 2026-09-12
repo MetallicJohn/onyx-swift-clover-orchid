@@ -7,6 +7,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { kes } from "@/lib/utils";
 import {
   addSaasOperator,
+  assignSaasAcsPort,
   assignSaasPlan,
   cancelSaasSubscription,
   enrollSaasNode,
@@ -39,6 +40,7 @@ function TenantDetailPage() {
   const [reset, setReset] = useState({ email: "", password: "" });
   const [nodeName, setNodeName] = useState("edge-1");
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
+  const [acsPort, setAcsPort] = useState("");
 
   async function load() {
     const [d, p, s] = await Promise.all([
@@ -57,6 +59,7 @@ function TenantDetailPage() {
     });
     setPlan(d.subscription.plan);
     setReset((r) => ({ ...r, email: d.operators[0]?.email || r.email }));
+    setAcsPort(d.acs?.cwmp_port ? String(d.acs.cwmp_port) : "");
   }
 
   useEffect(() => {
@@ -154,6 +157,51 @@ function TenantDetailPage() {
           ) : (
             <p className="mt-3 text-sm text-danger">Suspended: {data.tenant.suspended_reason || "—"}</p>
           )}
+        </Panel>
+
+        <Panel className="lg:col-span-3">
+          <h2 className="mb-4 text-base font-medium">ACS / TR-069 port</h2>
+          <p className="mb-3 text-sm text-muted">
+            Unique public CWMP port for this ISP. Changing it does not rewrite ONU serials, but ONUs keep informing the
+            old URL until the OLT profile is updated.
+          </p>
+          <dl className="mb-3 grid gap-2 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-muted">ACS URL</dt>
+              <dd className="font-mono text-xs break-all">{data.acs?.cwmp_url || "Not issued"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted">Username</dt>
+              <dd className="font-mono">{data.acs?.username || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted">Status</dt>
+              <dd>{data.acs?.enabled === false ? "Disabled" : data.acs ? "Enabled" : "—"}</dd>
+            </div>
+          </dl>
+          <form
+            className="flex flex-wrap items-end gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const next = Number(acsPort);
+              const current = data.acs?.cwmp_port ?? null;
+              const confirmChange = Boolean(current && current !== next);
+              if (confirmChange && !window.confirm(`Change this ISP ACS port from ${current} to ${next}? Update the OLT TR-069 profile or ONUs will stop informing.`)) {
+                return;
+              }
+              void run(
+                () => assignSaasAcsPort({ data: { tenant_id: tenantId, port: next || undefined, confirm: confirmChange } }),
+                "ACS port saved",
+              );
+            }}
+          >
+            <Field label="Port">
+              <Input value={acsPort} onChange={(e) => setAcsPort(e.target.value)} placeholder="Auto" />
+            </Field>
+            <Button type="submit" size="sm" disabled={busy}>
+              {acsPort ? "Assign port" : "Allocate next port"}
+            </Button>
+          </form>
         </Panel>
 
         <Panel>

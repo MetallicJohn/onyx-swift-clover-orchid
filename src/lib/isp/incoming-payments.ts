@@ -1,6 +1,6 @@
 import { nid } from "../utils.ts";
 import { remainingKes, statusAfterPayment } from "./billing.ts";
-import { accountNumber } from "./document-format.ts";
+import { resolveAccountNumber } from "./document-format.ts";
 import { emit } from "./events.ts";
 import { allocatePayment, recordLedger } from "./ledger.ts";
 import { normalizePhone } from "./phone.ts";
@@ -97,8 +97,8 @@ export async function matchIncomingCustomer(
   tenantId: string,
   hit: Pick<IncomingHit, "billRef" | "msisdn">,
 ) {
-  const customers = await sql<{ id: string; name: string; phone: string }>`
-    select id, name, phone from customers where tenant_id = ${tenantId}`;
+  const customers = await sql<{ id: string; name: string; phone: string; account_number: string }>`
+    select id, name, phone, coalesce(account_number,'') as account_number from customers where tenant_id = ${tenantId}`;
   const [tenant] = await sql<{ slug: string }>`select slug from tenants where id = ${tenantId}`;
   const slug = tenant?.slug || "";
   const bill = refKey(hit.billRef);
@@ -107,7 +107,7 @@ export async function matchIncomingCustomer(
   const hits: string[] = [];
   if (bill) {
     for (const c of customers) {
-      const acc = refKey(accountNumber(slug, c.id));
+      const acc = refKey(resolveAccountNumber(slug, c.id, c.account_number));
       if (acc && (acc === bill || acc.replace(/-/g, "") === bill)) hits.push(c.id);
     }
     const invoices = await sql<{ id: string; customer_id: string; number: string }>`
@@ -318,8 +318,8 @@ export async function listIncomingPayments(sql: Sql, tenantId: string) {
      where p.tenant_id = ${tenantId}
      order by p.trans_time desc
      limit 300`;
-  const customers = await sql<{ id: string; name: string; phone: string }>`
-    select id, name, phone from customers where tenant_id = ${tenantId} order by name limit 400`;
+  const customers = await sql<{ id: string; name: string; phone: string; account_number: string }>`
+    select id, name, phone, coalesce(account_number,'') as account_number from customers where tenant_id = ${tenantId} order by name limit 400`;
   const invoices = await sql<{
     id: string;
     number: string;
@@ -340,7 +340,7 @@ export async function listIncomingPayments(sql: Sql, tenantId: string) {
       id: c.id,
       name: c.name,
       phone: c.phone,
-      account: accountNumber(slug, c.id),
+      account: resolveAccountNumber(slug, c.id, c.account_number),
     })),
     invoices: invoices.map((i) => ({
       id: i.id,

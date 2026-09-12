@@ -69,6 +69,7 @@ export type CustomerRow = {
   email: string;
   address: string;
   status: string;
+  account_number?: string;
   created_at: string;
   service_count: number;
   balance_kes: number;

@@ -18,6 +18,10 @@ function SettingsPage() {
     sales_email: "",
     support_email: "",
     contact_phone: "",
+    acs_public_host: "",
+    acs_dns_host: "",
+    acs_port_start: 7551,
+    acs_port_end: 7999,
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +113,44 @@ function SettingsPage() {
           </Field>
           <p className="text-xs text-muted">
             These appear on the public homepage contact section. Leave blank to hide them. Enquiries from the form are stored on the platform.
+          </p>
+          <p className="mt-4 text-xs font-medium tracking-wide text-muted uppercase">TR-069 / ACS</p>
+          <Field label="ACS public host (VPS IP or hostname)">
+            <Input
+              placeholder="203.0.113.10 or acs.example.com"
+              value={form.acs_public_host}
+              onChange={(e) => setForm({ ...form, acs_public_host: e.target.value })}
+            />
+          </Field>
+          <Field label="Optional ACS DNS name">
+            <Input
+              placeholder="acs.example.com"
+              value={form.acs_dns_host}
+              onChange={(e) => setForm({ ...form, acs_dns_host: e.target.value })}
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Port range start">
+              <Input
+                type="number"
+                min={1024}
+                max={65535}
+                value={form.acs_port_start}
+                onChange={(e) => setForm({ ...form, acs_port_start: Number(e.target.value) })}
+              />
+            </Field>
+            <Field label="Port range end">
+              <Input
+                type="number"
+                min={1024}
+                max={65535}
+                value={form.acs_port_end}
+                onChange={(e) => setForm({ ...form, acs_port_end: Number(e.target.value) })}
+              />
+            </Field>
+          </div>
+          <p className="text-xs text-muted">
+            Each ISP gets the next free port in this range. cwmp-edge forwards those ports to the shared GenieACS CWMP. NBI stays private. Changing the range does not reassign ports already issued.
           </p>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
           {ok ? <p className="text-sm text-ok">{ok}</p> : null}

@@ -40,6 +40,12 @@ test("publish pack names docker compose, health, and WireGuard", () => {
   assert.match(timer, /OnUnitActiveSec=5min/);
   assert.match(compose, /postgres:16-alpine/);
   assert.match(compose, /drumsergio\/genieacs/);
+  assert.match(compose, /cwmp-edge/);
+  assert.match(compose, /7551-7999:7551-7999/);
+  assert.equal(compose.includes("7557:7557"), false);
+  assert.equal(compose.includes("7547:7547"), false);
+  assert.match(install, /7551:7999\/tcp/);
+  assert.match(install, /ACS_EDGE_TOKEN/);
   assert.match(compose, /mongo:7/);
   assert.match(compose, /GIT_SHA/);
   assert.match(dockerfile, /NITRO_PRESET=node-server/);

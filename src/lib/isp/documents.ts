@@ -1,6 +1,6 @@
 import { remainingKes, taxOn } from "./billing.ts";
 import {
-  accountNumber,
+  resolveAccountNumber,
   buildStatementRows,
   formatDay,
   invoicePayable,
@@ -160,8 +160,8 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
             due_date::text as due_date, issued_at::text as issued_at, coalesce(notes,'') as notes
      from invoices where id = ${invoiceId} and tenant_id = ${tenantId}`;
   if (!inv) throw new Error("Invoice not found");
-  const [customer] = await sql<{ id: string; name: string; phone: string; email: string; address: string }>`
-    select id, name, phone, email, address from customers where id = ${inv.customer_id} and tenant_id = ${tenantId}`;
+  const [customer] = await sql<{ id: string; name: string; phone: string; email: string; address: string; account_number: string }>`
+    select id, name, phone, email, address, coalesce(account_number,'') as account_number from customers where id = ${inv.customer_id} and tenant_id = ${tenantId}`;
   if (!customer) throw new Error("Customer not found");
 
   const items = await sql<{
@@ -243,7 +243,7 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
     customer: {
       id: customer.id,
       name: customer.name,
-      accountNo: accountNumber(brand.slug, customer.id),
+      accountNo: resolveAccountNumber(brand.slug, customer.id, customer.account_number),
       phone: customer.phone,
       email: customer.email,
       address: customer.address,
@@ -285,8 +285,8 @@ export async function loadStatementDocument(
   customerId: string,
 ): Promise<StatementDocument> {
   const brand = await loadBrand(sql, tenantId);
-  const [customer] = await sql<{ id: string; name: string; phone: string; email: string; address: string }>`
-    select id, name, phone, email, address from customers where id = ${customerId} and tenant_id = ${tenantId}`;
+  const [customer] = await sql<{ id: string; name: string; phone: string; email: string; address: string; account_number: string }>`
+    select id, name, phone, email, address, coalesce(account_number,'') as account_number from customers where id = ${customerId} and tenant_id = ${tenantId}`;
   if (!customer) throw new Error("Customer not found");
   const ledger = await sql<{
     created_at: string;
@@ -308,7 +308,7 @@ export async function loadStatementDocument(
     customer: {
       id: customer.id,
       name: customer.name,
-      accountNo: accountNumber(brand.slug, customer.id),
+      accountNo: resolveAccountNumber(brand.slug, customer.id, customer.account_number),
       phone: customer.phone,
       email: customer.email,
       address: customer.address,
