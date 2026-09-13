@@ -1,5 +1,5 @@
 import { o as __toESM } from "../_runtime.mjs";
-import { U as require_react } from "./@tanstack/react-router+[...].mjs";
+import { u as require_react } from "./@floating-ui/react-dom+[...].mjs";
 //#region node_modules/lucide-react/dist/esm/shared/src/utils.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 /**
@@ -402,6 +402,32 @@ var Download = createLucideIcon("download", [
 		y1: "15",
 		y2: "3",
 		key: "1vk2je"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var Ellipsis = createLucideIcon("ellipsis", [
+	["circle", {
+		cx: "12",
+		cy: "12",
+		r: "1",
+		key: "41hilf"
+	}],
+	["circle", {
+		cx: "19",
+		cy: "12",
+		r: "1",
+		key: "1wjl8i"
+	}],
+	["circle", {
+		cx: "5",
+		cy: "12",
+		r: "1",
+		key: "1pcz8c"
 	}]
 ]);
 /**
@@ -1252,4 +1278,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { LayoutGrid as A, Cable as B, Network as C, MapPinned as D, Menu as E, Eye as F, ArrowRight as G, Boxes as H, Download as I, Archive as J, ArrowDown as K, CreditCard as L, Import as M, Headset as N, Mail as O, Handshake as P, Check as R, Plus as S, Monitor as T, Bell as U, Building2 as V, ArrowUpRight as W, Activity as X, ArchiveRestore as Y, Search as _, Users as a, Radio as b, TriangleAlert as c, Sparkles as d, Smartphone as f, Server as g, Settings as h, Wallet as i, LayoutDashboard as j, List as k, Ticket as l, Share2 as m, Wrench as n, UserPlus as o, Shield as p, ArrowDownRight as q, Wifi as r, Upload as s, X as t, Sun as u, Router as v, Moon as w, Printer as x, Receipt as y, ChartColumn as z };
+export { LayoutGrid as A, ChartColumn as B, Network as C, MapPinned as D, Menu as E, Eye as F, ArrowUpRight as G, Building2 as H, Ellipsis as I, ArrowDownRight as J, ArrowRight as K, Download as L, Import as M, Headset as N, Mail as O, Handshake as P, CreditCard as R, Plus as S, Monitor as T, Boxes as U, Cable as V, Bell as W, ArchiveRestore as X, Archive as Y, Activity as Z, Search as _, Users as a, Radio as b, TriangleAlert as c, Sparkles as d, Smartphone as f, Server as g, Settings as h, Wallet as i, LayoutDashboard as j, List as k, Ticket as l, Share2 as m, Wrench as n, UserPlus as o, Shield as p, ArrowDown as q, Wifi as r, Upload as s, X as t, Sun as u, Router as v, Moon as w, Printer as x, Receipt as y, Check as z };

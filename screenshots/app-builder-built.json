@@ -1,5 +1,38 @@
 {
-  "ok": false,
   "url": "http://127.0.0.1:8081/",
-  "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8081/\nCall log:\n  - navigating to \"http://127.0.0.1:8081/\", waiting until \"domcontentloaded\"\n"
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "ISP Solutions — Run your ISP from one place",
+      "hasCanvas": false,
+      "bodyTextLen": 9867,
+      "bodyTextHash": "297168435160d4a9de5b0f81ed8d806ae62e1b68659a4e8d9c98babb5a4efd3b",
+      "bodyTextPrefix": "Skip to content IS ISP Solutions ISP Solutions Features Solution",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "ISP Solutions — Run your ISP from one place",
+      "hasCanvas": false,
+      "bodyTextLen": 9718,
+      "bodyTextHash": "15c2645fd468d98fbbdbbfdaaa9f8fb25f504c72dc39d840158d3a9b99c6188e",
+      "bodyTextPrefix": "Skip to content IS ISP Solutions ISP Solutions Open menu ISP MAN",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
 }

@@ -456,10 +456,12 @@ export const listServices = createServerFn({ method: "GET" })
     assertPermission(workspace.role, "services.read");
     const services = await sql<ServiceRow>`
       select s.id, s.customer_id, c.name as customer_name, c.phone as customer_phone,
+             coalesce(c.account_number, '') as account_number,
              s.package_id, p.name as package_name,
              s.access_method, s.username, s.static_ip, coalesce(s.mac_address, '') as mac_address,
              s.status, s.created_at::text as created_at,
-             s.period_end::text as period_end, s.bundle_used_mb, p.bundle_mb, s.suspend_reason,
+             s.period_end::text as period_end, s.access_until::text as access_until, s.expiry_source,
+             s.expiry_change_reason, s.bundle_used_mb, p.bundle_mb, s.suspend_reason,
              (g.id is not null) as grace_active, g.days_granted as grace_days_granted,
              g.starts_at::text as grace_starts_at, g.expires_at::text as grace_expires_at,
              g.granted_by_label as grace_granted_by, g.reason as grace_reason, p.grace_days as package_grace_days

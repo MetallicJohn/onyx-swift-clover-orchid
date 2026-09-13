@@ -96,6 +96,10 @@ export type ServiceRow = {
   status: ServiceStatus;
   created_at: string;
   period_end: string | null;
+  account_number?: string;
+  access_until?: string | null;
+  expiry_source?: string;
+  expiry_change_reason?: string;
   bundle_used_mb: number;
   bundle_mb: number;
   suspend_reason: string;

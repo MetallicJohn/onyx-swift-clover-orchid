@@ -696,11 +696,13 @@ export const getPortalHome = createServerFn({ method: "POST" })
       username: string | null;
       status: string;
       period_end: string | null;
+      access_until: string | null;
+      expiry_source: string;
       grace_expires_at: string | null;
       grace_days_granted: number | null;
       grace_status: string | null;
     }>`select s.id, p.name as package_name, s.access_method, s.username, s.status,
-              s.period_end::text as period_end,
+              s.period_end::text as period_end, s.access_until::text as access_until, s.expiry_source,
               g.expires_at::text as grace_expires_at, g.days_granted as grace_days_granted,
               g.status as grace_status
        from services s join packages p on p.id = s.package_id

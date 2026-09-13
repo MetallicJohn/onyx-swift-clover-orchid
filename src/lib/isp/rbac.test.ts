@@ -68,6 +68,21 @@ test("customer care can grant grace; technician cannot", () => {
   assert.throws(() => assertPermission("technician", "services.grace.grant"), /Forbidden/);
 });
 
+test("only owners, admins, customer care and network staff can edit service expiry dates", () => {
+  assert.equal(hasPermission("isp_owner", "services.expiry.update"), true);
+  assert.equal(hasPermission("isp_admin", "services.expiry.update"), true);
+  assert.equal(hasPermission("customer_care", "services.expiry.update"), true);
+  assert.equal(hasPermission("network_engineer", "services.expiry.update"), true);
+  assert.equal(hasPermission("finance", "services.expiry.update"), false);
+  assert.equal(hasPermission("technician", "services.expiry.update"), false);
+  assert.equal(hasPermission("support", "services.expiry.update"), false);
+  assert.throws(() => assertPermission("finance", "services.expiry.update"), /Forbidden/);
+  assert.throws(() => assertPermission("technician", "services.expiry.update"), /Forbidden/);
+  assert.throws(() => assertPermission("support", "services.expiry.update"), /Forbidden/);
+  const expiry = readFileSync(new URL("./server-expiry.ts", import.meta.url), "utf8");
+  assert.match(expiry, /assertPermission\(role, "services.expiry.update"\)/);
+});
+
 test("communications send is not implied by viewing customers", () => {
   assert.equal(hasPermission("technician", "customers.read"), true);
   assert.equal(hasPermission("technician", "communications.send"), false);

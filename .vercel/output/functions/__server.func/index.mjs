@@ -15,7 +15,9 @@ var grokOgIdentity = { "site": {
 	"title": "ISP Solutions",
 	"color": "4AA8A0",
 	"card": "custom",
-	"image": "/og.jpg"
+	"description": "Run your ISP from one platform",
+	"image": "/og.jpg",
+	"banner": "/x-banner.jpg"
 } };
 //#endregion
 //#region scripts/grok-pwa-shared.mjs

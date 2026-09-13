@@ -192,15 +192,20 @@ function PortalHome() {
                 </div>
                 <div className="mt-2 space-y-1 text-xs text-muted">
                   <div>Renewal date: {s.period_end ? s.period_end.slice(0, 10) : "—"}</div>
+                  {s.expiry_source === "staff" && s.access_until ? (
+                    <div>Access until: {s.access_until.slice(0, 10)}</div>
+                  ) : null}
                   {s.grace_expires_at ? (
                     <div>
                       Grace access until: {s.grace_expires_at.slice(0, 10)}
                       {s.grace_days_granted ? ` · ${s.grace_days_granted} days granted` : ""}
                     </div>
-                  ) : s.status === "suspended" ? (
+                  ) : s.status === "suspended" && s.expiry_source !== "staff" ? (
                     <div>Grace Period expired — service suspended</div>
+                  ) : s.status === "suspended" ? (
+                    <div>Service is currently offline</div>
                   ) : null}
-                  {s.period_end && s.status !== "active" ? (
+                  {s.period_end && s.status !== "active" && s.expiry_source !== "staff" ? (
                     <div>Service expired: {s.period_end.slice(0, 10)}</div>
                   ) : null}
                 </div>

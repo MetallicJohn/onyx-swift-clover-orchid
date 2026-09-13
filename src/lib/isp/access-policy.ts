@@ -92,7 +92,8 @@ export async function grantPaidPeriod(sql: Sql, tenantId: string, customerId: st
   for (const s of svcs) {
     const next = extendPeriodEnd(s.period_end, now, periodMs(s.billing_interval, s.validity_hours));
     await sql`update services
-      set period_end = ${next.toISOString()}, bundle_used_mb = 0, suspend_reason = ''
+      set period_end = ${next.toISOString()}, bundle_used_mb = 0, suspend_reason = '',
+          access_until = null, expiry_source = ${"billing"}
       where id = ${s.id} and tenant_id = ${tenantId}`;
   }
   return svcs.length;
@@ -298,16 +299,28 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
     status: string;
     name: string;
     grace_days: number;
-    period_end: string;
-  }>`select s.id, s.customer_id, s.status, p.name, p.grace_days, s.period_end::text as period_end
+    period_end: string | null;
+    access_until: string | null;
+    expiry_source: string;
+  }>`select s.id, s.customer_id, s.status, p.name, p.grace_days,
+            s.period_end::text as period_end, s.access_until::text as access_until, s.expiry_source
      from services s join packages p on p.id = s.package_id
      where s.tenant_id = ${tenantId}
        and s.status in ('active','grace')
-       and s.period_end is not null
-       and s.period_end <= now()`;
+       and coalesce(case when s.expiry_source = 'staff' then s.access_until end, s.period_end) is not null
+       and coalesce(case when s.expiry_source = 'staff' then s.access_until end, s.period_end) <= now()`;
 
   for (const svc of timed) {
-    const end = Date.parse(svc.period_end);
+    const endIso = svc.expiry_source === "staff" && svc.access_until ? svc.access_until : svc.period_end;
+    const end = Date.parse(endIso || "");
+    if (svc.expiry_source === "staff") {
+      if (Number.isFinite(end) && Date.now() > end) {
+        await setServiceState(sql, tenantId, svc.id, "suspended", "expired_by_staff_date_change");
+        suspended += 1;
+        time += 1;
+      }
+      continue;
+    }
     const graceMs = Math.max(0, svc.grace_days) * 86400_000;
     const grant = await activeGrant(sql, tenantId, svc.id);
     const inGranted = Boolean(grant && Date.parse(grant.expires_at) > Date.now());

@@ -16,7 +16,10 @@ import { Field, Input, Select } from "@/components/ui/input";
 import { TablePad, VirtualTableFrame } from "@/components/ui/virtual-scroller";
 import { useTableVirtualizer } from "@/components/ui/use-virtual-scroller";
 import { extendGraceFn, grantGraceFn, revokeGraceFn } from "@/lib/isp/server-grace";
+import { setServiceExpiryFn } from "@/lib/isp/server-expiry";
 import { createService, disconnectService, listServices, rotateServiceSecret, setServiceStatus } from "@/lib/isp/server";
+import { effectiveAccessIso, expirySourceLabel, previewStaffExpiry } from "@/lib/isp/service-expiry-format";
+import { nairobiDate } from "@/lib/isp/empty-tenant";
 import { hasPermission } from "@/lib/isp/rbac";
 import type { GracePolicy } from "@/lib/isp/grace";
 import type { PackageRow, ServiceRow, ServiceStatus, Workspace } from "@/lib/isp/types";
@@ -62,6 +65,7 @@ function matchesQuery(s: ServiceRow, q: string) {
   const hay = [
     s.customer_name,
     s.customer_phone,
+    s.account_number,
     s.access_method,
     s.username,
     s.static_ip,
@@ -77,6 +81,7 @@ function matchesQuery(s: ServiceRow, q: string) {
 }
 
 type Panel = { id: string; mode: "grant" | "extend" | "revoke" };
+type ExpiryForm = { service: ServiceRow; date: string; reason: string };
 
 function ServicesPage() {
   const [services, setServices] = useState<ServiceRow[]>([]);
@@ -88,6 +93,7 @@ function ServicesPage() {
   const [form, setForm] = useState({ customer_id: "", package_id: "", username: "", static_ip: "" });
   const [secretNote, setSecretNote] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
+  const [expiry, setExpiry] = useState<ExpiryForm | null>(null);
   const [days, setDays] = useState(3);
   const [custom, setCustom] = useState("");
   const [reason, setReason] = useState("");
@@ -124,11 +130,31 @@ function ServicesPage() {
     await load();
   }
 
+  async function submitExpiry(e: React.FormEvent) {
+    e.preventDefault();
+    if (!expiry || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await setServiceExpiryFn({ data: { id: expiry.service.id, date: expiry.date, reason: expiry.reason } });
+      setExpiry(null);
+      setSecretNote(
+        `Expiry date updated for ${out.customer_name}. Status: ${out.status === "grace" ? "Grace Period" : out.status}. No billing or customer message was sent.`,
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update expiry date");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const role = workspace?.role || "";
   const canGrant = hasPermission(role, "services.grace.grant");
   const canExtend = hasPermission(role, "services.grace.extend");
   const canRevoke = hasPermission(role, "services.grace.revoke");
   const canManage = hasPermission(role, "services.manage");
+  const canExpiry = hasPermission(role, "services.expiry.update");
   const presets = policy?.staff_preset_days?.length ? policy.staff_preset_days : [1, 2, 3, 5, 7];
 
   const filtered = useMemo(() => {
@@ -257,6 +283,7 @@ function ServicesPage() {
               const identity = s.username || s.static_ip || "—";
               const hasActions =
                 canManage ||
+                canExpiry ||
                 (canGrant && !activeGrace && s.status !== "terminated") ||
                 (canExtend && activeGrace) ||
                 (canRevoke && activeGrace);
@@ -278,7 +305,10 @@ function ServicesPage() {
                     </div>
                   </td>
                   <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs">{formatMac(s.mac_address)}</td>
-                  <td className="whitespace-nowrap px-3 py-1.5">{formatDate(s.period_end)}</td>
+                  <td className="whitespace-nowrap px-3 py-1.5">
+                    <div>{formatDate(effectiveAccessIso(s))}</div>
+                    <div className="text-xs text-subtle">{expirySourceLabel(s.expiry_source, s.grace_active)}</div>
+                  </td>
                   <td className="sticky right-0 bg-surface px-1 py-1 text-right">
                     {hasActions ? (
                       <DropdownMenu>
@@ -300,6 +330,20 @@ function ServicesPage() {
                             {s.suspend_reason ? ` · ${s.suspend_reason}` : ""}
                           </div>
                           <DropdownMenuSeparator />
+                          {canExpiry ? (
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                setError(null);
+                                setExpiry({
+                                  service: s,
+                                  date: nairobiDate(effectiveAccessIso(s) || undefined) || nairobiDate(),
+                                  reason: "",
+                                });
+                              }}
+                            >
+                              Edit expiry date
+                            </DropdownMenuItem>
+                          ) : null}
                           {canManage && s.status !== "active" ? (
                             <DropdownMenuItem onSelect={() => void setStatus(s.id, "active")}>Restore</DropdownMenuItem>
                           ) : null}
@@ -444,6 +488,152 @@ function ServicesPage() {
           </form>
         ) : null}
       </Dialog>
+
+      <Dialog
+        open={Boolean(expiry)}
+        onOpenChange={(next) => {
+          if (!next && !busy) setExpiry(null);
+        }}
+        title="Edit expiry date"
+        description="Changes access only. Paid-through date, invoices, and customer messages stay as they are."
+      >
+        {expiry ? (
+          <ExpiryEditor
+            form={expiry}
+            setForm={setExpiry}
+            busy={busy}
+            error={error}
+            onSubmit={submitExpiry}
+            onClose={() => setExpiry(null)}
+          />
+        ) : null}
+      </Dialog>
     </div>
+  );
+}
+
+function ExpiryEditor({
+  form,
+  setForm,
+  busy,
+  error,
+  onSubmit,
+  onClose,
+}: {
+  form: ExpiryForm;
+  setForm: (next: ExpiryForm) => void;
+  busy: boolean;
+  error: string | null;
+  onSubmit: (e: React.FormEvent) => void;
+  onClose: () => void;
+}) {
+  const s = form.service;
+  let preview: ReturnType<typeof previewStaffExpiry> | null = null;
+  let parseError = "";
+  if (form.date) {
+    try {
+      preview = previewStaffExpiry({
+        ymd: form.date,
+        status: s.status,
+        suspend_reason: s.suspend_reason,
+        bundle_used_mb: s.bundle_used_mb,
+        bundle_mb: s.bundle_mb,
+      });
+    } catch (err) {
+      parseError = err instanceof Error ? err.message : "Invalid date";
+    }
+  }
+  const expected = preview?.expectedStatus === "grace" ? "Grace Period" : preview?.expectedStatus || "—";
+  return (
+    <form onSubmit={onSubmit} className="grid gap-3">
+      <dl className="grid gap-2 text-sm">
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">Customer</dt>
+          <dd className="font-medium">{s.customer_name}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">Account number</dt>
+          <dd className="font-mono text-xs">{s.account_number || "—"}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">Service</dt>
+          <dd>
+            {s.package_name} · {s.access_method.toUpperCase()}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">Current expiry</dt>
+          <dd>
+            {formatDate(effectiveAccessIso(s))}
+            <span className="ml-2 text-xs text-subtle">{expirySourceLabel(s.expiry_source, s.grace_active)}</span>
+          </dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">Paid through (billing)</dt>
+          <dd>{formatDate(s.period_end)}</dd>
+        </div>
+      </dl>
+      <Field label="New expiry date">
+        <Input
+          type="date"
+          value={form.date}
+          onChange={(e) => setForm({ ...form, date: e.target.value })}
+          required
+          disabled={busy}
+        />
+      </Field>
+      {form.date ? (
+        <p className="text-sm">
+          Selected date: <span className="font-medium">{formatDate(`${form.date}T12:00:00+03:00`)}</span>
+          {" · "}
+          Expected status: <span className="font-medium">{expected}</span>
+        </p>
+      ) : null}
+      {preview?.expectedReason === "manual" ? (
+        <p className="text-sm text-warn">
+          This date is today or in the future, but the line stays suspended because of a manual hold. No invoice,
+          billing action, SMS or email will be generated.
+        </p>
+      ) : preview?.expectedReason === "bundle" ? (
+        <p className="text-sm text-warn">
+          This date is today or in the future, but the line stays suspended because the data cap is used up. No invoice,
+          billing action, SMS or email will be generated.
+        </p>
+      ) : preview?.expectedReason === "terminated" || preview?.expectedStatus === "terminated" ? (
+        <p className="text-sm text-warn">
+          This line is terminated. The access date is recorded, but the service stays terminated. No invoice, billing
+          action, SMS or email will be generated.
+        </p>
+      ) : preview?.past ? (
+        <p className="text-sm text-warn">
+          This date is in the past. The service will be suspended. No invoice, billing action, SMS or email will be
+          generated.
+        </p>
+      ) : preview ? (
+        <p className="text-sm text-muted">
+          This date is today or in the future. The service will be restored if no other suspension condition applies. No
+          invoice, billing action, SMS or email will be generated.
+        </p>
+      ) : null}
+      <Field label="Reason">
+        <Input
+          value={form.reason}
+          onChange={(e) => setForm({ ...form, reason: e.target.value })}
+          placeholder="Why this access date is changing"
+          required
+          disabled={busy}
+        />
+      </Field>
+      {parseError ? <p className="text-sm text-danger">{parseError}</p> : null}
+      {error ? <p className="text-sm text-danger">{error}</p> : null}
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" disabled={busy || !form.date || !form.reason.trim() || Boolean(parseError)}>
+          {busy ? "Saving…" : "Confirm expiry date"}
+        </Button>
+        <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }

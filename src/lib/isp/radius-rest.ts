@@ -15,6 +15,7 @@ import {
   restAttr,
 } from "./radius-format.ts";
 import { hint, open, seal } from "./secrets.ts";
+import { effectiveAccessEndMs } from "./service-expiry-format.ts";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -200,13 +201,16 @@ export async function authorizeRadius(
     group_name: string;
     status: string;
     period_end: string | null;
+    access_until: string | null;
+    expiry_source: string;
     bundle_used_mb: number;
     bundle_mb: number;
     grace_days: number;
     grant_expires_at: string | null;
     package_name: string;
   }>`select a.username, a.password, a.enabled, a.framed_ip, a.group_name,
-            s.status, s.period_end::text as period_end, s.bundle_used_mb, p.bundle_mb, p.grace_days,
+            s.status, s.period_end::text as period_end, s.access_until::text as access_until, s.expiry_source,
+            s.bundle_used_mb, p.bundle_mb, p.grace_days,
             g.expires_at::text as grant_expires_at, p.name as package_name
      from radius_accounts a
      join services s on s.id = a.service_id
@@ -219,11 +223,11 @@ export async function authorizeRadius(
     if (doLog) await logAuth(sql, tenantId, username, nasIp, "reject", "unknown");
     return { ok: false, result: "reject", reason: "unknown", username, http: 200, body: rejectBody("unknown user") };
   }
+  const accessEnd = effectiveAccessEndMs(row);
   let reason = "";
   if (!row.enabled || row.status === "suspended" || row.status === "terminated") reason = "suspended";
   else if (row.bundle_mb > 0 && row.bundle_used_mb >= row.bundle_mb) reason = "bundle";
-  else if (accessUntilMs(row.period_end, row.grace_days, row.grant_expires_at) > 0
-    && accessUntilMs(row.period_end, row.grace_days, row.grant_expires_at) <= Date.now()) {
+  else if (accessEnd > 0 && accessEnd <= Date.now()) {
     reason = "expired";
   }
   if (reason) {
@@ -231,6 +235,9 @@ export async function authorizeRadius(
     return { ok: false, result: "reject", reason, username, http: 200, body: rejectBody(reason) };
   }
   if (doLog) await logAuth(sql, tenantId, username, nasIp, "accept", "ok");
+  const timeout = row.expiry_source === "staff"
+    ? Math.max(0, Math.floor((accessEnd - Date.now()) / 1000))
+    : sessionTimeoutSec(row.period_end, row.grace_days, row.grant_expires_at);
   return {
     ok: true,
     result: "accept",
@@ -241,7 +248,7 @@ export async function authorizeRadius(
       password: open(row.password),
       framedIp: row.framed_ip,
       group: mikrotikProfileName(row.package_name || row.group_name),
-      sessionTimeout: sessionTimeoutSec(row.period_end, row.grace_days, row.grant_expires_at),
+      sessionTimeout: timeout,
     }),
   };
 }
