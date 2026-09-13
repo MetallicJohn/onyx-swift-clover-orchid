@@ -34,7 +34,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "company", label: "Company info" },
   { id: "appearance", label: "Appearance" },
   { id: "network", label: "Network" },
-  { id: "sms", label: "SMS" },
+  { id: "sms", label: "SMS & email" },
   { id: "notifications", label: "Notifications" },
   { id: "payment", label: "Payment" },
   { id: "plan", label: "Plan" },
@@ -63,6 +63,19 @@ type MsgForm = {
   wa_access_token: string;
   wa_business_id: string;
   wa_sandbox: boolean;
+  payment_email: boolean;
+  billing_email: boolean;
+  email_provider: string;
+  email_from_name: string;
+  email_from_address: string;
+  email_reply_to: string;
+  email_api_key: string;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password: string;
+  smtp_secure: boolean;
+  email_sandbox: boolean;
 };
 
 const EMPTY_MSG: MsgForm = {
@@ -80,6 +93,19 @@ const EMPTY_MSG: MsgForm = {
   wa_access_token: "",
   wa_business_id: "",
   wa_sandbox: true,
+  payment_email: true,
+  billing_email: true,
+  email_provider: "resend",
+  email_from_name: "",
+  email_from_address: "",
+  email_reply_to: "",
+  email_api_key: "",
+  smtp_host: "",
+  smtp_port: 587,
+  smtp_username: "",
+  smtp_password: "",
+  smtp_secure: false,
+  email_sandbox: true,
 };
 
 function Check({
@@ -124,15 +150,20 @@ function SettingsPage() {
   const [msg, setMsg] = useState<MsgForm>(EMPTY_MSG);
   const [smsHint, setSmsHint] = useState("");
   const [waHint, setWaHint] = useState("");
+  const [emailHint, setEmailHint] = useState("");
+  const [smtpHint, setSmtpHint] = useState("");
   const [testPhone, setTestPhone] = useState("");
+  const [testEmail, setTestEmail] = useState("");
   const [testOut, setTestOut] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [companyNote, setCompanyNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [smsNote, setSmsNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [waNote, setWaNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const [emailNote, setEmailNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [companyBusy, setCompanyBusy] = useState(false);
   const [smsBusy, setSmsBusy] = useState(false);
   const [waBusy, setWaBusy] = useState(false);
+  const [emailBusy, setEmailBusy] = useState(false);
   const [kopo, setKopo] = useState({
     enabled: true,
     sandbox: true,
@@ -230,9 +261,25 @@ function SettingsPage() {
       wa_access_token: m.wa_token_hint,
       wa_business_id: m.wa_business_id,
       wa_sandbox: m.wa_sandbox,
+      payment_email: m.payment_email,
+      billing_email: m.billing_email,
+      email_provider: m.email_provider,
+      email_from_name: m.email_from_name,
+      email_from_address: m.email_from_address,
+      email_reply_to: m.email_reply_to,
+      email_api_key: m.email_api_key_hint,
+      smtp_host: m.smtp_host,
+      smtp_port: m.smtp_port,
+      smtp_username: m.smtp_username,
+      smtp_password: m.smtp_password_hint,
+      smtp_secure: m.smtp_secure,
+      email_sandbox: m.email_sandbox,
     });
     setSmsHint(m.sms_api_key_set ? m.sms_api_key_hint : "");
     setWaHint(m.wa_token_set ? m.wa_token_hint : "");
+    setEmailHint(m.email_api_key_set ? m.email_api_key_hint : "");
+    setSmtpHint(m.smtp_password_set ? m.smtp_password_hint : "");
+    setTestEmail(d.workspace.supportEmail || "");
     setKopo({
       enabled: k.enabled,
       sandbox: k.sandbox,
@@ -353,6 +400,50 @@ function SettingsPage() {
       setWaNote({ ok: false, text: err instanceof Error ? err.message : "Could not save WhatsApp settings" });
     } finally {
       setWaBusy(false);
+    }
+  }
+
+  async function saveEmail(e: React.FormEvent) {
+    e.preventDefault();
+    setEmailNote(null);
+    const from = msg.email_from_address.trim();
+    if (!msg.email_sandbox && !from) {
+      setEmailNote({ ok: false, text: "Enter this ISP's from address, or keep sandbox on." });
+      return;
+    }
+    if (msg.email_provider === "resend" && !msg.email_sandbox && !msg.email_api_key.trim() && !emailHint) {
+      setEmailNote({ ok: false, text: "Enter a Resend API key, or keep sandbox on until you go live." });
+      return;
+    }
+    if (msg.email_provider === "smtp" && !msg.email_sandbox && !msg.smtp_host.trim()) {
+      setEmailNote({ ok: false, text: "Enter the SMTP host, or keep sandbox on." });
+      return;
+    }
+    setEmailBusy(true);
+    try {
+      await saveMessaging({
+        data: {
+          payment_email: msg.payment_email,
+          billing_email: msg.billing_email,
+          email_provider: msg.email_provider,
+          email_from_name: msg.email_from_name.trim(),
+          email_from_address: from,
+          email_reply_to: msg.email_reply_to.trim(),
+          email_api_key: msg.email_api_key,
+          smtp_host: msg.smtp_host.trim(),
+          smtp_port: Number(msg.smtp_port) || 587,
+          smtp_username: msg.smtp_username.trim(),
+          smtp_password: msg.smtp_password,
+          smtp_secure: msg.smtp_secure,
+          email_sandbox: msg.email_sandbox,
+        },
+      });
+      setEmailNote({ ok: true, text: "Email settings applied for this ISP only." });
+      await load();
+    } catch (err) {
+      setEmailNote({ ok: false, text: err instanceof Error ? err.message : "Could not save email settings" });
+    } finally {
+      setEmailBusy(false);
     }
   }
 
@@ -571,9 +662,10 @@ function SettingsPage() {
           <h2 className="font-medium">WireGuard hub</h2>
           <p className="text-sm text-muted">
             This VPS is <span className="font-mono text-fg">{hub?.address || "10.200.0.1/24"}</span> on{" "}
-            <span className="font-mono text-fg">{hub?.network || "10.200.0.0/24"}</span>. Routers dial it; Winbox and
-            API stay on the overlay. Paste the public hostname or IP of the server that will run{" "}
-            <span className="font-mono">wg-quick</span>.
+            <span className="font-mono text-fg">{hub?.network || "10.200.0.0/24"}</span>. Routers dial{" "}
+            <span className="font-mono text-fg">wg-ispsolutions</span>. Winbox and API stay on the overlay. Paste the
+            public hostname or IP of the server, then run the install script — it replaces an older{" "}
+            <span className="font-mono">wg-gridline</span> hub.
           </p>
           <form
             className="grid gap-3"
@@ -629,7 +721,7 @@ function SettingsPage() {
                 }
               }}
             >
-              {hubCopied === "conf" ? "Copied wg-gridline.conf" : "Download server config"}
+              {hubCopied === "conf" ? "Copied wg-ispsolutions.conf" : "Download server config"}
             </Button>
             <Button
               type="button"
@@ -767,7 +859,7 @@ function SettingsPage() {
             </p>
             <Field label="Sender ID / shortcode">
               <Input
-                placeholder="GRIDLINE"
+                placeholder="ISPSOL"
                 value={msg.sms_sender_id}
                 onChange={(e) => setMsg({ ...msg, sms_sender_id: e.target.value })}
               />
@@ -904,6 +996,143 @@ function SettingsPage() {
               Test WhatsApp
             </Button>
             {testOut?.startsWith("WhatsApp") ? <p className="text-sm text-muted">{testOut}</p> : null}
+          </form>
+
+          <form className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4" onSubmit={saveEmail}>
+            <div>
+              <h2 className="font-medium">Email gateway</h2>
+              <p className="text-sm text-muted">
+                This ISP’s own from address and credentials. Receipts, billing reminders, invoice PDFs, and staff
+                campaigns never use another ISP’s mailbox.
+              </p>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Check
+                label="Payment receipts · Email"
+                checked={msg.payment_email}
+                onChange={(v) => setMsg({ ...msg, payment_email: v })}
+              />
+              <Check
+                label="Billing reminders · Email"
+                checked={msg.billing_email}
+                onChange={(v) => setMsg({ ...msg, billing_email: v })}
+              />
+            </div>
+
+            <Field label="Provider">
+              <Select value={msg.email_provider} onChange={(e) => setMsg({ ...msg, email_provider: e.target.value })}>
+                <option value="resend">Resend</option>
+                <option value="smtp">SMTP (VPS / Google / Zoho)</option>
+              </Select>
+            </Field>
+            <Field label="From name">
+              <Input
+                placeholder="Imani Networks"
+                value={msg.email_from_name}
+                onChange={(e) => setMsg({ ...msg, email_from_name: e.target.value })}
+              />
+            </Field>
+            <Field label="From address">
+              <Input
+                type="email"
+                placeholder="billing@yourisp.co.ke"
+                value={msg.email_from_address}
+                onChange={(e) => setMsg({ ...msg, email_from_address: e.target.value })}
+              />
+            </Field>
+            <Field label="Reply-to (optional)">
+              <Input
+                type="email"
+                placeholder="support@yourisp.co.ke"
+                value={msg.email_reply_to}
+                onChange={(e) => setMsg({ ...msg, email_reply_to: e.target.value })}
+              />
+            </Field>
+            {msg.email_provider === "resend" ? (
+              <Field label="Resend API key">
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  placeholder={emailHint || "re_…"}
+                  value={msg.email_api_key}
+                  onChange={(e) => setMsg({ ...msg, email_api_key: e.target.value })}
+                />
+              </Field>
+            ) : (
+              <>
+                <Field label="SMTP host">
+                  <Input
+                    placeholder="smtp.gmail.com or 127.0.0.1"
+                    value={msg.smtp_host}
+                    onChange={(e) => setMsg({ ...msg, smtp_host: e.target.value })}
+                  />
+                </Field>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Port">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={65535}
+                      value={msg.smtp_port}
+                      onChange={(e) => setMsg({ ...msg, smtp_port: Number(e.target.value) || 587 })}
+                    />
+                  </Field>
+                  <Check
+                    label="TLS on connect (465)"
+                    checked={msg.smtp_secure}
+                    onChange={(v) => setMsg({ ...msg, smtp_secure: v })}
+                  />
+                </div>
+                <Field label="SMTP username">
+                  <Input value={msg.smtp_username} onChange={(e) => setMsg({ ...msg, smtp_username: e.target.value })} />
+                </Field>
+                <Field label="SMTP password">
+                  <Input
+                    type="password"
+                    autoComplete="off"
+                    placeholder={smtpHint || "App password"}
+                    value={msg.smtp_password}
+                    onChange={(e) => setMsg({ ...msg, smtp_password: e.target.value })}
+                  />
+                </Field>
+              </>
+            )}
+            <Check
+              label="Email sandbox (log only, do not send live)"
+              checked={msg.email_sandbox}
+              onChange={(v) => setMsg({ ...msg, email_sandbox: v })}
+            />
+
+            {emailNote ? (
+              <p role="status" className={emailNote.ok ? "text-sm text-ok" : "text-sm text-danger"}>
+                {emailNote.text}
+              </p>
+            ) : null}
+            <Button type="submit" disabled={emailBusy}>
+              {emailBusy ? "Saving…" : "Save email"}
+            </Button>
+
+            <h3 className="mt-2 text-sm font-medium">Send a test email</h3>
+            <Field label="Email">
+              <Input
+                type="email"
+                placeholder="you@example.com"
+                value={testEmail}
+                onChange={(e) => setTestEmail(e.target.value)}
+              />
+            </Field>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={async () => {
+                const r = await testMessaging({ data: { channel: "email", email: testEmail } });
+                setTestOut(`Email ${r.status} · ${r.detail}`);
+              }}
+            >
+              Test email
+            </Button>
+            {testOut?.startsWith("Email") ? <p className="text-sm text-muted">{testOut}</p> : null}
           </form>
         </div>
       ) : null}

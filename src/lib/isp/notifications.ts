@@ -82,16 +82,64 @@ const DEFAULTS: Array<{
     body: "Hi {customer_name}, we received {amount} (ref {payment_reference}) for {invoice_number}. Your service is active. — {isp_name}",
   },
   {
+    event_code: "payment.received",
+    channel: "email",
+    subject: "Receipt {payment_reference}",
+    body: "Hi {customer_name},\n\nWe received {amount} (ref {payment_reference}) for {invoice_number}. Your service has been restored/confirmed.\n\n{isp_name}",
+  },
+  {
     event_code: "service.restored",
     channel: "whatsapp",
     subject: "Service restored",
     body: "{customer_name}, {service_name} is back online after payment {payment_reference}. — {isp_name}",
   },
   {
-    event_code: "payment.received",
+    event_code: "invoice.due",
     channel: "email",
-    subject: "Receipt {payment_reference}",
-    body: "Hi {customer_name},\n\nWe received {amount} (ref {payment_reference}) for {invoice_number}. Your service has been restored/confirmed.\n\n{isp_name}",
+    subject: "Invoice {invoice_number} is due today",
+    body: "Hello {customer_name},\n\nInvoice {invoice_number} of {amount} is due today. Pay now to avoid grace or suspension.\n\n{isp_name}",
+  },
+  {
+    event_code: "invoice.overdue",
+    channel: "email",
+    subject: "Overdue invoice {invoice_number}",
+    body: "Hello {customer_name},\n\nInvoice {invoice_number} ({amount}) is overdue (due {due_date}). Pay via M-Pesa to keep your connection.\n\n{isp_name}",
+  },
+  {
+    event_code: "grace.started",
+    channel: "email",
+    subject: "Grace period started — {service_name}",
+    body: "Hello {customer_name},\n\n{service_name} is now on grace after unpaid {invoice_number}. Pay {amount} to avoid suspension. Renewal date stays {renewal_date}.\n\n{isp_name}",
+  },
+  {
+    event_code: "grace.granted",
+    channel: "email",
+    subject: "Grace period granted",
+    body: "Hello {customer_name},\n\nYour service has been given a grace period until {grace_until}. Please pay before then. Your renewal date remains {renewal_date}.\n\n{isp_name}",
+  },
+  {
+    event_code: "grace.ending",
+    channel: "email",
+    subject: "Grace period ending",
+    body: "Hello {customer_name},\n\nYour service grace period ends on {grace_until}. Please make payment to keep your service active.\n\n{isp_name}",
+  },
+  {
+    event_code: "grace.expired",
+    channel: "email",
+    subject: "Service suspended after grace",
+    body: "Hello {customer_name},\n\nYour grace period has ended and your service has been suspended. Please make payment to restore your service.\n\n{isp_name}",
+  },
+  {
+    event_code: "service.suspended",
+    channel: "email",
+    subject: "{service_name} suspended",
+    body: "Hello {customer_name},\n\n{service_name} is suspended for non-payment of {invoice_number} ({amount}). Pay to restore instantly.\n\n{isp_name}",
+  },
+  {
+    event_code: "service.restored",
+    channel: "email",
+    subject: "{service_name} restored",
+    body: "Hello {customer_name},\n\n{service_name} is back online after payment {payment_reference}.\n\n{isp_name}",
   },
   {
     event_code: "grace.started",
@@ -216,7 +264,7 @@ export async function dispatchNotification(
     if (tpl.channel === "sms" || tpl.channel === "whatsapp") {
       delivery = await deliverChannel(settings, tpl.channel, dest, body);
     } else if (tpl.channel === "email") {
-      delivery = await queueEmail(sql, opts.tenantId, dest, subject, body);
+      delivery = await queueEmail(sql, opts.tenantId, dest, subject, body, { customerId: opts.customerId ?? undefined });
     } else if (tpl.channel === "in_app" && opts.customerId) {
       await writeInbox(sql, opts.tenantId, opts.customerId, subject, body, opts.event);
       delivery = { status: "sent", detail: "inbox" };

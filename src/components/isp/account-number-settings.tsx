@@ -2,8 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import {
-  formatAccountNumber,
+  formatFromSettings,
+  isIncrementingToken,
+  isRandomAccountNumber,
+  randomAccountNumber,
+  sequenceKind,
+  tokenFromIndex,
+  tokenIndex,
   type AccountNumberSettings,
+  type AccountScheme,
   type AccountSeparator,
 } from "@/lib/isp/account-numbers";
 import {
@@ -22,7 +29,8 @@ type Desk = AccountNumberSettings & {
 
 const EMPTY: Desk = {
   tenant_id: "",
-  enabled: false,
+  enabled: true,
+  scheme: "random",
   prefix: "CUS",
   suffix: "",
   separator: "",
@@ -30,11 +38,15 @@ const EMPTY: Desk = {
   next_n: 1000,
   digits: 4,
   allow_manual: false,
+  prefix_permanent: true,
+  suffix_permanent: true,
+  next_prefix_n: 0,
+  next_suffix_n: 0,
   updated_at: null,
-  preview: "CUS1000",
-  example_start: "CUS1000",
-  example_next: "CUS1001",
-  example_third: "CUS1002",
+  preview: "K7N3P",
+  example_start: "K7N3P",
+  example_next: "4H9MQ",
+  example_third: "P2T8W",
   slug_prefix: "CUS",
 };
 
@@ -54,39 +66,55 @@ export function AccountNumberSettings() {
   }, []);
 
   const live = useMemo(() => {
-    const start = formatAccountNumber({
+    if (form.scheme === "random") {
+      const start = isRandomAccountNumber(form.example_start) ? form.example_start : randomAccountNumber();
+      const second = isRandomAccountNumber(form.example_next) ? form.example_next : randomAccountNumber();
+      const third = isRandomAccountNumber(form.example_third) ? form.example_third : randomAccountNumber();
+      return {
+        kind: "random" as const,
+        next: start,
+        start,
+        second,
+        third,
+      };
+    }
+    const desk = {
+      scheme: form.scheme,
       prefix: form.prefix,
       suffix: form.suffix,
       separator: form.separator,
-      n: form.start_n,
+      start_n: form.start_n,
+      next_n: form.next_n,
       digits: form.digits,
-    });
-    const next = formatAccountNumber({
-      prefix: form.prefix,
-      suffix: form.suffix,
-      separator: form.separator,
-      n: form.next_n,
-      digits: form.digits,
-    });
-    return {
-      start,
-      next,
-      second: formatAccountNumber({
-        prefix: form.prefix,
-        suffix: form.suffix,
-        separator: form.separator,
-        n: form.start_n + 1,
-        digits: form.digits,
-      }),
-      third: formatAccountNumber({
-        prefix: form.prefix,
-        suffix: form.suffix,
-        separator: form.separator,
-        n: form.start_n + 2,
-        digits: form.digits,
-      }),
+      prefix_permanent: form.prefix_permanent,
+      suffix_permanent: form.suffix_permanent,
+      next_prefix_n: form.next_prefix_n,
+      next_suffix_n: form.next_suffix_n,
     };
-  }, [form.prefix, form.suffix, form.separator, form.start_n, form.next_n, form.digits]);
+    const kind = sequenceKind(desk);
+    return {
+      kind,
+      next: formatFromSettings(desk, 0, "next"),
+      start: formatFromSettings(desk, 0, "start"),
+      second: formatFromSettings(desk, 1, "start"),
+      third: formatFromSettings(desk, 2, "start"),
+    };
+  }, [
+    form.scheme,
+    form.prefix,
+    form.suffix,
+    form.separator,
+    form.start_n,
+    form.next_n,
+    form.digits,
+    form.prefix_permanent,
+    form.suffix_permanent,
+    form.next_prefix_n,
+    form.next_suffix_n,
+    form.example_start,
+    form.example_next,
+    form.example_third,
+  ]);
 
   async function save() {
     setBusy(true);
@@ -96,6 +124,7 @@ export function AccountNumberSettings() {
       const desk = await saveAccountNumberSettingsFn({
         data: {
           enabled: form.enabled,
+          scheme: form.scheme,
           prefix: form.prefix,
           suffix: form.suffix,
           separator: form.separator,
@@ -103,6 +132,10 @@ export function AccountNumberSettings() {
           next_n: form.next_n,
           digits: form.digits,
           allow_manual: form.allow_manual,
+          prefix_permanent: form.prefix_permanent,
+          suffix_permanent: form.suffix_permanent,
+          next_prefix_n: form.next_prefix_n,
+          next_suffix_n: form.next_suffix_n,
         },
       });
       setForm({ ...EMPTY, ...desk });
@@ -127,7 +160,13 @@ export function AccountNumberSettings() {
         <div className="text-xs tracking-wide text-accent uppercase">Live preview</div>
         <div className="mt-1 font-mono text-2xl tracking-tight">{live.next}</div>
         <p className="mt-1 text-sm text-muted">
-          Next number assigned on save of a new customer. Sequence {live.start}, {live.second}, {live.third}.
+          {live.kind === "random"
+            ? `Examples ${live.start}, ${live.second}, ${live.third}. Each new customer gets a unique 5-character code — letters and numbers, no separator. I, O, and L are omitted so they are not read as 1 or 0.`
+            : live.kind === "suffix"
+              ? `Next number assigned on save of a new customer. Sequence ${live.start}, ${live.second}, ${live.third}. Letter suffix advances A → B → C (then AA). The numeric part stays at the starting number.`
+              : live.kind === "prefix"
+                ? `Next number assigned on save of a new customer. Sequence ${live.start}, ${live.second}, ${live.third}. Letter prefix advances alphabetically. The numeric part stays at the starting number.`
+                : `Next number assigned on save of a new customer. Sequence ${live.start}, ${live.second}, ${live.third}. The number increases; prefix and suffix stay as written.`}
         </p>
       </div>
 
@@ -153,10 +192,38 @@ export function AccountNumberSettings() {
           />
           Generate account numbers automatically
         </label>
+        <div className="flex flex-wrap gap-2 md:col-span-2">
+          {(["random", "sequence"] as AccountScheme[]).map((id) => (
+            <Button
+              key={id}
+              type="button"
+              size="sm"
+              variant={form.scheme === id ? "default" : "secondary"}
+              onClick={() => setForm({ ...form, scheme: id })}
+            >
+              {id === "random" ? "Random codes" : "Sequential"}
+            </Button>
+          ))}
+        </div>
+        {form.scheme === "random" ? (
+          <p className="text-sm text-muted md:col-span-2">
+            Default when this ISP has not set a format: five characters, no hyphen or slash. Mix of
+            letters and digits. Never uses I, O, or L.
+          </p>
+        ) : null}
+        {form.scheme === "sequence" ? (
+          <>
         <Field label="Prefix">
           <Input
             value={form.prefix}
-            onChange={(e) => setForm({ ...form, prefix: e.target.value.toUpperCase() })}
+            onChange={(e) => {
+              const prefix = e.target.value.toUpperCase();
+              setForm({
+                ...form,
+                prefix,
+                next_prefix_n: isIncrementingToken(prefix) ? Math.max(form.next_prefix_n, tokenIndex(prefix)) : form.next_prefix_n,
+              });
+            }}
             placeholder={form.slug_prefix}
             maxLength={12}
             required={form.enabled}
@@ -165,11 +232,54 @@ export function AccountNumberSettings() {
         <Field label="Suffix (optional)">
           <Input
             value={form.suffix}
-            onChange={(e) => setForm({ ...form, suffix: e.target.value.toUpperCase() })}
+            onChange={(e) => {
+              const suffix = e.target.value.toUpperCase();
+              setForm({
+                ...form,
+                suffix,
+                next_suffix_n: isIncrementingToken(suffix) ? Math.max(form.next_suffix_n, tokenIndex(suffix)) : 0,
+              });
+            }}
             maxLength={12}
-            placeholder="None"
+            placeholder="A or KE"
           />
         </Field>
+        <label className="flex h-11 items-center gap-2 rounded-md border border-border bg-bg px-3 text-sm">
+          <input
+            type="checkbox"
+            checked={form.prefix_permanent}
+            onChange={(e) => {
+              const prefix_permanent = e.target.checked;
+              setForm({
+                ...form,
+                prefix_permanent,
+                next_prefix_n:
+                  !prefix_permanent && isIncrementingToken(form.prefix)
+                    ? Math.max(form.next_prefix_n, tokenIndex(form.prefix))
+                    : form.next_prefix_n,
+              });
+            }}
+          />
+          Keep prefix permanent
+        </label>
+        <label className="flex h-11 items-center gap-2 rounded-md border border-border bg-bg px-3 text-sm">
+          <input
+            type="checkbox"
+            checked={form.suffix_permanent}
+            onChange={(e) => {
+              const suffix_permanent = e.target.checked;
+              setForm({
+                ...form,
+                suffix_permanent,
+                next_suffix_n:
+                  !suffix_permanent && isIncrementingToken(form.suffix)
+                    ? Math.max(form.next_suffix_n, tokenIndex(form.suffix))
+                    : form.next_suffix_n,
+              });
+            }}
+          />
+          Keep suffix permanent
+        </label>
         <Field label="Separator">
           <Select
             value={form.separator}
@@ -212,11 +322,41 @@ export function AccountNumberSettings() {
             max={99999999}
             value={form.next_n}
             onChange={(e) => setForm({ ...form, next_n: Number(e.target.value) })}
+            disabled={live.kind !== "number"}
           />
         </Field>
+        {!form.prefix_permanent && isIncrementingToken(form.prefix) ? (
+          <Field label="Next prefix">
+            <Input
+              value={tokenFromIndex(form.prefix, form.next_prefix_n)}
+              onChange={(e) => {
+                const v = e.target.value.toUpperCase();
+                if (!v || isIncrementingToken(v)) setForm({ ...form, next_prefix_n: tokenIndex(v || form.prefix) });
+              }}
+              maxLength={12}
+            />
+          </Field>
+        ) : null}
+        {!form.suffix_permanent && isIncrementingToken(form.suffix) ? (
+          <Field label="Next suffix">
+            <Input
+              value={tokenFromIndex(form.suffix, form.next_suffix_n)}
+              onChange={(e) => {
+                const v = e.target.value.toUpperCase();
+                if (!v || isIncrementingToken(v)) setForm({ ...form, next_suffix_n: tokenIndex(v || form.suffix) });
+              }}
+              maxLength={12}
+            />
+          </Field>
+        ) : null}
         <p className="text-xs text-subtle md:col-span-2">
-          Zero-padding uses the digit count: 1 with 4 digits is 0001. Prefix and suffix are letters or numbers only.
+          Zero-padding uses the digit count: 1 with 4 digits is 0001. Uncheck “permanent” on a letter
+          suffix to advance A, B, C … Z, AA while the number stays at the starting value. Leave both
+          locked to increment the number instead (IMN1000, IMN1001). If both can change, the suffix
+          is the one that advances.
         </p>
+          </>
+        ) : null}
         <label className="flex h-11 items-center gap-2 rounded-md border border-border bg-bg px-3 text-sm md:col-span-2">
           <input
             type="checkbox"
@@ -245,15 +385,14 @@ export function AccountNumberSettings() {
               setError(null);
               try {
                 const desk = await resetAccountNumberSettingsFn();
-                const preview = formatAccountNumber({ ...desk, n: desk.next_n });
                 setForm({
                   ...EMPTY,
                   ...desk,
-                  preview,
-                  example_start: formatAccountNumber({ ...desk, n: desk.start_n }),
-                  example_next: formatAccountNumber({ ...desk, n: desk.start_n + 1 }),
-                  example_third: formatAccountNumber({ ...desk, n: desk.start_n + 2 }),
-                  slug_prefix: desk.prefix,
+                  preview: desk.preview,
+                  example_start: desk.example_start,
+                  example_next: desk.example_next,
+                  example_third: desk.example_third,
+                  slug_prefix: desk.slug_prefix || desk.prefix,
                 });
                 setSaved("Default format restored.");
               } catch (err) {

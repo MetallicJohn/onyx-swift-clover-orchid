@@ -238,7 +238,7 @@ export async function authorizeRadius(
     username,
     http: 200,
     body: acceptBody({
-      password: row.password,
+      password: open(row.password),
       framedIp: row.framed_ip,
       group: mikrotikProfileName(row.package_name || row.group_name),
       sessionTimeout: sessionTimeoutSec(row.period_end, row.grace_days, row.grant_expires_at),
@@ -259,7 +259,8 @@ export async function authenticateRadius(
   const [row] = await sql<{ password: string }>`
     select password from radius_accounts where tenant_id = ${tenantId} and username = ${decision.username}`;
   const presented = input.password || "";
-  if (!row || !presented || !safeEq(row.password, presented)) {
+  const stored = open(row?.password || "");
+  if (!row || !presented || !safeEq(stored, presented)) {
     await logAuth(sql, tenantId, decision.username, input.nasIp || "", "reject", "bad-password");
     return {
       ok: false,

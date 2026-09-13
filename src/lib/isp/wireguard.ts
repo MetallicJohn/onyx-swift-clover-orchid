@@ -1,5 +1,5 @@
 import { diffieHellman, generateKeyPairSync, type KeyObject } from "node:crypto";
-import { APP_NAME } from "../brand.ts";
+import { APP_NAME, ROS_WG_INTERFACE, ROS_WG_INTERFACE_LEGACY } from "../brand.ts";
 import { nid } from "../utils.ts";
 import { open, seal } from "./secrets.ts";
 
@@ -106,7 +106,7 @@ function overlayIp(address: string) {
 
 export function buildServerConf(hub: WgHubConfig, peers: WgPeerConfig[]) {
   const lines = [
-    `# ${APP_NAME} hub — /etc/wireguard/wg-gridline.conf`,
+    `# ${APP_NAME} hub — /etc/wireguard/${ROS_WG_INTERFACE}.conf`,
     "# Overlay " + hub.network + " · this host " + hub.address,
     "# Clients initiate with persistent keepalive. Do not NAT customer LAN through this interface.",
     "",
@@ -130,9 +130,12 @@ export function buildServerConf(hub: WgHubConfig, peers: WgPeerConfig[]) {
 
 export function buildServerInstallScript(hub: WgHubConfig, peers: WgPeerConfig[]) {
   const conf = buildServerConf(hub, peers);
+  const iface = ROS_WG_INTERFACE;
+  const legacy = ROS_WG_INTERFACE_LEGACY;
   return `#!/bin/bash
 # ${APP_NAME} WireGuard hub. Run as root on the VPS that routers dial.
 # Endpoint routers use: ${hub.endpointHost || "<public-ip>"}:${hub.listenPort}
+# Migrates ${legacy} → ${iface} if an older hub is still up.
 set -euo pipefail
 if ! command -v wg >/dev/null 2>&1; then
   if command -v apt-get >/dev/null 2>&1; then
@@ -143,17 +146,22 @@ if ! command -v wg >/dev/null 2>&1; then
   fi
 fi
 install -d -m 0700 /etc/wireguard
-cat >/etc/wireguard/wg-gridline.conf <<'GRIDLINE_WG'
-${conf}GRIDLINE_WG
-chmod 600 /etc/wireguard/wg-gridline.conf
+cat >/etc/wireguard/${iface}.conf <<'ISPSOLUTIONS_WG'
+${conf}ISPSOLUTIONS_WG
+chmod 600 /etc/wireguard/${iface}.conf
 sysctl -w net.ipv4.ip_forward=1 >/dev/null
 if [ -f /etc/sysctl.conf ] && ! grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf; then
   echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
 fi
-wg-quick down wg-gridline >/dev/null 2>&1 || true
-wg-quick up wg-gridline
-systemctl enable wg-quick@wg-gridline >/dev/null 2>&1 || true
-wg show wg-gridline
+if [ -f /etc/wireguard/${legacy}.conf ] || systemctl is-active --quiet "wg-quick@${legacy}" 2>/dev/null; then
+  wg-quick down ${legacy} >/dev/null 2>&1 || true
+  systemctl disable --now "wg-quick@${legacy}" >/dev/null 2>&1 || true
+  rm -f /etc/wireguard/${legacy}.conf
+fi
+wg-quick down ${iface} >/dev/null 2>&1 || true
+wg-quick up ${iface}
+systemctl enable "wg-quick@${iface}" >/dev/null 2>&1 || true
+wg show ${iface}
 echo "Allow UDP ${hub.listenPort} on the VPS firewall."
 `;
 }

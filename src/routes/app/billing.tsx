@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { InvoicePreview } from "@/components/isp/document-preview";
 import { PdfActions } from "@/components/isp/pdf-actions";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { invoiceStatusLabel, type InvoiceDocument } from "@/lib/isp/document-format";
 import { downloadPdf, printPdf, viewPdf } from "@/lib/isp/pdf-client";
@@ -13,7 +15,7 @@ import { createInvoice, listBilling, recordPayment, saveBillingSettings } from "
 import { hasPermission } from "@/lib/isp/rbac";
 import { confirmStk, sendStk } from "@/lib/isp/server-ops";
 import type { InvoiceRow, PaymentRow } from "@/lib/isp/types";
-import { kes } from "@/lib/utils";
+import { cn, kes } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/billing")({ component: BillingPage });
 
@@ -28,6 +30,8 @@ type Quote = {
 
 type Line = { description: string; quantity: number; unit_kes: number; package_id?: string; service_id?: string };
 
+type CustomerHit = { id: string; name: string; phone: string; account_number: string };
+
 type InvoiceDetail = InvoiceDocument;
 
 function defaultDue() {
@@ -39,7 +43,7 @@ function defaultDue() {
 function BillingPage() {
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
-  const [customers, setCustomers] = useState<{ id: string; name: string; phone: string }[]>([]);
+  const [customers, setCustomers] = useState<CustomerHit[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [vatEnabled, setVatEnabled] = useState(false);
   const [vatRate, setVatRate] = useState(16);
@@ -50,11 +54,14 @@ function BillingPage() {
   const [form, setForm] = useState({ customer_id: "", due_date: "", notes: "" });
   const [lines, setLines] = useState<Line[]>([]);
   const [pay, setPay] = useState({ invoice_id: "", provider: "mpesa", reference: "", amount_kes: 0 });
+  const [payCustomerId, setPayCustomerId] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [stk, setStk] = useState<{ checkout_id: string; note?: string } | null>(null);
   const [detail, setDetail] = useState<InvoiceDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [role, setRole] = useState("");
+  const [issuing, setIssuing] = useState(false);
+  const [paying, setPaying] = useState(false);
 
   const preview = useMemo(() => {
     const subtotal = lines.reduce((sum, line) => sum + Math.max(1, line.quantity || 1) * Math.max(0, line.unit_kes || 0), 0);
@@ -62,16 +69,48 @@ function BillingPage() {
     return { subtotal, tax, total: subtotal + tax, tax_rate: vatEnabled ? vatRate : 0 };
   }, [lines, vatEnabled, vatRate]);
 
-  function quotesFor(customerId: string): Line[] {
-    const q = quotes.filter((x) => x.customer_id === customerId);
-    if (q.length === 0) return [{ description: "Internet service", quantity: 1, unit_kes: 2500 }];
-    return q.map((x) => ({
-      description: `${x.package_name} (${x.billing_interval})`,
-      quantity: 1,
-      unit_kes: x.price_kes,
-      package_id: x.package_id,
-      service_id: x.service_id,
+  function pickCustomer(customerId: string) {
+    setForm((f) => ({ ...f, customer_id: customerId }));
+    setLines(customerId ? quotesForCustomer(quotes, customerId) : []);
+  }
+
+  function openComposer() {
+    setForm({ customer_id: "", due_date: defaultDue(), notes: "" });
+    setLines([]);
+    setPaying(false);
+    setIssuing(true);
+    setErr(null);
+  }
+
+  function pickPayCustomer(customerId: string) {
+    if (!customerId) {
+      setPayCustomerId("");
+      setPay((p) => ({ ...p, invoice_id: "", amount_kes: 0 }));
+      return;
+    }
+    const unpaid = invoices.filter((i) => i.customer_id === customerId && i.remaining_kes > 0);
+    const next = unpaid[0];
+    setPayCustomerId(customerId);
+    setPay((p) => ({
+      ...p,
+      invoice_id: next?.id || "",
+      amount_kes: next?.remaining_kes || next?.amount_kes || 0,
     }));
+  }
+
+  function openPayment(invoiceId?: string) {
+    const fromDetail = !invoiceId && detail ? detail.invoice.id : invoiceId;
+    const inv = invoices.find((i) => i.id === fromDetail);
+    setPay({
+      invoice_id: inv?.id || "",
+      provider: "mpesa",
+      reference: "",
+      amount_kes: inv?.remaining_kes || inv?.amount_kes || 0,
+    });
+    setPayCustomerId(inv?.customer_id || detail?.customer.id || "");
+    setIssuing(false);
+    setPaying(true);
+    setErr(null);
   }
 
   async function load(selectId?: string) {
@@ -85,10 +124,6 @@ function BillingPage() {
     setTotals(res.totals);
     setAging(res.aging);
     setRole(res.workspace.role);
-    if (!form.customer_id && res.customers[0]) {
-      setForm((f) => ({ ...f, customer_id: res.customers[0].id }));
-      setLines(quotesForCustomer(res.quotes, res.customers[0].id));
-    }
     const target = selectId || pay.invoice_id;
     const unpaid = res.invoices.find((i) => i.id === target) || res.invoices.find((i) => i.remaining_kes > 0);
     if (unpaid) setPay((p) => ({ ...p, invoice_id: unpaid.id, amount_kes: unpaid.remaining_kes || unpaid.amount_kes }));
@@ -130,25 +165,40 @@ function BillingPage() {
             invoice is still overdue.
           </p>
         </div>
-        {canInvoice ? (
-        <label className="flex h-11 items-center gap-2 rounded-md border border-border bg-surface px-3 text-sm">
-          <input
-            type="checkbox"
-            checked={vatEnabled}
-            onChange={async (e) => {
-              const on = e.target.checked;
-              setVatEnabled(on);
-              await saveBillingSettings({ data: { vat_enabled: on, vat_rate_pct: vatRate } });
-            }}
-          />
-          Add {vatRate}% VAT (exclusive)
-        </label>
-        ) : vatEnabled ? (
-          <p className="text-sm text-muted">VAT {vatRate}% exclusive</p>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {canInvoice ? (
+            <Button type="button" onClick={() => openComposer()} disabled={customers.length === 0}>
+              Issue invoice
+            </Button>
+          ) : null}
+          {canPay ? (
+            <Button
+              type="button"
+              variant={canInvoice ? "secondary" : "default"}
+              onClick={() => openPayment()}
+              disabled={invoices.length === 0}
+            >
+              Record payment
+            </Button>
+          ) : null}
+          {canInvoice ? (
+            <label className="flex h-11 items-center gap-2 rounded-md border border-border bg-surface px-3 text-sm">
+              <input
+                type="checkbox"
+                checked={vatEnabled}
+                onChange={async (e) => {
+                  const on = e.target.checked;
+                  setVatEnabled(on);
+                  await saveBillingSettings({ data: { vat_enabled: on, vat_rate_pct: vatRate } });
+                }}
+              />
+              Add {vatRate}% VAT (exclusive)
+            </label>
+          ) : vatEnabled ? (
+            <p className="text-sm text-muted">VAT {vatRate}% exclusive</p>
+          ) : null}
+        </div>
       </div>
-
-      {err ? <p className="text-sm text-danger print:hidden">{err}</p> : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 print:hidden">
         <Stat label="Outstanding" value={kes(totals.outstanding)} sub={`${totals.open} open invoices`} />
@@ -172,203 +222,272 @@ function BillingPage() {
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2 print:hidden">
-        {canInvoice ? (
-        <form
-          className="grid gap-3 rounded-xl border border-border bg-surface p-4"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setErr(null);
-            setBusy(true);
-            try {
-              const inv = await createInvoice({
-                data: {
-                  customer_id: form.customer_id,
-                  due_date: form.due_date,
-                  notes: form.notes,
-                  items: lines,
-                },
-              });
-              await load(inv.id);
-              await openInvoice(inv.id);
-            } catch (ex) {
-              setErr(ex instanceof Error ? ex.message : "Invoice failed");
-            } finally {
-              setBusy(false);
-            }
+      {canInvoice ? (
+        <Dialog
+          open={issuing}
+          onOpenChange={(open) => {
+            setIssuing(open);
+            if (!open) setErr(null);
           }}
+          title="Issue invoice"
+          description="Search a customer, then confirm the lines before issuing."
         >
-          <h2 className="font-medium">Issue invoice</h2>
-          <Field label="Customer">
-            <Select
-              value={form.customer_id}
-              onChange={(e) => {
-                const customer_id = e.target.value;
-                setForm({ ...form, customer_id });
-                setLines(quotesFor(customer_id));
-              }}
-            >
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="space-y-2">
-            <div className="text-xs font-medium tracking-wide text-muted">Lines</div>
-            {lines.map((line, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_4.5rem_7rem] gap-2">
-                <Input
-                  value={line.description}
-                  onChange={(e) => setLines(lines.map((l, i) => (i === idx ? { ...l, description: e.target.value } : l)))}
-                />
-                <Input
-                  type="number"
-                  min={1}
-                  value={line.quantity}
-                  onChange={(e) =>
-                    setLines(lines.map((l, i) => (i === idx ? { ...l, quantity: Number(e.target.value) || 1 } : l)))
-                  }
-                />
-                <Input
-                  type="number"
-                  min={0}
-                  value={line.unit_kes}
-                  onChange={(e) =>
-                    setLines(lines.map((l, i) => (i === idx ? { ...l, unit_kes: Number(e.target.value) || 0 } : l)))
-                  }
-                />
-              </div>
-            ))}
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() => setLines([...lines, { description: "", quantity: 1, unit_kes: 0 }])}
-            >
-              Add line
-            </Button>
-          </div>
-          <Field label="Due date">
-            <Input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
-          </Field>
-          <Field label="Notes">
-            <Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Shown on the invoice" />
-          </Field>
-          <div className="flex items-end justify-between gap-3 text-sm">
-            <div className="text-muted">
-              Subtotal {kes(preview.subtotal)}
-              {preview.tax ? ` · VAT ${preview.tax_rate}% ${kes(preview.tax)}` : " · no VAT"}
-              <div className="font-mono text-fg">Total {kes(preview.total)}</div>
-            </div>
-            <Button type="submit" disabled={busy || preview.total <= 0}>
-              Issue
-            </Button>
-          </div>
-        </form>
-        ) : null}
+          <form
+            className="grid gap-3"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!form.customer_id) return;
+              setErr(null);
+              setBusy(true);
+              try {
+                const inv = await createInvoice({
+                  data: {
+                    customer_id: form.customer_id,
+                    due_date: form.due_date,
+                    notes: form.notes,
+                    items: lines,
+                  },
+                });
+                setIssuing(false);
+                await load(inv.id);
+                await openInvoice(inv.id);
+              } catch (ex) {
+                setErr(ex instanceof Error ? ex.message : "Invoice failed");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {err ? <p className="text-sm text-danger">{err}</p> : null}
+            <Field label="Customer">
+              <CustomerPicker customers={customers} value={form.customer_id} onChange={pickCustomer} />
+            </Field>
+            {form.customer_id ? (
+              <>
+                <div className="space-y-2">
+                  <div className="text-xs font-medium tracking-wide text-muted">Lines</div>
+                  {lines.map((line, idx) => (
+                    <div key={idx} className="grid grid-cols-[1fr_4.5rem_7rem] gap-2">
+                      <Input
+                        value={line.description}
+                        onChange={(e) =>
+                          setLines(lines.map((l, i) => (i === idx ? { ...l, description: e.target.value } : l)))
+                        }
+                      />
+                      <Input
+                        type="number"
+                        min={1}
+                        value={line.quantity}
+                        onChange={(e) =>
+                          setLines(lines.map((l, i) => (i === idx ? { ...l, quantity: Number(e.target.value) || 1 } : l)))
+                        }
+                      />
+                      <Input
+                        type="number"
+                        min={0}
+                        value={line.unit_kes}
+                        onChange={(e) =>
+                          setLines(lines.map((l, i) => (i === idx ? { ...l, unit_kes: Number(e.target.value) || 0 } : l)))
+                        }
+                      />
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setLines([...lines, { description: "", quantity: 1, unit_kes: 0 }])}
+                  >
+                    Add line
+                  </Button>
+                </div>
+                <Field label="Due date">
+                  <Input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
+                </Field>
+                <Field label="Notes">
+                  <Input
+                    value={form.notes}
+                    onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                    placeholder="Shown on the invoice"
+                  />
+                </Field>
+                <div className="flex items-end justify-between gap-3 text-sm">
+                  <div className="text-muted">
+                    Subtotal {kes(preview.subtotal)}
+                    {preview.tax ? ` · VAT ${preview.tax_rate}% ${kes(preview.tax)}` : " · no VAT"}
+                    <div className="font-mono text-fg">Total {kes(preview.total)}</div>
+                  </div>
+                  <Button type="submit" disabled={busy || preview.total <= 0 || !form.customer_id}>
+                    Issue
+                  </Button>
+                </div>
+              </>
+            ) : null}
+          </form>
+        </Dialog>
+      ) : null}
 
-        {canPay ? (
-        <form
-          className="grid gap-3 rounded-xl border border-border bg-surface p-4"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setErr(null);
-            setBusy(true);
-            try {
-              await recordPayment({
-                data: {
-                  invoice_id: pay.invoice_id,
-                  provider: pay.provider,
-                  reference: pay.reference,
-                  amount_kes: pay.amount_kes,
-                },
-              });
-              setPay((p) => ({ ...p, reference: "" }));
-              setStk(null);
-              await load(pay.invoice_id);
-              if (detail?.invoice.id === pay.invoice_id) await openInvoice(pay.invoice_id);
-            } catch (ex) {
-              setErr(ex instanceof Error ? ex.message : "Payment failed");
-            } finally {
-              setBusy(false);
-            }
+      {canPay ? (
+        <Dialog
+          open={paying}
+          onOpenChange={(open) => {
+            setPaying(open);
+            if (!open) setErr(null);
           }}
+          title="Record payment"
+          description="Search a customer, then apply the receipt to an open invoice."
         >
-          <h2 className="font-medium">Record payment</h2>
-          <Field label="Invoice">
-            <Select
-              value={pay.invoice_id}
-              onChange={(e) => {
-                const invoice_id = e.target.value;
-                const inv = invoices.find((i) => i.id === invoice_id);
-                setPay({ ...pay, invoice_id, amount_kes: inv?.remaining_kes || inv?.amount_kes || 0 });
-              }}
-            >
-              {invoices.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.number} · {i.customer_name} · {i.status} · {kes(i.remaining_kes)} due
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Amount (KES)">
-              <Input
-                type="number"
-                min={1}
-                value={pay.amount_kes}
-                onChange={(e) => setPay({ ...pay, amount_kes: Number(e.target.value) })}
-              />
+          <form
+            className="grid gap-3"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!pay.invoice_id) return;
+              setErr(null);
+              setBusy(true);
+              try {
+                await recordPayment({
+                  data: {
+                    invoice_id: pay.invoice_id,
+                    provider: pay.provider,
+                    reference: pay.reference,
+                    amount_kes: pay.amount_kes,
+                  },
+                });
+                setPay((p) => ({ ...p, reference: "" }));
+                setStk(null);
+                setPaying(false);
+                await load(pay.invoice_id);
+                if (detail?.invoice.id === pay.invoice_id) await openInvoice(pay.invoice_id);
+              } catch (ex) {
+                setErr(ex instanceof Error ? ex.message : "Payment failed");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {err ? <p className="text-sm text-danger">{err}</p> : null}
+            <Field label="Customer">
+              <CustomerPicker customers={customers} value={payCustomerId} onChange={pickPayCustomer} />
             </Field>
-            <Field label="Provider">
-              <Select value={pay.provider} onChange={(e) => setPay({ ...pay, provider: e.target.value })}>
-                <option value="mpesa">M-Pesa Daraja</option>
-                <option value="kopokopo">Kopo Kopo</option>
-                <option value="airtel">Airtel Money</option>
-                <option value="bank">Bank</option>
-                <option value="cash">Cash</option>
-              </Select>
-            </Field>
-          </div>
-          <Field label="Reference">
-            <Input
-              required
-              placeholder="M-Pesa receipt"
-              value={pay.reference}
-              onChange={(e) => setPay({ ...pay, reference: e.target.value })}
-            />
-          </Field>
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={busy}>
-              Confirm payment
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={busy || (pay.provider !== "mpesa" && pay.provider !== "kopokopo")}
-              onClick={async () => {
-                setErr(null);
-                try {
-                  const r = await sendStk({
-                    data: { invoice_id: pay.invoice_id, provider: pay.provider, amount_kes: pay.amount_kes },
-                  });
-                  setStk({ checkout_id: r.checkout_id, note: r.note });
-                  if (r.note && !r.checkout_id.startsWith("ws_")) setErr(r.note);
-                } catch (ex) {
-                  setErr(ex instanceof Error ? ex.message : "STK failed");
-                }
-              }}
-            >
-              Send STK push
-            </Button>
-          </div>
-        </form>
-        ) : null}
-      </div>
+            {payCustomerId ? (
+              <>
+                <div className="space-y-2">
+                  <div className="text-xs font-medium tracking-wide text-muted">Invoice</div>
+                  {invoices.filter((i) => i.customer_id === payCustomerId).length === 0 ? (
+                    <p className="text-sm text-muted">No invoices for this customer.</p>
+                  ) : (
+                    <div className="max-h-40 overflow-y-auto rounded-md border border-border">
+                      {invoices
+                        .filter((i) => i.customer_id === payCustomerId)
+                        .slice()
+                        .sort((a, b) => Number(b.remaining_kes > 0) - Number(a.remaining_kes > 0))
+                        .map((i) => {
+                          const on = i.id === pay.invoice_id;
+                          return (
+                            <button
+                              key={i.id}
+                              type="button"
+                              onClick={() =>
+                                setPay({ ...pay, invoice_id: i.id, amount_kes: i.remaining_kes || i.amount_kes })
+                              }
+                              className={cn(
+                                "flex w-full items-center justify-between gap-3 border-b border-border px-3 py-2.5 text-left last:border-b-0",
+                                on ? "bg-accent/10" : "hover:bg-elevated/60",
+                              )}
+                            >
+                              <span>
+                                <span className="font-mono text-sm">{i.number}</span>
+                                <span className="ml-2 text-xs text-muted">{invoiceStatusLabel(i.status)}</span>
+                              </span>
+                              <span className="font-mono text-sm tabular-nums">{kes(i.remaining_kes)} due</span>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Amount (KES)">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={pay.amount_kes}
+                      onChange={(e) => setPay({ ...pay, amount_kes: Number(e.target.value) })}
+                    />
+                  </Field>
+                  <Field label="Provider">
+                    <Select value={pay.provider} onChange={(e) => setPay({ ...pay, provider: e.target.value })}>
+                      <option value="mpesa">M-Pesa Daraja</option>
+                      <option value="kopokopo">Kopo Kopo</option>
+                      <option value="airtel">Airtel Money</option>
+                      <option value="bank">Bank</option>
+                      <option value="cash">Cash</option>
+                    </Select>
+                  </Field>
+                </div>
+                <Field label="Reference">
+                  <Input
+                    required
+                    placeholder="M-Pesa receipt"
+                    value={pay.reference}
+                    onChange={(e) => setPay({ ...pay, reference: e.target.value })}
+                  />
+                </Field>
+                {stk ? (
+                  <div className="rounded-md border border-border bg-bg px-3 py-2 text-sm">
+                    STK sent · <span className="font-mono">{stk.checkout_id}</span>
+                    {stk.note ? <span className="text-muted"> · {stk.note}</span> : null}
+                    {stk.checkout_id.startsWith("ws_") ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="mt-2"
+                        onClick={async () => {
+                          await confirmStk({ data: { checkout_id: stk.checkout_id } });
+                          setStk(null);
+                          setPaying(false);
+                          await load(pay.invoice_id);
+                          if (pay.invoice_id) await openInvoice(pay.invoice_id);
+                        }}
+                      >
+                        Simulate Daraja callback
+                      </Button>
+                    ) : (
+                      <p className="mt-1 text-xs text-muted">Waiting for the live callback.</p>
+                    )}
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <Button type="submit" disabled={busy || !pay.invoice_id || pay.amount_kes <= 0}>
+                    Confirm payment
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={busy || !pay.invoice_id || (pay.provider !== "mpesa" && pay.provider !== "kopokopo")}
+                    onClick={async () => {
+                      setErr(null);
+                      try {
+                        const r = await sendStk({
+                          data: { invoice_id: pay.invoice_id, provider: pay.provider, amount_kes: pay.amount_kes },
+                        });
+                        setStk({ checkout_id: r.checkout_id, note: r.note });
+                        if (r.note && !r.checkout_id.startsWith("ws_")) setErr(r.note);
+                      } catch (ex) {
+                        setErr(ex instanceof Error ? ex.message : "STK failed");
+                      }
+                    }}
+                  >
+                    Send STK push
+                  </Button>
+                </div>
+              </>
+            ) : null}
+          </form>
+        </Dialog>
+      ) : null}
 
-      {stk ? (
+      {stk && !paying ? (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-4 text-sm print:hidden">
           <span>
             STK sent · checkout <span className="font-mono">{stk.checkout_id}</span>
@@ -460,6 +579,98 @@ function quotesForCustomer(quotes: Quote[], customerId: string): Line[] {
     package_id: x.package_id,
     service_id: x.service_id,
   }));
+}
+
+function matchCustomer(c: CustomerHit, needle: string) {
+  const n = needle.trim().toLowerCase();
+  if (!n) return true;
+  return `${c.name} ${c.phone} ${c.account_number}`.toLowerCase().includes(n);
+}
+
+function CustomerPicker({
+  customers,
+  value,
+  onChange,
+}: {
+  customers: CustomerHit[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const selected = customers.find((c) => c.id === value) ?? null;
+  const filtered = useMemo(() => {
+    const rows = customers.filter((c) => matchCustomer(c, query));
+    return rows.slice(0, 40);
+  }, [customers, query]);
+
+  if (selected) {
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-bg px-3 py-2">
+        <div className="min-w-0">
+          <div className="truncate font-medium">{selected.name}</div>
+          <div className="truncate text-xs text-muted">
+            {[selected.account_number, selected.phone].filter(Boolean).join(" · ") || "No contact"}
+          </div>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            onChange("");
+            setQuery("");
+          }}
+        >
+          Change
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" strokeWidth={1.75} />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search name, phone, or account"
+          className="pl-10"
+          autoComplete="off"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            const first = filtered[0];
+            if (first) onChange(first.id);
+          }}
+        />
+      </div>
+      <div className="max-h-48 overflow-y-auto rounded-md border border-border bg-bg">
+        {customers.length === 0 ? (
+          <p className="px-3 py-3 text-sm text-muted">No customers yet.</p>
+        ) : filtered.length === 0 ? (
+          <p className="px-3 py-3 text-sm text-muted">No match for “{query.trim()}”.</p>
+        ) : (
+          filtered.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onChange(c.id)}
+              className="flex min-h-11 w-full items-center justify-between gap-3 border-b border-border px-3 py-2 text-left last:border-b-0 hover:bg-elevated/60"
+            >
+              <span className="min-w-0">
+                <span className="block truncate font-medium">{c.name}</span>
+                <span className="block truncate text-xs text-muted">
+                  {[c.account_number, c.phone].filter(Boolean).join(" · ") || "No contact"}
+                </span>
+              </span>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
 }
 
 function Stat({ label, value, sub, tone }: { label: string; value: string; sub: string; tone?: "danger" }) {

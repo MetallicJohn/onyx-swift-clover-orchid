@@ -150,7 +150,7 @@ echo
 echo "Next:"
 echo "  1. Sign in at https://$DOMAIN/login (signup creates the first ISP owner)."
 echo "  2. Settings → Public URL = https://$DOMAIN"
-echo "  3. Settings → Network: hub endpoint = this VPS public IP or $DOMAIN, then copy wg-gridline.conf to /etc/wireguard/ and wg-quick up wg-gridline"
+echo "  3. Settings → Network: hub endpoint = this VPS public IP or $DOMAIN, then run the VPS install script (creates wg-ispsolutions, migrates wg-gridline)"
 echo "  4. Routers → Copy script onto each MikroTik"
 echo "  5. Point DNS at this VPS. In ISP Solutions → System settings set ACS public host to the VPS IP or $DOMAIN."
 echo "  6. Each ISP is assigned a unique TR-069 port (7551–7999). CPE ACS URL = http://\$ACS_HOST:\$PORT/ from ACS → Credentials."

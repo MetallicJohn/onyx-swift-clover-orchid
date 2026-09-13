@@ -130,7 +130,7 @@ function RadiusPage() {
                 if (!vpsEnv) return;
                 setExportText(vpsEnv);
                 await copyText(vpsEnv);
-                setNote("VPS RADIUS env copied — paste into gridline.env and restart freeradius");
+                setNote("VPS RADIUS env copied — paste into the VPS env file and restart FreeRADIUS");
               }}
             >
               Copy VPS env
@@ -139,7 +139,7 @@ function RadiusPage() {
         </div>
         <div className="text-sm text-muted">
           <ol className="list-decimal space-y-1 pl-4">
-            <li>VPS compose already starts FreeRADIUS. Copy VPS env (slug + API key + NAS secret) into gridline.env and restart the freeradius container.</li>
+            <li>VPS compose already starts FreeRADIUS. Copy VPS env (slug + API key + NAS secret) into the VPS env file and restart the FreeRADIUS container.</li>
             <li>Point each MikroTik at this VPS UDP 1812/1813 with the NAS secret. Paste the MikroTik snippet.</li>
             <li>Accounting POSTs update usage. A data cap or suspend rejects the next Access-Request.</li>
           </ol>

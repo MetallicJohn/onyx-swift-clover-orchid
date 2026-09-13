@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
+import { ROS_API_USER } from "@/lib/brand";
 import { compileMikrotik, compileRow, curlForOps, executeRestOps, queueCompiledCommand, approveCommand } from "./mikrotik";
 import { assertPermission } from "./rbac";
 import { requireWorkspace as requireWs } from "./workspace";
@@ -34,7 +35,7 @@ export const getRouterApi = createServerFn({ method: "GET" })
       id: r.id,
       name: r.name,
       identity: r.identity,
-      api_user: r.api_user || "gridline",
+      api_user: r.api_user || ROS_API_USER,
       api_port: r.api_port || 443,
       api_host: r.api_host,
       wg_address: r.wg_address,
@@ -57,7 +58,7 @@ export const saveRouterApi = createServerFn({ method: "POST" })
     const password =
       !data.api_password || data.api_password.startsWith("••••") ? r.api_password : data.api_password;
     await sql`update routers set
-      api_user = ${data.api_user.trim() || "gridline"},
+      api_user = ${data.api_user.trim() || ROS_API_USER},
       api_password = ${password},
       api_port = ${data.api_port || 443},
       api_host = ${data.api_host.trim()}
@@ -92,7 +93,7 @@ export const previewRouterCommand = createServerFn({ method: "POST" })
     const compiled = compileMikrotik(data.kind, data.payload);
     return {
       ...compiled,
-      curl: curlForOps(data.host || "https://10.200.0.2", data.user || "gridline", compiled.rest),
+      curl: curlForOps(data.host || "https://10.200.0.2", data.user || ROS_API_USER, compiled.rest),
     };
   });
 
@@ -131,7 +132,7 @@ export const runRouterApi = createServerFn({ method: "POST" })
       return { simulated: true, rest: compiled.rest, note: "No API host — command compiled and marked simulated." };
     }
 
-    const results = await executeRestOps(host, r.api_user || "gridline", r.api_password, r.api_port || 443, compiled.rest);
+    const results = await executeRestOps(host, r.api_user || ROS_API_USER, r.api_password, r.api_port || 443, compiled.rest);
     if (data.command_id) {
       await sql`update agent_commands set status = 'acked', acked_at = now(), result = ${JSON.stringify(results).slice(0, 2000)}
         where id = ${data.command_id}`;

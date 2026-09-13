@@ -1,6 +1,6 @@
 /** RouterOS v7 script generation. Uses :local, :if, :do, find where — not API-style one-liners. */
 /* eslint-disable no-useless-escape -- RouterOS uses $locals; JS templates must emit a literal dollar */
-import { APP_NAME } from "../brand.ts";
+import { APP_NAME, APP_SLUG, ROS_ACTIVE_LIST, ROS_AGENT_SCHEDULER, ROS_ENROLL_FILE, ROS_PULL_FILE, ROS_PULL_SCRIPT, ROS_WG_INTERFACE, ROS_WG_INTERFACE_LEGACY } from "../brand.ts";
 import { pcqFromPayload } from "./pcq.ts";
 
 export function rosQuote(value: string) {
@@ -47,29 +47,32 @@ export function enrollRosScript(opts: {
   const scheduler = pull
     ? `
 :do { /system script remove [find where name="gridline-pull"] } on-error={}
-/system script add name=gridline-pull owner=admin policy=read,write,policy,test,password,sensitive source={
+:do { /system script remove [find where name=${rosQuote(ROS_PULL_SCRIPT)}] } on-error={}
+/system script add name=${rosQuote(ROS_PULL_SCRIPT)} owner=admin policy=read,write,policy,test,password,sensitive source={
   :do {
-    /tool fetch url=${rosQuote(pull)} mode=https check-certificate=no http-method=get dst-path=gridline-pull.rsc;
+    /tool fetch url=${rosQuote(pull)} mode=https check-certificate=no http-method=get dst-path=${rosQuote(ROS_PULL_FILE)};
     :delay 2s;
-    :if ([:len [/file find where name="gridline-pull.rsc"]] > 0) do={
-      /import file-name=gridline-pull.rsc;
+    :if ([:len [/file find where name=${rosQuote(ROS_PULL_FILE)}]] > 0) do={
+      /import file-name=${rosQuote(ROS_PULL_FILE)};
     }
   } on-error={
-    :log warning "gridline-agent fetch failed";
+    :log warning ${rosQuote(`${APP_NAME} agent fetch failed`)};
   }
 }
 
 :do { /system scheduler remove [find where name="gridline-agent"] } on-error={}
-/system scheduler add name=gridline-agent interval=1m start-time=startup \\
+:do { /system scheduler remove [find where name=${rosQuote(ROS_AGENT_SCHEDULER)}] } on-error={}
+/system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup \\
   policy=read,write,policy,test,password,sensitive \\
-  on-event="/system script run gridline-pull";`
+  on-event="/system script run ${ROS_PULL_SCRIPT}";`
     : `
 :do { /system scheduler remove [find where name="gridline-agent"] } on-error={}
-/system scheduler add name=gridline-agent interval=1m start-time=startup \\
-  on-event={ :log info ("gridline heartbeat " . ${rosQuote(opts.token)}) };`;
+:do { /system scheduler remove [find where name=${rosQuote(ROS_AGENT_SCHEDULER)}] } on-error={}
+/system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup \\
+  on-event={ :log info (${rosQuote(`${APP_NAME} heartbeat `)} . ${rosQuote(opts.token)}) };`;
 
   return `# ${APP_NAME} agent enroll — RouterOS v7 script
-# Paste in New Terminal, or: /import file-name=gridline-enroll.rsc
+# Paste in New Terminal, or: /import file-name=${ROS_ENROLL_FILE}
 # Overlay ${addr} → hub ${hubIp} (UDP ${endpointPort})
 # Syntax: :local / :if / :do on-error / find where
 ${missingEndpoint}
@@ -84,38 +87,41 @@ ${localBlock({
 
 /system identity set name=\$identity;
 
-:if ([:len [/interface wireguard find where name="wg-gridline"]] = 0) do={
-  /interface wireguard add name=wg-gridline listen-port=13231 private-key=\$wgPriv comment="gridline-agent";
+:do { /interface wireguard set [find where name="${ROS_WG_INTERFACE_LEGACY}"] name=${ROS_WG_INTERFACE} } on-error={}
+
+:if ([:len [/interface wireguard find where name="${ROS_WG_INTERFACE}"]] = 0) do={
+  /interface wireguard add name=${ROS_WG_INTERFACE} listen-port=13231 private-key=\$wgPriv comment=${rosQuote(`${APP_NAME} agent`)};
 } else={
-  /interface wireguard set [find where name="wg-gridline"] private-key=\$wgPriv listen-port=13231;
+  /interface wireguard set [find where name="${ROS_WG_INTERFACE}"] private-key=\$wgPriv listen-port=13231 comment=${rosQuote(`${APP_NAME} agent`)};
 }
 
-:if ([:len [/interface wireguard peers find where interface="wg-gridline" and comment="gridline-controller"]] = 0) do={
-  /interface wireguard peers add interface=wg-gridline public-key=\$srvKey allowed-address=\$allowed \\
+:if ([:len [/interface wireguard peers find where interface="${ROS_WG_INTERFACE}" and (comment="gridline-controller" or comment=${rosQuote(`${APP_NAME} controller`)})]] = 0) do={
+  /interface wireguard peers add interface=${ROS_WG_INTERFACE} public-key=\$srvKey allowed-address=\$allowed \\
 ${endpointSet}
-    persistent-keepalive=00:00:25 comment="gridline-controller";
+    persistent-keepalive=00:00:25 comment=${rosQuote(`${APP_NAME} controller`)};
 } else={
-  /interface wireguard peers set [find where interface="wg-gridline" and comment="gridline-controller"] \\
-    public-key=\$srvKey allowed-address=\$allowed \\
+  /interface wireguard peers set [find where interface="${ROS_WG_INTERFACE}" and (comment="gridline-controller" or comment=${rosQuote(`${APP_NAME} controller`)})] \\
+    public-key=\$srvKey allowed-address=\$allowed comment=${rosQuote(`${APP_NAME} controller`)} \\
 ${endpointSet}
     persistent-keepalive=00:00:25;
 }
 
-:if ([:len [/ip address find where interface="wg-gridline"]] = 0) do={
-  /ip address add address=\$wgAddr interface=wg-gridline;
+:if ([:len [/ip address find where interface="${ROS_WG_INTERFACE}"]] = 0) do={
+  /ip address add address=\$wgAddr interface=${ROS_WG_INTERFACE};
 } else={
-  /ip address set [find where interface="wg-gridline"] address=\$wgAddr;
+  /ip address set [find where interface="${ROS_WG_INTERFACE}"] address=\$wgAddr;
 }
 
-:if ([:len [/ip firewall filter find where comment="gridline-agent"]] = 0) do={
-  /ip firewall filter add chain=input in-interface=wg-gridline action=accept comment="gridline-agent" place-before=0;
+:do { /ip firewall filter set [find where comment="gridline-agent"] comment=${rosQuote(`${APP_NAME} agent`)} in-interface=${ROS_WG_INTERFACE} } on-error={}
+:if ([:len [/ip firewall filter find where comment=${rosQuote(`${APP_NAME} agent`)}]] = 0) do={
+  /ip firewall filter add chain=input in-interface=${ROS_WG_INTERFACE} action=accept comment=${rosQuote(`${APP_NAME} agent`)} place-before=0;
 }
 
 /ip service set www-ssl disabled=no address=10.200.0.0/24;
 /ip service set api disabled=no address=10.200.0.0/24;
 /ip service set winbox address=10.200.0.0/24;
 
-:log info ("gridline enrolled token=" . \$token);
+:log info (${rosQuote(`${APP_NAME} enrolled token=`)} . \$token);
 ${scheduler}
 `;
 }
@@ -184,12 +190,31 @@ export function commandRosScript(kind: string, payload: Record<string, unknown>)
   const password = String(payload.password || "");
   const ip = String(payload.static_ip || payload.address || "");
   const list = pcqFromPayload(payload).list;
-  const comment = String(payload.service_id || "gridline");
+  const comment = String(payload.service_id || APP_SLUG);
   const disabled = payload.status === "suspended" || payload.status === "terminated" || payload.enabled === false;
-  const qname = `static-${user || ip || "host"}`;
+  const qname = String(payload.qname || `static-${user || ip || "host"}`);
 
   if (kind === "package.sync") {
     return pcqEnsureRos(payload);
+  }
+
+  if (kind.startsWith("queue.")) {
+    const target = ip.includes("/") ? ip : ip ? `${ip}/32` : "";
+    const up = String(payload.upload_mbps || payload.up || 10);
+    const down = String(payload.download_mbps || payload.down || 10);
+    const maxLimit = `${up}M/${down}M`;
+    if (!target) return "# missing queue target";
+    if (kind.endsWith("remove") || disabled) {
+      return `${localBlock({ qname, ip: target })}
+:do { /queue simple remove [find where name=\$qname] } on-error={};
+:do { /queue simple remove [find where target=\$ip] } on-error={};`;
+    }
+    return `${localBlock({ qname, ip: target, maxLimit, user })}
+:if ([:len [/queue simple find where name=\$qname]] = 0) do={
+  /queue simple add name=\$qname target=\$ip max-limit=\$maxLimit comment=\$user;
+} else={
+  /queue simple set [find where name=\$qname] target=\$ip max-limit=\$maxLimit comment=\$user;
+}`;
   }
 
   if (kind.startsWith("pppoe.")) {
@@ -220,7 +245,8 @@ ${localBlock({ user, pass: password, comment })}
       return `${localBlock({ qname, ip, list, user })}
 :do { /queue simple remove [find where name=\$qname] } on-error={};
 :do { /ip firewall address-list remove [find where list=\$list and address=\$ip] } on-error={};
-:do { /ip firewall address-list remove [find where list="gridline-active" and address=\$ip] } on-error={};`;
+:do { /ip firewall address-list remove [find where list="gridline-active" and address=\$ip] } on-error={};
+:do { /ip firewall address-list remove [find where list=${rosQuote(ROS_ACTIVE_LIST)} and address=\$ip] } on-error={};`;
     }
     return `${pcqEnsureRos(payload)}
 
@@ -230,8 +256,9 @@ ${localBlock({ qname, ip, user })}
 :if ([:len [/ip firewall address-list find where list=\$list and address=\$ip]] = 0) do={
   /ip firewall address-list add list=\$list address=\$ip comment=\$user;
 }
-:if ([:len [/ip firewall address-list find where list="gridline-active" and address=\$ip]] = 0) do={
-  /ip firewall address-list add list=gridline-active address=\$ip comment=\$user;
+:do { /ip firewall address-list remove [find where list="gridline-active" and address=\$ip] } on-error={};
+:if ([:len [/ip firewall address-list find where list=${rosQuote(ROS_ACTIVE_LIST)} and address=\$ip]] = 0) do={
+  /ip firewall address-list add list=${rosQuote(ROS_ACTIVE_LIST)} address=\$ip comment=\$user;
 }`;
   }
 
@@ -259,7 +286,7 @@ ${localBlock({ user, pass: password })}
   }
 
   if (kind === "identity.set") {
-    const identity = String(payload.identity || payload.name || "gridline");
+    const identity = String(payload.identity || payload.name || APP_NAME);
     return `${localBlock({ identity })}
 /system identity set name=\$identity;`;
   }
@@ -286,19 +313,27 @@ export function wrapPullRosScript(opts: {
   commands: { id: string; kind: string; script: string }[];
 }) {
   const body = opts.commands
-    .map(
-      (c) => `# --- ${c.kind} ${c.id}
-${c.script}`,
-    )
+    .map((c) => {
+      const inner = c.script
+        .split("\n")
+        .map((line) => (line.length ? `  ${line}` : line))
+        .join("\n");
+      return `# --- ${c.kind} ${c.id}
+:do {
+${inner}
+} on-error={
+  :log error ${rosQuote(`${APP_NAME} command ${c.id} failed`)};
+}`;
+    })
     .join("\n\n");
   return `# ${APP_NAME} agent pull — RouterOS v7
-# /import file-name=gridline-pull.rsc
+# /import file-name=${ROS_PULL_FILE}
 # identity: ${opts.identity}
 
 {
-${body || `  :log info ${rosQuote("gridline-agent idle")};`}
+${body || `  :log info ${rosQuote(`${APP_NAME} agent idle`)};`}
 
-  :log info ${rosQuote(`gridline-agent applied ${opts.commands.length} command(s)`)};
+  :log info ${rosQuote(`${APP_NAME} agent applied ${opts.commands.length} command(s)`)};
 }
 `;
 }

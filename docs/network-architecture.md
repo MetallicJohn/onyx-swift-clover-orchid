@@ -8,7 +8,7 @@ SaaS (TanStack)
         → MikroTik RouterOS v7 REST / script
 ```
 
-The hub conf is generated in Settings → Network (`wg-gridline.conf`). Routers initiate with persistent keepalive so they work behind NAT. Do not expose Winbox/API on WAN.
+The hub conf is generated in Settings → Network (`wg-ispsolutions.conf`). Routers initiate with persistent keepalive so they work behind NAT. Do not expose Winbox/API on WAN.
 
 Future vendors implement `RouterProvider` (MikroTik is first). FreeRADIUS and GenieACS are **separate processes**, not in the web container.
 

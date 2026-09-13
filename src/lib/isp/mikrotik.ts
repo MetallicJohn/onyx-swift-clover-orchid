@@ -1,4 +1,5 @@
 import { nid } from "../utils.ts";
+import { APP_NAME, APP_SLUG, ROS_ACTIVE_LIST } from "../brand.ts";
 import { initialCommandStatus } from "./command-policy";
 import { ensureOpsSchema } from "./ops-schema";
 import { applyRls } from "./rls";
@@ -116,6 +117,29 @@ export function compileMikrotik(kind: string, payload: Record<string, unknown>):
     return { rest: pcqRestOps(payload), script };
   }
 
+  if (kind.startsWith("queue.")) {
+    const qname = String(payload.qname || `pppoe-${user || ip || "host"}`).slice(0, 32);
+    const target = ip.includes("/") ? ip : ip ? `${ip}/32` : "";
+    const up = String(payload.upload_mbps || 10);
+    const down = String(payload.download_mbps || 10);
+    if (kind.endsWith("remove") || disabled) {
+      return {
+        rest: [{ method: "DELETE", path: `/rest/queue/simple/${encodeURIComponent(qname)}` }],
+        script,
+      };
+    }
+    return {
+      rest: [
+        {
+          method: "PUT",
+          path: "/rest/queue/simple",
+          body: { name: qname, target, "max-limit": `${up}M/${down}M`, comment: user },
+        },
+      ],
+      script,
+    };
+  }
+
   if (kind.startsWith("pppoe.")) {
     if (!user) return { rest: [], script };
     if (kind.endsWith("disconnect")) {
@@ -142,7 +166,7 @@ export function compileMikrotik(kind: string, payload: Record<string, unknown>):
             service: "pppoe",
             profile,
             disabled: "false",
-            comment: String(payload.service_id || "gridline"),
+            comment: String(payload.service_id || APP_SLUG),
           },
         },
       ],
@@ -173,7 +197,7 @@ export function compileMikrotik(kind: string, payload: Record<string, unknown>):
         {
           method: "PUT",
           path: "/rest/ip/firewall/address-list",
-          body: { list: "gridline-active", address: ip, comment: user },
+          body: { list: ROS_ACTIVE_LIST, address: ip, comment: user },
         },
       ],
       script,
@@ -205,7 +229,7 @@ export function compileMikrotik(kind: string, payload: Record<string, unknown>):
   }
 
   if (kind === "identity.set") {
-    const identity = String(payload.identity || payload.name || "gridline");
+    const identity = String(payload.identity || payload.name || APP_NAME);
     return {
       rest: [{ method: "POST", path: "/rest/system/identity/set", body: { name: identity } }],
       script,
@@ -329,15 +353,21 @@ export async function executeRestOps(
   const auth = Buffer.from(`${user}:${password}`).toString("base64");
   const results: { path: string; status: number; body: string }[] = [];
   for (const op of ops) {
-    const res = await fetch(`${base}${op.path}`, {
-      method: op.method,
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/json",
-      },
-      body: op.body ? JSON.stringify(op.body) : undefined,
-    });
-    results.push({ path: op.path, status: res.status, body: (await res.text()).slice(0, 400) });
+    try {
+      const res = await fetch(`${base}${op.path}`, {
+        method: op.method,
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/json",
+        },
+        body: op.body ? JSON.stringify(op.body) : undefined,
+        signal: AbortSignal.timeout(4000),
+      });
+      results.push({ path: op.path, status: res.status, body: (await res.text()).slice(0, 400) });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unreachable";
+      results.push({ path: op.path, status: 0, body: `unreachable: ${message.slice(0, 200)}` });
+    }
   }
   return results;
 }
@@ -365,7 +395,7 @@ export async function queueCompiledCommand(
   const status = initialCommandStatus(kind);
   await sql`insert into agent_commands (id, tenant_id, router_id, kind, payload, status, requested_by)
     values (${id}, ${tenantId}, ${routerId}, ${kind}, ${JSON.stringify(payload)}, ${status}, ${requestedBy})`;
-  return { id, status, ...compileMikrotik(kind, payload) };
+  return { id, status, kind, ...compileMikrotik(kind, payload) };
 }
 
 export async function approveCommand(sql: Sql, tenantId: string, commandId: string, userId: string) {

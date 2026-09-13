@@ -6,6 +6,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import {
   categoryLabel,
   COMM_CATEGORIES,
+  COMM_CHANNELS,
   COMM_VARS,
   describeFilter,
   filterSignature,
@@ -17,6 +18,7 @@ import {
   smsSegments,
   type AudienceFilter,
   type CommCategory,
+  type CommChannel,
   type CommExtras,
   type CommVarKey,
 } from "@/lib/isp/comms-format";
@@ -121,6 +123,7 @@ export function Communications() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pane, setPane] = useState<Pane>("compose");
   const [category, setCategory] = useState<CommCategory>("planned_maintenance");
+  const [channel, setChannel] = useState<CommChannel>("sms");
   const [templateId, setTemplateId] = useState("");
   const [body, setBody] = useState("");
   const [name, setName] = useState("");
@@ -180,12 +183,12 @@ export function Communications() {
   useEffect(() => {
     if (!meta) return;
     const timer = setTimeout(() => {
-      previewAudienceFn({ data: { filter, page: previewPage, skipped: showSkipped } })
+      previewAudienceFn({ data: { filter, page: previewPage, skipped: showSkipped, channel } })
         .then(setPreview)
         .catch((err) => setNote(err instanceof Error ? err.message : "Could not preview recipients"));
     }, 280);
     return () => clearTimeout(timer);
-  }, [meta, filter, filterKey, previewPage, showSkipped]);
+  }, [meta, filter, filterKey, previewPage, showSkipped, channel]);
 
   useEffect(() => {
     if (pane !== "report" || report?.campaign.status !== "sending" || !report.campaign.id) return;
@@ -292,6 +295,7 @@ export function Communications() {
           extras: extrasToSend,
           confirm_duplicate: forceDuplicate,
           restore_of: restoreOf,
+          channel,
         },
       });
       if (res.duplicate) {
@@ -383,11 +387,14 @@ export function Communications() {
             live customer and service data.
           </p>
           <p className="mt-1 text-xs text-muted">
-            Sender: <span className="font-medium text-fg">{meta.sender_id}</span>
-            {meta.sandbox ? " · sandbox (accepted locally, not delivered by a provider)" : ` · ${meta.provider}`}
+            SMS: <span className="font-medium text-fg">{meta.sender_id}</span>
+            {meta.sandbox ? " · sandbox" : ` · ${meta.provider}`}
+            {" · Email: "}
+            <span className="font-medium text-fg">{meta.email_from}</span>
+            {meta.email_sandbox ? " · sandbox" : ` · ${meta.email_provider}`}
             {" · "}
             <Link to="/app/settings" search={{ tab: "sms" }} className="text-accent hover:underline">
-              SMS settings
+              Messaging settings
             </Link>
           </p>
         </div>
@@ -449,6 +456,24 @@ export function Communications() {
                   </Chip>
                 ))}
               </div>
+            </section>
+
+            <section className="space-y-3 rounded-xl border border-border bg-surface p-4">
+              <h2 className="font-medium">Send as</h2>
+              <div className="flex flex-wrap gap-2">
+                {COMM_CHANNELS.map((c) => (
+                  <Chip key={c.id} on={channel === c.id} onClick={() => { setChannel(c.id); setPreviewPage(1); }}>
+                    {c.label}
+                  </Chip>
+                ))}
+              </div>
+              <p className="text-sm text-muted">
+                {channel === "email"
+                  ? "Customers without an email address are skipped. Each ISP uses its own from address."
+                  : channel === "both"
+                    ? "Send SMS and email to each customer who has that contact. Missing contacts are skipped for that channel only."
+                    : "Customers without a valid mobile number are skipped."}
+              </p>
             </section>
 
             <section className="space-y-3 rounded-xl border border-border bg-surface p-4">
@@ -678,7 +703,7 @@ export function Communications() {
                   </Field>
                 </div>
               )}
-              <Field label="SMS body">
+              <Field label={channel === "email" ? "Email body" : "Message body"}>
                 <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={5} required />
               </Field>
               <div>
@@ -701,7 +726,8 @@ export function Communications() {
                 <p className="text-sm text-muted">No customers match these filters.</p>
               ) : (
                 <p className="text-sm">
-                  <span className="font-medium">{valid}</span> with a valid mobile
+                  <span className="font-medium">{valid}</span>{" "}
+                  {channel === "email" ? "with a valid email" : channel === "both" ? "with SMS or email" : "with a valid mobile"}
                   {skipped ? <span className="text-muted"> · {skipped} will be skipped</span> : null}
                   <span className="text-muted"> of {total} selected</span>
                 </p>
@@ -714,10 +740,17 @@ export function Communications() {
                 <p className="text-xs text-muted">View recipients below. Phone numbers without a valid mobile are listed as skipped — they are not sent silently.</p>
               )}
               <div className="text-sm text-muted">
-                {segments.chars} characters · {parts} SMS {segments.encoding === "ucs2" ? "(unicode)" : "(GSM)"}
-                <div className="mt-1 font-medium text-fg">
-                  {valid} recipients × {parts || 0} SMS = {estimated} SMS
-                </div>
+                {channel === "email" ? (
+                  <div className="font-medium text-fg">{valid} email recipients</div>
+                ) : (
+                  <>
+                    {segments.chars} characters · {parts} SMS {segments.encoding === "ucs2" ? "(unicode)" : "(GSM)"}
+                    <div className="mt-1 font-medium text-fg">
+                      {valid} recipients × {parts || 0} SMS = {estimated} SMS
+                      {channel === "both" ? " · plus email where available" : ""}
+                    </div>
+                  </>
+                )}
               </div>
               {!canSend ? <p className="text-sm text-warn">You can preview this audience but you cannot send bulk SMS.</p> : null}
               <Button

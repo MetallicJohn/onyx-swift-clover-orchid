@@ -8,9 +8,20 @@ type Sql = {
 export const ACCOUNT_SEPARATORS = ["", "-", "/"] as const;
 export type AccountSeparator = (typeof ACCOUNT_SEPARATORS)[number];
 
+export const ACCOUNT_SCHEMES = ["random", "sequence"] as const;
+export type AccountScheme = (typeof ACCOUNT_SCHEMES)[number];
+
+/** Letters that look like digits (I→1, O→0, L→1). Never used in random codes. */
+export const AMBIGUOUS_ACCOUNT_LETTERS = "ILO";
+export const ACCOUNT_RANDOM_LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZ";
+export const ACCOUNT_RANDOM_DIGITS = "0123456789";
+export const ACCOUNT_RANDOM_ALPHABET = `${ACCOUNT_RANDOM_LETTERS}${ACCOUNT_RANDOM_DIGITS}`;
+export const RANDOM_ACCOUNT_LENGTH = 5;
+
 export type AccountNumberSettings = {
   tenant_id: string;
   enabled: boolean;
+  scheme: AccountScheme;
   prefix: string;
   suffix: string;
   separator: AccountSeparator;
@@ -18,6 +29,10 @@ export type AccountNumberSettings = {
   next_n: number;
   digits: number;
   allow_manual: boolean;
+  prefix_permanent: boolean;
+  suffix_permanent: boolean;
+  next_prefix_n: number;
+  next_suffix_n: number;
   updated_at: string | null;
 };
 
@@ -25,12 +40,57 @@ export type AccountNumberPatch = Partial<
   Omit<AccountNumberSettings, "tenant_id" | "updated_at">
 >;
 
+export type SequenceKind = "number" | "prefix" | "suffix" | "random";
+
 const MAX_N = 99_999_999;
 
 function clampInt(n: unknown, min: number, max: number, fallback: number) {
   const v = Math.floor(Number(n));
   if (!Number.isFinite(v)) return fallback;
   return Math.min(max, Math.max(min, v));
+}
+
+export function normalizeScheme(raw: unknown, fallback: AccountScheme = "sequence"): AccountScheme {
+  const v = String(raw || "").toLowerCase();
+  if (v === "random" || v === "sequence") return v;
+  return fallback;
+}
+
+function randomInt(max: number) {
+  if (max <= 1) return 0;
+  const cap = Math.floor(0x100000000 / max) * max;
+  const buf = new Uint32Array(1);
+  let n = 0;
+  do {
+    crypto.getRandomValues(buf);
+    n = buf[0]!;
+  } while (n >= cap);
+  return n % max;
+}
+
+export function randomAccountNumber(length = RANDOM_ACCOUNT_LENGTH) {
+  const len = clampInt(length, 4, 8, RANDOM_ACCOUNT_LENGTH);
+  const chars: string[] = [
+    ACCOUNT_RANDOM_LETTERS[randomInt(ACCOUNT_RANDOM_LETTERS.length)]!,
+    ACCOUNT_RANDOM_DIGITS[randomInt(ACCOUNT_RANDOM_DIGITS.length)]!,
+  ];
+  while (chars.length < len) {
+    chars.push(ACCOUNT_RANDOM_ALPHABET[randomInt(ACCOUNT_RANDOM_ALPHABET.length)]!);
+  }
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = randomInt(i + 1);
+    const tmp = chars[i]!;
+    chars[i] = chars[j]!;
+    chars[j] = tmp;
+  }
+  return chars.join("");
+}
+
+export function isRandomAccountNumber(raw: string) {
+  const s = normalizeAccountNumber(raw);
+  if (s.length !== RANDOM_ACCOUNT_LENGTH) return false;
+  if (![...s].every((ch) => ACCOUNT_RANDOM_ALPHABET.includes(ch))) return false;
+  return /[A-Z]/.test(s) && /[0-9]/.test(s);
 }
 
 export function defaultPrefix(slug: string) {
@@ -70,11 +130,116 @@ export function formatAccountNumber(opts: {
   return `${prefix}${sep}${String(n).padStart(digits, "0")}${suffix}`;
 }
 
+export function isAlphaToken(raw: string) {
+  return /^[A-Z]+$/.test(raw);
+}
+
+export function isDigitToken(raw: string) {
+  return /^[0-9]+$/.test(raw);
+}
+
+export function isIncrementingToken(raw: string) {
+  return isAlphaToken(raw) || isDigitToken(raw);
+}
+
+/** 0 = A, 25 = Z, 26 = AA */
+export function alphaToIndex(raw: string) {
+  const s = normalizeToken(raw);
+  if (!isAlphaToken(s)) return 0;
+  let n = 0;
+  for (const ch of s) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return Math.max(0, n - 1);
+}
+
+export function indexToAlpha(index: number) {
+  let x = clampInt(index, 0, MAX_N, 0) + 1;
+  let out = "";
+  while (x > 0) {
+    const rem = (x - 1) % 26;
+    out = String.fromCharCode(65 + rem) + out;
+    x = Math.floor((x - 1) / 26);
+  }
+  return out || "A";
+}
+
+export function tokenIndex(raw: string) {
+  const s = normalizeToken(raw);
+  if (isAlphaToken(s)) return alphaToIndex(s);
+  if (isDigitToken(s)) return clampInt(s, 0, MAX_N, 0);
+  return 0;
+}
+
+export function tokenFromIndex(pattern: string, index: number) {
+  const s = normalizeToken(pattern);
+  if (isAlphaToken(s)) return indexToAlpha(index);
+  if (isDigitToken(s)) return String(clampInt(index, 0, MAX_N, 0)).padStart(s.length, "0");
+  return s;
+}
+
+export function sequenceKind(s: {
+  scheme?: AccountScheme | string;
+  prefix: string;
+  suffix: string;
+  prefix_permanent: boolean;
+  suffix_permanent: boolean;
+}): SequenceKind {
+  if (normalizeScheme(s.scheme, "sequence") === "random") return "random";
+  if (!s.suffix_permanent && isIncrementingToken(normalizeToken(s.suffix))) return "suffix";
+  if (!s.prefix_permanent && isIncrementingToken(normalizeToken(s.prefix))) return "prefix";
+  return "number";
+}
+
+export function formatFromSettings(
+  s: {
+    scheme?: AccountScheme | string;
+    prefix: string;
+    suffix: string;
+    separator?: string;
+    start_n: number;
+    next_n: number;
+    digits: number;
+    prefix_permanent: boolean;
+    suffix_permanent: boolean;
+    next_prefix_n: number;
+    next_suffix_n: number;
+  },
+  offset = 0,
+  cursor?: "start" | "next",
+) {
+  const kind = sequenceKind(s);
+  if (kind === "random") return randomAccountNumber();
+  if (kind === "suffix") {
+    const start = tokenIndex(s.suffix);
+    const base = cursor === "next" ? Math.max(s.next_suffix_n, start) : start;
+    return formatAccountNumber({
+      prefix: s.prefix,
+      suffix: tokenFromIndex(s.suffix, base + offset),
+      separator: s.separator,
+      n: s.start_n,
+      digits: s.digits,
+    });
+  }
+  if (kind === "prefix") {
+    const start = tokenIndex(s.prefix);
+    const base = cursor === "next" ? Math.max(s.next_prefix_n, start) : start;
+    return formatAccountNumber({
+      prefix: tokenFromIndex(s.prefix, base + offset),
+      suffix: s.suffix,
+      separator: s.separator,
+      n: s.start_n,
+      digits: s.digits,
+    });
+  }
+  const n = cursor === "next" ? s.next_n + offset : s.start_n + offset;
+  return formatAccountNumber({ ...s, n });
+}
+
 export function defaultsForSlug(slug: string, tenantId = ""): AccountNumberSettings {
   const prefix = defaultPrefix(slug);
   return {
     tenant_id: tenantId,
-    enabled: false,
+    enabled: true,
+    scheme: "random",
     prefix,
     suffix: "",
     separator: "",
@@ -82,6 +247,10 @@ export function defaultsForSlug(slug: string, tenantId = ""): AccountNumberSetti
     next_n: 1000,
     digits: 4,
     allow_manual: false,
+    prefix_permanent: true,
+    suffix_permanent: true,
+    next_prefix_n: tokenIndex(prefix),
+    next_suffix_n: 0,
     updated_at: null,
   };
 }
@@ -91,6 +260,7 @@ function parseRow(row: Record<string, unknown> | undefined, fallback: AccountNum
   return {
     tenant_id: String(row.tenant_id || fallback.tenant_id),
     enabled: Boolean(row.enabled),
+    scheme: normalizeScheme(row.scheme, "sequence"),
     prefix: normalizeToken(String(row.prefix ?? fallback.prefix)),
     suffix: normalizeToken(String(row.suffix ?? "")),
     separator: normalizeSeparator(String(row.separator ?? "")),
@@ -98,6 +268,10 @@ function parseRow(row: Record<string, unknown> | undefined, fallback: AccountNum
     next_n: clampInt(row.next_n, 0, MAX_N, fallback.next_n),
     digits: clampInt(row.digits, 1, 8, fallback.digits),
     allow_manual: Boolean(row.allow_manual),
+    prefix_permanent: row.prefix_permanent === undefined ? true : Boolean(row.prefix_permanent),
+    suffix_permanent: row.suffix_permanent === undefined ? true : Boolean(row.suffix_permanent),
+    next_prefix_n: clampInt(row.next_prefix_n, 0, MAX_N, fallback.next_prefix_n),
+    next_suffix_n: clampInt(row.next_suffix_n, 0, MAX_N, fallback.next_suffix_n),
     updated_at: row.updated_at ? String(row.updated_at) : null,
   };
 }
@@ -105,7 +279,8 @@ function parseRow(row: Record<string, unknown> | undefined, fallback: AccountNum
 export async function getAccountNumberSettings(sql: Sql, tenantId: string, slug = ""): Promise<AccountNumberSettings> {
   const fallback = defaultsForSlug(slug, tenantId);
   const [row] = await sql<Record<string, unknown>>`
-    select tenant_id, enabled, prefix, suffix, separator, start_n, next_n, digits, allow_manual,
+    select tenant_id, enabled, scheme, prefix, suffix, separator, start_n, next_n, digits, allow_manual,
+           prefix_permanent, suffix_permanent, next_prefix_n, next_suffix_n,
            updated_at::text as updated_at
     from customer_account_settings where tenant_id = ${tenantId}`;
   return parseRow(row, fallback);
@@ -124,19 +299,49 @@ export async function saveAccountNumberSettings(
   const startN = patch.start_n !== undefined ? clampInt(patch.start_n, 0, MAX_N, current.start_n) : current.start_n;
   const digits = patch.digits !== undefined ? clampInt(patch.digits, 1, 8, current.digits) : current.digits;
   const enabled = patch.enabled !== undefined ? Boolean(patch.enabled) : current.enabled;
+  const scheme = patch.scheme !== undefined ? normalizeScheme(patch.scheme) : current.scheme;
   const allowManual = patch.allow_manual !== undefined ? Boolean(patch.allow_manual) : current.allow_manual;
+  const prefixPermanent = patch.prefix_permanent !== undefined ? Boolean(patch.prefix_permanent) : current.prefix_permanent;
+  const suffixPermanent = patch.suffix_permanent !== undefined ? Boolean(patch.suffix_permanent) : current.suffix_permanent;
   let nextN = patch.next_n !== undefined ? clampInt(patch.next_n, 0, MAX_N, current.next_n) : current.next_n;
   if (nextN < startN) nextN = startN;
-  if (enabled && !prefix) throw new Error("Prefix is required when automatic numbering is on.");
+  let nextPrefixN =
+    patch.next_prefix_n !== undefined
+      ? clampInt(patch.next_prefix_n, 0, MAX_N, current.next_prefix_n)
+      : patch.prefix !== undefined
+        ? tokenIndex(prefix)
+        : current.next_prefix_n;
+  let nextSuffixN =
+    patch.next_suffix_n !== undefined
+      ? clampInt(patch.next_suffix_n, 0, MAX_N, current.next_suffix_n)
+      : patch.suffix !== undefined
+        ? tokenIndex(suffix)
+        : current.next_suffix_n;
+  if (isIncrementingToken(prefix) && nextPrefixN < tokenIndex(prefix)) nextPrefixN = tokenIndex(prefix);
+  if (isIncrementingToken(suffix) && nextSuffixN < tokenIndex(suffix)) nextSuffixN = tokenIndex(suffix);
+  const sequential = scheme === "sequence";
+  if (enabled && sequential && !prefix) throw new Error("Prefix is required when automatic numbering is on.");
+  if (enabled && sequential && !prefixPermanent && !isIncrementingToken(prefix)) {
+    throw new Error("A changing prefix must be letters (A, B, C) or digits.");
+  }
+  if (enabled && sequential && !suffixPermanent && !suffix) {
+    throw new Error("Set a letter suffix (A, B, C) to increment, or keep the suffix permanent.");
+  }
+  if (enabled && sequential && !suffixPermanent && suffix && !isIncrementingToken(suffix)) {
+    throw new Error("A changing suffix must be letters (A, B, C) or digits.");
+  }
 
   await sql`
     insert into customer_account_settings
-      (tenant_id, enabled, prefix, suffix, separator, start_n, next_n, digits, allow_manual, updated_at)
+      (tenant_id, enabled, scheme, prefix, suffix, separator, start_n, next_n, digits, allow_manual,
+       prefix_permanent, suffix_permanent, next_prefix_n, next_suffix_n, updated_at)
     values (
-      ${tenantId}, ${enabled}, ${prefix}, ${suffix}, ${separator}, ${startN}, ${nextN}, ${digits}, ${allowManual}, now()
+      ${tenantId}, ${enabled}, ${scheme}, ${prefix}, ${suffix}, ${separator}, ${startN}, ${nextN}, ${digits}, ${allowManual},
+      ${prefixPermanent}, ${suffixPermanent}, ${nextPrefixN}, ${nextSuffixN}, now()
     )
     on conflict (tenant_id) do update set
       enabled = excluded.enabled,
+      scheme = excluded.scheme,
       prefix = excluded.prefix,
       suffix = excluded.suffix,
       separator = excluded.separator,
@@ -144,6 +349,10 @@ export async function saveAccountNumberSettings(
       next_n = excluded.next_n,
       digits = excluded.digits,
       allow_manual = excluded.allow_manual,
+      prefix_permanent = excluded.prefix_permanent,
+      suffix_permanent = excluded.suffix_permanent,
+      next_prefix_n = excluded.next_prefix_n,
+      next_suffix_n = excluded.next_suffix_n,
       updated_at = now()`;
   return getAccountNumberSettings(sql, tenantId, slug);
 }
@@ -182,11 +391,46 @@ async function takeNextInteger(sql: Sql, tenantId: string) {
     suffix: string;
     separator: string;
     digits: number;
+    start_n: number;
+    prefix_permanent: boolean;
+    suffix_permanent: boolean;
   }>`
     update customer_account_settings
     set next_n = next_n + 1, updated_at = now()
     where tenant_id = ${tenantId}
-    returning next_n - 1 as n, prefix, suffix, separator, digits`;
+    returning next_n - 1 as n, prefix, suffix, separator, digits, start_n, prefix_permanent, suffix_permanent`;
+  return row ?? null;
+}
+
+async function takeNextPrefix(sql: Sql, tenantId: string) {
+  const [row] = await sql<{
+    n: number;
+    prefix: string;
+    suffix: string;
+    separator: string;
+    digits: number;
+    start_n: number;
+  }>`
+    update customer_account_settings
+    set next_prefix_n = next_prefix_n + 1, updated_at = now()
+    where tenant_id = ${tenantId}
+    returning next_prefix_n - 1 as n, prefix, suffix, separator, digits, start_n`;
+  return row ?? null;
+}
+
+async function takeNextSuffix(sql: Sql, tenantId: string) {
+  const [row] = await sql<{
+    n: number;
+    prefix: string;
+    suffix: string;
+    separator: string;
+    digits: number;
+    start_n: number;
+  }>`
+    update customer_account_settings
+    set next_suffix_n = next_suffix_n + 1, updated_at = now()
+    where tenant_id = ${tenantId}
+    returning next_suffix_n - 1 as n, prefix, suffix, separator, digits, start_n`;
   return row ?? null;
 }
 
@@ -209,18 +453,50 @@ export async function allocateAccountNumber(
     return assertUniqueAccountNumber(sql, tenantId, manual);
   }
 
+  const kind = sequenceKind(settings);
+  if (kind === "random") {
+    for (let i = 0; i < 64; i += 1) {
+      const formatted = randomAccountNumber();
+      if (!(await taken(sql, tenantId, formatted))) return formatted;
+    }
+    throw new Error("Could not allocate a unique account number. Check the sequence in Settings.");
+  }
+
   if (!settings.prefix) throw new Error("Set a prefix in Settings → Account numbers.");
 
   for (let i = 0; i < 64; i += 1) {
-    const row = await takeNextInteger(sql, tenantId);
-    if (!row) throw new Error("Set a prefix in Settings → Account numbers.");
-    const formatted = formatAccountNumber({
-      prefix: row.prefix,
-      suffix: row.suffix,
-      separator: row.separator,
-      n: row.n,
-      digits: row.digits,
-    });
+    let formatted = "";
+    if (kind === "suffix") {
+      const row = await takeNextSuffix(sql, tenantId);
+      if (!row) throw new Error("Set a prefix in Settings → Account numbers.");
+      formatted = formatAccountNumber({
+        prefix: row.prefix,
+        suffix: tokenFromIndex(row.suffix, row.n),
+        separator: row.separator,
+        n: row.start_n,
+        digits: row.digits,
+      });
+    } else if (kind === "prefix") {
+      const row = await takeNextPrefix(sql, tenantId);
+      if (!row) throw new Error("Set a prefix in Settings → Account numbers.");
+      formatted = formatAccountNumber({
+        prefix: tokenFromIndex(row.prefix, row.n),
+        suffix: row.suffix,
+        separator: row.separator,
+        n: row.start_n,
+        digits: row.digits,
+      });
+    } else {
+      const row = await takeNextInteger(sql, tenantId);
+      if (!row) throw new Error("Set a prefix in Settings → Account numbers.");
+      formatted = formatAccountNumber({
+        prefix: row.prefix,
+        suffix: row.suffix,
+        separator: row.separator,
+        n: row.n,
+        digits: row.digits,
+      });
+    }
     if (!(await taken(sql, tenantId, formatted))) return formatted;
   }
   throw new Error("Could not allocate a unique account number. Check the sequence in Settings.");
@@ -246,15 +522,43 @@ export async function changeCustomerAccountNumber(
 
 export async function previewNextAccountNumber(sql: Sql, tenantId: string, slug = "") {
   const settings = await getAccountNumberSettings(sql, tenantId, slug);
-  let n = settings.next_n;
-  for (let i = 0; i < 32; i += 1) {
-    const formatted = formatAccountNumber({ ...settings, n });
-    if (!(await taken(sql, tenantId, formatted))) {
-      return { ...settings, preview: formatted, example: formatted };
-    }
-    n += 1;
+  const kind = sequenceKind(settings);
+  if (kind === "random") {
+    const samples = [randomAccountNumber(), randomAccountNumber(), randomAccountNumber()];
+    return {
+      ...settings,
+      preview: samples[0],
+      example: samples[0],
+      sequence: kind,
+      example_start: samples[0],
+      example_next: samples[1],
+      example_third: samples[2],
+    };
   }
-  return { ...settings, preview: formatAccountNumber({ ...settings, n: settings.next_n }), example: formatAccountNumber({ ...settings, n: settings.next_n }) };
+  for (let i = 0; i < 32; i += 1) {
+    const formatted = formatFromSettings(settings, i, "next");
+    if (!(await taken(sql, tenantId, formatted))) {
+      return {
+        ...settings,
+        preview: formatted,
+        example: formatted,
+        sequence: kind,
+        example_start: formatFromSettings(settings, 0, "start"),
+        example_next: formatFromSettings(settings, 1, "start"),
+        example_third: formatFromSettings(settings, 2, "start"),
+      };
+    }
+  }
+  const fallback = formatFromSettings(settings, 0, "next");
+  return {
+    ...settings,
+    preview: fallback,
+    example: fallback,
+    sequence: kind,
+    example_start: formatFromSettings(settings, 0, "start"),
+    example_next: formatFromSettings(settings, 1, "start"),
+    example_third: formatFromSettings(settings, 2, "start"),
+  };
 }
 
 export async function auditAccountChange(

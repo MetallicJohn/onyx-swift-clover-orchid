@@ -1,9 +1,10 @@
 import { nid } from "../utils.ts";
 import { resolveAccountNumber } from "./document-format.ts";
-import { e164, deliverSms, getMessagingSettings } from "./messaging.ts";
+import { e164, deliverSms, deliverEmail, emailOk, getMessagingSettings } from "./messaging.ts";
 import {
   type AudienceFilter,
   type CommCategory,
+  type CommChannel,
   type CommExtras,
   type CommVars,
   DEFAULT_COMM_TEMPLATES,
@@ -23,6 +24,7 @@ export type AudienceRow = {
   customer_id: string;
   name: string;
   phone: string;
+  email: string;
   address: string;
   type: string;
   created_at: string;
@@ -34,6 +36,7 @@ export type AudienceRow = {
   period_end: string | null;
   balance_kes: number;
   phone_ok: boolean;
+  email_ok: boolean;
 };
 
 const BATCH = 40;
@@ -129,11 +132,12 @@ export async function resolveAudience(sql: Sql, tenantId: string, filter: Audien
     id: string;
     name: string;
     phone: string;
+    email: string;
     address: string;
     type: string;
     created_at: string;
     account_number: string;
-  }>`select id, name, phone, address, type, created_at::text as created_at, coalesce(account_number,'') as account_number from customers where tenant_id = ${tenantId}`;
+  }>`select id, name, phone, coalesce(email,'') as email, address, type, created_at::text as created_at, coalesce(account_number,'') as account_number from customers where tenant_id = ${tenantId}`;
   const services = await sql<{
     customer_id: string;
     status: string;
@@ -203,6 +207,7 @@ export async function resolveAudience(sql: Sql, tenantId: string, filter: Audien
       customer_id: c.id,
       name: c.name,
       phone: c.phone,
+      email: c.email,
       address: c.address,
       type: c.type,
       created_at: c.created_at,
@@ -214,13 +219,29 @@ export async function resolveAudience(sql: Sql, tenantId: string, filter: Audien
       period_end: use?.period_end ?? null,
       balance_kes: balance,
       phone_ok: phoneOk(c.phone),
+      email_ok: emailOk(c.email),
     });
   }
   return out;
 }
 
-export function summarizeAudience(rows: AudienceRow[]) {
-  const valid = rows.filter((r) => r.phone_ok);
+export function recipientOk(row: AudienceRow, channel: CommChannel = "sms") {
+  if (channel === "email") return row.email_ok;
+  if (channel === "both") return row.phone_ok || row.email_ok;
+  return row.phone_ok;
+}
+
+export function skipReason(row: AudienceRow, channel: CommChannel = "sms") {
+  if (channel === "email") return row.email_ok ? "" : "No valid email address";
+  if (channel === "both") {
+    if (row.phone_ok || row.email_ok) return "";
+    return "No valid mobile or email";
+  }
+  return row.phone_ok ? "" : "No valid mobile number";
+}
+
+export function summarizeAudience(rows: AudienceRow[], channel: CommChannel = "sms") {
+  const valid = rows.filter((r) => recipientOk(r, channel));
   return { total: rows.length, valid: valid.length, skipped: rows.length - valid.length };
 }
 
@@ -278,29 +299,33 @@ export async function createCampaign(
     actorId: string;
     actorLabel: string;
     restoreOf?: string;
+    channel?: CommChannel;
   },
 ) {
   const body = opts.body.trim();
   if (!body) throw new Error("Enter a message");
+  const channel: CommChannel = opts.channel === "email" || opts.channel === "both" ? opts.channel : "sms";
   const audience = await resolveAudience(sql, opts.tenantId, opts.filter);
-  const summary = summarizeAudience(audience);
+  const summary = summarizeAudience(audience, channel);
   const settings = await getMessagingSettings(sql, opts.tenantId);
   const sample = audience[0];
   const rendered = sample
     ? renderCommTemplate(body, campaignVars(sample, opts.extras ?? {}, { slug: opts.slug, company: opts.company, support: opts.support }))
     : body;
-  const parts = smsSegments(rendered).parts || 1;
+  const parts = channel === "email" ? 1 : smsSegments(rendered).parts || 1;
   const id = nid("cmp");
   const filterJson = filterSignature(opts.filter);
   const extrasJson = JSON.stringify(opts.extras ?? {});
+  const sender = channel === "email" ? settings.email_from_address || settings.email_from_name : settings.sms_sender_id;
+  const provider = channel === "sms" ? settings.sms_provider : channel === "email" ? settings.email_provider : `${settings.sms_provider}+${settings.email_provider}`;
   await sql`insert into comm_campaigns (
-      id, tenant_id, name, category, body, template_id, filter_json, extras_json, sender_id, provider,
+      id, tenant_id, name, category, body, template_id, filter_json, extras_json, sender_id, provider, channel,
       created_by, created_by_label, status, recipient_count, valid_count, skipped_count, sms_parts, sms_count
     ) values (
       ${id}, ${opts.tenantId}, ${opts.name || ""}, ${opts.category}, ${body}, ${opts.templateId || null},
-      ${filterJson}, ${extrasJson}, ${settings.sms_sender_id}, ${settings.sms_provider},
+      ${filterJson}, ${extrasJson}, ${sender}, ${provider}, ${channel},
       ${opts.actorId}, ${opts.actorLabel}, 'queued', ${summary.total}, ${summary.valid}, ${summary.skipped},
-      ${parts}, ${summary.valid * parts}
+      ${parts}, ${channel === "email" ? 0 : summary.valid * parts}
     )`;
   if (opts.restoreOf) {
     await sql`update comm_campaigns set restore_of = ${opts.restoreOf} where id = ${id} and tenant_id = ${opts.tenantId}`;
@@ -308,30 +333,32 @@ export async function createCampaign(
   const ctx = { slug: opts.slug, company: opts.company, support: opts.support };
   for (const row of audience) {
     const rid = nid("crcp");
-    if (!row.phone_ok) {
-      await sql`insert into comm_recipients (id, tenant_id, campaign_id, customer_id, phone, body, status, detail, sms_parts)
-        values (${rid}, ${opts.tenantId}, ${id}, ${row.customer_id}, ${row.phone}, ${body}, 'skipped', 'No valid mobile number', 0)`;
+    const reason = skipReason(row, channel);
+    if (reason) {
+      await sql`insert into comm_recipients (id, tenant_id, campaign_id, customer_id, phone, email, body, status, detail, sms_parts)
+        values (${rid}, ${opts.tenantId}, ${id}, ${row.customer_id}, ${row.phone}, ${row.email}, ${body}, 'skipped', ${reason}, 0)`;
       continue;
     }
     const text = renderCommTemplate(body, campaignVars(row, opts.extras ?? {}, ctx));
-    const seg = smsSegments(text);
-    await sql`insert into comm_recipients (id, tenant_id, campaign_id, customer_id, phone, body, status, detail, sms_parts)
-      values (${rid}, ${opts.tenantId}, ${id}, ${row.customer_id}, ${e164(row.phone)}, ${text}, 'queued', '', ${seg.parts})`;
+    const seg = channel === "email" ? { parts: 1 } : smsSegments(text);
+    await sql`insert into comm_recipients (id, tenant_id, campaign_id, customer_id, phone, email, body, status, detail, sms_parts)
+      values (${rid}, ${opts.tenantId}, ${id}, ${row.customer_id}, ${e164(row.phone)}, ${row.email}, ${text}, 'queued', '', ${seg.parts})`;
   }
-  return { id, ...summary, sms_parts: parts, sms_count: summary.valid * parts };
+  return { id, ...summary, sms_parts: parts, sms_count: channel === "email" ? 0 : summary.valid * parts, channel };
 }
 
 export async function dispatchCampaign(sql: Sql, tenantId: string, campaignId: string) {
-  const [camp] = await sql<{ id: string; status: string }>`
-    select id, status from comm_campaigns where id = ${campaignId} and tenant_id = ${tenantId}`;
+  const [camp] = await sql<{ id: string; status: string; channel: string }>`
+    select id, status, coalesce(channel, 'sms') as channel from comm_campaigns where id = ${campaignId} and tenant_id = ${tenantId}`;
   if (!camp) throw new Error("Campaign not found");
   if (camp.status === "sent") return loadCampaign(sql, tenantId, campaignId);
   await sql`update comm_campaigns set status = 'sending' where id = ${campaignId} and tenant_id = ${tenantId} and status in ('queued','sending')`;
   const settings = await getMessagingSettings(sql, tenantId);
+  const channel = (camp.channel === "email" || camp.channel === "both" ? camp.channel : "sms") as CommChannel;
   let processed = 0;
   while (processed < MAX_TICK) {
-    const batch = await sql<{ id: string; phone: string; body: string; customer_id: string }>`
-      select id, phone, body, customer_id from comm_recipients
+    const batch = await sql<{ id: string; phone: string; email: string; body: string; customer_id: string }>`
+      select id, phone, coalesce(email,'') as email, body, customer_id from comm_recipients
       where campaign_id = ${campaignId} and tenant_id = ${tenantId} and status = 'queued'
       order by id limit ${BATCH}`;
     if (!batch.length) break;
@@ -341,15 +368,33 @@ export async function dispatchCampaign(sql: Sql, tenantId: string, campaignId: s
         where id = ${row.id} and tenant_id = ${tenantId} and status = 'queued'
         returning id`;
       if (!claimed[0]) continue;
-      const delivery = await deliverSms(settings, row.phone, row.body);
-      if (delivery.status === "failed") {
-        await sql`update comm_recipients set status = 'failed', detail = ${delivery.detail}, sent_at = now()
+      const notes: string[] = [];
+      let ok = false;
+      if (channel !== "email" && row.phone) {
+        const delivery = await deliverSms(settings, row.phone, row.body);
+        notes.push(`sms: ${delivery.detail}`);
+        if (delivery.status !== "failed") {
+          ok = true;
+          await sql`insert into notification_logs (id, tenant_id, customer_id, event_code, channel, entity_id, subject, body, destination, status)
+            values (${nid("ntf")}, ${tenantId}, ${row.customer_id}, 'staff.campaign', 'sms', ${row.id}, 'Campaign', ${row.body}, ${delivery.detail}, ${delivery.status})`;
+        }
+      }
+      if (channel !== "sms" && row.email) {
+        const fromName = settings.email_from_name || settings.email_from_address || "your ISP";
+        const delivery = await deliverEmail(settings, row.email, `Notice from ${fromName}`, row.body);
+        notes.push(`email: ${delivery.detail}`);
+        if (delivery.status !== "failed") {
+          ok = true;
+          await sql`insert into notification_logs (id, tenant_id, customer_id, event_code, channel, entity_id, subject, body, destination, status)
+            values (${nid("ntf")}, ${tenantId}, ${row.customer_id}, 'staff.campaign', 'email', ${row.id}, 'Campaign', ${row.body}, ${delivery.detail}, ${delivery.status})`;
+        }
+      }
+      if (!ok) {
+        await sql`update comm_recipients set status = 'failed', detail = ${notes.join(" · ") || "send failed"}, sent_at = now()
           where id = ${row.id} and tenant_id = ${tenantId}`;
       } else {
-        await sql`update comm_recipients set status = 'sent', detail = ${delivery.detail}, sent_at = now()
+        await sql`update comm_recipients set status = 'sent', detail = ${notes.join(" · ")}, sent_at = now()
           where id = ${row.id} and tenant_id = ${tenantId}`;
-        await sql`insert into notification_logs (id, tenant_id, customer_id, event_code, channel, entity_id, subject, body, destination, status)
-          values (${nid("ntf")}, ${tenantId}, ${row.customer_id}, 'staff.campaign', 'sms', ${row.id}, 'Campaign', ${row.body}, ${delivery.detail}, ${delivery.status})`;
       }
       processed += 1;
     }
@@ -386,6 +431,7 @@ export async function loadCampaign(sql: Sql, tenantId: string, id: string) {
     extras_json: string;
     sender_id: string;
     provider: string;
+    channel: string;
     created_by: string;
     created_by_label: string;
     status: string;
@@ -400,7 +446,7 @@ export async function loadCampaign(sql: Sql, tenantId: string, id: string) {
     created_at: string;
     sent_at: string | null;
   }>`
-    select id, name, category, body, template_id, filter_json, extras_json, sender_id, provider, created_by, created_by_label,
+    select id, name, category, body, template_id, filter_json, extras_json, sender_id, provider, coalesce(channel,'sms') as channel, created_by, created_by_label,
            status, recipient_count, valid_count, skipped_count, sms_parts, sms_count, sent_count, failed_count, restore_of,
            created_at::text as created_at, sent_at::text as sent_at
     from comm_campaigns where id = ${id} and tenant_id = ${tenantId}`;
@@ -446,13 +492,14 @@ export async function listCampaignRecipients(
         id: string;
         customer_id: string;
         phone: string;
+        email: string;
         body: string;
         status: string;
         detail: string;
         sms_parts: number;
         name: string;
       }>`
-        select r.id, r.customer_id, r.phone, r.body, r.status, r.detail, r.sms_parts, c.name
+        select r.id, r.customer_id, r.phone, coalesce(r.email,'') as email, r.body, r.status, r.detail, r.sms_parts, c.name
         from comm_recipients r join customers c on c.id = r.customer_id
         where r.tenant_id = ${tenantId} and r.campaign_id = ${campaignId} and r.status = ${status}
         order by c.name limit ${pageSize} offset ${offset}`
@@ -460,13 +507,14 @@ export async function listCampaignRecipients(
         id: string;
         customer_id: string;
         phone: string;
+        email: string;
         body: string;
         status: string;
         detail: string;
         sms_parts: number;
         name: string;
       }>`
-        select r.id, r.customer_id, r.phone, r.body, r.status, r.detail, r.sms_parts, c.name
+        select r.id, r.customer_id, r.phone, coalesce(r.email,'') as email, r.body, r.status, r.detail, r.sms_parts, c.name
         from comm_recipients r join customers c on c.id = r.customer_id
         where r.tenant_id = ${tenantId} and r.campaign_id = ${campaignId}
         order by c.name limit ${pageSize} offset ${offset}`;
@@ -487,24 +535,25 @@ export async function resendFailed(
   actor: { id: string; label: string; slug: string; company: string; support: string },
 ) {
   const camp = await loadCampaign(sql, tenantId, campaignId);
-  const failed = await sql<{ customer_id: string; phone: string; body: string; sms_parts: number }>`
-    select customer_id, phone, body, sms_parts from comm_recipients
+  const failed = await sql<{ customer_id: string; phone: string; email: string; body: string; sms_parts: number }>`
+    select customer_id, phone, coalesce(email,'') as email, body, sms_parts from comm_recipients
     where tenant_id = ${tenantId} and campaign_id = ${campaignId} and status = 'failed'`;
   if (!failed.length) throw new Error("No failed messages to resend");
   const settings = await getMessagingSettings(sql, tenantId);
   const parts = failed[0]?.sms_parts || 1;
   const id = nid("cmp");
+  const channel = camp.channel === "email" || camp.channel === "both" ? camp.channel : "sms";
   await sql`insert into comm_campaigns (
-      id, tenant_id, name, category, body, template_id, filter_json, extras_json, sender_id, provider,
+      id, tenant_id, name, category, body, template_id, filter_json, extras_json, sender_id, provider, channel,
       created_by, created_by_label, status, recipient_count, valid_count, skipped_count, sms_parts, sms_count, restore_of
     ) values (
       ${id}, ${tenantId}, ${(camp.name || camp.category) + " (resend)"}, ${camp.category}, ${camp.body}, ${camp.template_id},
-      ${camp.filter_json}, ${camp.extras_json}, ${settings.sms_sender_id}, ${settings.sms_provider},
+      ${camp.filter_json}, ${camp.extras_json}, ${settings.sms_sender_id}, ${settings.sms_provider}, ${channel},
       ${actor.id}, ${actor.label}, 'queued', ${failed.length}, ${failed.length}, 0, ${parts}, ${failed.length * parts}, ${campaignId}
     )`;
   for (const row of failed) {
-    await sql`insert into comm_recipients (id, tenant_id, campaign_id, customer_id, phone, body, status, detail, sms_parts)
-      values (${nid("crcp")}, ${tenantId}, ${id}, ${row.customer_id}, ${row.phone}, ${row.body}, 'queued', 'resend', ${row.sms_parts})`;
+    await sql`insert into comm_recipients (id, tenant_id, campaign_id, customer_id, phone, email, body, status, detail, sms_parts)
+      values (${nid("crcp")}, ${tenantId}, ${id}, ${row.customer_id}, ${row.phone}, ${row.email}, ${row.body}, 'queued', 'resend', ${row.sms_parts})`;
   }
   return dispatchCampaign(sql, tenantId, id);
 }

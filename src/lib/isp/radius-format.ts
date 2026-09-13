@@ -1,3 +1,5 @@
+import { APP_SLUG } from "../brand.ts";
+
 export function mikrotikRateLimit(downMbps: number, upMbps: number) {
   return `${Math.max(1, upMbps)}M/${Math.max(1, downMbps)}M`;
 }
@@ -80,13 +82,13 @@ export function parseAcctStatus(raw: string): "start" | "stop" | "interim" {
 }
 
 export function renderFreeRadiusRestMod(opts: { baseUrl: string; slug: string; apiKey: string }) {
-  const root = (opts.baseUrl || "https://gridline.example").replace(/\/$/, "");
+  const root = (opts.baseUrl || `https://${APP_SLUG}.example`).replace(/\/$/, "");
   const slug = opts.slug || "your-isp";
   const key = opts.apiKey || "frk_replace_me";
   return `rest {
     connect_uri = "${root}"
     connect_timeout = 4.0
-    username = "gridline"
+    username = "${APP_SLUG}"
     password = "${key}"
 
     authorize {
@@ -109,7 +111,7 @@ export function renderFreeRadiusRestMod(opts: { baseUrl: string; slug: string; a
 }
 
 export function renderFreeRadiusSite() {
-  return `server gridline {
+  return `server ${APP_SLUG} {
     listen {
         type = auth
         ipaddr = *

@@ -17,6 +17,8 @@ test("username strips realm and rest config points at tenant slug", () => {
   const conf = renderFreeRadiusRestMod({ baseUrl: "https://ops.example", slug: "imani", apiKey: "frk_test" });
   assert.match(conf, /\/api\/v1\/radius\/authorize\/imani/);
   assert.match(conf, /password = "frk_test"/);
+  assert.match(conf, /username = "ispsolutions"/);
+  assert.doesNotMatch(conf, /username = "gridline"/);
 });
 
 test("rlm_rest AVP parser reads nested value arrays and gigawords", () => {
@@ -147,8 +149,10 @@ test("bootstrap returns rest site and CIDR NAS clients", async () => {
 test("API keys are unique enough for issuance", () => {
   assert.notEqual(newRadiusApiKey(), newRadiusApiKey());
   assert.match(newRadiusApiKey(), /^frk_/);
-  const basic = presentedRadiusKey(new Request("http://x", { headers: { authorization: `Basic ${Buffer.from("gridline:frk_abc").toString("base64")}` } }));
+  const basic = presentedRadiusKey(new Request("http://x", { headers: { authorization: `Basic ${Buffer.from("ispsolutions:frk_abc").toString("base64")}` } }));
   assert.equal(basic, "frk_abc");
+  const legacy = presentedRadiusKey(new Request("http://x", { headers: { authorization: `Basic ${Buffer.from("gridline:frk_abc").toString("base64")}` } }));
+  assert.equal(legacy, "frk_abc");
   const bearer = presentedRadiusKey(new Request("http://x", { headers: { authorization: "Bearer frk_xyz" } }));
   assert.equal(bearer, "frk_xyz");
 });

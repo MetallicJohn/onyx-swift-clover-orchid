@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
+import { ROS_API_USER } from "@/lib/brand";
 import { addRouter, listRouters } from "@/lib/isp/server";
 import { hasPermission } from "@/lib/isp/rbac";
 import { approveRouterCommand, getRouterApi, previewRouterCommand, queueRouterCommand, runRouterApi, saveRouterApi } from "@/lib/isp/server-mikrotik";
@@ -34,7 +35,7 @@ function RoutersPage() {
   const [commands, setCommands] = useState<{ id: string; router_name: string; kind: string; status: string; created_at: string }[]>([]);
   const [apiRouter, setApiRouter] = useState<string>("");
   const [api, setApi] = useState({
-    api_user: "gridline",
+    api_user: ROS_API_USER,
     api_password: "",
     api_port: 443,
     api_host: "",
@@ -151,7 +152,7 @@ function RoutersPage() {
           <Link to="/app/settings" className="text-accent hover:underline">
             Settings → Network
           </Link>{" "}
-          and download <span className="font-mono text-fg">wg-gridline.conf</span> onto the VPS. Until then the enroll
+          and download the hub WireGuard config onto the VPS. Until then the enroll
           script cannot start a handshake.
         </div>
       ) : null}

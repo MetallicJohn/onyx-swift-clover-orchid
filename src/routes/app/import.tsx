@@ -48,7 +48,7 @@ function ImportPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "gridline-customers.csv";
+    a.download = "ispsolutions-customers.csv";
     a.click();
     URL.revokeObjectURL(url);
   }

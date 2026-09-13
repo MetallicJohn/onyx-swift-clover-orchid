@@ -190,6 +190,17 @@ export async function recordAccounting(
     await sql`update radius_sessions set stopped_at = now()
       where id = ${sessionId} and tenant_id = ${tenantId} and stopped_at is null`;
   }
+  try {
+    const { notePppoeSession } = await import("./pppoe-provision.ts");
+    await notePppoeSession(sql, tenantId, {
+      username,
+      framedIp: framed,
+      nasIp: nas,
+      acctStatus: input.acct_status,
+    });
+  } catch {
+    /* provisioning notes must not fail accounting */
+  }
   const used = svc.bundle_used_mb + addMb;
   await sql`update services set bundle_used_mb = ${used} where id = ${svc.id} and tenant_id = ${tenantId}`;
   if (bundleExhausted(used, svc.bundle_mb) && (svc.status === "active" || svc.status === "grace")) {

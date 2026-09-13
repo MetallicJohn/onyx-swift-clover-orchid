@@ -12,12 +12,13 @@ import {
   listCommTemplates,
   loadCampaign,
   recentDuplicate,
+  recipientOk,
   resendFailed,
   resolveAudience,
   saveCommTemplate,
   summarizeAudience,
 } from "./comms";
-import type { AudienceFilter, CommCategory, CommExtras } from "./comms-format";
+import type { AudienceFilter, CommCategory, CommChannel, CommExtras } from "./comms-format";
 import { getMessagingSettings } from "./messaging";
 import { assertPermission } from "./rbac";
 import { requireWorkspace as requireWs } from "./workspace";
@@ -53,6 +54,9 @@ export const getCommsMetaFn = createServerFn({ method: "GET" })
       sender_id: settings.sms_sender_id || "not set",
       provider: settings.sms_provider,
       sandbox: settings.sms_sandbox,
+      email_from: settings.email_from_address || "not set",
+      email_provider: settings.email_provider,
+      email_sandbox: settings.email_sandbox,
       templates,
       packages: options.packages,
       areas: options.areas,
@@ -64,14 +68,15 @@ export const getCommsMetaFn = createServerFn({ method: "GET" })
 
 export const previewAudienceFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { filter: AudienceFilter; page?: number; pageSize?: number; skipped?: boolean }) => d)
+  .validator((d: { filter: AudienceFilter; page?: number; pageSize?: number; skipped?: boolean; channel?: CommChannel }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "communications.view");
     const all = await resolveAudience(sql, tenantId, data.filter);
-    const summary = summarizeAudience(all);
+    const channel = data.channel === "email" || data.channel === "both" ? data.channel : "sms";
+    const summary = summarizeAudience(all, channel);
     const skippedOnly = Boolean(data.skipped);
-    const pool = skippedOnly ? all.filter((r) => !r.phone_ok) : all;
+    const pool = skippedOnly ? all.filter((r) => !recipientOk(r, channel)) : all;
     const page = Math.max(1, data.page ?? 1);
     const pageSize = Math.min(50, Math.max(1, data.pageSize ?? 20));
     const start = (page - 1) * pageSize;
@@ -79,11 +84,13 @@ export const previewAudienceFn = createServerFn({ method: "POST" })
       customer_id: r.customer_id,
       name: r.name,
       phone: r.phone_ok ? r.phone : r.phone || "—",
+      email: r.email_ok ? r.email : r.email || "—",
       service: r.access_method,
       package_name: r.package_name,
       status: r.service_status,
       location: r.address,
       phone_ok: r.phone_ok,
+      email_ok: r.email_ok,
     }));
     return { ...summary, page, pageSize, rows, pool: pool.length };
   });
@@ -100,6 +107,7 @@ export const sendCampaignFn = createServerFn({ method: "POST" })
       extras?: CommExtras;
       confirm_duplicate?: boolean;
       restore_of?: string;
+      channel?: CommChannel;
     }) => d,
   )
   .handler(async ({ context, data }) => {
@@ -128,6 +136,7 @@ export const sendCampaignFn = createServerFn({ method: "POST" })
       actorId: context.userId,
       actorLabel: label,
       restoreOf: data.restore_of,
+      channel: data.channel,
     });
     await audit(sql, tenantId, context.userId, "campaign.created", created.id);
     const campaign = await dispatchCampaign(sql, tenantId, created.id);

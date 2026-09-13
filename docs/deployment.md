@@ -41,7 +41,7 @@ After DNS points at the VPS:
 
 1. Sign in at `https://<domain>/login`
 2. Settings → Public URL = `https://<domain>`
-3. Settings → Network: hub endpoint = VPS public IP or hostname, download `wg-gridline.conf`, `wg-quick up wg-gridline`
+3. Settings → Network: hub endpoint = VPS public IP or hostname, download `wg-ispsolutions.conf` or run the install script (`wg-quick up wg-ispsolutions`). An existing `wg-gridline` hub is migrated.
 4. Routers → Copy script onto each MikroTik
 
 Do not put MikroTik or FreeRADIUS inside the web container. GenieACS runs **beside** it (own container + Mongo).

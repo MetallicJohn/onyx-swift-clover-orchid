@@ -86,11 +86,13 @@ export type ServiceRow = {
   id: string;
   customer_id: string;
   customer_name: string;
+  customer_phone?: string;
   package_id: string;
   package_name: string;
   access_method: AccessMethod;
   username: string | null;
   static_ip: string | null;
+  mac_address?: string;
   status: ServiceStatus;
   created_at: string;
   period_end: string | null;

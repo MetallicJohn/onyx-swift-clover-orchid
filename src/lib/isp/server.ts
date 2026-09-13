@@ -9,12 +9,13 @@ import {
 } from "./notifications";
 import { provisionServiceAccess, seedOpsForTenant } from "./access";
 import { allocateStaticIp, disconnectSession, rotateServicePassword } from "./access-service";
+import { getProvisioning, listProvisioning, rotatePppoeCredentials, startPppoeProvision } from "./pppoe-provision";
 import { issueInvoice } from "./billing";
 import { loadChurnScores } from "./churn";
 import { loadDashboard } from "./dashboard";
 import { requestPublicOrigin } from "./auth-origins";
 import { completeOperatorReset, requestOperatorReset } from "./password-reset";
-import { agentPullUrl, agentScript, enrollFields, enqueuePackageProfiles, wgAddressForIndex } from "./agent";
+import { agentPullUrl, agentScript, enrollFields, enqueueAgentCommand, enqueuePackageProfiles, wgAddressForIndex } from "./agent";
 import { mikrotikProfileName } from "./pcq";
 import { mikrotikRateLimit } from "./radius-format";
 import { wgEnrollContext } from "./wireguard";
@@ -423,6 +424,27 @@ export const updatePackage = createServerFn({ method: "POST" })
       upload_mbps: data.upload_mbps,
       access_method: data.access_method,
     });
+    const live = await sql<{ username: string; framed_ip: string; router_id: string | null; service_id: string }>`
+      select p.username, p.framed_ip, p.router_id, s.id as service_id
+      from service_provisioning p join services s on s.id = p.service_id
+      where p.tenant_id = ${workspace.tenantId} and s.package_id = ${data.id} and p.framed_ip <> ''`;
+    for (const row of live) {
+      await enqueueAgentCommand(
+        sql,
+        workspace.tenantId,
+        "queue.upsert",
+        {
+          username: row.username,
+          static_ip: row.framed_ip,
+          qname: `pppoe-${row.username}`.slice(0, 32),
+          download_mbps: data.download_mbps,
+          upload_mbps: data.upload_mbps,
+          package: data.name.trim(),
+          service_id: row.service_id,
+        },
+        row.router_id,
+      );
+    }
     await audit(sql, workspace.tenantId, context.userId, "package.updated", "package", data.id);
     return { id: data.id };
   });
@@ -433,8 +455,10 @@ export const listServices = createServerFn({ method: "GET" })
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "services.read");
     const services = await sql<ServiceRow>`
-      select s.id, s.customer_id, c.name as customer_name, s.package_id, p.name as package_name,
-             s.access_method, s.username, s.static_ip, s.status, s.created_at::text as created_at,
+      select s.id, s.customer_id, c.name as customer_name, c.phone as customer_phone,
+             s.package_id, p.name as package_name,
+             s.access_method, s.username, s.static_ip, coalesce(s.mac_address, '') as mac_address,
+             s.status, s.created_at::text as created_at,
              s.period_end::text as period_end, s.bundle_used_mb, p.bundle_mb, s.suspend_reason,
              (g.id is not null) as grace_active, g.days_granted as grace_days_granted,
              g.starts_at::text as grace_starts_at, g.expires_at::text as grace_expires_at,
@@ -443,7 +467,7 @@ export const listServices = createServerFn({ method: "GET" })
       join customers c on c.id = s.customer_id
       join packages p on p.id = s.package_id
       left join service_grace_periods g
-        on g.service_id = s.id and g.tenant_id = s.tenant_id and g.status = 'active'
+        on g.service_id = s.id and s.tenant_id = g.tenant_id and g.status = 'active'
       where s.tenant_id = ${workspace.tenantId}
       order by s.created_at desc`;
     const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${workspace.tenantId} order by name`;
@@ -451,7 +475,19 @@ export const listServices = createServerFn({ method: "GET" })
       select id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active
       from packages where tenant_id = ${workspace.tenantId} and active = true`;
     const gracePolicy = await getGracePolicy(sql, workspace.tenantId);
-    return { workspace, services, customers, packages, gracePolicy };
+    const provisioning = await listProvisioning(sql, workspace.tenantId);
+    const byService = new Map(provisioning.map((p) => [p.service_id, p]));
+    const devices = await sql<{ id: string; serial: string; customer_id: string | null; status: string; last_inform: string | null }>`
+      select id, serial, customer_id, status, last_inform::text as last_inform from cpe_devices
+      where tenant_id = ${workspace.tenantId} order by serial`;
+    return {
+      workspace,
+      services: services.map((s) => ({ ...s, provision: byService.get(s.id) || null })),
+      customers,
+      packages,
+      gracePolicy,
+      devices,
+    };
   });
 
 export const createService = createServerFn({ method: "POST" })
@@ -461,6 +497,7 @@ export const createService = createServerFn({ method: "POST" })
     package_id: string;
     username?: string;
     static_ip?: string;
+    cpe_id?: string;
   }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
@@ -481,12 +518,25 @@ export const createService = createServerFn({ method: "POST" })
     const id = nid("svc");
     const { periodMs } = await import("./access-policy");
     const periodEnd = new Date(Date.now() + periodMs(pkg.billing_interval, pkg.validity_hours)).toISOString();
+    const initialStatus = pkg.access_method === "pppoe" ? "pending" : "active";
     await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end)
-      values (${id}, ${tid}, ${data.customer_id}, ${data.package_id}, ${pkg.access_method}, ${data.username || null}, ${data.static_ip || null}, 'active', ${periodEnd})`;
+      values (${id}, ${tid}, ${data.customer_id}, ${data.package_id}, ${pkg.access_method}, ${data.username || null}, ${data.static_ip || null}, ${initialStatus}, ${periodEnd})`;
     if (pkg.access_method === "static" && !data.static_ip) {
       await allocateStaticIp(sql, tid, id, data.customer_id);
     }
-    const radius = await provisionServiceAccess(sql, tid, id);
+    let radius: { username?: string; password?: string } | null = null;
+    let provision = null;
+    if (pkg.access_method === "pppoe") {
+      provision = await startPppoeProvision(sql, tid, {
+        serviceId: id,
+        cpeId: data.cpe_id || null,
+        manualUsername: data.username,
+      });
+      radius = { username: provision.username, password: provision.password };
+      await audit(sql, tid, context.userId, "service.pppoe.provision", "service", id, JSON.stringify({ username: provision.username, cpe_id: data.cpe_id || "" }));
+    } else {
+      radius = await provisionServiceAccess(sql, tid, id);
+    }
     const unpaid = await sql<{ id: string }>`
       select id from invoices where tenant_id = ${tid} and customer_id = ${data.customer_id}
       and status in ('issued','due','overdue','partial') limit 1`;
@@ -515,7 +565,7 @@ export const createService = createServerFn({ method: "POST" })
       });
     }
     await audit(sql, tid, context.userId, "service.created", "service", id);
-    return { id, username: radius?.username, password: radius?.password };
+    return { id, username: radius?.username, password: radius?.password, provision };
   });
 
 export const setServiceStatus = createServerFn({ method: "POST" })
@@ -564,13 +614,57 @@ export const setServiceStatus = createServerFn({ method: "POST" })
 
 export const rotateServiceSecret = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
+  .validator((d: { id: string; confirm?: boolean }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "services.manage");
+    if (!data.confirm) throw new Error("Confirm credential rotation");
+    const [svc] = await sql<{ access_method: string }>`
+      select access_method from services where id = ${data.id} and tenant_id = ${workspace.tenantId}`;
+    if (!svc) throw new Error("Service not found");
+    if (svc.access_method === "pppoe") {
+      const out = await rotatePppoeCredentials(sql, workspace.tenantId, data.id);
+      await audit(sql, workspace.tenantId, context.userId, "service.password.rotate", "service", data.id, out.username);
+      return { username: out.username, password: out.password, hint: out.password_hint };
+    }
+    const out = await rotateServicePassword(sql, workspace.tenantId, data.id);
+    await audit(sql, workspace.tenantId, context.userId, "service.password", "service", data.id);
+    return out;
+  });
+
+export const retryPppoeProvisionFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string; cpe_id?: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "services.manage");
+    const out = await startPppoeProvision(sql, workspace.tenantId, { serviceId: data.id, cpeId: data.cpe_id, rotate: false });
+    await audit(sql, workspace.tenantId, context.userId, "service.pppoe.retry", "service", data.id);
+    return { ...out, password: "" };
+  });
+
+export const getPppoeProvisionFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "services.read");
+    return getProvisioning(sql, workspace.tenantId, data.id);
+  });
+
+export const revealPppoePasswordFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
   .validator((d: { id: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "services.manage");
-    const out = await rotateServicePassword(sql, workspace.tenantId, data.id);
-    await audit(sql, workspace.tenantId, context.userId, "service.password", "service", data.id);
-    return out;
+    const [row] = await sql<{ username: string; password: string }>`
+      select username, password from radius_accounts
+      where tenant_id = ${workspace.tenantId} and service_id = ${data.id}`;
+    if (!row) throw new Error("RADIUS account not found");
+    const { revealRadiusPassword } = await import("./pppoe-credentials");
+    await audit(sql, workspace.tenantId, context.userId, "service.password.reveal", "service", data.id, row.username);
+    return { username: row.username, password: revealRadiusPassword(row.password) };
   });
 
 export const disconnectService = createServerFn({ method: "POST" })
@@ -603,8 +697,9 @@ export const listBilling = createServerFn({ method: "GET" })
       from payments p join customers c on c.id = p.customer_id
       where p.tenant_id = ${tid}
       order by p.paid_at desc`;
-    const customers = await sql<{ id: string; name: string; phone: string }>`
-      select id, name, phone from customers where tenant_id = ${tid} order by name`;
+    const customers = await sql<{ id: string; name: string; phone: string; account_number: string }>`
+      select id, name, phone, coalesce(account_number, '') as account_number
+      from customers where tenant_id = ${tid} order by name`;
     const quotes = await sql<{
       customer_id: string;
       package_id: string;

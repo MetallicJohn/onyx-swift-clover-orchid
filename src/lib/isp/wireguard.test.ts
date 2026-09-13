@@ -78,8 +78,11 @@ test("server wg-quick config is a hub with one peer per router", () => {
     },
     [{ name: "edge-01", publicKey: client.publicKey, address: "10.200.0.2/32" }],
   );
-  assert.match(install, /wg-quick up wg-gridline/);
-  assert.match(install, /\/etc\/wireguard\/wg-gridline.conf/);
+  assert.match(install, /wg-quick up wg-ispsolutions/);
+  assert.match(install, /\/etc\/wireguard\/wg-ispsolutions\.conf/);
+  assert.match(install, /wg-quick down wg-gridline/);
+  assert.match(conf, /\/etc\/wireguard\/wg-ispsolutions\.conf/);
+  assert.doesNotMatch(install, /wg-quick up wg-gridline/);
 });
 
 test("client enroll script sets the router private key and hub endpoint", () => {
@@ -96,8 +99,15 @@ test("client enroll script sets the router private key and hub endpoint", () => 
     endpointHost: "vpn.imani.ke",
     endpointPort: 51820,
     serverAddress: "10.200.0.1",
+    pullUrl: "https://ops.imani.ke/api/agent/script?token=agt_test",
   });
-  assert.match(script, /interface wireguard add name=wg-gridline/);
+  assert.match(script, /interface wireguard add name=wg-ispsolutions/);
+  assert.match(script, /name="wg-gridline"\] name=wg-ispsolutions/);
+  assert.match(script, /system script add name="ispsolutions-pull"/);
+  assert.match(script, /system scheduler add name="ispsolutions-agent"/);
+  assert.match(script, /ISP Solutions agent/);
+  assert.doesNotMatch(script, /\/system script add name=gridline-pull/);
+  assert.doesNotMatch(script, /interface wireguard add name=wg-gridline/);
   assert.match(script, /private-key=\$wgPriv/);
   assert.equal(script.includes(`:local wgPriv "${client.privateKey}"`), true);
   assert.equal(script.includes(`:local srvKey "${hub.publicKey}"`), true);

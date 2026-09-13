@@ -12,6 +12,14 @@ export const COMM_CATEGORIES = [
 
 export type CommCategory = (typeof COMM_CATEGORIES)[number]["id"];
 
+export type CommChannel = "sms" | "email" | "both";
+
+export const COMM_CHANNELS: { id: CommChannel; label: string }[] = [
+  { id: "sms", label: "SMS" },
+  { id: "email", label: "Email" },
+  { id: "both", label: "SMS + email" },
+];
+
 export const COMM_VARS = [
   { key: "customer_name", label: "Customer name" },
   { key: "account_number", label: "Account number" },

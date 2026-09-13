@@ -7,8 +7,10 @@ import { agentPullUrl, agentScript } from "./agent";
 import { wgEnrollContext } from "./wireguard";
 import { pullCommands } from "./mikrotik";
 import {
+  deliverEmail,
   deliverSms,
   deliverWhatsapp,
+  emailOk,
   getMessagingSettings,
   saveMessagingSettings,
   toPublic,
@@ -806,6 +808,19 @@ export const saveMessaging = createServerFn({ method: "POST" })
       wa_access_token?: string;
       wa_business_id?: string;
       wa_sandbox?: boolean;
+      payment_email?: boolean;
+      billing_email?: boolean;
+      email_provider?: string;
+      email_from_name?: string;
+      email_from_address?: string;
+      email_reply_to?: string;
+      email_api_key?: string;
+      smtp_host?: string;
+      smtp_port?: number;
+      smtp_username?: string;
+      smtp_password?: string;
+      smtp_secure?: boolean;
+      email_sandbox?: boolean;
     }) => d,
   )
   .handler(async ({ context, data }) => {
@@ -816,12 +831,24 @@ export const saveMessaging = createServerFn({ method: "POST" })
 
 export const testMessaging = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { channel: "sms" | "whatsapp"; phone: string }) => d)
+  .validator((d: { channel: "sms" | "whatsapp" | "email"; phone?: string; email?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId, tenantName, role } = await requireWs(context.userId);
     assertPermission(role, "settings.manage");
     const settings = await getMessagingSettings(sql, tenantId);
-    const phone = data.phone.trim();
+    if (data.channel === "email") {
+      const to = (data.email || "").trim();
+      if (!emailOk(to)) throw new Error("Enter a test email address");
+      const limited = rateLimit(`email-test:${tenantId}`, 8, 60_000);
+      if (!limited.ok) throw new Error("Too many test emails. Try again shortly.");
+      return deliverEmail(
+        settings,
+        to,
+        `${tenantName}: test email`,
+        `${tenantName}: test billing email from ${APP_NAME}. If you received this, this ISP's email is configured.`,
+      );
+    }
+    const phone = (data.phone || "").trim();
     if (!phone) throw new Error("Enter a test phone number");
     const msg =
       data.channel === "sms"

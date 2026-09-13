@@ -1,7 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { MoreHorizontal, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Field, Input, Select } from "@/components/ui/input";
 import { TablePad, VirtualTableFrame } from "@/components/ui/virtual-scroller";
 import { useTableVirtualizer } from "@/components/ui/use-virtual-scroller";
@@ -12,6 +22,8 @@ import type { GracePolicy } from "@/lib/isp/grace";
 import type { PackageRow, ServiceRow, ServiceStatus, Workspace } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app/services")({ component: ServicesPage });
+
+const COLS = 7;
 
 function formatDate(iso: string | null | undefined) {
   if (!iso) return "—";
@@ -25,6 +37,15 @@ function formatDate(iso: string | null | undefined) {
   }).format(new Date(t));
 }
 
+function formatMac(raw?: string | null) {
+  const compact = String(raw || "")
+    .replace(/[^0-9a-f]/gi, "")
+    .toUpperCase();
+  if (compact.length === 12) return compact.match(/.{2}/g)?.join(":") ?? compact;
+  const trimmed = String(raw || "").trim();
+  return trimmed || "—";
+}
+
 function remainingLabel(expiresAt: string) {
   const ms = Date.parse(expiresAt) - Date.now();
   if (!Number.isFinite(ms) || ms <= 0) return "expired";
@@ -34,6 +55,25 @@ function remainingLabel(expiresAt: string) {
   if (days === 1) return hours > 0 ? `1 day ${hours}h remaining` : "1 day remaining";
   if (hours >= 1) return `${hours} hour${hours === 1 ? "" : "s"} remaining`;
   return "Less than an hour remaining";
+}
+
+function matchesQuery(s: ServiceRow, q: string) {
+  if (!q) return true;
+  const hay = [
+    s.customer_name,
+    s.customer_phone,
+    s.access_method,
+    s.username,
+    s.static_ip,
+    s.mac_address,
+    s.package_name,
+    s.status,
+    s.suspend_reason,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(q);
 }
 
 type Panel = { id: string; mode: "grant" | "extend" | "revoke" };
@@ -53,6 +93,7 @@ function ServicesPage() {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   async function load() {
     const res = await listServices();
@@ -89,7 +130,14 @@ function ServicesPage() {
   const canRevoke = hasPermission(role, "services.grace.revoke");
   const canManage = hasPermission(role, "services.manage");
   const presets = policy?.staff_preset_days?.length ? policy.staff_preset_days : [1, 2, 3, 5, 7];
-  const { parentRef, virtualizer, rows: vis, padTop, padBottom } = useTableVirtualizer(services.length, 96);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return services;
+    return services.filter((s) => matchesQuery(s, q));
+  }, [services, query]);
+
+  const { parentRef, virtualizer, rows: vis, padTop, padBottom } = useTableVirtualizer(filtered.length, 48);
 
   async function submitGrace(e: React.FormEvent) {
     e.preventDefault();
@@ -115,6 +163,8 @@ function ServicesPage() {
       setBusy(false);
     }
   }
+
+  const panelService = panel ? services.find((s) => s.id === panel.id) : null;
 
   return (
     <div className="space-y-6">
@@ -166,199 +216,234 @@ function ServicesPage() {
 
       {secretNote ? <p className="text-sm text-accent">{secretNote}</p> : null}
 
-      <VirtualTableFrame parentRef={parentRef} className="rounded-xl border border-border">
-        <table className="w-full min-w-[60rem] text-left text-sm">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <label className="relative block min-w-0 flex-1">
+          <span className="sr-only">Search services</span>
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" strokeWidth={1.75} />
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search name, phone, package, MAC, status…"
+            className="pl-10"
+            autoComplete="off"
+          />
+        </label>
+        <p className="shrink-0 text-xs text-muted sm:text-right">
+          {filtered.length === services.length
+            ? `${services.length} line${services.length === 1 ? "" : "s"}`
+            : `${filtered.length} of ${services.length}`}
+        </p>
+      </div>
+
+      <VirtualTableFrame parentRef={parentRef} className="rounded-xl border border-border bg-surface">
+        <table className="w-full min-w-[56rem] text-left text-sm">
           <thead className="sticky top-0 z-10 bg-surface text-xs text-muted">
             <tr>
-              <th className="px-4 py-3 font-medium">Customer</th>
-              <th className="px-4 py-3 font-medium">Access</th>
-              <th className="px-4 py-3 font-medium">Identity</th>
-              <th className="px-4 py-3 font-medium">Package</th>
-              <th className="px-4 py-3 font-medium">Paid through</th>
-              <th className="px-4 py-3 font-medium">Grace Period</th>
-              <th className="px-4 py-3 font-medium">Data</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium">Actions</th>
+              <th className="px-3 py-2 font-medium">Name</th>
+              <th className="px-3 py-2 font-medium">Phone</th>
+              <th className="px-3 py-2 font-medium">Package</th>
+              <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium">MAC address</th>
+              <th className="px-3 py-2 font-medium">Expiry date</th>
+              <th className="sticky right-0 bg-surface px-2 py-2 text-right font-medium">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            <TablePad height={padTop} colSpan={9} />
+            <TablePad height={padTop} colSpan={COLS} />
             {vis.map((v) => {
-              const s = services[v.index];
+              const s = filtered[v.index];
               const activeGrace = Boolean(s.grace_active && s.grace_expires_at);
+              const identity = s.username || s.static_ip || "—";
+              const hasActions =
+                canManage ||
+                (canGrant && !activeGrace && s.status !== "terminated") ||
+                (canExtend && activeGrace) ||
+                (canRevoke && activeGrace);
               return (
-                <tr key={s.id} data-index={v.index} ref={virtualizer.measureElement}>
-                  <td className="px-4 py-3">{s.customer_name}</td>
-                  <td className="px-4 py-3 uppercase">{s.access_method}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{s.username || s.static_ip || "—"}</td>
-                  <td className="px-4 py-3">{s.package_name}</td>
-                  <td className="px-4 py-3 font-mono text-xs">
-                    {s.period_end ? s.period_end.slice(0, 16).replace("T", " ") : "—"}
+                <tr key={s.id} data-index={v.index} ref={virtualizer.measureElement} className="h-12">
+                  <td className="max-w-48 px-3 py-1.5">
+                    <div className="truncate font-medium">{s.customer_name}</div>
                   </td>
-                  <td className="px-4 py-3">
-                    {activeGrace && s.grace_expires_at ? (
-                      <div className="space-y-0.5">
-                        <Badge tone="warn">Grace Period — {remainingLabel(s.grace_expires_at)}</Badge>
-                        <div className="text-xs text-muted">
-                          {s.grace_days_granted}d · until {formatDate(s.grace_expires_at)}
-                          {s.grace_granted_by ? ` · ${s.grace_granted_by}` : ""}
-                        </div>
-                        {s.grace_reason ? <div className="text-xs text-subtle">{s.grace_reason}</div> : null}
-                      </div>
-                    ) : s.status === "suspended" && s.suspend_reason !== "bundle" ? (
-                      <span className="text-xs text-muted">Grace Period expired — service suspended</span>
-                    ) : (
-                      <span className="text-xs text-muted">Not active</span>
-                    )}
+                  <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs">{s.customer_phone || "—"}</td>
+                  <td className="max-w-40 px-3 py-1.5">
+                    <div className="truncate">{s.package_name}</div>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs">
-                    {s.bundle_mb > 0 ? `${s.bundle_used_mb}/${s.bundle_mb} MB` : "unlimited"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-1">
+                  <td className="px-3 py-1.5">
+                    <div className="flex items-center gap-1">
                       <Badge tone={statusTone(s.status)}>{s.status === "grace" ? "Grace Period" : s.status}</Badge>
-                      {s.suspend_reason ? <span className="text-xs text-muted">{s.suspend_reason}</span> : null}
+                      {activeGrace && s.grace_expires_at ? (
+                        <span className="hidden text-xs text-warn xl:inline">{remainingLabel(s.grace_expires_at)}</span>
+                      ) : null}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {canManage && s.status !== "active" ? (
-                        <Button size="sm" variant="secondary" onClick={() => setStatus(s.id, "active")}>
-                          Restore
-                        </Button>
-                      ) : null}
-                      {canManage && s.status === "active" ? (
-                        <Button size="sm" variant="ghost" onClick={() => setStatus(s.id, "suspended")}>
-                          Suspend
-                        </Button>
-                      ) : null}
-                      {canGrant && !activeGrace && s.status !== "terminated" ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setPanel({ id: s.id, mode: "grant" });
-                            setDays(presets[2] ?? 3);
-                            setError(null);
-                          }}
-                        >
-                          Grant Grace Period
-                        </Button>
-                      ) : null}
-                      {canExtend && activeGrace ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setPanel({ id: s.id, mode: "extend" });
-                            setDays(presets[0] ?? 1);
-                            setError(null);
-                          }}
-                        >
-                          Extend Grace Period
-                        </Button>
-                      ) : null}
-                      {canRevoke && activeGrace ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setPanel({ id: s.id, mode: "revoke" });
-                            setError(null);
-                          }}
-                        >
-                          Revoke Grace Period
-                        </Button>
-                      ) : null}
-                      {canManage ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={async () => {
-                          await disconnectService({ data: { id: s.id } });
-                          setSecretNote(`Disconnect queued for ${s.username || s.static_ip || s.id}`);
-                        }}
-                      >
-                        Disconnect
-                      </Button>
-                      ) : null}
-                      {canManage && s.access_method === "pppoe" ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={async () => {
-                            const r = await rotateServiceSecret({ data: { id: s.id } });
-                            setSecretNote(`New PPPoE password for ${r.username}: ${r.password}`);
-                          }}
-                        >
-                          New password
-                        </Button>
-                      ) : null}
-                    </div>
-                    {panel?.id === s.id ? (
-                      <form onSubmit={submitGrace} className="mt-3 grid max-w-sm gap-2 rounded-lg border border-border bg-bg p-3">
-                        <p className="text-xs text-muted">
-                          {panel.mode === "revoke"
-                            ? "Revoking makes this line eligible for normal suspension. The renewal date does not change."
-                            : "Grace Period is temporary access only. The paid-through / renewal date stays the same."}
-                        </p>
-                        {panel.mode !== "revoke" ? (
-                          <>
-                            <Field label="Days">
-                              <Select
-                                value={custom ? "custom" : String(days)}
-                                onChange={(e) => {
-                                  if (e.target.value === "custom") {
-                                    setCustom(String(days));
-                                  } else {
-                                    setCustom("");
-                                    setDays(Number(e.target.value));
-                                  }
-                                }}
-                              >
-                                {presets.map((d) => (
-                                  <option key={d} value={d}>
-                                    {d} day{d === 1 ? "" : "s"}
-                                  </option>
-                                ))}
-                                {policy?.allow_custom_days ? <option value="custom">Custom</option> : null}
-                              </Select>
-                            </Field>
-                            {custom ? (
-                              <Field label="Custom days">
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  max={policy?.staff_max_days ?? 14}
-                                  value={custom}
-                                  onChange={(e) => setCustom(e.target.value)}
-                                />
-                              </Field>
-                            ) : null}
-                          </>
-                        ) : null}
-                        <Field label="Reason (optional)">
-                          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Note for the audit log" />
-                        </Field>
-                        {error ? <p className="text-sm text-danger">{error}</p> : null}
-                        <div className="flex gap-2">
-                          <Button type="submit" size="sm" disabled={busy}>
-                            {panel.mode === "grant" ? "Grant" : panel.mode === "extend" ? "Extend" : "Revoke"}
+                  <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs">{formatMac(s.mac_address)}</td>
+                  <td className="whitespace-nowrap px-3 py-1.5">{formatDate(s.period_end)}</td>
+                  <td className="sticky right-0 bg-surface px-1 py-1 text-right">
+                    {hasActions ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            aria-label={`Actions for ${s.customer_name}`}
+                            className="size-11"
+                          >
+                            <MoreHorizontal className="size-4" strokeWidth={1.75} />
                           </Button>
-                          <Button type="button" size="sm" variant="ghost" onClick={() => setPanel(null)}>
-                            Cancel
-                          </Button>
-                        </div>
-                      </form>
-                    ) : null}
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" side="bottom">
+                          <DropdownMenuLabel>{s.customer_name}</DropdownMenuLabel>
+                          <div className="px-3 pb-2 text-xs text-muted">
+                            {s.access_method.toUpperCase()} · {identity}
+                            {s.suspend_reason ? ` · ${s.suspend_reason}` : ""}
+                          </div>
+                          <DropdownMenuSeparator />
+                          {canManage && s.status !== "active" ? (
+                            <DropdownMenuItem onSelect={() => void setStatus(s.id, "active")}>Restore</DropdownMenuItem>
+                          ) : null}
+                          {canManage && s.status === "active" ? (
+                            <DropdownMenuItem onSelect={() => void setStatus(s.id, "suspended")}>Suspend</DropdownMenuItem>
+                          ) : null}
+                          {canGrant && !activeGrace && s.status !== "terminated" ? (
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                setPanel({ id: s.id, mode: "grant" });
+                                setDays(presets[2] ?? 3);
+                                setError(null);
+                              }}
+                            >
+                              Grant Grace Period
+                            </DropdownMenuItem>
+                          ) : null}
+                          {canExtend && activeGrace ? (
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                setPanel({ id: s.id, mode: "extend" });
+                                setDays(presets[0] ?? 1);
+                                setError(null);
+                              }}
+                            >
+                              Extend Grace Period
+                            </DropdownMenuItem>
+                          ) : null}
+                          {canRevoke && activeGrace ? (
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                setPanel({ id: s.id, mode: "revoke" });
+                                setError(null);
+                              }}
+                            >
+                              Revoke Grace Period
+                            </DropdownMenuItem>
+                          ) : null}
+                          {canManage ? (
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                void disconnectService({ data: { id: s.id } }).then(() => {
+                                  setSecretNote(`Disconnect queued for ${identity}`);
+                                });
+                              }}
+                            >
+                              Disconnect
+                            </DropdownMenuItem>
+                          ) : null}
+                          {canManage && s.access_method === "pppoe" ? (
+                            <DropdownMenuItem
+                              onSelect={() => {
+                                void rotateServiceSecret({ data: { id: s.id } }).then((r) => {
+                                  setSecretNote(`New PPPoE password for ${r.username}: ${r.password}`);
+                                });
+                              }}
+                            >
+                              New password
+                            </DropdownMenuItem>
+                          ) : null}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : (
+                      <span className="inline-block size-11" />
+                    )}
                   </td>
                 </tr>
               );
             })}
-            <TablePad height={padBottom} colSpan={9} />
+            <TablePad height={padBottom} colSpan={COLS} />
           </tbody>
         </table>
+        {filtered.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-muted">
+            {services.length === 0 ? "No services yet." : "No lines match that search."}
+          </p>
+        ) : null}
       </VirtualTableFrame>
+
+      <Dialog
+        open={Boolean(panel)}
+        onOpenChange={(next) => {
+          if (!next) setPanel(null);
+        }}
+        title={panel?.mode === "grant" ? "Grant Grace Period" : panel?.mode === "extend" ? "Extend Grace Period" : "Revoke Grace Period"}
+        description={panelService ? `${panelService.customer_name} · ${panelService.package_name}` : undefined}
+      >
+        {panel ? (
+          <form onSubmit={submitGrace} className="grid gap-3">
+            <p className="text-sm text-muted">
+              {panel.mode === "revoke"
+                ? "Revoking makes this line eligible for normal suspension. The renewal date does not change."
+                : "Grace Period is temporary access only. The paid-through / renewal date stays the same."}
+            </p>
+            {panel.mode !== "revoke" ? (
+              <>
+                <Field label="Days">
+                  <Select
+                    value={custom ? "custom" : String(days)}
+                    onChange={(e) => {
+                      if (e.target.value === "custom") {
+                        setCustom(String(days));
+                      } else {
+                        setCustom("");
+                        setDays(Number(e.target.value));
+                      }
+                    }}
+                  >
+                    {presets.map((d) => (
+                      <option key={d} value={d}>
+                        {d} day{d === 1 ? "" : "s"}
+                      </option>
+                    ))}
+                    {policy?.allow_custom_days ? <option value="custom">Custom</option> : null}
+                  </Select>
+                </Field>
+                {custom ? (
+                  <Field label="Custom days">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={policy?.staff_max_days ?? 14}
+                      value={custom}
+                      onChange={(e) => setCustom(e.target.value)}
+                    />
+                  </Field>
+                ) : null}
+              </>
+            ) : null}
+            <Field label="Reason (optional)">
+              <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Note for the audit log" />
+            </Field>
+            {error ? <p className="text-sm text-danger">{error}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={busy}>
+                {panel.mode === "grant" ? "Grant" : panel.mode === "extend" ? "Extend" : "Revoke"}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setPanel(null)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Dialog>
     </div>
   );
 }

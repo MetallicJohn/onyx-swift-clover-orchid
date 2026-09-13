@@ -15,7 +15,7 @@ export const Route = createFileRoute("/api/v1/health")({
         }
         return Response.json({
           ok: database === "ok",
-          service: "gridline-web",
+          service: "ispsolutions-web",
           database,
           sha: process.env.GRIDLINE_GIT_SHA || "",
         });

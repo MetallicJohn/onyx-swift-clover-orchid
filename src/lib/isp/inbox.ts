@@ -1,16 +1,13 @@
 import { APP_NAME } from "../brand.ts";
 import { nid } from "../utils.ts";
+import { deliverEmail, formatFrom, getMessagingSettings, type EmailAttachment } from "./messaging.ts";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
 };
 
-export type EmailAttachment = {
-  filename: string;
-  content: string;
-  contentType?: string;
-};
+export type { EmailAttachment };
 
 export async function writeInbox(
   sql: Sql,
@@ -51,45 +48,17 @@ export async function queueEmail(
   to: string,
   subject: string,
   body: string,
-  opts?: { attachments?: EmailAttachment[] },
+  opts?: { attachments?: EmailAttachment[]; customerId?: string },
 ) {
   const id = nid("eml");
-  let status = "queued";
-  let detail = "";
-  const key = process.env.RESEND_API_KEY;
-  const attachments = (opts?.attachments ?? []).map((a) => ({
-    filename: a.filename,
-    content: a.content,
-    content_type: a.contentType || "application/pdf",
-  }));
-  if (key && to.includes("@")) {
-    try {
-      const payload: Record<string, unknown> = {
-        from: `${APP_NAME} <noreply@gridline.app>`,
-        to: [to],
-        subject,
-        text: body,
-      };
-      if (attachments.length) payload.attachments = attachments;
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      status = res.ok ? "sent" : "failed";
-      detail = res.ok ? "resend" : `resend ${res.status}`;
-    } catch (e) {
-      status = "failed";
-      detail = e instanceof Error ? e.message : "send failed";
-    }
-  } else {
-    detail = to.includes("@") ? "queued (no RESEND_API_KEY)" : "missing email";
-    status = to.includes("@") ? "queued" : "failed";
+  const settings = await getMessagingSettings(sql, tenantId);
+  const from = formatFrom(settings) || `${APP_NAME} <noreply@ispsolutions.app>`;
+  const delivery = await deliverEmail(settings, to, subject, body, { attachments: opts?.attachments });
+  let detail = delivery.detail;
+  if (opts?.attachments?.length) {
+    detail = `${detail}${detail ? " · " : ""}attachment ${opts.attachments.map((a) => a.filename).join(", ")}`;
   }
-  if (attachments.length) {
-    detail = `${detail}${detail ? " · " : ""}attachment ${attachments.map((a) => a.filename).join(", ")}`;
-  }
-  await sql`insert into email_outbox (id, tenant_id, to_addr, subject, body, status, detail)
-    values (${id}, ${tenantId}, ${to}, ${subject.slice(0, 200)}, ${body.slice(0, 4000)}, ${status}, ${detail})`;
-  return { status, detail };
+  await sql`insert into email_outbox (id, tenant_id, to_addr, from_addr, subject, body, status, detail, customer_id)
+    values (${id}, ${tenantId}, ${to}, ${from}, ${subject.slice(0, 200)}, ${body.slice(0, 4000)}, ${delivery.status}, ${detail}, ${opts?.customerId ?? null})`;
+  return { status: delivery.status, detail };
 }

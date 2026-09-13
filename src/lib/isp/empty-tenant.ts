@@ -34,6 +34,7 @@ export const TENANT_BUSINESS_TABLES = [
   "ticket_comments",
   "tickets",
   "cpe_devices",
+  "service_provisioning",
   "customer_tag_assignments",
   "customer_tags",
   "comm_recipients",

@@ -3,10 +3,11 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import {
   auditAccountChange,
   defaultsForSlug,
-  formatAccountNumber,
+  formatFromSettings,
   previewNextAccountNumber,
   resetAccountNumberSettings,
   saveAccountNumberSettings,
+  sequenceKind,
   type AccountNumberPatch,
 } from "./account-numbers";
 import { hasPermission, assertPermission } from "./rbac";
@@ -22,9 +23,6 @@ export const getAccountNumberSettingsFn = createServerFn({ method: "GET" })
     const desk = await previewNextAccountNumber(sql, tenantId, workspace.slug);
     return {
       ...desk,
-      example_start: formatAccountNumber({ ...desk, n: desk.start_n }),
-      example_next: formatAccountNumber({ ...desk, n: desk.start_n + 1 }),
-      example_third: formatAccountNumber({ ...desk, n: desk.start_n + 2 }),
       slug_prefix: defaultsForSlug(workspace.slug).prefix,
     };
   });
@@ -41,14 +39,13 @@ export const saveAccountNumberSettingsFn = createServerFn({ method: "POST" })
       userId: context.userId,
       action: "account_number.settings_updated",
       entityId: tenantId,
-      details: `${saved.enabled ? "auto" : "manual"} ${formatAccountNumber({ ...saved, n: saved.next_n })}`,
+      details: `${saved.enabled ? "auto" : "manual"} ${
+        sequenceKind(saved) === "random" ? "random 5-char" : formatFromSettings(saved, 0, "next")
+      }`,
     });
     const desk = await previewNextAccountNumber(sql, tenantId, workspace.slug);
     return {
       ...desk,
-      example_start: formatAccountNumber({ ...desk, n: desk.start_n }),
-      example_next: formatAccountNumber({ ...desk, n: desk.start_n + 1 }),
-      example_third: formatAccountNumber({ ...desk, n: desk.start_n + 2 }),
       slug_prefix: defaultsForSlug(workspace.slug).prefix,
     };
   });
@@ -68,9 +65,6 @@ export const resetAccountNumberSettingsFn = createServerFn({ method: "POST" })
     const desk = await previewNextAccountNumber(sql, tenantId, workspace.slug);
     return {
       ...desk,
-      example_start: formatAccountNumber({ ...desk, n: desk.start_n }),
-      example_next: formatAccountNumber({ ...desk, n: desk.start_n + 1 }),
-      example_third: formatAccountNumber({ ...desk, n: desk.start_n + 2 }),
       slug_prefix: defaultsForSlug(workspace.slug).prefix,
     };
   });

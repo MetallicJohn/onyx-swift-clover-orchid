@@ -17,7 +17,7 @@ After DNS and TLS:
 
 1. Sign in at `https://<domain>/login`
 2. Settings → Public URL
-3. Settings → Network: hub endpoint, download `wg-gridline.conf`, `wg-quick up wg-gridline`
+3. Settings → Network: hub endpoint, download `wg-ispsolutions.conf`, `wg-quick up wg-ispsolutions`
 4. Routers → Copy script onto each MikroTik
 
 Health: `https://<domain>/api/v1/health`

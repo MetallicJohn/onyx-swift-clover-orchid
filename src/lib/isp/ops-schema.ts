@@ -8,7 +8,7 @@ const _STATEMENTS = [
   `alter table routers add column if not exists wg_public text not null default ''`,
   `alter table routers add column if not exists wg_address text not null default ''`,
   `alter table routers add column if not exists agent_version text not null default ''`,
-  `alter table routers add column if not exists api_user text not null default 'gridline'`,
+  `alter table routers add column if not exists api_user text not null default 'ispsolutions'`,
   `alter table routers add column if not exists api_password text not null default ''`,
   `alter table routers add column if not exists api_port integer not null default 443`,
   `alter table routers add column if not exists api_host text not null default ''`,

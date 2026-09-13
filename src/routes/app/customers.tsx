@@ -219,10 +219,16 @@ function CustomersPage() {
   const [tagMode, setTagMode] = useState<"any" | "all">("any");
   const [form, setForm] = useState(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
-  const [accPolicy, setAccPolicy] = useState<{ enabled: boolean; allow_manual: boolean; preview: string }>({
+  const [accPolicy, setAccPolicy] = useState<{
+    enabled: boolean;
+    allow_manual: boolean;
+    preview: string;
+    scheme: "random" | "sequence";
+  }>({
     enabled: false,
     allow_manual: false,
     preview: "",
+    scheme: "random",
   });
   const [portalFor, setPortalFor] = useState<string | null>(null);
   const [portalPass, setPortalPass] = useState("");
@@ -242,9 +248,14 @@ function CustomersPage() {
     setRole(res.workspace.role);
     try {
       const policy = await getAccountNumberSettingsFn();
-      setAccPolicy({ enabled: policy.enabled, allow_manual: policy.allow_manual, preview: policy.preview });
+      setAccPolicy({
+        enabled: policy.enabled,
+        allow_manual: policy.allow_manual,
+        preview: policy.preview,
+        scheme: policy.scheme === "sequence" ? "sequence" : "random",
+      });
     } catch {
-      setAccPolicy({ enabled: false, allow_manual: false, preview: "" });
+      setAccPolicy({ enabled: true, allow_manual: false, preview: "", scheme: "random" });
     }
   }
 
@@ -278,7 +289,10 @@ function CustomersPage() {
 
   function startCreate() {
     setEditingId(null);
-    setForm({ ...EMPTY_FORM, account_number: accPolicy.enabled ? accPolicy.preview : "" });
+    setForm({
+      ...EMPTY_FORM,
+      account_number: accPolicy.enabled && accPolicy.scheme !== "random" ? accPolicy.preview : "",
+    });
     setOpen(true);
   }
 
@@ -596,13 +610,21 @@ function CustomersPage() {
                 value={form.account_number}
                 readOnly={editingId ? !accPolicy.allow_manual : accPolicy.enabled && !accPolicy.allow_manual}
                 onChange={(e) => setForm({ ...form, account_number: e.target.value.toUpperCase() })}
-                placeholder={accPolicy.enabled ? accPolicy.preview : "Optional"}
+                placeholder={
+                  accPolicy.scheme === "random"
+                    ? "Assigned on save"
+                    : accPolicy.enabled
+                      ? accPolicy.preview
+                      : "Optional"
+                }
               />
             </Field>
           ) : null}
           {accPolicy.enabled && !editingId ? (
             <p className="text-xs text-subtle md:col-span-2">
-              Next number {accPolicy.preview}. It is reserved when you save, so two staff cannot get the same account.
+              {accPolicy.scheme === "random"
+                ? "A unique 5-character code is assigned when you save. Letters and numbers, never I, O, or L."
+                : `Next number ${accPolicy.preview}. It is reserved when you save, so two staff cannot get the same account.`}
               {canSettings ? (
                 <>
                   {" "}

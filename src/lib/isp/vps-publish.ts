@@ -22,10 +22,10 @@ export function vpsPublishSteps(opts: { domain: string; email: string }) {
       "Ubuntu 24.04 VPS with 4 GB RAM or more. Point the domain A record at the VPS first.",
       `First time: ${cmd}`,
       `Already installed: ${update}  (pulls GitHub, rebuilds, turns on auto-publish)`,
-      "After that, each push to main is pulled and rebuilt on the VPS within a few minutes. Secrets in gridline.env are never overwritten.",
+      "After that, each push to main is pulled and rebuilt on the VPS within a few minutes. Secrets in the VPS env file are never overwritten.",
       "Optional instant publish: GitHub repo secrets VPS_HOST, VPS_USER, VPS_SSH_KEY — then every green main build SSHs and runs the updater.",
       "Sign in at https://" + domain + "/login, then set Settings → Public URL.",
-      "Settings → Network: hub endpoint = this VPS, then wg-quick up wg-gridline and copy each router script.",
+      "Settings → Network: hub endpoint = this VPS, then run the hub install script (brings up wg-ispsolutions) and copy each router script.",
       "ACS: set the public VPS host in System settings. Each ISP gets a unique TR-069 port (7551–7999) via cwmp-edge. Open TCP 7551-7999; keep GenieACS NBI (7557) private.",
     ],
   };
