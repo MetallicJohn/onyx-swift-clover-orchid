@@ -1,15 +1,17 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { assignPaybillPayments, getAuditLog, getIncomingPayments, getReports } from "@/lib/isp/server-more";
+import { emptyClv, presentClv, type ClvKpiRow, type ClvSnapshot } from "@/lib/isp/clv";
+import { emptyRetention, presentRetention, type RetentionKpiRow } from "@/lib/isp/retention";
 import { hasPermission } from "@/lib/isp/rbac";
 import { kes } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/reports")({ component: ReportsPage });
 
-type Tab = "ops" | "paybill" | "audit";
+type Tab = "clv" | "retention" | "ops" | "paybill" | "audit";
 type IncomingDesk = Awaited<ReturnType<typeof getIncomingPayments>>;
 type IncomingRow = IncomingDesk["rows"][number];
 
@@ -39,7 +41,7 @@ function channelLabel(channel: string) {
 }
 
 function ReportsPage() {
-  const [tab, setTab] = useState<Tab>("paybill");
+  const [tab, setTab] = useState<Tab>("clv");
   const [data, setData] = useState<Awaited<ReturnType<typeof getReports>> | null>(null);
   const [audit, setAudit] = useState<Awaited<ReturnType<typeof getAuditLog>>["rows"]>([]);
   const [desk, setDesk] = useState<IncomingDesk | null>(null);
@@ -133,10 +135,17 @@ function ReportsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Insights</h1>
         <p className="text-sm text-muted">
-          Collections, invoice aging, and every paybill or till hit — including payments with no matching account.
+          Lifetime value, retention KPIs, collections, invoice aging, and every paybill or till hit — including payments
+          with no matching account.
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant={tab === "clv" ? "default" : "secondary"} onClick={() => setTab("clv")}>
+          Lifetime value
+        </Button>
+        <Button size="sm" variant={tab === "retention" ? "default" : "secondary"} onClick={() => setTab("retention")}>
+          Retention
+        </Button>
         <Button size="sm" variant={tab === "ops" ? "default" : "secondary"} onClick={() => setTab("ops")}>
           Operations
         </Button>
@@ -170,6 +179,14 @@ function ReportsPage() {
         </Button>
         ) : null}
       </div>
+
+      {tab === "clv" ? (
+        <LifetimeValue snap={data?.clv ?? emptyClv()} loaded={Boolean(data)} />
+      ) : null}
+
+      {tab === "retention" ? (
+        <RetentionKpis rows={presentRetention(data?.retention ?? emptyRetention())} loaded={Boolean(data)} />
+      ) : null}
 
       {tab === "ops" && data ? (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -568,6 +585,201 @@ function PaybillDesk({
       )}
     </div>
   );
+}
+
+function LifetimeValue({ snap, loaded }: { snap: ClvSnapshot; loaded: boolean }) {
+  const rows = presentClv(snap);
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat label="Predicted CLV" value={loaded ? kesOrDash(snap.predictedClvKes) : "…"} sub="ARPU ÷ monthly churn" />
+        <Stat label="This-month ARPU" value={loaded ? kesOrDash(snap.arpu) : "…"} sub={`${snap.activeCustomers} active customers`} />
+        <Stat
+          label="Avg realized LTV"
+          value={loaded ? kesOrDash(snap.realizedAvgKes) : "…"}
+          sub={`${snap.payingCustomers} paying · all confirmed`}
+        />
+        <Stat
+          label="Expected tenure"
+          value={loaded ? monthsOrDash(snap.expectedTenureMonths) : "…"}
+          sub={snap.churnRate == null ? "Needs a start-of-month book" : "1 / this month’s churn"}
+        />
+      </div>
+
+      <section className="overflow-hidden rounded-xl bg-surface shadow-card">
+        <div className="border-b border-border px-4 py-4 md:px-5">
+          <h2 className="font-medium">Customer lifetime value</h2>
+          <p className="mt-1 text-sm text-muted">
+            Revenue CLV from confirmed collections and this month’s churn. Gross margin and CAC are listed so you know
+            they are missing — this console does not invent profit or acquisition cost.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[40rem] text-left text-sm">
+            <thead className="text-xs text-muted">
+              <tr>
+                <th className="px-4 py-3 font-medium md:px-5">Metric</th>
+                <th className="px-4 py-3 font-medium">What it is</th>
+                <th className="px-4 py-3 font-medium">This book</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td className="px-4 py-3 font-medium md:px-5">{row.metric}</td>
+                  <td className="px-4 py-3 text-muted">{row.measure}</td>
+                  <td className="px-4 py-3">
+                    <div className={`font-medium tabular-nums ${valueTone(row.tone)}`}>{loaded ? row.value : "…"}</div>
+                    <div className="mt-0.5 text-xs text-subtle">{loaded ? row.detail : "Loading"}</div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-xl bg-surface shadow-card">
+        <div className="border-b border-border px-4 py-4 md:px-5">
+          <h2 className="font-medium">By package</h2>
+          <p className="mt-1 text-sm text-muted">
+            List-price CLV for each live plan, using the same tenant churn. This-month collected is attributed to the
+            customer’s highest live package.
+          </p>
+        </div>
+        {loaded && snap.byPackage.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-muted md:px-5">No live packages on the book yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[40rem] text-left text-sm">
+              <thead className="text-xs text-muted">
+                <tr>
+                  <th className="px-4 py-3 font-medium md:px-5">Package</th>
+                  <th className="px-4 py-3 font-medium">Live</th>
+                  <th className="px-4 py-3 font-medium">List / mo</th>
+                  <th className="px-4 py-3 font-medium">Collected this month</th>
+                  <th className="px-4 py-3 font-medium">Predicted CLV</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {snap.byPackage.map((row) => (
+                  <tr key={row.packageId}>
+                    <td className="px-4 py-3 font-medium md:px-5">{row.name}</td>
+                    <td className="px-4 py-3 font-mono tabular-nums">{loaded ? row.live : "…"}</td>
+                    <td className="px-4 py-3 font-mono tabular-nums">{loaded ? kes(row.monthlyKes) : "…"}</td>
+                    <td className="px-4 py-3 font-mono tabular-nums">{loaded ? kes(row.collectedMonthKes) : "…"}</td>
+                    <td className="px-4 py-3 font-mono tabular-nums">{loaded ? kesOrDash(row.predictedClvKes) : "…"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="overflow-hidden rounded-xl bg-surface shadow-card">
+        <div className="border-b border-border px-4 py-4 md:px-5">
+          <h2 className="font-medium">Highest realized LTV</h2>
+          <p className="mt-1 text-sm text-muted">
+            Confirmed collections on the account, including customers who have already left. Not a forecast.
+          </p>
+        </div>
+        {loaded && snap.topCustomers.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-muted md:px-5">No confirmed payments yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[36rem] text-left text-sm">
+              <thead className="text-xs text-muted">
+                <tr>
+                  <th className="px-4 py-3 font-medium md:px-5">Customer</th>
+                  <th className="px-4 py-3 font-medium">Package</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 font-medium">On book</th>
+                  <th className="px-4 py-3 font-medium">Collected</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {snap.topCustomers.map((row) => (
+                  <tr key={row.id}>
+                    <td className="px-4 py-3 font-medium md:px-5">
+                      <Link to="/app/customers/$customerId" params={{ customerId: row.id }} className="hover:underline">
+                        {row.name}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-muted">{row.packageName}</td>
+                    <td className="px-4 py-3">
+                      <Badge tone={row.status === "active" ? "ok" : row.status === "inactive" || row.status === "archived" ? "danger" : "muted"}>
+                        {row.status}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 font-mono tabular-nums text-muted">{monthsOrDash(row.months)}</td>
+                    <td className="px-4 py-3 font-mono tabular-nums">{kes(row.collectedKes)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function kesOrDash(amount: number | null | undefined) {
+  if (amount == null || Number.isNaN(amount)) return "—";
+  return kes(amount);
+}
+
+function monthsOrDash(n: number | null | undefined) {
+  if (n == null || Number.isNaN(n)) return "—";
+  const digits = n >= 10 && n % 1 === 0 ? 0 : 1;
+  return `${n.toFixed(digits)} mo`;
+}
+
+function RetentionKpis({ rows, loaded }: { rows: RetentionKpiRow[]; loaded: boolean }) {
+  return (
+    <section className="overflow-hidden rounded-xl bg-surface shadow-card">
+      <div className="border-b border-border px-4 py-4 md:px-5">
+        <h2 className="font-medium">Suggested retention KPIs</h2>
+        <p className="mt-1 text-sm text-muted">
+          What to track each month, with this month’s figure from the live book. Customer satisfaction is listed so you
+          know to collect it — this console does not score surveys.
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[40rem] text-left text-sm">
+          <thead className="text-xs text-muted">
+            <tr>
+              <th className="px-4 py-3 font-medium md:px-5">KPI</th>
+              <th className="px-4 py-3 font-medium">What to measure</th>
+              <th className="px-4 py-3 font-medium">This month</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <td className="px-4 py-3 font-medium md:px-5">{row.kpi}</td>
+                <td className="px-4 py-3 text-muted">{row.measure}</td>
+                <td className="px-4 py-3">
+                  <div className={`font-medium tabular-nums ${valueTone(row.tone)}`}>
+                    {loaded ? row.value : "…"}
+                  </div>
+                  <div className="mt-0.5 text-xs text-subtle">{loaded ? row.detail : "Loading"}</div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function valueTone(tone: RetentionKpiRow["tone"] | ClvKpiRow["tone"]) {
+  if (tone === "ok") return "text-ok";
+  if (tone === "warn") return "text-warn";
+  if (tone === "danger") return "text-danger";
+  return "text-fg";
 }
 
 function Stat({ label, value, sub, tone }: { label: string; value: string; sub: string; tone?: "danger" }) {

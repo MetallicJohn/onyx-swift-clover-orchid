@@ -1,5 +1,7 @@
-import { tallyAging } from "./aging";
+import { emptyClv, loadClv } from "./clv";
 import { listGraceReport } from "./grace";
+import { emptyRetention, loadRetentionKpis } from "./retention";
+import { tallyAging } from "./aging";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -41,7 +43,9 @@ export async function loadReports(sql: Sql, tenantId: string) {
   const routers = await sql<{ wg_status: string; n: number }>`
     select wg_status, count(*)::int as n from routers where tenant_id = ${tenantId} group by wg_status`;
   const grace = await listGraceReport(sql, tenantId);
-  return { aging, daily, methods: [...methods.values()], tickets, routers, grace };
+  const retention = await loadRetentionKpis(sql, tenantId).catch(() => emptyRetention());
+  const clv = await loadClv(sql, tenantId, { churnRate: retention.churn.rate }).catch(() => emptyClv());
+  return { aging, daily, methods: [...methods.values()], tickets, routers, grace, retention, clv };
 }
 
 export async function loadAudit(sql: Sql, tenantId: string) {

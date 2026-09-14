@@ -21,8 +21,8 @@
       "status": 200,
       "title": "ISP Solutions — Run your ISP from one place",
       "hasCanvas": false,
-      "bodyTextLen": 9718,
-      "bodyTextHash": "15c2645fd468d98fbbdbbfdaaa9f8fb25f504c72dc39d840158d3a9b99c6188e",
+      "bodyTextLen": 8280,
+      "bodyTextHash": "aa001df2f0670d93857378fa4f6a9abc08f3d3a8b65ac6cd3d5c9f9a3d2431e9",
       "bodyTextPrefix": "Skip to content IS ISP Solutions ISP Solutions Open menu ISP MAN",
       "horizontalOverflow": false,
       "consoleErrors": [],
@@ -35,6 +35,6 @@
   "verdictFile": "/workspace/screenshots/app-builder-built.json",
   "divergesFromBaseline": true,
   "baselineReasons": [
-    "desktop: body text changed (8429 -> 9867 chars, hash mismatch)"
+    "mobile: body text changed (9718 -> 8280 chars, hash mismatch)"
   ]
 }
