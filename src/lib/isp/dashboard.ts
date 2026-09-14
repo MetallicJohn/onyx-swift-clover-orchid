@@ -32,10 +32,10 @@ export function fillRevenueDays(
 export async function loadDashboard(sql: Sql, workspace: Workspace): Promise<DashboardData> {
   const tid = workspace.tenantId;
 
-  const [cust] = await sql<{ n: number }>`select count(*)::int as n from customers where tenant_id = ${tid}`;
-  const [activeCust] = await sql<{ n: number }>`select count(*)::int as n from customers where tenant_id = ${tid} and status = 'active'`;
+  const [cust] = await sql<{ n: number }>`select count(*)::int as n from customers where tenant_id = ${tid} and deleted_at is null`;
+  const [activeCust] = await sql<{ n: number }>`select count(*)::int as n from customers where tenant_id = ${tid} and status = 'active' and deleted_at is null`;
   const services = await sql<{ status: string; n: number }>`
-    select status, count(*)::int as n from services where tenant_id = ${tid} group by status`;
+    select status, count(*)::int as n from services where tenant_id = ${tid} and deleted_at is null group by status`;
   const statusCount = (s: string) => services.find((r) => r.status === s)?.n ?? 0;
 
   const [revMonth] = await sql<{ n: number }>`
@@ -60,11 +60,11 @@ export async function loadDashboard(sql: Sql, workspace: Workspace): Promise<Das
   const [cpu] = await sql<{ n: number }>`select coalesce(avg(cpu_pct),0)::int as n from routers where tenant_id = ${tid}`;
   const [notes] = await sql<{ n: number }>`select count(*)::int as n from notification_logs where tenant_id = ${tid} and created_at::date = current_date`;
   const [live] = await sql<{ n: number }>`select count(*)::int as n from radius_sessions where tenant_id = ${tid} and stopped_at is null`;
-  const [connToday] = await sql<{ n: number }>`select count(*)::int as n from services where tenant_id = ${tid} and created_at::date = current_date`;
-  const [connWeek] = await sql<{ n: number }>`select count(*)::int as n from services where tenant_id = ${tid} and created_at >= now() - interval '7 days'`;
+  const [connToday] = await sql<{ n: number }>`select count(*)::int as n from services where tenant_id = ${tid} and deleted_at is null and created_at::date = current_date`;
+  const [connWeek] = await sql<{ n: number }>`select count(*)::int as n from services where tenant_id = ${tid} and deleted_at is null and created_at >= now() - interval '7 days'`;
   const [renewSoon] = await sql<{ n: number }>`
     select count(*)::int as n from services
-    where tenant_id = ${tid} and status in ('active','grace','pending')
+    where tenant_id = ${tid} and deleted_at is null and status in ('active','grace','pending')
       and period_end is not null
       and period_end::date >= current_date
       and period_end::date <= current_date + 2`;
@@ -108,7 +108,7 @@ export async function loadDashboard(sql: Sql, workspace: Workspace): Promise<Das
      from services s
      join customers c on c.id = s.customer_id
      join packages p on p.id = s.package_id
-     where s.tenant_id = ${tid}
+     where s.tenant_id = ${tid} and s.deleted_at is null and c.deleted_at is null
      order by s.created_at desc limit 8`;
 
   const renewals = await sql<{
@@ -122,7 +122,7 @@ export async function loadDashboard(sql: Sql, workspace: Workspace): Promise<Das
      from services s
      join customers c on c.id = s.customer_id
      join packages p on p.id = s.package_id
-     where s.tenant_id = ${tid}
+     where s.tenant_id = ${tid} and s.deleted_at is null
        and s.status in ('active','grace','pending')
        and s.period_end is not null
        and s.period_end::date >= current_date

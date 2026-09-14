@@ -16,6 +16,12 @@ type Can = {
   rotate: boolean;
   test: boolean;
 };
+type Security = {
+  scheme: "http" | "https";
+  require_cpe_auth: boolean;
+  lock_url: boolean;
+  items: { id: string; ok: boolean; label: string; detail: string }[];
+};
 
 async function copyText(text: string) {
   try {
@@ -52,6 +58,7 @@ function CopyRow({ label, value, secret, onCopy }: { label: string; value: strin
 export function AcsCredentialsPanel({
   creds,
   can,
+  security,
   nbiConfigured,
   busy,
   setBusy,
@@ -60,6 +67,7 @@ export function AcsCredentialsPanel({
 }: {
   creds: Desk | null;
   can: Can;
+  security: Security | null;
   nbiConfigured: boolean;
   busy: boolean;
   setBusy: (v: boolean) => void;
@@ -124,6 +132,17 @@ export function AcsCredentialsPanel({
   const verifyTone = creds.last_verify_ok === true ? "ok" : creds.last_verify_ok === false ? "danger" : "muted";
   const verifyLabel =
     creds.last_verify_ok === true ? "GenieACS reachable" : creds.last_verify_ok === false ? "GenieACS unreachable" : "Not tested";
+  const checklist = (security?.items || []).map((item) => {
+    if (item.id === "digest") {
+      const ok = Boolean(security?.require_cpe_auth && creds.username);
+      return { ...item, ok };
+    }
+    if (item.id === "connreq") {
+      const ok = Boolean(creds.username && creds.connreq_user && creds.connreq_user !== creds.username);
+      return { ...item, ok };
+    }
+    return item;
+  });
 
   return (
     <div className="space-y-4">
@@ -182,6 +201,29 @@ export function AcsCredentialsPanel({
           ) : null}
         </div>
       </div>
+
+      {security ? (
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <h2 className="font-medium">TR-069 security</h2>
+          <p className="mt-1 text-sm text-muted">
+            ONUs authenticate to the ACS with this ISP's username and password. Informs are not written to the
+            audit log.
+          </p>
+          <ul className="mt-3 space-y-3">
+            {checklist.map((item) => (
+              <li key={item.id} className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{item.label}</div>
+                  <p className="mt-0.5 text-xs text-muted">{item.detail}</p>
+                </div>
+                <Badge tone={item.ok ? "ok" : item.id === "scheme" ? "muted" : "warn"}>
+                  {item.id === "scheme" ? (item.ok ? "HTTPS" : "HTTP") : item.ok ? "On" : "Off"}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <CopyRow label="ACS URL" value={creds.cwmp_url} onCopy={flash} />
       {creds.alt_url ? <CopyRow label="DNS ACS URL" value={creds.alt_url} onCopy={flash} /> : null}

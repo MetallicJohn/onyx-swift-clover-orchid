@@ -205,11 +205,11 @@ export const listCustomers = createServerFn({ method: "GET" })
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "customers.read");
     const rows = await sql<CustomerRow>`
-      select c.id, c.type, c.name, c.phone, c.email, c.address, c.status, coalesce(c.account_number,'') as account_number, c.created_at::text as created_at,
-        (select count(*)::int from services s where s.customer_id = c.id) as service_count,
+      select c.id, c.type, c.name, c.phone, c.email, c.address, c.status, coalesce(c.account_number,'') as account_number, coalesce(c.notes,'') as notes, c.created_at::text as created_at,
+        (select count(*)::int from services s where s.customer_id = c.id and s.deleted_at is null) as service_count,
         (select coalesce(sum(greatest(0, i.amount_kes - i.paid_kes)),0)::int from invoices i where i.customer_id = c.id and i.status in ('due','overdue','issued','partial')) as balance_kes
       from customers c
-      where c.tenant_id = ${workspace.tenantId}
+      where c.tenant_id = ${workspace.tenantId} and c.deleted_at is null
       order by c.created_at desc`;
     const churn = await loadChurnScores(sql, workspace.tenantId);
     const byId = new Map(churn.map((c) => [c.customerId, c]));
@@ -226,7 +226,7 @@ export const listCustomers = createServerFn({ method: "GET" })
       select s.customer_id, s.access_method, s.status, s.period_end::text as period_end, p.name as package_name
       from services s
       join packages p on p.id = s.package_id
-      where s.tenant_id = ${workspace.tenantId}`;
+      where s.tenant_id = ${workspace.tenantId} and s.deleted_at is null`;
     const svcByCustomer = new Map<string, typeof services>();
     for (const s of services) {
       const list = svcByCustomer.get(s.customer_id) ?? [];
@@ -258,7 +258,7 @@ export const listCustomers = createServerFn({ method: "GET" })
 
 export const createCustomer = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { name: string; phone: string; email: string; address: string; type: string; portal_password?: string; tag_ids?: string[]; account_number?: string }) => d)
+  .validator((d: { name: string; phone: string; email: string; address: string; type: string; portal_password?: string; tag_ids?: string[]; account_number?: string; notes?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "customers.manage");
@@ -267,9 +267,10 @@ export const createCustomer = createServerFn({ method: "POST" })
     await assertCustomerQuota(sql, workspace.tenantId);
     const id = nid("cus");
     const accountNumber = await allocateAccountNumber(sql, workspace.tenantId, data.account_number);
+    const notes = (data.notes || "").trim().slice(0, 4000);
     try {
-      await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status, account_number)
-        values (${id}, ${workspace.tenantId}, ${data.type || "individual"}, ${name}, ${data.phone.trim()}, ${data.email.trim()}, ${data.address.trim()}, 'active', ${accountNumber})`;
+      await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status, account_number, notes)
+        values (${id}, ${workspace.tenantId}, ${data.type || "individual"}, ${name}, ${data.phone.trim()}, ${data.email.trim()}, ${data.address.trim()}, 'active', ${accountNumber}, ${notes})`;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/account_number|unique/i.test(msg)) throw new Error("Account number already assigned.");
@@ -291,16 +292,17 @@ export const createCustomer = createServerFn({ method: "POST" })
 
 export const updateCustomer = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { id: string; name: string; phone: string; email: string; address: string; type: string; tag_ids?: string[]; account_number?: string }) => d)
+  .validator((d: { id: string; name: string; phone: string; email: string; address: string; type: string; tag_ids?: string[]; account_number?: string; notes?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "customers.manage");
     const name = data.name.trim();
     if (!name) throw new Error("Name is required");
+    const notes = (data.notes ?? "").trim().slice(0, 4000);
     const rows = await sql<{ id: string; account_number: string }>`
       update customers
-      set name = ${name}, phone = ${data.phone.trim()}, email = ${data.email.trim()}, address = ${data.address.trim()}, type = ${data.type || "individual"}
-      where id = ${data.id} and tenant_id = ${workspace.tenantId}
+      set name = ${name}, phone = ${data.phone.trim()}, email = ${data.email.trim()}, address = ${data.address.trim()}, type = ${data.type || "individual"}, notes = ${notes}
+      where id = ${data.id} and tenant_id = ${workspace.tenantId} and deleted_at is null
       returning id, coalesce(account_number,'') as account_number`;
     if (!rows[0]) throw new Error("Customer not found");
     if (data.tag_ids) await setCustomerTags(sql, workspace.tenantId, data.id, data.tag_ids);
@@ -462,6 +464,7 @@ export const listServices = createServerFn({ method: "GET" })
              s.status, s.created_at::text as created_at,
              s.period_end::text as period_end, s.access_until::text as access_until, s.expiry_source,
              s.expiry_change_reason, s.bundle_used_mb, p.bundle_mb, s.suspend_reason,
+             coalesce(s.notes,'') as notes,
              (g.id is not null) as grace_active, g.days_granted as grace_days_granted,
              g.starts_at::text as grace_starts_at, g.expires_at::text as grace_expires_at,
              g.granted_by_label as grace_granted_by, g.reason as grace_reason, p.grace_days as package_grace_days
@@ -470,9 +473,9 @@ export const listServices = createServerFn({ method: "GET" })
       join packages p on p.id = s.package_id
       left join service_grace_periods g
         on g.service_id = s.id and s.tenant_id = g.tenant_id and g.status = 'active'
-      where s.tenant_id = ${workspace.tenantId}
+      where s.tenant_id = ${workspace.tenantId} and c.deleted_at is null and s.deleted_at is null
       order by s.created_at desc`;
-    const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${workspace.tenantId} order by name`;
+    const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${workspace.tenantId} and deleted_at is null order by name`;
     const packages = await sql<PackageRow>`
       select id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active
       from packages where tenant_id = ${workspace.tenantId} and active = true`;
@@ -500,6 +503,7 @@ export const createService = createServerFn({ method: "POST" })
     username?: string;
     static_ip?: string;
     cpe_id?: string;
+    notes?: string;
   }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
@@ -515,14 +519,15 @@ export const createService = createServerFn({ method: "POST" })
        from packages where id = ${data.package_id} and tenant_id = ${tid}`;
     if (!pkg) throw new Error("Package not found");
     await assertFeature(sql, tid, featureForAccess(pkg.access_method));
-    const [cus] = await sql<{ id: string }>`select id from customers where id = ${data.customer_id} and tenant_id = ${tid}`;
+    const [cus] = await sql<{ id: string }>`select id from customers where id = ${data.customer_id} and tenant_id = ${tid} and deleted_at is null`;
     if (!cus) throw new Error("Customer not found");
     const id = nid("svc");
     const { periodMs } = await import("./access-policy");
     const periodEnd = new Date(Date.now() + periodMs(pkg.billing_interval, pkg.validity_hours)).toISOString();
     const initialStatus = pkg.access_method === "pppoe" ? "pending" : "active";
-    await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end)
-      values (${id}, ${tid}, ${data.customer_id}, ${data.package_id}, ${pkg.access_method}, ${data.username || null}, ${data.static_ip || null}, ${initialStatus}, ${periodEnd})`;
+    const notes = (data.notes || "").trim().slice(0, 4000);
+    await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end, notes)
+      values (${id}, ${tid}, ${data.customer_id}, ${data.package_id}, ${pkg.access_method}, ${data.username || null}, ${data.static_ip || null}, ${initialStatus}, ${periodEnd}, ${notes})`;
     if (pkg.access_method === "static" && !data.static_ip) {
       await allocateStaticIp(sql, tid, id, data.customer_id);
     }
@@ -578,7 +583,7 @@ export const setServiceStatus = createServerFn({ method: "POST" })
     assertPermission(workspace.role, "services.manage");
     if (data.status === "active") {
       const [row] = await sql<{ customer_id: string }>`
-        select customer_id from services where id = ${data.id} and tenant_id = ${workspace.tenantId}`;
+        select customer_id from services where id = ${data.id} and tenant_id = ${workspace.tenantId} and deleted_at is null`;
       if (row) {
         const { grantPaidPeriod } = await import("./access-policy");
         await grantPaidPeriod(sql, workspace.tenantId, row.customer_id);
@@ -587,10 +592,10 @@ export const setServiceStatus = createServerFn({ method: "POST" })
     }
     const reason = data.status === "suspended" ? "manual" : data.status === "active" ? "" : "invoice";
     await sql`update services set status = ${data.status}, suspend_reason = ${reason}
-      where id = ${data.id} and tenant_id = ${workspace.tenantId}`;
+      where id = ${data.id} and tenant_id = ${workspace.tenantId} and deleted_at is null`;
     const [svc] = await sql<{ customer_id: string; name: string }>`
       select s.customer_id, p.name from services s join packages p on p.id = s.package_id
-      where s.id = ${data.id} and s.tenant_id = ${workspace.tenantId}`;
+      where s.id = ${data.id} and s.tenant_id = ${workspace.tenantId} and s.deleted_at is null`;
     if (svc && data.status === "suspended") {
       await notifyCustomerEvent(sql, workspace.tenantId, workspace.tenantName, svc.customer_id, "service.suspended", data.id, {
         customer_name: "",
@@ -701,7 +706,7 @@ export const listBilling = createServerFn({ method: "GET" })
       order by p.paid_at desc`;
     const customers = await sql<{ id: string; name: string; phone: string; account_number: string }>`
       select id, name, phone, coalesce(account_number, '') as account_number
-      from customers where tenant_id = ${tid} order by name`;
+      from customers where tenant_id = ${tid} and deleted_at is null order by name`;
     const quotes = await sql<{
       customer_id: string;
       package_id: string;
@@ -712,7 +717,7 @@ export const listBilling = createServerFn({ method: "GET" })
     }>`
       select s.customer_id, p.id as package_id, s.id as service_id, p.name as package_name, p.price_kes, p.billing_interval
       from services s join packages p on p.id = s.package_id
-      where s.tenant_id = ${tid} and s.status in ('active','grace','suspended','pending')
+      where s.tenant_id = ${tid} and s.deleted_at is null and s.status in ('active','grace','suspended','pending')
       order by p.price_kes`;
     const [ten] = await sql<{ vat_enabled: boolean; vat_rate_pct: number }>`
       select vat_enabled, vat_rate_pct from tenants where id = ${tid}`;
@@ -821,7 +826,7 @@ export const createInvoice = createServerFn({ method: "POST" })
     const { sql, workspace } = await requireTenant(context.userId);
     const tid = workspace.tenantId;
     assertPermission(workspace.role, "invoices.manage");
-    const [cus] = await sql<{ id: string }>`select id from customers where id = ${data.customer_id} and tenant_id = ${tid}`;
+    const [cus] = await sql<{ id: string }>`select id from customers where id = ${data.customer_id} and tenant_id = ${tid} and deleted_at is null`;
     if (!cus) throw new Error("Customer not found");
     const inv = await issueInvoice(sql, {
       tenantId: tid,
@@ -917,7 +922,7 @@ export const listTickets = createServerFn({ method: "GET" })
       from tickets t left join customers c on c.id = t.customer_id
       where t.tenant_id = ${workspace.tenantId}
       order by t.created_at desc`;
-    const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${workspace.tenantId} order by name`;
+    const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${workspace.tenantId} and deleted_at is null order by name`;
     return { workspace, tickets, customers };
   });
 
@@ -1044,9 +1049,9 @@ export const exportCustomersCsv = createServerFn({ method: "GET" })
     }>`
       select c.name, c.phone, c.email, c.address, coalesce(c.account_number,'') as account_number, s.access_method, s.username, s.static_ip, p.name as package_name, s.status as service_status
       from customers c
-      left join services s on s.customer_id = c.id
+      left join services s on s.customer_id = c.id and s.deleted_at is null
       left join packages p on p.id = s.package_id
-      where c.tenant_id = ${workspace.tenantId}
+      where c.tenant_id = ${workspace.tenantId} and c.deleted_at is null
       order by c.name`;
     const header = "name,phone,email,address,account_number,access_method,username,static_ip,package_name,service_status";
     const body = rows

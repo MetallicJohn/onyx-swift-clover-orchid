@@ -21,6 +21,7 @@ test("port range and reserved ports reject unsafe values", () => {
   assert.ok(ACS_RESERVED_PORTS.has(7557));
   assert.equal(normalizeAcsHost("https://acs.example.com:443/path"), "acs.example.com");
   assert.equal(buildAcsUrl("10.0.0.5", 7552), "http://10.0.0.5:7552/");
+  assert.equal(buildAcsUrl("10.0.0.5", 7552, "https"), "https://10.0.0.5:7552/");
 });
 
 test("automatic port allocation is unique and concurrent-safe", async () => {

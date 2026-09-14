@@ -57,14 +57,33 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      genieacs-init:
+        condition: service_completed_successfully
     environment:
       GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongo/genieacs
       GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
+      GENIEACS_EXT_DIR: /opt/genieacs/ext
+      GENIEACS_EXT_TIMEOUT: "8000"
+      GRIDLINE_INTERNAL_URL: http://web:3000
+      ACS_EDGE_TOKEN: ${ACS_EDGE_TOKEN}
+    volumes:
+      - ./genieacs/ext:/opt/genieacs/ext:ro
+      - ./genieacs/ext:/opt/genieacs/config/ext:ro
     expose:
       - "7547"
       - "7557"
       - "7567"
       - "3000"
+
+  genieacs-init:
+    image: mongo:7
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ./genieacs/init-config.js:/init-config.js:ro
+    command: ["mongosh", "mongodb://mongo/genieacs", "/init-config.js"]
+    restart: "no"
 
   cwmp-edge:
     image: node:22-alpine
@@ -75,6 +94,10 @@ services:
       GENIEACS_CWMP_URL: http://genieacs:7547
       GRIDLINE_INTERNAL_URL: http://web:3000
       ACS_EDGE_TOKEN: ${ACS_EDGE_TOKEN}
+      ACS_TLS_CERT: ${ACS_TLS_CERT:-}
+      ACS_TLS_KEY: ${ACS_TLS_KEY:-}
+      ACS_TLS_CERT_FILE: ${ACS_TLS_CERT_FILE:-}
+      ACS_TLS_KEY_FILE: ${ACS_TLS_KEY_FILE:-}
     volumes:
       - ./cwmp-edge.mjs:/edge/cwmp-edge.mjs:ro
     ports:

@@ -109,7 +109,7 @@ export async function setServiceExpiry(
      from services s
      join packages p on p.id = s.package_id
      join customers c on c.id = s.customer_id
-     where s.id = ${opts.serviceId} and s.tenant_id = ${tenantId}`;
+     where s.id = ${opts.serviceId} and s.tenant_id = ${tenantId} and s.deleted_at is null`;
   if (!svc) {
     await auditExpiryFailure(sql, tenantId, { actorId: opts.actorId, serviceId: opts.serviceId, code: "not_found" });
     throw new Error("Service not found");

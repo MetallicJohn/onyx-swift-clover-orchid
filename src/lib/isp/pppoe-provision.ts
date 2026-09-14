@@ -186,7 +186,7 @@ async function serviceContext(sql: Sql, tenantId: string, serviceId: string) {
      from services s
      join packages p on p.id = s.package_id
      join customers c on c.id = s.customer_id
-     where s.id = ${serviceId} and s.tenant_id = ${tenantId}`;
+     where s.id = ${serviceId} and s.tenant_id = ${tenantId} and s.deleted_at is null`;
   return svc ?? null;
 }
 

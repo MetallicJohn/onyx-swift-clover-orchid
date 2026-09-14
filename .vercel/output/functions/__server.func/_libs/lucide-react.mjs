@@ -174,6 +174,19 @@ var ArrowDown = createLucideIcon("arrow-down", [["path", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var ArrowLeft = createLucideIcon("arrow-left", [["path", {
+	d: "m12 19-7-7 7-7",
+	key: "1l729n"
+}], ["path", {
+	d: "M19 12H5",
+	key: "x3x0zl"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var ArrowRight = createLucideIcon("arrow-right", [["path", {
 	d: "M5 12h14",
 	key: "1ays0h"
@@ -1122,6 +1135,40 @@ var Ticket = createLucideIcon("ticket", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var Trash2 = createLucideIcon("trash-2", [
+	["path", {
+		d: "M3 6h18",
+		key: "d0wm0j"
+	}],
+	["path", {
+		d: "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6",
+		key: "4alrt4"
+	}],
+	["path", {
+		d: "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2",
+		key: "v07s0e"
+	}],
+	["line", {
+		x1: "10",
+		x2: "10",
+		y1: "11",
+		y2: "17",
+		key: "1uufr5"
+	}],
+	["line", {
+		x1: "14",
+		x2: "14",
+		y1: "11",
+		y2: "17",
+		key: "xtxkd"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var TriangleAlert = createLucideIcon("triangle-alert", [
 	["path", {
 		d: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3",
@@ -1278,4 +1325,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { LayoutGrid as A, ChartColumn as B, Network as C, MapPinned as D, Menu as E, Eye as F, ArrowUpRight as G, Building2 as H, Ellipsis as I, ArrowDownRight as J, ArrowRight as K, Download as L, Import as M, Headset as N, Mail as O, Handshake as P, CreditCard as R, Plus as S, Monitor as T, Boxes as U, Cable as V, Bell as W, ArchiveRestore as X, Archive as Y, Activity as Z, Search as _, Users as a, Radio as b, TriangleAlert as c, Sparkles as d, Smartphone as f, Server as g, Settings as h, Wallet as i, LayoutDashboard as j, List as k, Ticket as l, Share2 as m, Wrench as n, UserPlus as o, Shield as p, ArrowDown as q, Wifi as r, Upload as s, X as t, Sun as u, Router as v, Moon as w, Printer as x, Receipt as y, Check as z };
+export { Activity as $, List as A, Check as B, Plus as C, Menu as D, Monitor as E, Handshake as F, Bell as G, Cable as H, Eye as I, ArrowLeft as J, ArrowUpRight as K, Ellipsis as L, LayoutDashboard as M, Import as N, MapPinned as O, Headset as P, ArchiveRestore as Q, Download as R, Printer as S, Moon as T, Building2 as U, ChartColumn as V, Boxes as W, ArrowDownRight as X, ArrowDown as Y, Archive as Z, Server as _, Users as a, Receipt as b, TriangleAlert as c, Sun as d, Sparkles as f, Settings as g, Share2 as h, Wallet as i, LayoutGrid as j, Mail as k, Trash2 as l, Shield as m, Wrench as n, UserPlus as o, Smartphone as p, ArrowRight as q, Wifi as r, Upload as s, X as t, Ticket as u, Search as v, Network as w, Radio as x, Router as y, CreditCard as z };

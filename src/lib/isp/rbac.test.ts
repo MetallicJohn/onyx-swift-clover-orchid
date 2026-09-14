@@ -83,6 +83,22 @@ test("only owners, admins, customer care and network staff can edit service expi
   assert.match(expiry, /assertPermission\(role, "services.expiry.update"\)/);
 });
 
+test("customer care and network staff can delete or reassign services; finance cannot", () => {
+  assert.equal(hasPermission("customer_care", "services.delete"), true);
+  assert.equal(hasPermission("customer_care", "services.reassign"), true);
+  assert.equal(hasPermission("network_engineer", "services.delete"), true);
+  assert.equal(hasPermission("network_engineer", "services.reassign"), true);
+  assert.equal(hasPermission("finance", "services.delete"), false);
+  assert.equal(hasPermission("finance", "services.reassign"), false);
+  assert.equal(hasPermission("technician", "services.delete"), false);
+  assert.equal(hasPermission("finance", "traffic.view"), true);
+  assert.throws(() => assertPermission("finance", "services.delete"), /Forbidden/);
+  const life = readFileSync(new URL("./server-lifecycle.ts", import.meta.url), "utf8");
+  assert.match(life, /services.delete/);
+  assert.match(life, /services.reassign/);
+  assert.match(life, /traffic.view/);
+});
+
 test("communications send is not implied by viewing customers", () => {
   assert.equal(hasPermission("technician", "customers.read"), true);
   assert.equal(hasPermission("technician", "communications.send"), false);
@@ -114,6 +130,17 @@ test("app paths follow the role, not the URL", () => {
   assert.equal(canAccessAppPath("support", "/app/settings"), false);
   assert.equal(canAccessAppPath("technician", "/app/notifications"), false);
   assert.equal(permissionForAppPath("/app"), null);
+  assert.equal(canAccessAppPath("customer_care", "/app/customers/cus_1"), true);
+  assert.equal(canAccessAppPath("customer_care", "/app/services/svc_1"), true);
+  assert.equal(canAccessAppPath("technician", "/app/customers/cus_1"), true);
+  assert.equal(canAccessAppPath("technician", "/app/recycle-bin"), false);
+  assert.equal(canAccessAppPath("finance", "/app/recycle-bin"), true);
+  assert.equal(canAccessAppPath("customer_care", "/app/recycle-bin"), true);
+  assert.equal(canAccessAppPath("support", "/app/recycle-bin"), true);
+  assert.equal(canAccessAppPath("network_engineer", "/app/recycle-bin"), true);
+  assert.equal(hasPermission("technician", "recycle_bin.view"), false);
+  assert.equal(hasPermission("customer_care", "recycle_bin.permanent_delete"), false);
+  assert.equal(hasPermission("isp_admin", "recycle_bin.permanent_delete"), true);
 });
 
 test("staff guide covers every inviteable role and excludes support", () => {

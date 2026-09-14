@@ -70,6 +70,7 @@ export type CustomerRow = {
   address: string;
   status: string;
   account_number?: string;
+  notes?: string;
   created_at: string;
   service_count: number;
   balance_kes: number;
@@ -110,6 +111,11 @@ export type ServiceRow = {
   grace_granted_by?: string | null;
   grace_reason?: string | null;
   package_grace_days?: number;
+  notes?: string;
+  download_mbps?: number;
+  upload_mbps?: number;
+  price_kes?: number;
+  billing_interval?: string;
 };
 
 export type InvoiceRow = {

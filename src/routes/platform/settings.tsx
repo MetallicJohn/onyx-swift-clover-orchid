@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { PageHead, Panel } from "@/components/platform/ui";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/input";
+import { Field, Input, Select } from "@/components/ui/input";
 import { APP_NAME } from "@/lib/brand";
 import { getSaasSettings, saveSaasSettings } from "@/lib/isp/server-platform";
 
@@ -22,6 +22,9 @@ function SettingsPage() {
     acs_dns_host: "",
     acs_port_start: 7551,
     acs_port_end: 7999,
+    acs_tls: "http" as "http" | "https",
+    acs_require_cpe_auth: true,
+    acs_lock_url: true,
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -150,8 +153,47 @@ function SettingsPage() {
             </Field>
           </div>
           <p className="text-xs text-muted">
-            Each ISP gets the next free port in this range. cwmp-edge forwards those ports to the shared GenieACS CWMP. NBI stays private. Changing the range does not reassign ports already issued.
+            Each ISP gets the next free port in this range. The TR-069 edge forwards those ports to the shared ACS. The
+            northbound API stays private. Changing the range does not reassign ports already issued.
           </p>
+          <Field label="ACS URL scheme">
+            <Select
+              value={form.acs_tls}
+              onChange={(e) => setForm({ ...form, acs_tls: e.target.value === "https" ? "https" : "http" })}
+            >
+              <option value="http">HTTP (default — existing OLT profiles keep working)</option>
+              <option value="https">HTTPS (issue https:// ACS URLs)</option>
+            </Select>
+          </Field>
+          {form.acs_tls === "https" ? (
+            <p className="text-xs text-muted">
+              ONUs keep the old URL until the OLT TR-069 profile is updated. Put a TLS certificate for this ACS host on
+              the TR-069 edge before switching.
+            </p>
+          ) : (
+            <p className="text-xs text-muted">
+              HTTP is the safe default while OLT profiles already use http://. Switch to HTTPS after the edge has a
+              certificate.
+            </p>
+          )}
+          <label className="flex min-h-11 items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={form.acs_require_cpe_auth}
+              onChange={(e) => setForm({ ...form, acs_require_cpe_auth: e.target.checked })}
+            />
+            <span>Require CPE digest login (each ISP's ACS username and password)</span>
+          </label>
+          <label className="flex min-h-11 items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={form.acs_lock_url}
+              onChange={(e) => setForm({ ...form, acs_lock_url: e.target.checked })}
+            />
+            <span>Lock ACS URL on inform (rewrite the ONU if it is redirected)</span>
+          </label>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
           {ok ? <p className="text-sm text-ok">{ok}</p> : null}
           <Button type="submit" disabled={busy}>

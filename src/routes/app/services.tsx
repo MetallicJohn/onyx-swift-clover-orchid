@@ -1,6 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { MoreHorizontal, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { ExpiryEditor, type ExpiryForm } from "@/components/isp/service-expiry-editor";
+import { TrafficDrawer } from "@/components/isp/traffic-drawer";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -15,11 +17,12 @@ import {
 import { Field, Input, Select } from "@/components/ui/input";
 import { TablePad, VirtualTableFrame } from "@/components/ui/virtual-scroller";
 import { useTableVirtualizer } from "@/components/ui/use-virtual-scroller";
+import { formatDate, formatMac, remainingLabel } from "@/lib/isp/display";
 import { extendGraceFn, grantGraceFn, revokeGraceFn } from "@/lib/isp/server-grace";
 import { setServiceExpiryFn } from "@/lib/isp/server-expiry";
 import { createService, disconnectService, listServices, rotateServiceSecret, setServiceStatus } from "@/lib/isp/server";
-import { effectiveAccessIso, expirySourceLabel, previewStaffExpiry } from "@/lib/isp/service-expiry-format";
-import { nairobiDate } from "@/lib/isp/empty-tenant";
+import { deleteServiceFn, reassignServiceFn } from "@/lib/isp/server-lifecycle";
+import { effectiveAccessIso, expirySourceLabel, openExpiryForm } from "@/lib/isp/service-expiry-format";
 import { hasPermission } from "@/lib/isp/rbac";
 import type { GracePolicy } from "@/lib/isp/grace";
 import type { PackageRow, ServiceRow, ServiceStatus, Workspace } from "@/lib/isp/types";
@@ -27,38 +30,6 @@ import type { PackageRow, ServiceRow, ServiceStatus, Workspace } from "@/lib/isp
 export const Route = createFileRoute("/app/services")({ component: ServicesPage });
 
 const COLS = 7;
-
-function formatDate(iso: string | null | undefined) {
-  if (!iso) return "—";
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso.slice(0, 10);
-  return new Intl.DateTimeFormat("en-KE", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "Africa/Nairobi",
-  }).format(new Date(t));
-}
-
-function formatMac(raw?: string | null) {
-  const compact = String(raw || "")
-    .replace(/[^0-9a-f]/gi, "")
-    .toUpperCase();
-  if (compact.length === 12) return compact.match(/.{2}/g)?.join(":") ?? compact;
-  const trimmed = String(raw || "").trim();
-  return trimmed || "—";
-}
-
-function remainingLabel(expiresAt: string) {
-  const ms = Date.parse(expiresAt) - Date.now();
-  if (!Number.isFinite(ms) || ms <= 0) return "expired";
-  const days = Math.floor(ms / 86400_000);
-  const hours = Math.floor((ms % 86400_000) / 3600_000);
-  if (days > 1) return `${days} days remaining`;
-  if (days === 1) return hours > 0 ? `1 day ${hours}h remaining` : "1 day remaining";
-  if (hours >= 1) return `${hours} hour${hours === 1 ? "" : "s"} remaining`;
-  return "Less than an hour remaining";
-}
 
 function matchesQuery(s: ServiceRow, q: string) {
   if (!q) return true;
@@ -73,6 +44,7 @@ function matchesQuery(s: ServiceRow, q: string) {
     s.package_name,
     s.status,
     s.suspend_reason,
+    s.notes,
   ]
     .filter(Boolean)
     .join(" ")
@@ -81,7 +53,6 @@ function matchesQuery(s: ServiceRow, q: string) {
 }
 
 type Panel = { id: string; mode: "grant" | "extend" | "revoke" };
-type ExpiryForm = { service: ServiceRow; date: string; reason: string };
 
 function ServicesPage() {
   const [services, setServices] = useState<ServiceRow[]>([]);
@@ -90,7 +61,7 @@ function ServicesPage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [policy, setPolicy] = useState<GracePolicy | null>(null);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", package_id: "", username: "", static_ip: "" });
+  const [form, setForm] = useState({ customer_id: "", package_id: "", username: "", static_ip: "", notes: "" });
   const [secretNote, setSecretNote] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [expiry, setExpiry] = useState<ExpiryForm | null>(null);
@@ -100,6 +71,9 @@ function ServicesPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [traffic, setTraffic] = useState<ServiceRow | null>(null);
+  const [reassign, setReassign] = useState<{ id: string; to: string } | null>(null);
+  const [drop, setDrop] = useState<{ id: string; label: string; reason: string } | null>(null);
 
   async function load() {
     const res = await listServices();
@@ -155,6 +129,10 @@ function ServicesPage() {
   const canRevoke = hasPermission(role, "services.grace.revoke");
   const canManage = hasPermission(role, "services.manage");
   const canExpiry = hasPermission(role, "services.expiry.update");
+  const canDelete = hasPermission(role, "services.delete") || canManage;
+  const canReassign = hasPermission(role, "services.reassign") || canManage;
+  const canTraffic = hasPermission(role, "traffic.view") || hasPermission(role, "services.read");
+  const canRecycle = hasPermission(role, "recycle_bin.view");
   const presets = policy?.staff_preset_days?.length ? policy.staff_preset_days : [1, 2, 3, 5, 7];
 
   const filtered = useMemo(() => {
@@ -202,7 +180,17 @@ function ServicesPage() {
             and extends the period. Grace Period keeps a line online temporarily without changing the renewal date.
           </p>
         </div>
-        {canManage ? <Button onClick={() => setOpen(true)}>Provision service</Button> : null}
+        <div className="flex flex-wrap gap-2">
+          {canRecycle ? (
+            <Link
+              to="/app/recycle-bin"
+              className="inline-flex h-11 items-center rounded-md border border-border bg-elevated px-4 text-sm font-medium hover:bg-surface"
+            >
+              Recycle Bin
+            </Link>
+          ) : null}
+          {canManage ? <Button onClick={() => setOpen(true)}>Provision service</Button> : null}
+        </div>
       </div>
 
       {canManage && open ? (
@@ -230,6 +218,9 @@ function ServicesPage() {
           </Field>
           <Field label="Static IP (blank = auto from pool)">
             <Input value={form.static_ip} onChange={(e) => setForm({ ...form, static_ip: e.target.value })} />
+          </Field>
+          <Field label="Service notes">
+            <Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </Field>
           <div className="flex gap-2">
             <Button type="submit">Activate</Button>
@@ -281,16 +272,16 @@ function ServicesPage() {
               const s = filtered[v.index];
               const activeGrace = Boolean(s.grace_active && s.grace_expires_at);
               const identity = s.username || s.static_ip || "—";
-              const hasActions =
-                canManage ||
-                canExpiry ||
-                (canGrant && !activeGrace && s.status !== "terminated") ||
-                (canExtend && activeGrace) ||
-                (canRevoke && activeGrace);
               return (
                 <tr key={s.id} data-index={v.index} ref={virtualizer.measureElement} className="h-12">
                   <td className="max-w-48 px-3 py-1.5">
-                    <div className="truncate font-medium">{s.customer_name}</div>
+                    <Link
+                      to="/app/customers/$customerId"
+                      params={{ customerId: s.customer_id }}
+                      className="inline-flex min-h-11 max-w-full items-center truncate font-medium hover:text-accent hover:underline"
+                    >
+                      {s.customer_name}
+                    </Link>
                   </td>
                   <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs">{s.customer_phone || "—"}</td>
                   <td className="max-w-40 px-3 py-1.5">
@@ -310,105 +301,133 @@ function ServicesPage() {
                     <div className="text-xs text-subtle">{expirySourceLabel(s.expiry_source, s.grace_active)}</div>
                   </td>
                   <td className="sticky right-0 bg-surface px-1 py-1 text-right">
-                    {hasActions ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            aria-label={`Actions for ${s.customer_name}`}
-                            className="size-11"
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          aria-label={`Actions for ${s.customer_name}`}
+                          className="size-11"
+                        >
+                          <MoreHorizontal className="size-4" strokeWidth={1.75} />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" side="bottom">
+                        <DropdownMenuLabel>{s.customer_name}</DropdownMenuLabel>
+                        <div className="px-3 pb-2 text-xs text-muted">
+                          {s.access_method.toUpperCase()} · {identity}
+                          {s.suspend_reason ? ` · ${s.suspend_reason}` : ""}
+                        </div>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild>
+                          <Link to="/app/customers/$customerId" params={{ customerId: s.customer_id }}>
+                            View customer
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link to="/app/services/$serviceId" params={{ serviceId: s.id }}>
+                            View service
+                          </Link>
+                        </DropdownMenuItem>
+                        {canTraffic ? (
+                          <DropdownMenuItem onSelect={() => setTraffic(s)}>Realtime traffic</DropdownMenuItem>
+                        ) : null}
+                        <DropdownMenuSeparator />
+                        {canExpiry ? (
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              setError(null);
+                              setExpiry(openExpiryForm(s));
+                            }}
                           >
-                            <MoreHorizontal className="size-4" strokeWidth={1.75} />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" side="bottom">
-                          <DropdownMenuLabel>{s.customer_name}</DropdownMenuLabel>
-                          <div className="px-3 pb-2 text-xs text-muted">
-                            {s.access_method.toUpperCase()} · {identity}
-                            {s.suspend_reason ? ` · ${s.suspend_reason}` : ""}
-                          </div>
-                          <DropdownMenuSeparator />
-                          {canExpiry ? (
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                setError(null);
-                                setExpiry({
-                                  service: s,
-                                  date: nairobiDate(effectiveAccessIso(s) || undefined) || nairobiDate(),
-                                  reason: "",
-                                });
-                              }}
-                            >
-                              Edit expiry date
-                            </DropdownMenuItem>
-                          ) : null}
-                          {canManage && s.status !== "active" ? (
-                            <DropdownMenuItem onSelect={() => void setStatus(s.id, "active")}>Restore</DropdownMenuItem>
-                          ) : null}
-                          {canManage && s.status === "active" ? (
-                            <DropdownMenuItem onSelect={() => void setStatus(s.id, "suspended")}>Suspend</DropdownMenuItem>
-                          ) : null}
-                          {canGrant && !activeGrace && s.status !== "terminated" ? (
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                setPanel({ id: s.id, mode: "grant" });
-                                setDays(presets[2] ?? 3);
-                                setError(null);
-                              }}
-                            >
-                              Grant Grace Period
-                            </DropdownMenuItem>
-                          ) : null}
-                          {canExtend && activeGrace ? (
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                setPanel({ id: s.id, mode: "extend" });
-                                setDays(presets[0] ?? 1);
-                                setError(null);
-                              }}
-                            >
-                              Extend Grace Period
-                            </DropdownMenuItem>
-                          ) : null}
-                          {canRevoke && activeGrace ? (
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                setPanel({ id: s.id, mode: "revoke" });
-                                setError(null);
-                              }}
-                            >
-                              Revoke Grace Period
-                            </DropdownMenuItem>
-                          ) : null}
-                          {canManage ? (
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                void disconnectService({ data: { id: s.id } }).then(() => {
-                                  setSecretNote(`Disconnect queued for ${identity}`);
-                                });
-                              }}
-                            >
-                              Disconnect
-                            </DropdownMenuItem>
-                          ) : null}
-                          {canManage && s.access_method === "pppoe" ? (
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                void rotateServiceSecret({ data: { id: s.id } }).then((r) => {
-                                  setSecretNote(`New PPPoE password for ${r.username}: ${r.password}`);
-                                });
-                              }}
-                            >
-                              New password
-                            </DropdownMenuItem>
-                          ) : null}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : (
-                      <span className="inline-block size-11" />
-                    )}
+                            Edit expiry date
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canManage && s.status !== "active" ? (
+                          <DropdownMenuItem onSelect={() => void setStatus(s.id, "active")}>Restore</DropdownMenuItem>
+                        ) : null}
+                        {canManage && s.status === "active" ? (
+                          <DropdownMenuItem onSelect={() => void setStatus(s.id, "suspended")}>Suspend</DropdownMenuItem>
+                        ) : null}
+                        {canGrant && !activeGrace && s.status !== "terminated" ? (
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              setPanel({ id: s.id, mode: "grant" });
+                              setDays(presets[2] ?? 3);
+                              setError(null);
+                            }}
+                          >
+                            Grant Grace Period
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canExtend && activeGrace ? (
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              setPanel({ id: s.id, mode: "extend" });
+                              setDays(presets[0] ?? 1);
+                              setError(null);
+                            }}
+                          >
+                            Extend Grace Period
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canRevoke && activeGrace ? (
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              setPanel({ id: s.id, mode: "revoke" });
+                              setError(null);
+                            }}
+                          >
+                            Revoke Grace Period
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canManage ? (
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              void disconnectService({ data: { id: s.id } }).then(() => {
+                                setSecretNote(`Disconnect queued for ${identity}`);
+                              });
+                            }}
+                          >
+                            Disconnect
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canManage && s.access_method === "pppoe" ? (
+                          <DropdownMenuItem
+                            onSelect={() => {
+                              if (!window.confirm("Rotate the PPPoE password? The current password stops working immediately.")) return;
+                              void rotateServiceSecret({ data: { id: s.id, confirm: true } }).then((r) => {
+                                setSecretNote(`New PPPoE password for ${r.username}: ${r.password}`);
+                              });
+                            }}
+                          >
+                            New password
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canReassign ? (
+                          <DropdownMenuItem
+                            onSelect={() => setReassign({ id: s.id, to: customers.find((c) => c.id !== s.customer_id)?.id || "" })}
+                          >
+                            Reassign
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canDelete ? (
+                          <DropdownMenuItem
+                            danger
+                            onSelect={() =>
+                              setDrop({
+                                id: s.id,
+                                label: `${s.customer_name} · ${s.package_name}`,
+                                reason: "",
+                              })
+                            }
+                          >
+                            Move to Recycle Bin
+                          </DropdownMenuItem>
+                        ) : null}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               );
@@ -508,132 +527,118 @@ function ServicesPage() {
           />
         ) : null}
       </Dialog>
+
+      <TrafficDrawer
+        open={Boolean(traffic)}
+        onOpenChange={(open) => {
+          if (!open) setTraffic(null);
+        }}
+        customerId={traffic?.customer_id || ""}
+        customerName={traffic?.customer_name}
+        serviceId={traffic?.id}
+      />
+
+      <Dialog
+        open={Boolean(reassign)}
+        onOpenChange={(next) => {
+          if (!next) setReassign(null);
+        }}
+        title="Reassign service"
+        description="The line keeps its package, credentials, expiry, and history. Invoices and payments stay on the current customer."
+      >
+        {reassign ? (
+          <form
+            className="grid gap-3"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!reassign.to) return;
+              setBusy(true);
+              setError(null);
+              try {
+                await reassignServiceFn({ data: { id: reassign.id, customer_id: reassign.to, confirm: true } });
+                setReassign(null);
+                await load();
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Could not reassign");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <Field label="Destination customer">
+              <Select value={reassign.to} onChange={(e) => setReassign({ ...reassign, to: e.target.value })} required>
+                <option value="">Select customer</option>
+                {customers
+                  .filter((c) => c.id !== services.find((row) => row.id === reassign.id)?.customer_id)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+            {error ? <p className="text-sm text-danger">{error}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={busy || !reassign.to}>
+                Confirm reassignment
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setReassign(null)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Dialog>
+
+      <Dialog
+        open={Boolean(drop)}
+        onOpenChange={(next) => {
+          if (!next) setDrop(null);
+        }}
+        title="Move service to Recycle Bin"
+        description="The line leaves live searches and network access is revoked. The customer, other services, invoices, and payments stay. Staff can restore it from the Recycle Bin."
+      >
+        {drop ? (
+          <form
+            className="grid gap-3"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              setError(null);
+              try {
+                await deleteServiceFn({ data: { id: drop.id, reason: drop.reason, confirm: true } });
+                setDrop(null);
+                setSecretNote("Service moved to the Recycle Bin. Customer kept. No invoice or message was sent.");
+                await load();
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Could not delete service");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <p className="text-sm">{drop.label}</p>
+            <Field label="Reason">
+              <Input
+                required
+                value={drop.reason}
+                onChange={(e) => setDrop({ ...drop, reason: e.target.value })}
+                placeholder="Why this line is being removed"
+              />
+            </Field>
+            {error ? <p className="text-sm text-danger">{error}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" variant="danger" disabled={busy || !drop.reason.trim()}>
+                Move to Recycle Bin
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setDrop(null)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Dialog>
     </div>
   );
 }
 
-function ExpiryEditor({
-  form,
-  setForm,
-  busy,
-  error,
-  onSubmit,
-  onClose,
-}: {
-  form: ExpiryForm;
-  setForm: (next: ExpiryForm) => void;
-  busy: boolean;
-  error: string | null;
-  onSubmit: (e: React.FormEvent) => void;
-  onClose: () => void;
-}) {
-  const s = form.service;
-  let preview: ReturnType<typeof previewStaffExpiry> | null = null;
-  let parseError = "";
-  if (form.date) {
-    try {
-      preview = previewStaffExpiry({
-        ymd: form.date,
-        status: s.status,
-        suspend_reason: s.suspend_reason,
-        bundle_used_mb: s.bundle_used_mb,
-        bundle_mb: s.bundle_mb,
-      });
-    } catch (err) {
-      parseError = err instanceof Error ? err.message : "Invalid date";
-    }
-  }
-  const expected = preview?.expectedStatus === "grace" ? "Grace Period" : preview?.expectedStatus || "—";
-  return (
-    <form onSubmit={onSubmit} className="grid gap-3">
-      <dl className="grid gap-2 text-sm">
-        <div className="flex justify-between gap-3">
-          <dt className="text-muted">Customer</dt>
-          <dd className="font-medium">{s.customer_name}</dd>
-        </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-muted">Account number</dt>
-          <dd className="font-mono text-xs">{s.account_number || "—"}</dd>
-        </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-muted">Service</dt>
-          <dd>
-            {s.package_name} · {s.access_method.toUpperCase()}
-          </dd>
-        </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-muted">Current expiry</dt>
-          <dd>
-            {formatDate(effectiveAccessIso(s))}
-            <span className="ml-2 text-xs text-subtle">{expirySourceLabel(s.expiry_source, s.grace_active)}</span>
-          </dd>
-        </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-muted">Paid through (billing)</dt>
-          <dd>{formatDate(s.period_end)}</dd>
-        </div>
-      </dl>
-      <Field label="New expiry date">
-        <Input
-          type="date"
-          value={form.date}
-          onChange={(e) => setForm({ ...form, date: e.target.value })}
-          required
-          disabled={busy}
-        />
-      </Field>
-      {form.date ? (
-        <p className="text-sm">
-          Selected date: <span className="font-medium">{formatDate(`${form.date}T12:00:00+03:00`)}</span>
-          {" · "}
-          Expected status: <span className="font-medium">{expected}</span>
-        </p>
-      ) : null}
-      {preview?.expectedReason === "manual" ? (
-        <p className="text-sm text-warn">
-          This date is today or in the future, but the line stays suspended because of a manual hold. No invoice,
-          billing action, SMS or email will be generated.
-        </p>
-      ) : preview?.expectedReason === "bundle" ? (
-        <p className="text-sm text-warn">
-          This date is today or in the future, but the line stays suspended because the data cap is used up. No invoice,
-          billing action, SMS or email will be generated.
-        </p>
-      ) : preview?.expectedReason === "terminated" || preview?.expectedStatus === "terminated" ? (
-        <p className="text-sm text-warn">
-          This line is terminated. The access date is recorded, but the service stays terminated. No invoice, billing
-          action, SMS or email will be generated.
-        </p>
-      ) : preview?.past ? (
-        <p className="text-sm text-warn">
-          This date is in the past. The service will be suspended. No invoice, billing action, SMS or email will be
-          generated.
-        </p>
-      ) : preview ? (
-        <p className="text-sm text-muted">
-          This date is today or in the future. The service will be restored if no other suspension condition applies. No
-          invoice, billing action, SMS or email will be generated.
-        </p>
-      ) : null}
-      <Field label="Reason">
-        <Input
-          value={form.reason}
-          onChange={(e) => setForm({ ...form, reason: e.target.value })}
-          placeholder="Why this access date is changing"
-          required
-          disabled={busy}
-        />
-      </Field>
-      {parseError ? <p className="text-sm text-danger">{parseError}</p> : null}
-      {error ? <p className="text-sm text-danger">{error}</p> : null}
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={busy || !form.date || !form.reason.trim() || Boolean(parseError)}>
-          {busy ? "Saving…" : "Confirm expiry date"}
-        </Button>
-        <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </form>
-  );
-}

@@ -45,12 +45,13 @@ export async function usernameTaken(sql: Sql, tenantId: string, username: string
     select id from radius_accounts
     where tenant_id = ${tenantId} and username = ${username}
       and service_id <> ${exceptServiceId || ""}
+      and service_id in (select id from services where tenant_id = ${tenantId} and deleted_at is null)
     limit 1`;
   if (rad) return true;
   const [svc] = await sql<{ id: string }>`
     select id from services
     where tenant_id = ${tenantId} and username = ${username}
-      and id <> ${exceptServiceId || ""}
+      and id <> ${exceptServiceId || ""} and deleted_at is null
     limit 1`;
   return Boolean(svc);
 }

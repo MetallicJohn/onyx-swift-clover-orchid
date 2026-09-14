@@ -61,12 +61,12 @@ export function newAcsSecret() {
   return randomBytes(16).toString("hex");
 }
 
-export function defaultCwmpUrl(publicBase: string, port?: number | null) {
+export function defaultCwmpUrl(publicBase: string, port?: number | null, scheme: "http" | "https" = "http") {
   const raw = (publicBase || "").trim();
   if (!raw) return "";
   try {
     const u = new URL(raw.includes("://") ? raw : `https://${raw}`);
-    return buildAcsUrl(u.hostname, port ?? null);
+    return buildAcsUrl(u.hostname, port ?? null, scheme);
   } catch {
     return "";
   }
@@ -100,12 +100,13 @@ type Row = {
 
 function asPublic(
   row: Row | undefined,
-  extras: { dnsHost?: string; resolvedHost?: string; secrets?: boolean },
+  extras: { dnsHost?: string; resolvedHost?: string; secrets?: boolean; scheme?: "http" | "https" },
 ): AcsIspCredentials | null {
   if (!row) return null;
   const host = row.public_host || extras.resolvedHost || "";
-  const url = buildAcsUrl(host, row.cwmp_port) || row.cwmp_url || "";
-  const alt = extras.dnsHost && row.cwmp_port ? buildAcsUrl(extras.dnsHost, row.cwmp_port) : "";
+  const scheme = extras.scheme || "http";
+  const url = buildAcsUrl(host, row.cwmp_port, scheme) || row.cwmp_url || "";
+  const alt = extras.dnsHost && row.cwmp_port ? buildAcsUrl(extras.dnsHost, row.cwmp_port, scheme) : "";
   const password = extras.secrets ? open(row.password_ref || "") : "";
   const connreq = extras.secrets ? open(row.connreq_pass_ref || "") : "";
   return {
@@ -146,7 +147,7 @@ async function readRow(sql: Sql, tenantId: string) {
 async function extrasFor(sql: Sql, row?: Row, publicBase = "") {
   const plat = await loadAcsPlatformSettings(sql);
   const resolved = row?.public_host || (await resolveAcsPublicHost(sql, publicBase));
-  return { dnsHost: plat.acs_dns_host, resolvedHost: resolved };
+  return { dnsHost: plat.acs_dns_host, resolvedHost: resolved, scheme: plat.acs_tls };
 }
 
 export async function loadAcsCredentials(sql: Sql, tenantId: string, opts: { secrets?: boolean; publicBase?: string } = {}) {
@@ -176,6 +177,7 @@ export async function generateAcsCredentials(
     }
     await ensureTenantAcsPort(sql, { tenantId: opts.tenantId, slug: opts.slug, publicBase: opts.publicBase });
     const host = await resolveAcsPublicHost(sql, opts.publicBase || "");
+    const plat = await loadAcsPlatformSettings(sql);
     const username = existing?.username || acsUsernameFor(opts.slug);
     const connreqUser =
       existing?.connreq_user && existing.connreq_user !== existing.username
@@ -186,7 +188,7 @@ export async function generateAcsCredentials(
     const inform = clampInform(existing?.inform_interval ?? 300);
     const passRef = seal(password);
     const crRef = seal(connreqPass);
-    const url = buildAcsUrl(host || existing?.public_host || "", existing?.cwmp_port ?? null);
+    const url = buildAcsUrl(host || existing?.public_host || "", existing?.cwmp_port ?? null, plat.acs_tls);
     await sql`
       insert into acs_isp_credentials
         (tenant_id, enabled, cwmp_url, public_host, username, password_ref, connreq_user, connreq_pass_ref,
@@ -272,7 +274,8 @@ export async function assignTenantAcsPort(
       actorUserId: opts.actorUserId,
     });
     const host = (before?.public_host || (await resolveAcsPublicHost(sql, opts.publicBase || ""))).trim();
-    const url = buildAcsUrl(host, port);
+    const plat = await loadAcsPlatformSettings(sql);
+    const url = buildAcsUrl(host, port, plat.acs_tls);
     await sql`update acs_isp_credentials
       set cwmp_url = ${url}, public_host = case when public_host = '' then ${host} else public_host end, updated_at = now()
       where tenant_id = ${opts.tenantId}`;

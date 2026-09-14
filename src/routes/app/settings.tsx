@@ -452,6 +452,14 @@ function SettingsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted">Company profile, appearance, WireGuard hub, SMS, notifications, and payment rails.</p>
+        {hasPermission(ws?.role || "", "recycle_bin.view") ? (
+          <p className="mt-2 text-sm">
+            <Link to="/app/recycle-bin" className="text-accent hover:underline">
+              Recycle Bin
+            </Link>
+            <span className="text-muted"> — restore or permanently delete archived customers and services.</span>
+          </p>
+        ) : null}
       </div>
 
       <div
@@ -1492,6 +1500,21 @@ function SettingsPage() {
 
       {tab === "staff" ? (
         <div className="space-y-6">
+          {hasPermission(ws?.role || "", "recycle_bin.view") ? (
+            <div className="rounded-xl border border-border bg-surface p-4">
+              <h2 className="font-medium">Recycle Bin</h2>
+              <p className="mt-1 text-sm text-muted">
+                Deleted customers and services stay archived until staff restore them or permanently delete them.
+                Restore never bills or messages the customer.
+              </p>
+              <Link
+                to="/app/recycle-bin"
+                className="mt-3 inline-flex h-11 items-center rounded-md border border-border bg-elevated px-4 text-sm font-medium hover:bg-bg"
+              >
+                Open Recycle Bin
+              </Link>
+            </div>
+          ) : null}
           <div className="rounded-xl border border-border bg-surface p-4">
             <h2 className="font-medium">What each role can do</h2>
             <p className="mt-1 text-sm text-muted">

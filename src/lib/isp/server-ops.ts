@@ -40,6 +40,8 @@ import {
   saveAcsCredentialSettings,
 } from "./acs-credentials";
 import { genieDeviceId, nbiOrigin, nbiPing } from "./acs-nbi";
+import { loadAcsPlatformSettings } from "./acs-ports";
+import { acsSecurityFromPlatform, applyGenieAcsSecurity } from "./acs-security";
 import { rateLimit } from "./rate-limit";
 import { requireWorkspace as requireWs } from "./workspace";
 
@@ -407,11 +409,12 @@ export const listAcs = createServerFn({ method: "GET" })
       customer_name: string | null;
       last_inform: string;
       acs_device_id: string;
-    }>`select d.id, d.serial, d.product_class, d.ssid, d.status, c.name as customer_name,
+    }>`select d.id, d.serial, d.product_class, d.ssid, d.status,
+              case when c.deleted_at is null then c.name else null end as customer_name,
               d.last_inform::text as last_inform, d.acs_device_id
        from cpe_devices d left join customers c on c.id = d.customer_id
        where d.tenant_id = ${tenantId} order by d.last_inform desc`;
-    const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${tenantId} order by name`;
+    const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${tenantId} and deleted_at is null order by name`;
     const connection = await acsConnection(sql, tenantId);
     return { devices, customers, connection };
   });
@@ -479,8 +482,10 @@ export const getAcsCredentialsFn = createServerFn({ method: "GET" })
     const [ten] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${tenantId}`;
     const row = await loadAcsCredentials(sql, tenantId, { publicBase: ten?.public_base_url || "" });
     const nbi = await loadAcsConfig(sql, tenantId);
+    const plat = await loadAcsPlatformSettings(sql);
     return {
       credentials: row ? packAcsCredentials(row) : null,
+      security: acsSecurityFromPlatform(plat, row),
       slug: workspace.slug,
       nbi_configured: Boolean(nbiOrigin(nbi)),
       can: {
@@ -551,6 +556,13 @@ export const testAcsConnectionFn = createServerFn({ method: "POST" })
     const ping = await nbiPing(cfg);
     const error = ping.ok ? "" : "error" in ping ? ping.error : `GenieACS NBI HTTP ${ping.status}`;
     const row = await recordAcsVerify(sql, tenantId, { ok: ping.ok, error }, context.userId);
+    if (ping.ok) {
+      try {
+        await applyGenieAcsSecurity(sql, { nbi: cfg });
+      } catch {
+        /* sidecar may reject; credentials test still stands */
+      }
+    }
     return {
       ok: ping.ok,
       error: error || "",
@@ -589,7 +601,7 @@ export const listPartners = createServerFn({ method: "GET" })
        from resellers r
        left join reseller_wallets w on w.reseller_id = r.id and w.tenant_id = r.tenant_id
        where r.tenant_id = ${tenantId} order by r.name`;
-    const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${tenantId} order by name`;
+    const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${tenantId} and deleted_at is null order by name`;
     return { loyalty, referrals, resellers, customers };
   });
 
@@ -708,7 +720,7 @@ export const getPortalHome = createServerFn({ method: "POST" })
        from services s join packages p on p.id = s.package_id
        left join service_grace_periods g
          on g.service_id = s.id and g.tenant_id = s.tenant_id and g.status = 'active'
-       where s.tenant_id = ${ctx.tenantId} and s.customer_id = ${ctx.customer.id}`;
+       where s.tenant_id = ${ctx.tenantId} and s.customer_id = ${ctx.customer.id} and s.deleted_at is null`;
     const eligibility = await Promise.all(
       services.map(async (s) => customerGraceEligibility(sql, ctx.tenantId, ctx.customer.id, s.id)),
     );

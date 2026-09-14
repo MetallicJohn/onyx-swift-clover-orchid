@@ -28,7 +28,7 @@ export async function loadReports(sql: Sql, tenantId: string) {
   const daily = groupDaily(pays);
   const services = await sql<{ access_method: string; status: string; n: number }>`
     select access_method, status, count(*)::int as n from services
-    where tenant_id = ${tenantId} group by access_method, status`;
+    where tenant_id = ${tenantId} and deleted_at is null group by access_method, status`;
   const methods = new Map<string, { access_method: string; n: number; active: number }>();
   for (const s of services) {
     const cur = methods.get(s.access_method) ?? { access_method: s.access_method, n: 0, active: 0 };

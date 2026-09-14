@@ -217,7 +217,7 @@ export async function authorizeRadius(
      join packages p on p.id = s.package_id
      left join service_grace_periods g
        on g.service_id = s.id and g.tenant_id = a.tenant_id and g.status = 'active'
-     where a.tenant_id = ${tenantId} and a.username = ${username}
+     where a.tenant_id = ${tenantId} and a.username = ${username} and s.deleted_at is null
      limit 1`;
   if (!row) {
     if (doLog) await logAuth(sql, tenantId, username, nasIp, "reject", "unknown");

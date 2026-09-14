@@ -17,6 +17,7 @@ test("ACS username, connection-request user, and URL are tenant-specific", () =>
   assert.equal(acsConnreqUserFor("imani-networks"), "cr_imani_networks");
   assert.notEqual(acsUsernameFor("alpha"), acsUsernameFor("beta"));
   assert.equal(buildAcsUrl("203.0.113.10", 7551), "http://203.0.113.10:7551/");
+  assert.equal(buildAcsUrl("203.0.113.10", 7551, "https"), "https://203.0.113.10:7551/");
 });
 
 test("generate issues unique sealed credentials, masks on load, and reveal is audited", async () => {

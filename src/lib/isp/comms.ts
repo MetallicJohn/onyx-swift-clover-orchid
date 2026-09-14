@@ -113,10 +113,10 @@ export async function audienceOptions(sql: Sql, tenantId: string) {
     select id, name, access_method from packages where tenant_id = ${tenantId} and active = true order by name`;
   const areas = await sql<{ address: string; n: number }>`
     select address, count(*)::int as n from customers
-    where tenant_id = ${tenantId} and address <> ''
+    where tenant_id = ${tenantId} and deleted_at is null and address <> ''
     group by address order by n desc, address limit 80`;
   const types = await sql<{ type: string; n: number }>`
-    select type, count(*)::int as n from customers where tenant_id = ${tenantId} group by type order by type`;
+    select type, count(*)::int as n from customers where tenant_id = ${tenantId} and deleted_at is null group by type order by type`;
   const tags = await sql<{ id: string; name: string; enabled: boolean }>`
     select id, name, enabled from customer_tags where tenant_id = ${tenantId} order by name`;
   return {
@@ -137,7 +137,7 @@ export async function resolveAudience(sql: Sql, tenantId: string, filter: Audien
     type: string;
     created_at: string;
     account_number: string;
-  }>`select id, name, phone, coalesce(email,'') as email, address, type, created_at::text as created_at, coalesce(account_number,'') as account_number from customers where tenant_id = ${tenantId}`;
+  }>`select id, name, phone, coalesce(email,'') as email, address, type, created_at::text as created_at, coalesce(account_number,'') as account_number from customers where tenant_id = ${tenantId} and deleted_at is null`;
   const services = await sql<{
     customer_id: string;
     status: string;
@@ -149,7 +149,7 @@ export async function resolveAudience(sql: Sql, tenantId: string, filter: Audien
     select s.customer_id, s.status, s.access_method, s.package_id, p.name as package_name, s.period_end::text as period_end
     from services s
     join packages p on p.id = s.package_id
-    where s.tenant_id = ${tenantId}`;
+    where s.tenant_id = ${tenantId} and s.deleted_at is null`;
   const balances = await sql<{ customer_id: string; balance_kes: number }>`
     select customer_id, coalesce(sum(greatest(0, amount_kes - paid_kes)),0)::int as balance_kes
     from invoices

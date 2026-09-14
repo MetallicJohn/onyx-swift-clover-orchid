@@ -26,7 +26,7 @@ export async function provisionServiceAccess(sql: Sql, tenantId: string, service
     upload_mbps: number;
   }>`select s.id, s.access_method, s.username, s.static_ip, s.status, p.name as package_name, p.download_mbps, p.upload_mbps
      from services s join packages p on p.id = s.package_id
-     where s.id = ${serviceId} and s.tenant_id = ${tenantId}`;
+     where s.id = ${serviceId} and s.tenant_id = ${tenantId} and s.deleted_at is null`;
   if (!svc) return null;
   await emit(sql, { type: "service.changed", tenantId, payload: { ...svc } });
   const [radius] = await sql<{ username: string; password: string; enabled: boolean }>`
@@ -41,8 +41,8 @@ export async function restoreCustomerAccess(sql: Sql, tenantId: string, customer
   await grantPaidPeriod(sql, tenantId, customerId);
   await consumeActiveGrantsForCustomer(sql, tenantId, customerId);
   await sql`update services set status = 'active', suspend_reason = ''
-    where customer_id = ${customerId} and tenant_id = ${tenantId} and status in ('grace','suspended','pending')`;
-  const svcs = await sql<{ id: string }>`select id from services where tenant_id = ${tenantId} and customer_id = ${customerId}`;
+    where customer_id = ${customerId} and tenant_id = ${tenantId} and deleted_at is null and status in ('grace','suspended','pending')`;
+  const svcs = await sql<{ id: string }>`select id from services where tenant_id = ${tenantId} and customer_id = ${customerId} and deleted_at is null`;
   for (const s of svcs) await provisionServiceAccess(sql, tenantId, s.id);
 }
 
@@ -65,7 +65,7 @@ export async function seedOpsForTenant(sql: Sql, tenantId: string) {
     }
   }
 
-  const services = await sql<{ id: string }>`select id from services where tenant_id = ${tenantId}`;
+  const services = await sql<{ id: string }>`select id from services where tenant_id = ${tenantId} and deleted_at is null`;
   for (const s of services) await provisionServiceAccess(sql, tenantId, s.id);
 
   const routers = await sql<{ id: string; name: string; enroll_token: string }>`

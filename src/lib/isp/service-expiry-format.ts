@@ -110,3 +110,13 @@ export function expirySourceLabel(source?: string | null, graceActive?: boolean)
   if (graceActive) return "Grace period";
   return "Billing";
 }
+
+export function openExpiryForm<
+  T extends { access_until?: string | null; period_end?: string | null; expiry_source?: string | null },
+>(service: T) {
+  return {
+    service,
+    date: nairobiDate(effectiveAccessIso(service) || undefined) || nairobiDate(),
+    reason: "",
+  };
+}

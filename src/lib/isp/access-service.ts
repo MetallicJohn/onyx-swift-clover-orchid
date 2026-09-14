@@ -23,7 +23,7 @@ async function loadService(sql: Sql, tenantId: string, serviceId: string) {
   }>`select s.id, s.customer_id, s.access_method, s.username, s.static_ip, s.status,
             p.name as package_name, p.download_mbps, p.upload_mbps
      from services s join packages p on p.id = s.package_id
-     where s.id = ${serviceId} and s.tenant_id = ${tenantId}`;
+     where s.id = ${serviceId} and s.tenant_id = ${tenantId} and s.deleted_at is null`;
   return svc ?? null;
 }
 

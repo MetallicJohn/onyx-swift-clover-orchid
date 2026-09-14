@@ -345,7 +345,7 @@ async function loadService(
   }>`select s.id, s.tenant_id, s.customer_id, s.status, s.period_end::text as period_end,
             s.bundle_used_mb, p.bundle_mb, p.name as package_name, p.grace_days
      from services s join packages p on p.id = s.package_id
-     where s.id = ${serviceId} and s.tenant_id = ${tenantId}`;
+     where s.id = ${serviceId} and s.tenant_id = ${tenantId} and s.deleted_at is null`;
   if (!svc) throw new Error("Service not found");
   return svc;
 }
@@ -822,7 +822,7 @@ export async function listGraceReport(sql: Sql, tenantId: string) {
     order by n desc`;
   const [suspendedAfter] = await sql<{ n: number }>`
     select count(*)::int as n from services
-    where tenant_id = ${tenantId} and status = 'suspended' and suspend_reason in ('time','invoice','grace_revoked')
+    where tenant_id = ${tenantId} and deleted_at is null and status = 'suspended' and suspend_reason in ('time','invoice','grace_revoked')
       and id in (select service_id from service_grace_periods where tenant_id = ${tenantId} and status = 'expired')`;
   return {
     current,

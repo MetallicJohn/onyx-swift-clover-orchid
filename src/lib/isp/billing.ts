@@ -140,7 +140,9 @@ export async function generateRecurringInvoices(sql: Sql, tenantId: string) {
   const customers = await sql<{ id: string }>`
     select distinct c.id from customers c
     join services s on s.customer_id = c.id
-    where c.tenant_id = ${tenantId} and s.tenant_id = ${tenantId} and s.status in ('active','grace')`;
+    where c.tenant_id = ${tenantId} and s.tenant_id = ${tenantId}
+      and c.deleted_at is null and s.deleted_at is null
+      and s.status in ('active','grace')`;
   const created: Array<{ customerId: string; id: string; number: string; amount_kes: number; dueDate: string }> = [];
   for (const c of customers) {
     const pkgs = await sql<{
@@ -153,7 +155,8 @@ export async function generateRecurringInvoices(sql: Sql, tenantId: string) {
       select s.id as service_id, p.id as package_id, p.name, p.price_kes, p.billing_interval
       from services s
       join packages p on p.id = s.package_id
-      where s.tenant_id = ${tenantId} and s.customer_id = ${c.id} and s.status in ('active','grace')`;
+      where s.tenant_id = ${tenantId} and s.customer_id = ${c.id}
+        and s.deleted_at is null and s.status in ('active','grace')`;
     if (!pkgs[0]) continue;
     const unpaid = await sql<{ id: string }>`
       select id from invoices where tenant_id = ${tenantId} and customer_id = ${c.id}

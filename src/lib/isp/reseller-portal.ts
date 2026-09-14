@@ -64,7 +64,7 @@ export async function resellerHome(sql: Sql, token: string) {
     select balance_kes from reseller_wallets where tenant_id = ${ses.tenant_id} and reseller_id = ${ses.reseller_id}`;
   const customers = await sql<{ id: string; name: string; phone: string; status: string }>`
     select id, name, phone, status from customers
-    where tenant_id = ${ses.tenant_id} and reseller_id = ${ses.reseller_id} order by name`;
+    where tenant_id = ${ses.tenant_id} and reseller_id = ${ses.reseller_id} and deleted_at is null order by name`;
   const txs = await sql<{ delta_kes: number; reason: string; created_at: string }>`
     select delta_kes, reason, created_at::text as created_at from reseller_transactions
     where tenant_id = ${ses.tenant_id} and reseller_id = ${ses.reseller_id}

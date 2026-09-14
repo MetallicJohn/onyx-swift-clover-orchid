@@ -34,6 +34,7 @@ import { Route as AppNotificationsRouteImport } from './routes/app/notifications
 import { Route as AppPackagesRouteImport } from './routes/app/packages'
 import { Route as AppPartnersRouteImport } from './routes/app/partners'
 import { Route as AppRadiusRouteImport } from './routes/app/radius'
+import { Route as AppRecycleBinRouteImport } from './routes/app/recycle-bin'
 import { Route as AppReportsRouteImport } from './routes/app/reports'
 import { Route as AppRoutersRouteImport } from './routes/app/routers'
 import { Route as AppServicesRouteImport } from './routes/app/services'
@@ -56,9 +57,12 @@ import { Route as ApiAgentHeartbeatRouteImport } from './routes/api/agent/heartb
 import { Route as ApiAgentPullRouteImport } from './routes/api/agent/pull'
 import { Route as ApiAgentScriptRouteImport } from './routes/api/agent/script'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiInternalAcsAuthRouteImport } from './routes/api/internal/acs-auth'
 import { Route as ApiInternalAcsPortsRouteImport } from './routes/api/internal/acs-ports'
 import { Route as ApiPlatformTelemetryRouteImport } from './routes/api/platform/telemetry'
 import { Route as ApiV1HealthRouteImport } from './routes/api/v1/health'
+import { Route as AppCustomersCustomerIdRouteImport } from './routes/app/customers.$customerId'
+import { Route as AppServicesServiceIdRouteImport } from './routes/app/services.$serviceId'
 import { Route as PlatformTenantsTenantIdRouteImport } from './routes/platform/tenants.$tenantId'
 import { Route as ApiV1CronBillingRouteImport } from './routes/api/v1/cron/billing'
 import { Route as ApiWebhooksKopokopoSlugRouteImport } from './routes/api/webhooks/kopokopo/$slug'
@@ -190,6 +194,11 @@ const AppRadiusRoute = AppRadiusRouteImport.update({
   path: '/radius',
   getParentRoute: () => AppRoute,
 } as any)
+const AppRecycleBinRoute = AppRecycleBinRouteImport.update({
+  id: '/recycle-bin',
+  path: '/recycle-bin',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppReportsRoute = AppReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
@@ -300,6 +309,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalAcsAuthRoute = ApiInternalAcsAuthRouteImport.update({
+  id: '/api/internal/acs-auth',
+  path: '/api/internal/acs-auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiInternalAcsPortsRoute = ApiInternalAcsPortsRouteImport.update({
   id: '/api/internal/acs-ports',
   path: '/api/internal/acs-ports',
@@ -314,6 +328,16 @@ const ApiV1HealthRoute = ApiV1HealthRouteImport.update({
   id: '/api/v1/health',
   path: '/api/v1/health',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppCustomersCustomerIdRoute = AppCustomersCustomerIdRouteImport.update({
+  id: '/$customerId',
+  path: '/$customerId',
+  getParentRoute: () => AppCustomersRoute,
+} as any)
+const AppServicesServiceIdRoute = AppServicesServiceIdRouteImport.update({
+  id: '/$serviceId',
+  path: '/$serviceId',
+  getParentRoute: () => AppServicesRoute,
 } as any)
 const PlatformTenantsTenantIdRoute = PlatformTenantsTenantIdRouteImport.update({
   id: '/$tenantId',
@@ -358,7 +382,7 @@ export interface FileRoutesByFullPath {
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
   '/app/billing': typeof AppBillingRoute
-  '/app/customers': typeof AppCustomersRoute
+  '/app/customers': typeof AppCustomersRouteWithChildren
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
   '/app/import': typeof AppImportRoute
@@ -366,9 +390,10 @@ export interface FileRoutesByFullPath {
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
   '/app/radius': typeof AppRadiusRoute
+  '/app/recycle-bin': typeof AppRecycleBinRoute
   '/app/reports': typeof AppReportsRoute
   '/app/routers': typeof AppRoutersRoute
-  '/app/services': typeof AppServicesRoute
+  '/app/services': typeof AppServicesRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/statements': typeof AppStatementsRoute
   '/app/tickets': typeof AppTicketsRoute
@@ -389,9 +414,12 @@ export interface FileRoutesByFullPath {
   '/api/agent/pull': typeof ApiAgentPullRoute
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/internal/acs-auth': typeof ApiInternalAcsAuthRoute
   '/api/internal/acs-ports': typeof ApiInternalAcsPortsRoute
   '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
   '/api/v1/health': typeof ApiV1HealthRoute
+  '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
@@ -411,7 +439,7 @@ export interface FileRoutesByTo {
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
   '/app/billing': typeof AppBillingRoute
-  '/app/customers': typeof AppCustomersRoute
+  '/app/customers': typeof AppCustomersRouteWithChildren
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
   '/app/import': typeof AppImportRoute
@@ -419,9 +447,10 @@ export interface FileRoutesByTo {
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
   '/app/radius': typeof AppRadiusRoute
+  '/app/recycle-bin': typeof AppRecycleBinRoute
   '/app/reports': typeof AppReportsRoute
   '/app/routers': typeof AppRoutersRoute
-  '/app/services': typeof AppServicesRoute
+  '/app/services': typeof AppServicesRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/statements': typeof AppStatementsRoute
   '/app/tickets': typeof AppTicketsRoute
@@ -442,9 +471,12 @@ export interface FileRoutesByTo {
   '/api/agent/pull': typeof ApiAgentPullRoute
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/internal/acs-auth': typeof ApiInternalAcsAuthRoute
   '/api/internal/acs-ports': typeof ApiInternalAcsPortsRoute
   '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
   '/api/v1/health': typeof ApiV1HealthRoute
+  '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
@@ -469,7 +501,7 @@ export interface FileRoutesById {
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
   '/app/billing': typeof AppBillingRoute
-  '/app/customers': typeof AppCustomersRoute
+  '/app/customers': typeof AppCustomersRouteWithChildren
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
   '/app/import': typeof AppImportRoute
@@ -477,9 +509,10 @@ export interface FileRoutesById {
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
   '/app/radius': typeof AppRadiusRoute
+  '/app/recycle-bin': typeof AppRecycleBinRoute
   '/app/reports': typeof AppReportsRoute
   '/app/routers': typeof AppRoutersRoute
-  '/app/services': typeof AppServicesRoute
+  '/app/services': typeof AppServicesRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/statements': typeof AppStatementsRoute
   '/app/tickets': typeof AppTicketsRoute
@@ -500,9 +533,12 @@ export interface FileRoutesById {
   '/api/agent/pull': typeof ApiAgentPullRoute
   '/api/agent/script': typeof ApiAgentScriptRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/internal/acs-auth': typeof ApiInternalAcsAuthRoute
   '/api/internal/acs-ports': typeof ApiInternalAcsPortsRoute
   '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
   '/api/v1/health': typeof ApiV1HealthRoute
+  '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
@@ -536,6 +572,7 @@ export interface FileRouteTypes {
     | '/app/packages'
     | '/app/partners'
     | '/app/radius'
+    | '/app/recycle-bin'
     | '/app/reports'
     | '/app/routers'
     | '/app/services'
@@ -559,9 +596,12 @@ export interface FileRouteTypes {
     | '/api/agent/pull'
     | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/internal/acs-auth'
     | '/api/internal/acs-ports'
     | '/api/platform/telemetry'
     | '/api/v1/health'
+    | '/app/customers/$customerId'
+    | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
     | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
@@ -589,6 +629,7 @@ export interface FileRouteTypes {
     | '/app/packages'
     | '/app/partners'
     | '/app/radius'
+    | '/app/recycle-bin'
     | '/app/reports'
     | '/app/routers'
     | '/app/services'
@@ -612,9 +653,12 @@ export interface FileRouteTypes {
     | '/api/agent/pull'
     | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/internal/acs-auth'
     | '/api/internal/acs-ports'
     | '/api/platform/telemetry'
     | '/api/v1/health'
+    | '/app/customers/$customerId'
+    | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
     | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
@@ -646,6 +690,7 @@ export interface FileRouteTypes {
     | '/app/packages'
     | '/app/partners'
     | '/app/radius'
+    | '/app/recycle-bin'
     | '/app/reports'
     | '/app/routers'
     | '/app/services'
@@ -669,9 +714,12 @@ export interface FileRouteTypes {
     | '/api/agent/pull'
     | '/api/agent/script'
     | '/api/auth/$'
+    | '/api/internal/acs-auth'
     | '/api/internal/acs-ports'
     | '/api/platform/telemetry'
     | '/api/v1/health'
+    | '/app/customers/$customerId'
+    | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
     | '/api/v1/cron/billing'
     | '/api/webhooks/kopokopo/$slug'
@@ -697,6 +745,7 @@ export interface RootRouteChildren {
   ApiAgentPullRoute: typeof ApiAgentPullRoute
   ApiAgentScriptRoute: typeof ApiAgentScriptRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiInternalAcsAuthRoute: typeof ApiInternalAcsAuthRoute
   ApiInternalAcsPortsRoute: typeof ApiInternalAcsPortsRoute
   ApiPlatformTelemetryRoute: typeof ApiPlatformTelemetryRoute
   ApiV1HealthRoute: typeof ApiV1HealthRoute
@@ -883,6 +932,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRadiusRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/recycle-bin': {
+      id: '/app/recycle-bin'
+      path: '/recycle-bin'
+      fullPath: '/app/recycle-bin'
+      preLoaderRoute: typeof AppRecycleBinRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/reports': {
       id: '/app/reports'
       path: '/reports'
@@ -1037,6 +1093,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/acs-auth': {
+      id: '/api/internal/acs-auth'
+      path: '/api/internal/acs-auth'
+      fullPath: '/api/internal/acs-auth'
+      preLoaderRoute: typeof ApiInternalAcsAuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/internal/acs-ports': {
       id: '/api/internal/acs-ports'
       path: '/api/internal/acs-ports'
@@ -1057,6 +1120,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/v1/health'
       preLoaderRoute: typeof ApiV1HealthRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/app/customers/$customerId': {
+      id: '/app/customers/$customerId'
+      path: '/$customerId'
+      fullPath: '/app/customers/$customerId'
+      preLoaderRoute: typeof AppCustomersCustomerIdRouteImport
+      parentRoute: typeof AppCustomersRoute
+    }
+    '/app/services/$serviceId': {
+      id: '/app/services/$serviceId'
+      path: '/$serviceId'
+      fullPath: '/app/services/$serviceId'
+      preLoaderRoute: typeof AppServicesServiceIdRouteImport
+      parentRoute: typeof AppServicesRoute
     }
     '/platform/tenants/$tenantId': {
       id: '/platform/tenants/$tenantId'
@@ -1096,12 +1173,36 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppCustomersRouteChildren {
+  AppCustomersCustomerIdRoute: typeof AppCustomersCustomerIdRoute
+}
+
+const AppCustomersRouteChildren: AppCustomersRouteChildren = {
+  AppCustomersCustomerIdRoute: AppCustomersCustomerIdRoute,
+}
+
+const AppCustomersRouteWithChildren = AppCustomersRoute._addFileChildren(
+  AppCustomersRouteChildren,
+)
+
+interface AppServicesRouteChildren {
+  AppServicesServiceIdRoute: typeof AppServicesServiceIdRoute
+}
+
+const AppServicesRouteChildren: AppServicesRouteChildren = {
+  AppServicesServiceIdRoute: AppServicesServiceIdRoute,
+}
+
+const AppServicesRouteWithChildren = AppServicesRoute._addFileChildren(
+  AppServicesRouteChildren,
+)
+
 interface AppRouteChildren {
   AppAcsRoute: typeof AppAcsRoute
   AppAdminRoute: typeof AppAdminRoute
   AppAiRoute: typeof AppAiRoute
   AppBillingRoute: typeof AppBillingRoute
-  AppCustomersRoute: typeof AppCustomersRoute
+  AppCustomersRoute: typeof AppCustomersRouteWithChildren
   AppFieldRoute: typeof AppFieldRoute
   AppHotspotRoute: typeof AppHotspotRoute
   AppImportRoute: typeof AppImportRoute
@@ -1109,9 +1210,10 @@ interface AppRouteChildren {
   AppPackagesRoute: typeof AppPackagesRoute
   AppPartnersRoute: typeof AppPartnersRoute
   AppRadiusRoute: typeof AppRadiusRoute
+  AppRecycleBinRoute: typeof AppRecycleBinRoute
   AppReportsRoute: typeof AppReportsRoute
   AppRoutersRoute: typeof AppRoutersRoute
-  AppServicesRoute: typeof AppServicesRoute
+  AppServicesRoute: typeof AppServicesRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
   AppStatementsRoute: typeof AppStatementsRoute
   AppTicketsRoute: typeof AppTicketsRoute
@@ -1123,7 +1225,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAdminRoute: AppAdminRoute,
   AppAiRoute: AppAiRoute,
   AppBillingRoute: AppBillingRoute,
-  AppCustomersRoute: AppCustomersRoute,
+  AppCustomersRoute: AppCustomersRouteWithChildren,
   AppFieldRoute: AppFieldRoute,
   AppHotspotRoute: AppHotspotRoute,
   AppImportRoute: AppImportRoute,
@@ -1131,9 +1233,10 @@ const AppRouteChildren: AppRouteChildren = {
   AppPackagesRoute: AppPackagesRoute,
   AppPartnersRoute: AppPartnersRoute,
   AppRadiusRoute: AppRadiusRoute,
+  AppRecycleBinRoute: AppRecycleBinRoute,
   AppReportsRoute: AppReportsRoute,
   AppRoutersRoute: AppRoutersRoute,
-  AppServicesRoute: AppServicesRoute,
+  AppServicesRoute: AppServicesRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,
   AppStatementsRoute: AppStatementsRoute,
   AppTicketsRoute: AppTicketsRoute,
@@ -1223,6 +1326,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAgentPullRoute: ApiAgentPullRoute,
   ApiAgentScriptRoute: ApiAgentScriptRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiInternalAcsAuthRoute: ApiInternalAcsAuthRoute,
   ApiInternalAcsPortsRoute: ApiInternalAcsPortsRoute,
   ApiPlatformTelemetryRoute: ApiPlatformTelemetryRoute,
   ApiV1HealthRoute: ApiV1HealthRoute,

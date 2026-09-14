@@ -162,7 +162,7 @@ export type CustomerChurn = ChurnScore & {
 
 export async function loadChurnScores(sql: Sql, tenantId: string): Promise<CustomerChurn[]> {
   const customers = await sql<{ id: string; name: string; status: string }>`
-    select id, name, status from customers where tenant_id = ${tenantId}`;
+    select id, name, status from customers where tenant_id = ${tenantId} and deleted_at is null`;
   if (customers.length === 0) return [];
 
   const services = await sql<{
@@ -173,7 +173,7 @@ export async function loadChurnScores(sql: Sql, tenantId: string): Promise<Custo
     bundle_mb: number;
   }>`select s.customer_id, s.status, s.period_end::text as period_end, s.bundle_used_mb, p.bundle_mb
      from services s join packages p on p.id = s.package_id
-     where s.tenant_id = ${tenantId}`;
+     where s.tenant_id = ${tenantId} and s.deleted_at is null`;
 
   const invoices = await sql<{
     customer_id: string;

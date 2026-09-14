@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 /**
- * TR-069 edge: one TCP listener per ISP port, all forwarded to the shared GenieACS CWMP
- * (genieacs:7547). NBI stays internal. Reloads the port map without restarting GenieACS.
+ * TR-069 edge: one TCP (or TLS) listener per ISP port, all forwarded to the shared
+ * GenieACS CWMP (genieacs:7547). NBI stays internal. Reloads the port map without
+ * restarting GenieACS. Optional TLS: ACS_TLS_CERT + ACS_TLS_KEY (PEM) or *_FILE paths.
  */
+import fs from "node:fs";
 import net from "node:net";
+import tls from "node:tls";
 
 const TARGET = process.env.GENIEACS_CWMP_URL || "http://genieacs:7547";
 const INTERNAL = (process.env.GRIDLINE_INTERNAL_URL || "http://web:3000").replace(/\/+$/, "");
@@ -19,7 +22,26 @@ function targetHostPort() {
   }
 }
 
+function tlsOptions() {
+  const certFile = (process.env.ACS_TLS_CERT_FILE || "").trim();
+  const keyFile = (process.env.ACS_TLS_KEY_FILE || "").trim();
+  const certEnv = (process.env.ACS_TLS_CERT || "").trim();
+  const keyEnv = (process.env.ACS_TLS_KEY || "").trim();
+  try {
+    if (certFile && keyFile) {
+      return { cert: fs.readFileSync(certFile), key: fs.readFileSync(keyFile) };
+    }
+    if (certEnv.includes("BEGIN") && keyEnv.includes("BEGIN")) {
+      return { cert: certEnv, key: keyEnv };
+    }
+  } catch (err) {
+    log("tls_config_error", { error: String(err instanceof Error ? err.message : err) });
+  }
+  return null;
+}
+
 const upstream = targetHostPort();
+const tlsOpts = tlsOptions();
 const servers = new Map();
 
 function log(msg, extra = {}) {
@@ -27,21 +49,25 @@ function log(msg, extra = {}) {
   console.log(JSON.stringify(line));
 }
 
+function pipeClient(client) {
+  const up = net.connect(upstream.port, upstream.host);
+  client.pipe(up);
+  up.pipe(client);
+  const fail = () => {
+    client.destroy();
+    up.destroy();
+  };
+  client.on("error", fail);
+  up.on("error", fail);
+}
+
 function listenPort(port) {
   if (servers.has(port)) return;
-  const server = net.createServer((client) => {
-    const up = net.connect(upstream.port, upstream.host);
-    client.pipe(up);
-    up.pipe(client);
-    const fail = () => {
-      client.destroy();
-      up.destroy();
-    };
-    client.on("error", fail);
-    up.on("error", fail);
-  });
+  const server = tlsOpts ? tls.createServer(tlsOpts, pipeClient) : net.createServer(pipeClient);
   server.on("error", (err) => log("listen_error", { port, error: String(err.message || err) }));
-  server.listen(port, "0.0.0.0", () => log("listen", { port, upstream: `${upstream.host}:${upstream.port}` }));
+  server.listen(port, "0.0.0.0", () =>
+    log("listen", { port, tls: Boolean(tlsOpts), upstream: `${upstream.host}:${upstream.port}` }),
+  );
   servers.set(port, server);
 }
 
@@ -84,5 +110,5 @@ async function loop() {
   }
 }
 
-log("start", { upstream: `${upstream.host}:${upstream.port}` });
+log("start", { upstream: `${upstream.host}:${upstream.port}`, tls: Boolean(tlsOpts) });
 loop();

@@ -17,6 +17,9 @@ export type AcsPlatformSettings = {
   acs_dns_host: string;
   acs_port_start: number;
   acs_port_end: number;
+  acs_tls: "http" | "https";
+  acs_require_cpe_auth: boolean;
+  acs_lock_url: boolean;
 };
 
 export function normalizeAcsHost(raw: string) {
@@ -50,17 +53,31 @@ export function assertAllocatablePort(port: number, range: { start: number; end:
   return p;
 }
 
-export function buildAcsUrl(host: string, port: number | null | undefined) {
+export function normalizeAcsScheme(raw: unknown): "http" | "https" {
+  return String(raw || "").trim().toLowerCase() === "https" ? "https" : "http";
+}
+
+export function parseBoolSetting(raw: unknown, fallback: boolean) {
+  const v = String(raw ?? "").trim().toLowerCase();
+  if (v === "true" || v === "1" || v === "yes") return true;
+  if (v === "false" || v === "0" || v === "no") return false;
+  return fallback;
+}
+
+export function buildAcsUrl(host: string, port: number | null | undefined, scheme: "http" | "https" = "http") {
   const h = normalizeAcsHost(host);
   const p = Math.floor(Number(port));
   if (!h || !Number.isFinite(p) || p <= 0) return "";
-  return `http://${h}:${p}/`;
+  return `${normalizeAcsScheme(scheme)}://${h}:${p}/`;
 }
 
 export async function loadAcsPlatformSettings(sql: Sql): Promise<AcsPlatformSettings> {
   const rows = await sql<{ key: string; value: string }>`
     select key, value from platform_settings
-    where key in ('acs_public_host', 'acs_dns_host', 'acs_port_start', 'acs_port_end')`;
+    where key in (
+      'acs_public_host', 'acs_dns_host', 'acs_port_start', 'acs_port_end',
+      'acs_tls', 'acs_require_cpe_auth', 'acs_lock_url'
+    )`;
   const map: Record<string, string> = {};
   for (const r of rows) map[r.key] = r.value;
   const range = parsePortRange(map.acs_port_start || ACS_PORT_RANGE_DEFAULT.start, map.acs_port_end || ACS_PORT_RANGE_DEFAULT.end);
@@ -69,6 +86,9 @@ export async function loadAcsPlatformSettings(sql: Sql): Promise<AcsPlatformSett
     acs_dns_host: (map.acs_dns_host || "").trim(),
     acs_port_start: range.start,
     acs_port_end: range.end,
+    acs_tls: normalizeAcsScheme(map.acs_tls),
+    acs_require_cpe_auth: parseBoolSetting(map.acs_require_cpe_auth, true),
+    acs_lock_url: parseBoolSetting(map.acs_lock_url, true),
   };
 }
 

@@ -97,7 +97,7 @@ async function assertOwnedCustomers(sql: Sql, tenantId: string, customerIds: str
   const found: string[] = [];
   for (const id of unique) {
     const rows = await sql<{ id: string }>`
-      select id from customers where id = ${id} and tenant_id = ${tenantId}`;
+      select id from customers where id = ${id} and tenant_id = ${tenantId} and deleted_at is null`;
     if (rows[0]) found.push(id);
   }
   if (found.length !== unique.length) throw new Error("Customer not found");

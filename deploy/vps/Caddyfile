@@ -13,6 +13,7 @@ acs.{$GRIDLINE_DOMAIN} {
 }
 
 # TR-069 / CWMP is NOT terminated here. Each ISP gets a unique host port in 7551–7999
-# (cwmp-edge → genieacs:7547). Do not assume HTTPS on those ports until TLS is added.
-# GenieACS NBI (7557), Mongo, and Redis stay off the public internet.
+# (cwmp-edge → genieacs:7547). HTTPS on those ports is optional: set ACS_TLS_CERT and
+# ACS_TLS_KEY (or *_FILE) on cwmp-edge, then issue https:// ACS URLs from System settings.
+# GenieACS NBI (7557), Mongo, the ACS auth endpoint, and Redis stay off the public internet.
 

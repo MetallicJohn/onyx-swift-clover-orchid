@@ -3,6 +3,7 @@ import type { TenantRole } from "./types";
 export const PERMISSIONS = [
   "customers.read",
   "customers.manage",
+  "customers.delete",
   "packages.read",
   "packages.manage",
   "services.read",
@@ -11,6 +12,9 @@ export const PERMISSIONS = [
   "services.grace.extend",
   "services.grace.revoke",
   "services.expiry.update",
+  "services.delete",
+  "services.reassign",
+  "traffic.view",
   "invoices.read",
   "invoices.manage",
   "payments.read",
@@ -35,6 +39,10 @@ export const PERMISSIONS = [
   "acs.credentials.reveal",
   "acs.credentials.rotate",
   "acs.connection.test",
+  "recycle_bin.view",
+  "recycle_bin.restore_customer",
+  "recycle_bin.restore_service",
+  "recycle_bin.permanent_delete",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number] | "*";
@@ -54,17 +62,23 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "services.grace.grant",
     "services.grace.extend",
     "services.grace.revoke",
+    "traffic.view",
     "communications.view",
     "communications.send",
+    "recycle_bin.view",
   ],
   customer_care: [
     "customers.read",
     "customers.manage",
+    "customers.delete",
     "services.read",
     "services.grace.grant",
     "services.grace.extend",
     "services.grace.revoke",
     "services.expiry.update",
+    "services.delete",
+    "services.reassign",
+    "traffic.view",
     "invoices.read",
     "payments.read",
     "tickets.read",
@@ -73,6 +87,9 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "communications.view",
     "communications.send",
     "communications.templates.manage",
+    "recycle_bin.view",
+    "recycle_bin.restore_customer",
+    "recycle_bin.restore_service",
   ],
   network_engineer: [
     "customers.read",
@@ -81,6 +98,9 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "services.grace.grant",
     "services.grace.extend",
     "services.expiry.update",
+    "services.delete",
+    "services.reassign",
+    "traffic.view",
     "routers.read",
     "routers.manage",
     "network.read",
@@ -94,8 +114,17 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "acs.credentials.reveal",
     "acs.credentials.rotate",
     "acs.connection.test",
+    "recycle_bin.view",
+    "recycle_bin.restore_service",
   ],
-  technician: ["tickets.assigned.read", "jobs.update", "customers.read", "services.read", "tickets.read"],
+  technician: [
+    "tickets.assigned.read",
+    "jobs.update",
+    "customers.read",
+    "services.read",
+    "tickets.read",
+    "traffic.view",
+  ],
   support: [
     "customers.read",
     "packages.read",
@@ -108,6 +137,8 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "audit.read",
     "communications.view",
     "acs.credentials.view",
+    "traffic.view",
+    "recycle_bin.view",
   ],
 };
 
@@ -137,7 +168,11 @@ export const ROLE_GUIDE: { role: TenantRole; label: string; summary: string }[] 
   { role: "isp_owner", label: "Owner", summary: "Full console: staff, billing, network, and settings." },
   { role: "isp_admin", label: "Admin", summary: "Same access as owner. Keep at least one owner on the ISP." },
   { role: "finance", label: "Finance", summary: "Invoices, payments, paybill matching, statements, and grace." },
-  { role: "customer_care", label: "Customer care", summary: "Customers, tickets, SMS/WhatsApp, invoices (read), grace, and service expiry dates." },
+  {
+    role: "customer_care",
+    label: "Customer care",
+    summary: "Customers, tickets, SMS/WhatsApp, invoices (read), grace, service expiry, and Recycle Bin.",
+  },
   { role: "network_engineer", label: "Network engineer", summary: "Services, routers, RADIUS, hotspot, WireGuard, and ACS." },
   { role: "technician", label: "Technician", summary: "Assigned tickets and field jobs. No billing or router changes." },
   { role: "support", label: "Support", summary: "Read-only when ISP Solutions staff is inside this workspace." },
@@ -145,6 +180,7 @@ export const ROLE_GUIDE: { role: TenantRole; label: string; summary: string }[] 
 
 /** Longest prefix first. Overview (`/app`) has no entry and is open to every member. */
 const PAGE_PERMISSIONS: { prefix: string; permission: Permission }[] = [
+  { prefix: "/app/recycle-bin", permission: "recycle_bin.view" },
   { prefix: "/app/customers", permission: "customers.read" },
   { prefix: "/app/packages", permission: "packages.read" },
   { prefix: "/app/services", permission: "services.read" },
@@ -177,4 +213,3 @@ export function canAccessAppPath(role: TenantRole | string | undefined, pathname
   if (!perm) return true;
   return hasPermission(role, perm);
 }
-

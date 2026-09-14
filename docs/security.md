@@ -21,5 +21,8 @@ Frontend cannot confirm a live STK. Webhooks are tenant-slug addressed; duplicat
 ## Agent
 Enroll token is a capability. Router list does not return enroll tokens. Copy-script is the one-time reveal.
 
+## ACS / TR-069
+CPE → ACS is HTTP digest against the per-ISP ACS username and password. Connection-request login is a separate secret written onto the ONU. NBI, Mongo, and the ACS auth endpoint stay on the private network (not published). Informs are not written to `audit_logs`. Optional HTTPS ACS URLs default off so existing OLT profiles keep working. URL lock rewrites the ONU ACS URL on inform so it cannot be redirected.
+
 ## OWASP notes (M0.5)
 SQL is parameterized. XSS: React escaping. CSRF: same-site middleware (`assertSameSiteRequest`). SSRF: MikroTik REST only to configured `api_host` / WG address. Command injection: RouterOS values are quoted via `rosQuote`. Do not log secrets.

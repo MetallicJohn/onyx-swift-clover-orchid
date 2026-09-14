@@ -286,7 +286,7 @@ export async function notifyCustomerEvent(
   vars: NotifyVars,
 ) {
   const [c] = await sql<{ name: string; phone: string; email: string }>`
-    select name, phone, email from customers where id = ${customerId} and tenant_id = ${tenantId}`;
+    select name, phone, email from customers where id = ${customerId} and tenant_id = ${tenantId} and deleted_at is null`;
   if (!c) return 0;
   return dispatchNotification(sql, {
     tenantId,

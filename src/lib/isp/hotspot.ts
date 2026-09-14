@@ -11,7 +11,7 @@ type Sql = {
 
 async function walkInCustomer(sql: Sql, tenantId: string) {
   const [c] = await sql<{ id: string }>`
-    select id from customers where tenant_id = ${tenantId} and name = 'Hotspot walk-in'`;
+    select id from customers where tenant_id = ${tenantId} and name = 'Hotspot walk-in' and deleted_at is null`;
   if (c) return c.id;
   const id = nid("cus");
   const accountNumber = await allocateAccountNumber(sql, tenantId);

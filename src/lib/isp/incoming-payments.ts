@@ -98,7 +98,7 @@ export async function matchIncomingCustomer(
   hit: Pick<IncomingHit, "billRef" | "msisdn">,
 ) {
   const customers = await sql<{ id: string; name: string; phone: string; account_number: string }>`
-    select id, name, phone, coalesce(account_number,'') as account_number from customers where tenant_id = ${tenantId}`;
+    select id, name, phone, coalesce(account_number,'') as account_number from customers where tenant_id = ${tenantId} and deleted_at is null`;
   const [tenant] = await sql<{ slug: string }>`select slug from tenants where id = ${tenantId}`;
   const slug = tenant?.slug || "";
   const bill = refKey(hit.billRef);
@@ -111,12 +111,14 @@ export async function matchIncomingCustomer(
       if (acc && (acc === bill || acc.replace(/-/g, "") === bill)) hits.push(c.id);
     }
     const invoices = await sql<{ id: string; customer_id: string; number: string }>`
-      select id, customer_id, number from invoices where tenant_id = ${tenantId}`;
+      select i.id, i.customer_id, i.number from invoices i
+      join customers c on c.id = i.customer_id and c.tenant_id = i.tenant_id
+      where i.tenant_id = ${tenantId} and c.deleted_at is null`;
     for (const inv of invoices) {
       if (refKey(inv.number) === bill) hits.push(inv.customer_id);
     }
     const services = await sql<{ customer_id: string; username: string }>`
-      select customer_id, coalesce(username,'') as username from services where tenant_id = ${tenantId}`;
+      select customer_id, coalesce(username,'') as username from services where tenant_id = ${tenantId} and deleted_at is null`;
     for (const s of services) {
       if (s.username && refKey(s.username) === bill) hits.push(s.customer_id);
     }
@@ -153,7 +155,7 @@ export async function creditCustomerPayment(
   const dup = await sql<{ id: string }>`select id from payments where tenant_id = ${opts.tenantId} and reference = ${ref}`;
   if (dup[0]) return { id: dup[0].id, amount, status: "confirmed" as const, duplicate: true };
   const [cus] = await sql<{ id: string }>`
-    select id from customers where id = ${opts.customerId} and tenant_id = ${opts.tenantId}`;
+    select id from customers where id = ${opts.customerId} and tenant_id = ${opts.tenantId} and deleted_at is null`;
   if (!cus) throw new Error("Customer not found");
   let invoices = await sql<{ id: string; amount_kes: number; paid_kes: number; status: string; number: string }>`
     select id, amount_kes, paid_kes, status, number from invoices
@@ -319,7 +321,7 @@ export async function listIncomingPayments(sql: Sql, tenantId: string) {
      order by p.trans_time desc
      limit 300`;
   const customers = await sql<{ id: string; name: string; phone: string; account_number: string }>`
-    select id, name, phone, coalesce(account_number,'') as account_number from customers where tenant_id = ${tenantId} order by name limit 400`;
+    select id, name, phone, coalesce(account_number,'') as account_number from customers where tenant_id = ${tenantId} and deleted_at is null order by name limit 400`;
   const invoices = await sql<{
     id: string;
     number: string;
@@ -327,9 +329,11 @@ export async function listIncomingPayments(sql: Sql, tenantId: string) {
     amount_kes: number;
     paid_kes: number;
     status: string;
-  }>`select id, number, customer_id, amount_kes, paid_kes, status from invoices
-     where tenant_id = ${tenantId} and status in ('issued','due','overdue','partial','sent','pending')
-     order by due_date`;
+  }>`select id, number, customer_id, amount_kes, paid_kes, status from invoices i
+     join customers c on c.id = i.customer_id and c.tenant_id = i.tenant_id
+     where i.tenant_id = ${tenantId} and i.status in ('issued','due','overdue','partial','sent','pending')
+       and c.deleted_at is null
+     order by i.due_date`;
   const unmatched = rows.filter((r) => r.status === "unmatched").length;
   const totalKes = rows.reduce((s, r) => s + r.amount_kes, 0);
   return {

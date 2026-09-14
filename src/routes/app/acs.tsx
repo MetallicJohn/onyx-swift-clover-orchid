@@ -19,6 +19,7 @@ export const Route = createFileRoute("/app/acs")({
 
 type Creds = NonNullable<Awaited<ReturnType<typeof getAcsCredentialsFn>>["credentials"]>;
 type Can = Awaited<ReturnType<typeof getAcsCredentialsFn>>["can"];
+type Security = Awaited<ReturnType<typeof getAcsCredentialsFn>>["security"];
 
 function AcsPage() {
   const navigate = Route.useNavigate();
@@ -34,6 +35,7 @@ function AcsPage() {
   const [note, setNote] = useState<string | null>(null);
   const [creds, setCreds] = useState<Creds | null>(null);
   const [can, setCan] = useState<Can>({ manage: false, reveal: false, rotate: false, test: false });
+  const [security, setSecurity] = useState<Security | null>(null);
   const [nbiConfigured, setNbiConfigured] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -51,6 +53,7 @@ function AcsPage() {
     setTasks(t.tasks);
     setCreds(c.credentials);
     setCan(c.can);
+    setSecurity(c.security);
     setNbiConfigured(c.nbi_configured);
   }
   useEffect(() => {
@@ -104,6 +107,7 @@ function AcsPage() {
         <AcsCredentialsPanel
           creds={creds}
           can={can}
+          security={security}
           nbiConfigured={nbiConfigured}
           busy={busy}
           setBusy={setBusy}

@@ -88,7 +88,7 @@ export async function grantPaidPeriod(sql: Sql, tenantId: string, customerId: st
   }>`select s.id, s.period_end::text as period_end, p.billing_interval, p.validity_hours
      from services s join packages p on p.id = s.package_id
      where s.tenant_id = ${tenantId} and s.customer_id = ${customerId}
-       and s.status <> 'terminated'`;
+       and s.deleted_at is null and s.status <> 'terminated'`;
   for (const s of svcs) {
     const next = extendPeriodEnd(s.period_end, now, periodMs(s.billing_interval, s.validity_hours));
     await sql`update services
@@ -108,10 +108,10 @@ export async function restorePaidAccess(sql: Sql, tenantId: string, customerId: 
   const svcs = await sql<{ id: string }>`
     select id from services
     where tenant_id = ${tenantId} and customer_id = ${customerId}
-      and status in ('grace','suspended','pending')`;
+      and deleted_at is null and status in ('grace','suspended','pending')`;
   await sql`update services set status = 'active', suspend_reason = ''
     where customer_id = ${customerId} and tenant_id = ${tenantId}
-      and status in ('grace','suspended','pending')`;
+      and deleted_at is null and status in ('grace','suspended','pending')`;
   for (const s of svcs) await provisionServiceAccess(sql, tenantId, s.id);
   return { restored: svcs.length, held: false };
 }
@@ -146,7 +146,7 @@ export async function recordAccounting(
      from radius_accounts a
      join services s on s.id = a.service_id
      join packages p on p.id = s.package_id
-     where a.tenant_id = ${tenantId} and a.username = ${username}
+     where a.tenant_id = ${tenantId} and a.username = ${username} and s.deleted_at is null
      limit 1`;
   const [viaService] = viaRadius
     ? [viaRadius]
@@ -163,7 +163,7 @@ export async function recordAccounting(
       }>`select s.id, s.status, s.bundle_used_mb, p.bundle_mb, s.access_method, s.static_ip,
             p.name as package_name, p.download_mbps, p.upload_mbps
      from services s join packages p on p.id = s.package_id
-     where s.tenant_id = ${tenantId} and s.username = ${username}
+     where s.tenant_id = ${tenantId} and s.username = ${username} and s.deleted_at is null
      order by s.created_at desc limit 1`;
   const svc = viaRadius ?? viaService;
   if (!svc) throw new Error("Unknown username");
@@ -260,7 +260,8 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
       grace_days: number;
     }>`select s.id, s.status, p.name, p.grace_days
        from services s join packages p on p.id = s.package_id
-       where s.tenant_id = ${tenantId} and s.customer_id = ${inv.customer_id} and s.status in ('active','grace')`;
+       where s.tenant_id = ${tenantId} and s.customer_id = ${inv.customer_id}
+         and s.deleted_at is null and s.status in ('active','grace')`;
 
     for (const svc of services) {
       const svcVars = { ...vars, service_name: svc.name };
@@ -306,6 +307,7 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
             s.period_end::text as period_end, s.access_until::text as access_until, s.expiry_source
      from services s join packages p on p.id = s.package_id
      where s.tenant_id = ${tenantId}
+       and s.deleted_at is null
        and s.status in ('active','grace')
        and coalesce(case when s.expiry_source = 'staff' then s.access_until end, s.period_end) is not null
        and coalesce(case when s.expiry_source = 'staff' then s.access_until end, s.period_end) <= now()`;
@@ -356,6 +358,7 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
     select s.id, s.customer_id, p.name
     from services s join packages p on p.id = s.package_id
     where s.tenant_id = ${tenantId}
+      and s.deleted_at is null
       and s.status in ('active','grace')
       and p.bundle_mb > 0
       and s.bundle_used_mb >= p.bundle_mb`;

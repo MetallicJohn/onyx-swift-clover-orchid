@@ -17,6 +17,7 @@
 | Invoice / statement PDFs | pdfkit A4 from live billing + ledger. Tenant-branded. View/download/print/email. |
 | VPS publish | Docker Compose + Caddy + Postgres. First install, then auto-pull of `main`. Platform deploy remains Vercel. |
 | Secrets | No published `gridline-dev-secret-change-me`. Production or any `DATABASE_URL` requires `APP_SECRET`. |
+| ACS TR-069 security | Per-ISP digest auth, sealed secrets, URL lock provision/preset, optional HTTPS URLs. NBI unpublished. Proven in `acs-security.test.ts`. Live CPE session is not run in CI. |
 
 ## Simulated / architecture-only
 

@@ -69,6 +69,9 @@ export async function getPlatformSettings(sql: Sql) {
     acs_dns_host: (map.acs_dns_host || "").trim(),
     acs_port_start: Number(map.acs_port_start || 7551),
     acs_port_end: Number(map.acs_port_end || 7999),
+    acs_tls: (map.acs_tls === "https" ? "https" : "http") as "http" | "https",
+    acs_require_cpe_auth: map.acs_require_cpe_auth !== "false",
+    acs_lock_url: map.acs_lock_url !== "false",
   };
 }
 
@@ -88,6 +91,9 @@ export async function savePlatformSettings(
     acs_dns_host: string;
     acs_port_start: number;
     acs_port_end: number;
+    acs_tls: "http" | "https";
+    acs_require_cpe_auth: boolean;
+    acs_lock_url: boolean;
   }>,
 ) {
   await requirePlatformActor(sql, actorUserId);
@@ -120,6 +126,16 @@ export async function savePlatformSettings(
     entries.push(["acs_port_start", String(range.start)]);
     entries.push(["acs_port_end", String(range.end)]);
   }
+  if (patch.acs_tls != null) {
+    const { normalizeAcsScheme } = await import("./acs-ports");
+    entries.push(["acs_tls", normalizeAcsScheme(patch.acs_tls)]);
+  }
+  if (patch.acs_require_cpe_auth != null) {
+    entries.push(["acs_require_cpe_auth", patch.acs_require_cpe_auth ? "true" : "false"]);
+  }
+  if (patch.acs_lock_url != null) {
+    entries.push(["acs_lock_url", patch.acs_lock_url ? "true" : "false"]);
+  }
   for (const [key, value] of entries) {
     await sql`insert into platform_settings (key, value, updated_at) values (${key}, ${value}, now())
       on conflict (key) do update set value = ${value}, updated_at = now()`;
@@ -130,6 +146,18 @@ export async function savePlatformSettings(
     entityType: "platform_settings",
     metadata: patch,
   });
+  if (patch.acs_tls != null) {
+    const { rewriteAcsUrls } = await import("./acs-security");
+    await rewriteAcsUrls(sql);
+  }
+  if (patch.acs_tls != null || patch.acs_require_cpe_auth != null || patch.acs_lock_url != null) {
+    try {
+      const { applyGenieAcsSecurity } = await import("./acs-security");
+      await applyGenieAcsSecurity(sql);
+    } catch {
+      /* GenieACS sidecar is optional in preview */
+    }
+  }
   return getPlatformSettings(sql);
 }
 
@@ -223,9 +251,9 @@ export async function listPlatformTenantsPage(
             coalesce(s.plan, 'trial') as plan,
             coalesce(s.status, 'trial') as subscription_status,
             s.period_end::text as period_end,
-            (select count(*)::int from customers c where c.tenant_id = t.id) as customers,
+            (select count(*)::int from customers c where c.tenant_id = t.id and c.deleted_at is null) as customers,
             (select count(*)::int from routers r where r.tenant_id = t.id) as routers,
-            (select count(*)::int from services sv where sv.tenant_id = t.id and sv.status = 'active') as services_active,
+            (select count(*)::int from services sv where sv.tenant_id = t.id and sv.deleted_at is null and sv.status = 'active') as services_active,
             (select count(*)::int from tenant_members m where m.tenant_id = t.id) as members,
             coalesce(
               (select max(r.last_seen) from routers r where r.tenant_id = t.id),
@@ -292,9 +320,9 @@ export async function loadTenantDetail(sql: Sql, actorUserId: string, tenantId: 
     members: number;
     tickets_open: number;
   }>`select
-      (select count(*)::int from customers where tenant_id = ${tenantId}) as customers,
-      (select count(*)::int from services where tenant_id = ${tenantId}) as services,
-      (select count(*)::int from services where tenant_id = ${tenantId} and status = 'active') as services_active,
+      (select count(*)::int from customers where tenant_id = ${tenantId} and deleted_at is null) as customers,
+      (select count(*)::int from services where tenant_id = ${tenantId} and deleted_at is null) as services,
+      (select count(*)::int from services where tenant_id = ${tenantId} and deleted_at is null and status = 'active') as services_active,
       (select count(*)::int from routers where tenant_id = ${tenantId}) as routers,
       (select count(*)::int from tenant_members where tenant_id = ${tenantId}) as members,
       (select count(*)::int from tickets where tenant_id = ${tenantId} and status not in ('resolved','closed')) as tickets_open`;

@@ -360,6 +360,9 @@ export const saveSaasSettings = createServerFn({ method: "POST" })
       acs_dns_host?: string;
       acs_port_start?: number;
       acs_port_end?: number;
+      acs_tls?: "http" | "https";
+      acs_require_cpe_auth?: boolean;
+      acs_lock_url?: boolean;
     }) => d,
   )
   .handler(async ({ context, data }) => {

@@ -550,7 +550,7 @@ function quotaMessage(plan: string, kind: string, max: number) {
 export async function assertCustomerQuota(sql: Sql, tenantId: string) {
   await assertTenantOperable(sql, tenantId);
   const sub = await ensureSubscription(sql, tenantId);
-  const [n] = await sql<{ n: number }>`select count(*)::int as n from customers where tenant_id = ${tenantId}`;
+  const [n] = await sql<{ n: number }>`select count(*)::int as n from customers where tenant_id = ${tenantId} and deleted_at is null`;
   if (sub.max_customers > 0 && (n?.n ?? 0) >= sub.max_customers) {
     throw new Error(quotaMessage(sub.plan, "customers", sub.max_customers));
   }
@@ -569,7 +569,7 @@ export async function assertServiceQuota(sql: Sql, tenantId: string) {
   await assertTenantOperable(sql, tenantId);
   const sub = await ensureSubscription(sql, tenantId);
   if (sub.max_services <= 0) return;
-  const [n] = await sql<{ n: number }>`select count(*)::int as n from services where tenant_id = ${tenantId}`;
+  const [n] = await sql<{ n: number }>`select count(*)::int as n from services where tenant_id = ${tenantId} and deleted_at is null`;
   if ((n?.n ?? 0) >= sub.max_services) {
     throw new Error(quotaMessage(sub.plan, "services", sub.max_services));
   }

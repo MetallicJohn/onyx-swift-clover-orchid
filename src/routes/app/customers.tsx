@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { Communications } from "@/components/isp/communications";
 import { TagList, TagPicker } from "@/components/isp/tag-picker";
+import { TrafficDrawer } from "@/components/isp/traffic-drawer";
 import { Button } from "@/components/ui/button";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
@@ -37,6 +38,7 @@ const EMPTY_FORM = {
   portal_password: "",
   tag_ids: [] as string[],
   account_number: "",
+  notes: "",
 };
 
 function churnTone(band: string) {
@@ -62,8 +64,10 @@ function CustomerTable({
   setPortalFor,
   setPortalPass,
   onEdit,
+  onTraffic,
   canManage,
   canStatements,
+  canTraffic,
 }: {
   rows: CustomerRow[];
   selected: Set<string>;
@@ -75,8 +79,10 @@ function CustomerTable({
   setPortalFor: (id: string | null) => void;
   setPortalPass: (value: string) => void;
   onEdit: (c: CustomerRow) => void;
+  onTraffic: (c: CustomerRow) => void;
   canManage: boolean;
   canStatements: boolean;
+  canTraffic: boolean;
 }) {
   const { parentRef, virtualizer, rows: vis, padTop, padBottom } = useTableVirtualizer(rows.length, 96);
   return (
@@ -118,7 +124,13 @@ function CustomerTable({
                   ) : null}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="font-medium">{c.name}</div>
+                  <Link
+                    to="/app/customers/$customerId"
+                    params={{ customerId: c.id }}
+                    className="inline-flex min-h-11 items-center font-medium hover:text-accent hover:underline"
+                  >
+                    {c.name}
+                  </Link>
                   <div className="text-xs text-muted capitalize">{c.type}</div>
                 </td>
                 <td className="px-4 py-3 font-mono text-xs">{c.account_number || "—"}</td>
@@ -143,6 +155,18 @@ function CustomerTable({
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-col items-start gap-2">
+                    <Link
+                      to="/app/customers/$customerId"
+                      params={{ customerId: c.id }}
+                      className="inline-flex min-h-11 items-center text-sm text-accent hover:underline"
+                    >
+                      Open
+                    </Link>
+                    {canTraffic ? (
+                      <Button size="sm" variant="ghost" onClick={() => onTraffic(c)}>
+                        Traffic
+                      </Button>
+                    ) : null}
                     {canManage ? (
                       <Button size="sm" variant="ghost" onClick={() => onEdit(c)}>
                         Edit
@@ -239,6 +263,7 @@ function CustomersPage() {
   const [bulkBody, setBulkBody] = useState("");
   const [bulkNote, setBulkNote] = useState<string | null>(null);
   const [role, setRole] = useState("");
+  const [trafficFor, setTrafficFor] = useState<CustomerRow | null>(null);
 
   async function load() {
     const res = await listCustomers();
@@ -285,6 +310,8 @@ function CustomersPage() {
   const canStatements = hasPermission(role, "invoices.read");
   const canComms = hasPermission(role, "communications.view");
   const canSettings = hasPermission(role, "settings.manage");
+  const canTraffic = hasPermission(role, "traffic.view") || hasPermission(role, "services.read");
+  const canRecycle = hasPermission(role, "recycle_bin.view");
   const tab: PageTab = tabParam === "communications" && canComms ? "communications" : "customers";
 
   function startCreate() {
@@ -307,6 +334,7 @@ function CustomersPage() {
       portal_password: "",
       tag_ids: (c.tags ?? []).map((t) => t.id),
       account_number: c.account_number || "",
+      notes: c.notes || "",
     });
     setOpen(true);
   }
@@ -340,6 +368,7 @@ function CustomersPage() {
             type: form.type,
             tag_ids: form.tag_ids,
             account_number: form.account_number,
+            notes: form.notes,
           },
         });
       } else {
@@ -353,6 +382,7 @@ function CustomersPage() {
             portal_password: form.portal_password || undefined,
             tag_ids: form.tag_ids,
             account_number: form.account_number || undefined,
+            notes: form.notes,
           },
         });
       }
@@ -415,7 +445,17 @@ function CustomersPage() {
               : "CRM with balances, tags, and a live churn score from billing, access, and tickets."}
           </p>
         </div>
-        {tab === "customers" && canManage ? <Button onClick={startCreate}>New customer</Button> : null}
+        <div className="flex flex-wrap gap-2">
+          {canRecycle ? (
+            <Link
+              to="/app/recycle-bin"
+              className="inline-flex h-11 items-center rounded-md border border-border bg-elevated px-4 text-sm font-medium hover:bg-surface"
+            >
+              Recycle Bin
+            </Link>
+          ) : null}
+          {tab === "customers" && canManage ? <Button onClick={startCreate}>New customer</Button> : null}
+        </div>
       </div>
 
       <div
@@ -544,6 +584,18 @@ function CustomersPage() {
               <Button size="sm" variant={bulk === "notify" ? "default" : "secondary"} onClick={() => setBulk("notify")}>
                 Send notification
               </Button>
+              {canTraffic && selectedIds.length === 1 ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    const hit = filtered.find((c) => c.id === selectedIds[0]);
+                    if (hit) setTrafficFor(hit);
+                  }}
+                >
+                  Realtime traffic
+                </Button>
+              ) : null}
               <Button
                 size="sm"
                 variant="ghost"
@@ -651,6 +703,11 @@ function CustomersPage() {
               <TagPicker tags={tags} selected={form.tag_ids} onChange={(tag_ids) => setForm({ ...form, tag_ids })} />
             </Field>
           </div>
+          <div className="md:col-span-2">
+            <Field label="Notes">
+              <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={3} />
+            </Field>
+          </div>
           <div className="flex items-end gap-2">
             <Button type="submit" disabled={busy}>
               Save
@@ -693,12 +750,22 @@ function CustomersPage() {
           setPortalFor={setPortalFor}
           setPortalPass={setPortalPass}
           onEdit={startEdit}
+          onTraffic={setTrafficFor}
           canManage={canManage}
           canStatements={canStatements}
+          canTraffic={canTraffic}
         />
       )}
       </>
       ) : null}
+      <TrafficDrawer
+        open={Boolean(trafficFor)}
+        onOpenChange={(open) => {
+          if (!open) setTrafficFor(null);
+        }}
+        customerId={trafficFor?.id || ""}
+        customerName={trafficFor?.name}
+      />
     </div>
   );
 }
