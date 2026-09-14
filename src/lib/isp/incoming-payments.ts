@@ -329,7 +329,8 @@ export async function listIncomingPayments(sql: Sql, tenantId: string) {
     amount_kes: number;
     paid_kes: number;
     status: string;
-  }>`select id, number, customer_id, amount_kes, paid_kes, status from invoices i
+  }>`select i.id, i.number, i.customer_id, i.amount_kes, i.paid_kes, i.status
+     from invoices i
      join customers c on c.id = i.customer_id and c.tenant_id = i.tenant_id
      where i.tenant_id = ${tenantId} and i.status in ('issued','due','overdue','partial','sent','pending')
        and c.deleted_at is null

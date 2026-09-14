@@ -144,6 +144,8 @@ test("STK amount mismatch parks unmatched and does not credit", async () => {
     const desk = await listIncomingPayments(sql, "ten_in");
     assert.equal(desk.unmatched, 1);
     assert.equal(desk.rows[0]?.trans_id, "QJKMIS");
+    assert.equal(desk.invoices.length, 1);
+    assert.equal(desk.invoices[0]?.id, "inv_in");
     const [inv] = await sql<{ paid_kes: number }>`select paid_kes from invoices where id = 'inv_in'`;
     assert.equal(inv?.paid_kes, 0);
   } finally {
