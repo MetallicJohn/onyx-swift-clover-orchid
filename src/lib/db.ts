@@ -90,10 +90,12 @@ function createNeonSql(): Promise<Sql> {
     // Regular Postgres driver: node-postgres (`pg`) — works directly with Neon's
     // pooled endpoint. One pool per process; warm serverless instances reuse it.
     const { Pool, types } = await import("pg");
+    const { loadServiceConfig, postgresPoolOptions } = await import("./isp/runtime-config.ts");
     types.setTypeParser(OID_INT8, Number);
     types.setTypeParser(OID_DATE, identity);
     types.setTypeParser(OID_INTERVAL, identity);
-    const pool = new Pool({ connectionString: databaseUrl });
+    const cfg = loadServiceConfig();
+    const pool = new Pool({ connectionString: databaseUrl, ...postgresPoolOptions(cfg) });
     return toSql(async <T>(text: string, params: unknown[]) => {
       const res = await pool.query(text, params);
       return res.rows as T[];

@@ -4,6 +4,8 @@
 
 {$GRIDLINE_DOMAIN} {
 	encode gzip zstd
+	@internal path /api/internal*
+	respond @internal 404
 	reverse_proxy web:3000
 }
 
@@ -15,5 +17,5 @@ acs.{$GRIDLINE_DOMAIN} {
 # TR-069 / CWMP is NOT terminated here. Each ISP gets a unique host port in 7551–7999
 # (cwmp-edge → genieacs:7547). HTTPS on those ports is optional: set ACS_TLS_CERT and
 # ACS_TLS_KEY (or *_FILE) on cwmp-edge, then issue https:// ACS URLs from System settings.
-# GenieACS NBI (7557), Mongo, the ACS auth endpoint, and Redis stay off the public internet.
-
+# GenieACS NBI (7557), Mongo, Redis, Postgres, and /api/internal/* stay off the public internet.
+# Workers and collectors must use GRIDLINE_INTERNAL_URL on the private/VPN address, not this site.

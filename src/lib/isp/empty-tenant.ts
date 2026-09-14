@@ -16,6 +16,8 @@ export const TENANT_BUSINESS_TABLES = [
   "invoices",
   "radius_auth_events",
   "radius_sessions",
+  "traffic_samples",
+  "job_queue",
   "radius_accounts",
   "agent_commands",
   "wireguard_peers",

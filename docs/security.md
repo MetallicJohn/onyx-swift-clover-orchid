@@ -26,3 +26,7 @@ CPE → ACS is HTTP digest against the per-ISP ACS username and password. Connec
 
 ## OWASP notes (M0.5)
 SQL is parameterized. XSS: React escaping. CSRF: same-site middleware (`assertSameSiteRequest`). SSRF: MikroTik REST only to configured `api_host` / WG address. Command injection: RouterOS values are quoted via `rosQuote`. Do not log secrets.
+
+## Service-to-service
+`INTERNAL_SERVICE_TOKEN` (or `ACS_EDGE_TOKEN`) on `/api/internal/*`. Caddy returns 404 for that prefix on the public hostname. Postgres, Redis, Mongo, and GenieACS NBI bind privately. Structured logs redact password/token/secret keys (`src/lib/isp/obs.ts`).
+

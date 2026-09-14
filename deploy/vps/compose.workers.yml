@@ -1,0 +1,21 @@
+# Stage 3 — background workers on their own VPS.
+# Same image as web; ROLE=worker skips migrations and polls /api/internal/jobs.
+name: gridline-workers
+
+services:
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile
+      args:
+        GIT_SHA: ${GRIDLINE_GIT_SHA:-unknown}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      ROLE: worker
+      SKIP_MIGRATE: "1"
+      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+      JOB_QUEUE_NAME: ${JOB_QUEUE_NAME:-}
+      WORKER_ID: ${WORKER_ID:-worker-1}

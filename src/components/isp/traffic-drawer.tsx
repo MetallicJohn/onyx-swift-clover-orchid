@@ -4,7 +4,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/input";
 import { accessMethodLabel, formatBytes, formatDateTime } from "@/lib/isp/display";
 import { customerTrafficFn } from "@/lib/isp/server-lifecycle";
-import { bytesToBps, formatBps, meterPercent, TRAFFIC_POLL_MS, TRAFFIC_SOURCE_LABEL } from "@/lib/isp/traffic-format";
+import { bytesToBps, formatBps, meterPercent, TRAFFIC_FRESHNESS_LABEL, TRAFFIC_POLL_MS, TRAFFIC_SOURCE_LABEL } from "@/lib/isp/traffic-format";
 
 type TrafficSnap = Awaited<ReturnType<typeof customerTrafficFn>>;
 type TrafficLine = TrafficSnap["lines"][number];
@@ -92,6 +92,7 @@ export function TrafficDrawer({
   const lines = (snap?.lines ?? []).filter((l) => !filter || l.service_id === filter);
   const live = lines.filter((l) => l.online);
   const source = snap ? TRAFFIC_SOURCE_LABEL[snap.source] || snap.source : "";
+  const freshness = snap ? TRAFFIC_FRESHNESS_LABEL[snap.freshness] || snap.freshness : "";
 
   return (
     <Dialog
@@ -133,10 +134,16 @@ export function TrafficDrawer({
           <TrafficCard key={line.service_id} line={line} rate={rates[line.service_id]} />
         ))}
 
+        {snap && snap.freshness === "unavailable" && live.length === 0 ? (
+          <p className="rounded-md border border-border bg-elevated px-3 py-3 text-sm">
+            Traffic data unavailable. Values are not estimated.
+          </p>
+        ) : null}
+
         {snap ? (
           <p className="text-xs text-subtle">
-            Last update {formatDateTime(snap.at)} · Source {source} · Refresh every {TRAFFIC_POLL_MS / 1000}s while
-            this panel is open
+            Last update {formatDateTime(snap.last_collected_at || snap.at)} · {freshness} · Source {source} · Refresh
+            every {TRAFFIC_POLL_MS / 1000}s while this panel is open
           </p>
         ) : null}
       </div>

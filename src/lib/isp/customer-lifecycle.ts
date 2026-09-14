@@ -35,7 +35,9 @@ export type TrafficLine = {
 
 export type CustomerTraffic = {
   at: string;
-  source: "radius-accounting";
+  source: "radius-accounting" | "traffic-collector";
+  freshness: "live" | "stale" | "unavailable";
+  last_collected_at: string | null;
   lines: TrafficLine[];
 };
 
@@ -235,9 +237,77 @@ export async function customerTraffic(sql: Sql, tenantId: string, customerId: st
     if (liveByUser.has(ses.username)) continue;
     liveByUser.set(ses.username, ses);
   }
+
+  let source: CustomerTraffic["source"] = "radius-accounting";
+  let lastCollected: string | null = null;
+  try {
+    const { latestSamplesForUsernames, liveTrafficFromCache, trafficFreshness } = await import("./traffic-collector.ts");
+    for (const user of usernames) {
+      const cached = await liveTrafficFromCache(tenantId, user);
+      if (cached) {
+        liveByUser.set(user, {
+          username: user,
+          framed_ip: cached.framed_ip,
+          nas_ip: cached.nas_ip,
+          bytes_in: cached.bytes_in,
+          bytes_out: cached.bytes_out,
+          started_at: cached.collected_at,
+          stopped_at: null,
+        });
+        source = "traffic-collector";
+        lastCollected = cached.collected_at;
+      }
+    }
+    const samples = await latestSamplesForUsernames(sql, tenantId, usernames);
+    for (const sample of samples) {
+      lastCollected = lastCollected || sample.collected_at;
+      if (liveByUser.has(sample.username)) continue;
+      liveByUser.set(sample.username, {
+        username: sample.username,
+        framed_ip: sample.framed_ip,
+        nas_ip: sample.nas_ip,
+        bytes_in: Number(sample.bytes_in || 0),
+        bytes_out: Number(sample.bytes_out || 0),
+        started_at: sample.collected_at,
+        stopped_at: sample.online ? null : sample.collected_at,
+      });
+      source = "traffic-collector";
+    }
+    const freshness = trafficFreshness(lastCollected || sessions[0]?.started_at || null);
+    return {
+      at: new Date().toISOString(),
+      source,
+      freshness: source === "radius-accounting" && sessions.length ? "live" : freshness,
+      last_collected_at: lastCollected,
+      lines: lines.map((line) => {
+        const ses = line.username ? liveByUser.get(line.username) : undefined;
+        const online = Boolean(ses && !ses.stopped_at);
+        return {
+          service_id: line.id,
+          username: line.username || "",
+          package_name: line.package_name,
+          status: line.status,
+          access_method: line.access_method,
+          online,
+          framed_ip: online ? ses?.framed_ip || line.static_ip || "" : line.static_ip || "",
+          nas_ip: online ? ses?.nas_ip || "" : "",
+          bytes_in: online ? Number(ses?.bytes_in || 0) : 0,
+          bytes_out: online ? Number(ses?.bytes_out || 0) : 0,
+          started_at: online ? ses?.started_at || null : null,
+          download_mbps: Number(line.download_mbps || 0),
+          upload_mbps: Number(line.upload_mbps || 0),
+        };
+      }),
+    };
+  } catch {
+    /* tables may not exist yet — fall through to RADIUS accounting */
+  }
+
   return {
     at: new Date().toISOString(),
     source: "radius-accounting",
+    freshness: sessions.length ? "live" : "unavailable",
+    last_collected_at: sessions[0]?.started_at || null,
     lines: lines.map((line) => {
       const ses = line.username ? liveByUser.get(line.username) : undefined;
       const online = Boolean(ses && !ses.stopped_at);

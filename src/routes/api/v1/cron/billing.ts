@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
-import { runBillingCycle } from "@/lib/isp/notifications";
+import { enqueueBillingForAllTenants, processQueuedJobs } from "@/lib/isp/jobs";
 import { applyRls } from "@/lib/isp/rls";
 
 export const Route = createFileRoute("/api/v1/cron/billing")({
@@ -15,13 +15,9 @@ export const Route = createFileRoute("/api/v1/cron/billing")({
         }
         const sql = await getSql();
         await applyRls(sql, { bypass: true });
-        const tenants = await sql<{ id: string; name: string }>`select id, name from tenants`;
-        const results = [];
-        for (const t of tenants) {
-          await applyRls(sql, { tenantId: t.id, bypass: false });
-          results.push({ tenant: t.name, ...(await runBillingCycle(sql, t.id, t.name)) });
-        }
-        return Response.json({ ok: true, ran: results.length, results });
+        const queued = await enqueueBillingForAllTenants(sql);
+        const processed = await processQueuedJobs(sql, { workerId: "cron-billing", queue: "billing", limit: 32 });
+        return Response.json({ ok: true, ran: queued.tenants, queued, processed });
       },
     },
   },

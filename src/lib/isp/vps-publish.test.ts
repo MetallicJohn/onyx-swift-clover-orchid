@@ -59,10 +59,15 @@ test("publish pack names docker compose, health, and WireGuard", () => {
   assert.match(install, /ACS_EDGE_TOKEN/);
   assert.match(compose, /mongo:7/);
   assert.match(compose, /GIT_SHA/);
+  assert.match(compose, /redis:7-alpine/);
+  assert.match(compose, /ROLE: worker/);
+  assert.match(compose, /ROLE: collector/);
   assert.match(dockerfile, /NITRO_PRESET=node-server/);
   assert.match(dockerfile, /GRIDLINE_GIT_SHA/);
   assert.match(compose, /1812:1812\/udp/);
   assert.match(dockerfile, /entrypoint\.sh/);
+  assert.match(dockerfile, /worker\.mjs/);
+  assert.match(dockerfile, /collector\.mjs/);
   assert.match(ci, /VPS_HOST/);
   assert.match(ci, /deploy\/vps\/update\.sh/);
 });

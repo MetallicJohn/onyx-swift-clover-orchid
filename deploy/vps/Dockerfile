@@ -27,6 +27,8 @@ COPY --from=build /app/scripts/migration-plan.mjs /app/scripts/migration-plan.mj
 COPY --from=build /app/package.json /app/package-lock.json /app/
 RUN npm ci --omit=dev
 COPY deploy/vps/entrypoint.sh /app/entrypoint.sh
+COPY deploy/vps/worker.mjs /app/deploy/vps/worker.mjs
+COPY deploy/vps/collector.mjs /app/deploy/vps/collector.mjs
 RUN chmod +x /app/entrypoint.sh
 EXPOSE 3000
 ENTRYPOINT ["/app/entrypoint.sh"]

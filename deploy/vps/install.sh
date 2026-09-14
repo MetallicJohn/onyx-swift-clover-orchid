@@ -74,6 +74,9 @@ if [[ ! -f "$ENV_FILE" ]]; then
   echo "[gridline] writing $ENV_FILE"
   POSTGRES_PASSWORD="$(openssl rand -hex 24)"
   APP_SECRET="$(openssl rand -hex 32)"
+  REDIS_PASSWORD="$(openssl rand -hex 24)"
+  ACS_EDGE_TOKEN="$(openssl rand -hex 32)"
+  INTERNAL_SERVICE_TOKEN="$(openssl rand -hex 32)"
   cat >"$ENV_FILE" <<EOF
 NODE_ENV=production
 HOST=0.0.0.0
@@ -89,14 +92,24 @@ BETTER_AUTH_SECRET=$APP_SECRET
 BETTER_AUTH_URL=https://$DOMAIN
 BETTER_AUTH_TRUSTED_ORIGINS=https://$DOMAIN,https://www.$DOMAIN
 GENIEACS_NBI_URL=http://genieacs:7557
+GENIEACS_CWMP_URL=http://genieacs:7547
 GENIEACS_UI_JWT_SECRET=$(openssl rand -hex 32)
 GRIDLINE_URL=http://web:3000
 GRIDLINE_INTERNAL_URL=http://web:3000
 GRIDLINE_SLUG=
 RADIUS_API_KEY=
 RADIUS_NAS_SECRET=$(openssl rand -hex 16)
-ACS_EDGE_TOKEN=$(openssl rand -hex 32)
+RADIUS_HOST=freeradius
+ACS_EDGE_TOKEN=$ACS_EDGE_TOKEN
+INTERNAL_SERVICE_TOKEN=$INTERNAL_SERVICE_TOKEN
 ACS_PUBLIC_HOST=$DOMAIN
+REDIS_PASSWORD=$REDIS_PASSWORD
+REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+MONGODB_URL=mongodb://mongo:27017/genieacs
+DATABASE_SSL_MODE=disable
+WORKER_CONCURRENCY=2
+TRAFFIC_COLLECTION_INTERVAL=30
+LOG_LEVEL=info
 EOF
   chmod 600 "$ENV_FILE"
 else
@@ -127,6 +140,8 @@ else
     echo "ACS_PUBLIC_HOST=$DOMAIN" >>"$ENV_FILE"
   fi
 fi
+
+bash "$INSTALL_DIR/deploy/vps/ensure-env.sh" "$ENV_FILE"
 
 if command -v ufw >/dev/null 2>&1; then
   ufw allow OpenSSH || true
@@ -160,4 +175,6 @@ echo "  9. RADIUS → Copy VPS env into gridline.env, then restart the freeradiu
 echo " 10. Publish now: sudo bash $INSTALL_DIR/deploy/vps/update.sh"
 echo
 echo "Health: curl -fsS https://$DOMAIN/api/v1/health"
+echo "Ready:  curl -fsS https://$DOMAIN/api/v1/ready"
 echo "Logs:   docker compose -f $INSTALL_DIR/deploy/vps/docker-compose.yml logs -f web"
+echo "Backup: sudo bash $INSTALL_DIR/deploy/vps/backup.sh"

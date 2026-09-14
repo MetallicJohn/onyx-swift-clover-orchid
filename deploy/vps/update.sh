@@ -68,6 +68,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   echo "[gridline] missing $ENV_FILE — run install.sh once to create secrets." >&2
   exit 1
 fi
+bash "$INSTALL_DIR/deploy/vps/ensure-env.sh" "$ENV_FILE"
 
 if command -v systemctl >/dev/null 2>&1 && [[ -f "$INSTALL_DIR/deploy/vps/systemd/gridline-update.service" ]]; then
   sed "s|/opt/gridline|$INSTALL_DIR|g" "$INSTALL_DIR/deploy/vps/systemd/gridline-update.service" >/etc/systemd/system/gridline-update.service

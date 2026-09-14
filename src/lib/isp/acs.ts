@@ -34,11 +34,15 @@ export async function loadAcsConfig(sql: Sql, tenantId: string): Promise<AcsNbiC
     acs_oui: string;
   }>`select acs_nbi_url, acs_nbi_user, acs_nbi_pass_ref, acs_oui from tenants where id = ${tenantId}`;
   const fromEnv = (process.env.GENIEACS_NBI_URL || "").trim();
+  const envUser = (process.env.GENIEACS_NBI_USER || process.env.GENIEACS_NBI_USERNAME || "").trim();
+  const envPass = (process.env.GENIEACS_NBI_PASS || process.env.GENIEACS_NBI_PASSWORD || "").trim();
+  const timeoutMs = Number(process.env.GENIEACS_TIMEOUT_MS || 8000);
   return {
     nbiUrl: (row?.acs_nbi_url || fromEnv).trim(),
-    user: (row?.acs_nbi_user || process.env.GENIEACS_NBI_USER || "").trim(),
-    pass: open(row?.acs_nbi_pass_ref || "") || (process.env.GENIEACS_NBI_PASS || "").trim(),
+    user: (row?.acs_nbi_user || envUser).trim(),
+    pass: open(row?.acs_nbi_pass_ref || "") || envPass,
     oui: (row?.acs_oui || "").trim(),
+    timeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : 8000,
   };
 }
 

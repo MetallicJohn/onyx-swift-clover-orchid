@@ -1,6 +1,6 @@
 # ISP Solutions architecture (living)
 
-Last updated: 2026-09-09 — CR-008 RLS, CI, production proofs.
+Last updated: 2026-09-14 — CR-028 distributed deployment (env/adapters, same codebase).
 
 ## Authoritative backend
 
@@ -38,3 +38,5 @@ Live STK is confirmed only by provider callback or a successful provider query. 
 ## Network
 
 SaaS → WireGuard (real X25519 keys) → agent pull → MikroTik REST/script. FreeRADIUS and GenieACS remain **external** services; this app holds adapters and desired state only.
+
+Deployment can start on one VPS and later split (Postgres, Redis, RADIUS, GenieACS/Mongo, workers, collectors) by changing env URLs. See [distributed.md](distributed.md) and CR-028.

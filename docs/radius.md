@@ -44,3 +44,5 @@ Authorize returns rlm_rest JSON (`control:Cleartext-Password`, `Mikrotik-Group` 
 Queues `pppoe.disable` / `hotspot.disable` on the MikroTik agent. A `radclient` CoA packet is not shipped.
 
 **Status:** REST adapter + bootstrap + compose daemon **implemented**. Live UDP handshake needs the VPS container + a NAS.
+
+To run FreeRADIUS on another VPS, set `GRIDLINE_URL` to the application private URL and `RADIUS_HOST` on the app to that VPS. Same authorize/accounting/CoA workflows. See [distributed.md](distributed.md).

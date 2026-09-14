@@ -1,0 +1,6 @@
+# Stage 1 — all services on one VPS.
+# Canonical file is docker-compose.yml (install.sh default). This alias exists so
+# operators can name the stage explicitly:
+#   docker compose -f deploy/vps/compose.single-vps.yml --env-file gridline.env up -d
+include:
+  - docker-compose.yml

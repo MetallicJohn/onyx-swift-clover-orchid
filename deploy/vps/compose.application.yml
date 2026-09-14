@@ -1,0 +1,96 @@
+# Stage 2/3 — application VPS (web, Caddy, optional Redis, workers).
+# Point DATABASE_URL, REDIS_URL, GENIEACS_NBI_URL, RADIUS_HOST, GRIDLINE_INTERNAL_URL
+# at the private addresses of the other VPS servers. Do not publish Postgres/Redis/NBI.
+name: gridline-application
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--save", "", "--appendonly", "no"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "${REDIS_BIND:-127.0.0.1}:6379:6379"
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile
+      args:
+        GIT_SHA: ${GRIDLINE_GIT_SHA:-unknown}
+    restart: unless-stopped
+    env_file:
+      - ../../gridline.env
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3000"
+      NODE_ENV: production
+      ROLE: web
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+      GENIEACS_NBI_URL: ${GENIEACS_NBI_URL}
+      GENIEACS_CWMP_URL: ${GENIEACS_CWMP_URL}
+      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL:-http://web:3000}
+      RADIUS_HOST: ${RADIUS_HOST}
+      MONGODB_URL: ${MONGODB_URL:-}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${ACS_EDGE_TOKEN}}
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile
+      args:
+        GIT_SHA: ${GRIDLINE_GIT_SHA:-unknown}
+    restart: unless-stopped
+    env_file:
+      - ../../gridline.env
+    environment:
+      NODE_ENV: production
+      ROLE: worker
+      SKIP_MIGRATE: "1"
+      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL:-http://web:3000}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${ACS_EDGE_TOKEN}}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+    depends_on:
+      web:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      GRIDLINE_DOMAIN: ${GRIDLINE_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+
+volumes:
+  redisdata:
+  caddy_data:
+  caddy_config:

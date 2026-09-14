@@ -68,12 +68,13 @@ export function internalRadiusBaseUrl(publicBase = "") {
   const fromEnv = (process.env.GRIDLINE_INTERNAL_URL || "").trim().replace(/\/+$/, "");
   if (fromEnv) return fromEnv;
   const pub = (publicBase || "").trim().replace(/\/+$/, "");
-  return pub || "http://web:3000";
+  return pub;
 }
 
-export function radiusVpsEnv(opts: { slug: string; apiKey: string; nasSecret: string }) {
+export function radiusVpsEnv(opts: { slug: string; apiKey: string; nasSecret: string; baseUrl?: string }) {
+  const url = (opts.baseUrl || internalRadiusBaseUrl()).replace(/\/+$/, "");
   return [
-    `GRIDLINE_URL=http://web:3000`,
+    `GRIDLINE_URL=${url || "http://web:3000"}`,
     `GRIDLINE_SLUG=${opts.slug || "your-isp"}`,
     `RADIUS_API_KEY=${opts.apiKey || "frk_replace_me"}`,
     `RADIUS_NAS_SECRET=${opts.nasSecret || ""}`,
@@ -309,7 +310,7 @@ export function radiusConfigBundle(opts: {
   nas: Array<{ name: string; ip: string; secret: string }>;
   radiusHost?: string;
 }) {
-  const base = (opts.baseUrl || "http://web:3000").replace(/\/+$/, "");
+  const base = (opts.baseUrl || internalRadiusBaseUrl() || "").replace(/\/+$/, "");
   const revealed = opts.apiKey && !opts.apiKey.startsWith("••••");
   const nas = opts.nas;
   return {

@@ -21,4 +21,4 @@ GenieACS is a **separate process** (CWMP :7547, NBI :7557, FS :7567, UI on `acs.
 - Firmware file server workflows
 - STUN / XMPP connection request for CGNAT
 
-Set NBI URL in **GenieACS** (default `http://genieacs:7557` on the VPS compose network). Then **Sync from ACS**.
+Set NBI URL in **GenieACS** (default `http://genieacs:7557` on the VPS compose network, or `GENIEACS_NBI_URL` on a remote NBI). Then **Sync from ACS**. Moving GenieACS+Mongo later is an env change: [distributed.md](distributed.md).

@@ -1,5 +1,8 @@
-# Run from /opt/gridline (install.sh sets this up):
+# Stage 1 — single VPS (install.sh default).
+# Run from /opt/gridline:
 #   docker compose -f deploy/vps/docker-compose.yml --env-file gridline.env up -d
+# Split later with compose.application.yml + compose.database.yml + compose.network-services.yml
+# (env endpoints only — same application image).
 name: gridline
 
 services:
@@ -18,6 +21,22 @@ services:
       timeout: 5s
       retries: 20
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--save", "", "--appendonly", "no"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    expose:
+      - "6379"
+
   web:
     build:
       context: ../..
@@ -31,13 +50,68 @@ services:
       HOST: "0.0.0.0"
       PORT: "3000"
       NODE_ENV: production
+      ROLE: web
       GENIEACS_NBI_URL: ${GENIEACS_NBI_URL:-http://genieacs:7557}
-      GRIDLINE_INTERNAL_URL: http://web:3000
+      GENIEACS_CWMP_URL: ${GENIEACS_CWMP_URL:-http://genieacs:7547}
+      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL:-http://web:3000}
+      REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+      MONGODB_URL: ${MONGODB_URL:-mongodb://mongo:27017/genieacs}
+      RADIUS_HOST: ${RADIUS_HOST:-freeradius}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${ACS_EDGE_TOKEN}}
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
     expose:
       - "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile
+      args:
+        GIT_SHA: ${GRIDLINE_GIT_SHA:-unknown}
+    restart: unless-stopped
+    env_file:
+      - ../../gridline.env
+    environment:
+      NODE_ENV: production
+      ROLE: worker
+      SKIP_MIGRATE: "1"
+      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL:-http://web:3000}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${ACS_EDGE_TOKEN}}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+    depends_on:
+      web:
+        condition: service_healthy
+
+  collector:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile
+      args:
+        GIT_SHA: ${GRIDLINE_GIT_SHA:-unknown}
+    restart: unless-stopped
+    env_file:
+      - ../../gridline.env
+    environment:
+      NODE_ENV: production
+      ROLE: collector
+      SKIP_MIGRATE: "1"
+      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL:-http://web:3000}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${ACS_EDGE_TOKEN}}
+      TRAFFIC_COLLECTION_INTERVAL: ${TRAFFIC_COLLECTION_INTERVAL:-30}
+      COLLECTOR_ID: ${COLLECTOR_ID:-default}
+    depends_on:
+      web:
+        condition: service_healthy
 
   mongo:
     image: mongo:7
@@ -60,11 +134,11 @@ services:
       genieacs-init:
         condition: service_completed_successfully
     environment:
-      GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongo/genieacs
+      GENIEACS_MONGODB_CONNECTION_URL: ${GENIEACS_MONGODB_CONNECTION_URL:-mongodb://mongo/genieacs}
       GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
       GENIEACS_EXT_DIR: /opt/genieacs/ext
       GENIEACS_EXT_TIMEOUT: "8000"
-      GRIDLINE_INTERNAL_URL: http://web:3000
+      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL:-http://web:3000}
       ACS_EDGE_TOKEN: ${ACS_EDGE_TOKEN}
     volumes:
       - ./genieacs/ext:/opt/genieacs/ext:ro
@@ -82,7 +156,7 @@ services:
         condition: service_healthy
     volumes:
       - ./genieacs/init-config.js:/init-config.js:ro
-    command: ["mongosh", "mongodb://mongo/genieacs", "/init-config.js"]
+    command: ["mongosh", "${GENIEACS_MONGODB_CONNECTION_URL:-mongodb://mongo/genieacs}", "/init-config.js"]
     restart: "no"
 
   cwmp-edge:
@@ -91,8 +165,8 @@ services:
     working_dir: /edge
     command: ["node", "cwmp-edge.mjs"]
     environment:
-      GENIEACS_CWMP_URL: http://genieacs:7547
-      GRIDLINE_INTERNAL_URL: http://web:3000
+      GENIEACS_CWMP_URL: ${GENIEACS_CWMP_URL:-http://genieacs:7547}
+      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL:-http://web:3000}
       ACS_EDGE_TOKEN: ${ACS_EDGE_TOKEN}
       ACS_TLS_CERT: ${ACS_TLS_CERT:-}
       ACS_TLS_KEY: ${ACS_TLS_KEY:-}
@@ -140,5 +214,6 @@ services:
 volumes:
   pgdata:
   mongodata:
+  redisdata:
   caddy_data:
   caddy_config:

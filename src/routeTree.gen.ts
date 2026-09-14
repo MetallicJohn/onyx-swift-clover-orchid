@@ -59,8 +59,11 @@ import { Route as ApiAgentScriptRouteImport } from './routes/api/agent/script'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiInternalAcsAuthRouteImport } from './routes/api/internal/acs-auth'
 import { Route as ApiInternalAcsPortsRouteImport } from './routes/api/internal/acs-ports'
+import { Route as ApiInternalJobsRouteImport } from './routes/api/internal/jobs'
+import { Route as ApiInternalTrafficRouteImport } from './routes/api/internal/traffic'
 import { Route as ApiPlatformTelemetryRouteImport } from './routes/api/platform/telemetry'
 import { Route as ApiV1HealthRouteImport } from './routes/api/v1/health'
+import { Route as ApiV1ReadyRouteImport } from './routes/api/v1/ready'
 import { Route as AppCustomersCustomerIdRouteImport } from './routes/app/customers.$customerId'
 import { Route as AppServicesServiceIdRouteImport } from './routes/app/services.$serviceId'
 import { Route as PlatformTenantsTenantIdRouteImport } from './routes/platform/tenants.$tenantId'
@@ -319,6 +322,16 @@ const ApiInternalAcsPortsRoute = ApiInternalAcsPortsRouteImport.update({
   path: '/api/internal/acs-ports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiInternalJobsRoute = ApiInternalJobsRouteImport.update({
+  id: '/api/internal/jobs',
+  path: '/api/internal/jobs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiInternalTrafficRoute = ApiInternalTrafficRouteImport.update({
+  id: '/api/internal/traffic',
+  path: '/api/internal/traffic',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPlatformTelemetryRoute = ApiPlatformTelemetryRouteImport.update({
   id: '/api/platform/telemetry',
   path: '/api/platform/telemetry',
@@ -327,6 +340,11 @@ const ApiPlatformTelemetryRoute = ApiPlatformTelemetryRouteImport.update({
 const ApiV1HealthRoute = ApiV1HealthRouteImport.update({
   id: '/api/v1/health',
   path: '/api/v1/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1ReadyRoute = ApiV1ReadyRouteImport.update({
+  id: '/api/v1/ready',
+  path: '/api/v1/ready',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppCustomersCustomerIdRoute = AppCustomersCustomerIdRouteImport.update({
@@ -416,8 +434,11 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/internal/acs-auth': typeof ApiInternalAcsAuthRoute
   '/api/internal/acs-ports': typeof ApiInternalAcsPortsRoute
+  '/api/internal/jobs': typeof ApiInternalJobsRoute
+  '/api/internal/traffic': typeof ApiInternalTrafficRoute
   '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
   '/api/v1/health': typeof ApiV1HealthRoute
+  '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
@@ -473,8 +494,11 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/internal/acs-auth': typeof ApiInternalAcsAuthRoute
   '/api/internal/acs-ports': typeof ApiInternalAcsPortsRoute
+  '/api/internal/jobs': typeof ApiInternalJobsRoute
+  '/api/internal/traffic': typeof ApiInternalTrafficRoute
   '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
   '/api/v1/health': typeof ApiV1HealthRoute
+  '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
@@ -535,8 +559,11 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/internal/acs-auth': typeof ApiInternalAcsAuthRoute
   '/api/internal/acs-ports': typeof ApiInternalAcsPortsRoute
+  '/api/internal/jobs': typeof ApiInternalJobsRoute
+  '/api/internal/traffic': typeof ApiInternalTrafficRoute
   '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
   '/api/v1/health': typeof ApiV1HealthRoute
+  '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
@@ -598,8 +625,11 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/internal/acs-auth'
     | '/api/internal/acs-ports'
+    | '/api/internal/jobs'
+    | '/api/internal/traffic'
     | '/api/platform/telemetry'
     | '/api/v1/health'
+    | '/api/v1/ready'
     | '/app/customers/$customerId'
     | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
@@ -655,8 +685,11 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/internal/acs-auth'
     | '/api/internal/acs-ports'
+    | '/api/internal/jobs'
+    | '/api/internal/traffic'
     | '/api/platform/telemetry'
     | '/api/v1/health'
+    | '/api/v1/ready'
     | '/app/customers/$customerId'
     | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
@@ -716,8 +749,11 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/internal/acs-auth'
     | '/api/internal/acs-ports'
+    | '/api/internal/jobs'
+    | '/api/internal/traffic'
     | '/api/platform/telemetry'
     | '/api/v1/health'
+    | '/api/v1/ready'
     | '/app/customers/$customerId'
     | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
@@ -747,8 +783,11 @@ export interface RootRouteChildren {
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiInternalAcsAuthRoute: typeof ApiInternalAcsAuthRoute
   ApiInternalAcsPortsRoute: typeof ApiInternalAcsPortsRoute
+  ApiInternalJobsRoute: typeof ApiInternalJobsRoute
+  ApiInternalTrafficRoute: typeof ApiInternalTrafficRoute
   ApiPlatformTelemetryRoute: typeof ApiPlatformTelemetryRoute
   ApiV1HealthRoute: typeof ApiV1HealthRoute
+  ApiV1ReadyRoute: typeof ApiV1ReadyRoute
   ApiV1CronBillingRoute: typeof ApiV1CronBillingRoute
   ApiWebhooksKopokopoSlugRoute: typeof ApiWebhooksKopokopoSlugRoute
   ApiWebhooksMpesaSlugRoute: typeof ApiWebhooksMpesaSlugRoute
@@ -1107,6 +1146,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalAcsPortsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/internal/jobs': {
+      id: '/api/internal/jobs'
+      path: '/api/internal/jobs'
+      fullPath: '/api/internal/jobs'
+      preLoaderRoute: typeof ApiInternalJobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/internal/traffic': {
+      id: '/api/internal/traffic'
+      path: '/api/internal/traffic'
+      fullPath: '/api/internal/traffic'
+      preLoaderRoute: typeof ApiInternalTrafficRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/platform/telemetry': {
       id: '/api/platform/telemetry'
       path: '/api/platform/telemetry'
@@ -1119,6 +1172,13 @@ declare module '@tanstack/react-router' {
       path: '/api/v1/health'
       fullPath: '/api/v1/health'
       preLoaderRoute: typeof ApiV1HealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/ready': {
+      id: '/api/v1/ready'
+      path: '/api/v1/ready'
+      fullPath: '/api/v1/ready'
+      preLoaderRoute: typeof ApiV1ReadyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/customers/$customerId': {
@@ -1328,8 +1388,11 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiInternalAcsAuthRoute: ApiInternalAcsAuthRoute,
   ApiInternalAcsPortsRoute: ApiInternalAcsPortsRoute,
+  ApiInternalJobsRoute: ApiInternalJobsRoute,
+  ApiInternalTrafficRoute: ApiInternalTrafficRoute,
   ApiPlatformTelemetryRoute: ApiPlatformTelemetryRoute,
   ApiV1HealthRoute: ApiV1HealthRoute,
+  ApiV1ReadyRoute: ApiV1ReadyRoute,
   ApiV1CronBillingRoute: ApiV1CronBillingRoute,
   ApiWebhooksKopokopoSlugRoute: ApiWebhooksKopokopoSlugRoute,
   ApiWebhooksMpesaSlugRoute: ApiWebhooksMpesaSlugRoute,

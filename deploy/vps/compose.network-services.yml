@@ -1,0 +1,91 @@
+# Stage 2/3 — FreeRADIUS, GenieACS, Mongo, CWMP edge.
+# NBI (7557) and Mongo stay off the public internet. Bind NBI to a private
+# address (GENIEACS_NBI_BIND) and firewall it to the application VPS.
+# RADIUS UDP 1812/1813 and TR-069 7551-7999 are the only intended public ports.
+name: gridline-network
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongodata:/data/db
+    ports:
+      - "${MONGO_BIND:-127.0.0.1}:27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  genieacs:
+    image: drumsergio/genieacs:1.2.16.0
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+      genieacs-init:
+        condition: service_completed_successfully
+    environment:
+      GENIEACS_MONGODB_CONNECTION_URL: ${GENIEACS_MONGODB_CONNECTION_URL:-mongodb://mongo/genieacs}
+      GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
+      GENIEACS_EXT_DIR: /opt/genieacs/ext
+      GENIEACS_EXT_TIMEOUT: "8000"
+      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL}
+      ACS_EDGE_TOKEN: ${ACS_EDGE_TOKEN}
+    volumes:
+      - ./genieacs/ext:/opt/genieacs/ext:ro
+      - ./genieacs/ext:/opt/genieacs/config/ext:ro
+    ports:
+      - "${GENIEACS_NBI_BIND:-127.0.0.1}:7557:7557"
+    expose:
+      - "7547"
+      - "7567"
+      - "3000"
+
+  genieacs-init:
+    image: mongo:7
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ./genieacs/init-config.js:/init-config.js:ro
+    command: ["mongosh", "${GENIEACS_MONGODB_CONNECTION_URL:-mongodb://mongo/genieacs}", "/init-config.js"]
+    restart: "no"
+
+  cwmp-edge:
+    image: node:22-alpine
+    restart: unless-stopped
+    working_dir: /edge
+    command: ["node", "cwmp-edge.mjs"]
+    environment:
+      GENIEACS_CWMP_URL: ${GENIEACS_CWMP_URL:-http://genieacs:7547}
+      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL}
+      ACS_EDGE_TOKEN: ${ACS_EDGE_TOKEN}
+      ACS_TLS_CERT: ${ACS_TLS_CERT:-}
+      ACS_TLS_KEY: ${ACS_TLS_KEY:-}
+      ACS_TLS_CERT_FILE: ${ACS_TLS_CERT_FILE:-}
+      ACS_TLS_KEY_FILE: ${ACS_TLS_KEY_FILE:-}
+    volumes:
+      - ./cwmp-edge.mjs:/edge/cwmp-edge.mjs:ro
+    ports:
+      - "7551-7999:7551-7999"
+    depends_on:
+      - genieacs
+
+  freeradius:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/freeradius/Dockerfile
+    restart: unless-stopped
+    environment:
+      GRIDLINE_URL: ${GRIDLINE_URL}
+      GRIDLINE_SLUG: ${GRIDLINE_SLUG:-}
+      RADIUS_API_KEY: ${RADIUS_API_KEY:-}
+    ports:
+      - "1812:1812/udp"
+      - "1813:1813/udp"
+
+volumes:
+  mongodata:

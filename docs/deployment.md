@@ -33,7 +33,7 @@ sudo bash /opt/gridline/deploy/vps/update.sh
 
 Pulls `origin/main`, rebuilds if the SHA changed, and turns the auto-publish timer on. Use `--force` to rebuild the same SHA (for example after editing `gridline.env`).
 
-Health: `GET /api/v1/health` (includes `sha` when the image was built from git).
+Health: `GET /api/v1/health` (includes `sha` when the image was built from git). Readiness: `GET /api/v1/ready` (database required; Redis/GenieACS reported as degraded when missing).
 
 Optional instant publish (instead of waiting for the timer): GitHub repo secrets `VPS_HOST`, `VPS_USER` (default `root`), `VPS_SSH_KEY`. CI waits for tests, then SSHs and runs the updater.
 
@@ -44,6 +44,6 @@ After DNS points at the VPS:
 3. Settings → Network: hub endpoint = VPS public IP or hostname, download `wg-ispsolutions.conf` or run the install script (`wg-quick up wg-ispsolutions`). An existing `wg-gridline` hub is migrated.
 4. Routers → Copy script onto each MikroTik
 
-Do not put MikroTik or FreeRADIUS inside the web container. GenieACS runs **beside** it (own container + Mongo).
+Do not put MikroTik or FreeRADIUS inside the web container. GenieACS runs **beside** it (own container + Mongo). Redis, workers, and the traffic collector run beside web on the same compose file; they can move later. See [distributed.md](distributed.md).
 
-VPS needs about 4 GB RAM once GenieACS is included.
+VPS needs about 4 GB RAM once GenieACS is included. Backup: `sudo bash deploy/vps/backup.sh`.

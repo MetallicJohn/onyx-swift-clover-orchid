@@ -29,4 +29,11 @@ export function meterPercent(bps: number | null | undefined, mbpsCap: number) {
 export const TRAFFIC_POLL_MS = 5000;
 export const TRAFFIC_SOURCE_LABEL: Record<string, string> = {
   "radius-accounting": "RADIUS accounting",
+  "traffic-collector": "Traffic collector",
+};
+
+export const TRAFFIC_FRESHNESS_LABEL: Record<string, string> = {
+  live: "live",
+  stale: "last updated (stale)",
+  unavailable: "data unavailable",
 };

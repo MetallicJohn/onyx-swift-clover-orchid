@@ -50,8 +50,8 @@ function dummyWork() {
 function platformNbi(): AcsNbiConfig {
   return {
     nbiUrl: (process.env.GENIEACS_NBI_URL || "").trim(),
-    user: (process.env.GENIEACS_NBI_USER || "").trim(),
-    pass: (process.env.GENIEACS_NBI_PASS || "").trim(),
+    user: (process.env.GENIEACS_NBI_USER || process.env.GENIEACS_NBI_USERNAME || "").trim(),
+    pass: (process.env.GENIEACS_NBI_PASS || process.env.GENIEACS_NBI_PASSWORD || "").trim(),
     oui: "",
   };
 }

@@ -3,6 +3,7 @@ export type AcsNbiConfig = {
   user: string;
   pass: string;
   oui: string;
+  timeoutMs?: number;
 };
 
 export type NbiFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -122,17 +123,32 @@ export async function nbiRequest(
   if (!base) throw new Error("GenieACS NBI URL is not set");
   const headers = { ...authHeaders(cfg), ...(init.headers as Record<string, string> | undefined) };
   if (init.body && !headers["content-type"]) headers["content-type"] = "application/json";
-  const res = await fetchImpl(`${base}${path}`, { ...init, headers });
-  const text = await res.text();
-  let json: unknown = null;
-  if (text) {
-    try {
-      json = JSON.parse(text);
-    } catch {
-      json = { raw: text };
-    }
+  const timeoutMs = cfg.timeoutMs && cfg.timeoutMs > 0 ? cfg.timeoutMs : 8000;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  if (init.signal) {
+    if (init.signal.aborted) ctrl.abort();
+    else init.signal.addEventListener("abort", () => ctrl.abort(), { once: true });
   }
-  return { ok: res.ok, status: res.status, json, text };
+  try {
+    const res = await fetchImpl(`${base}${path}`, {
+      ...init,
+      headers,
+      signal: ctrl.signal,
+    });
+    const text = await res.text();
+    let json: unknown = null;
+    if (text) {
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = { raw: text };
+      }
+    }
+    return { ok: res.ok, status: res.status, json, text };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function nbiPing(cfg: AcsNbiConfig, fetchImpl: NbiFetch = fetch) {

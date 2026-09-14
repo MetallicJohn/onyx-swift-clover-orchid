@@ -347,11 +347,21 @@ export async function executeRestOps(
   password: string,
   port: number,
   ops: RestOp[],
+  timeoutMs?: number,
 ) {
   const root = host.replace(/\/$/, "");
   const base = root.startsWith("http") ? root : `https://${root}:${port || 443}`;
   const auth = Buffer.from(`${user}:${password}`).toString("base64");
   const results: { path: string; status: number; body: string }[] = [];
+  let ms = timeoutMs;
+  if (ms == null) {
+    try {
+      const { loadServiceConfig } = await import("./runtime-config.ts");
+      ms = loadServiceConfig().mikrotikTimeoutMs;
+    } catch {
+      ms = 4000;
+    }
+  }
   for (const op of ops) {
     try {
       const res = await fetch(`${base}${op.path}`, {
@@ -361,7 +371,7 @@ export async function executeRestOps(
           "Content-Type": "application/json",
         },
         body: op.body ? JSON.stringify(op.body) : undefined,
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(ms),
       });
       results.push({ path: op.path, status: res.status, body: (await res.text()).slice(0, 400) });
     } catch (err) {
