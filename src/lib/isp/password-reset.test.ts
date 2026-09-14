@@ -31,7 +31,7 @@ test("operator reset replaces the password and cannot be reused", async () => {
       name: "Amina",
     });
     await provisionTenant(sql, user.id, { ispName: "Imani", email: user.email });
-    const asked = await requestOperatorReset(sql, "owner@imani.ke", "http://gridline.test");
+    const asked = await requestOperatorReset(sql, "owner@imani.ke", "http://ispsolutions.test");
     assert.ok(asked.hint?.includes("token="));
     const token = asked.hint!.split("token=")[1] ?? "";
     await completeOperatorReset(sql, token, "NewPass99");

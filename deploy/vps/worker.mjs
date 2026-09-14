@@ -3,7 +3,7 @@
  * Thin worker: polls the application internal jobs API.
  * Execution stays in the web process (VPS image has .output only).
  */
-const BASE = (process.env.GRIDLINE_INTERNAL_URL || process.env.APP_URL || "").replace(/\/+$/, "");
+const BASE = (process.env.ISPSOLUTIONS_INTERNAL_URL || process.env.GRIDLINE_INTERNAL_URL || process.env.APP_URL || "").replace(/\/+$/, "");
 const TOKEN = (process.env.INTERNAL_SERVICE_TOKEN || process.env.ACS_EDGE_TOKEN || "").trim();
 const QUEUE = (process.env.JOB_QUEUE_NAME || "").trim();
 const INTERVAL = Math.max(1000, Number(process.env.WORKER_POLL_MS || 2500));
@@ -11,7 +11,7 @@ const LIMIT = Math.max(1, Number(process.env.WORKER_CONCURRENCY || 2));
 const WORKER_ID = (process.env.WORKER_ID || `worker-${process.pid}`).slice(0, 80);
 
 if (!BASE) {
-  console.error(JSON.stringify({ ts: new Date().toISOString(), level: "error", msg: "GRIDLINE_INTERNAL_URL is required", service: "worker" }));
+  console.error(JSON.stringify({ ts: new Date().toISOString(), level: "error", msg: "ISPSOLUTIONS_INTERNAL_URL is required", service: "worker" }));
   process.exit(1);
 }
 if (!TOKEN) {

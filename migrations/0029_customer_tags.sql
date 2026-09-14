@@ -23,8 +23,8 @@ create index if not exists customer_tag_assignments_cust_idx on customer_tag_ass
 
 do $$
 begin
-  grant select, insert, update, delete on customer_tags to gridline;
-  grant select, insert, update, delete on customer_tag_assignments to gridline;
+  grant select, insert, update, delete on customer_tags to ispsolutions;
+  grant select, insert, update, delete on customer_tag_assignments to ispsolutions;
 exception
   when undefined_object then null;
   when insufficient_privilege then null;

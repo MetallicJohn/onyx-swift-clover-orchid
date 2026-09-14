@@ -1,6 +1,6 @@
 # Distributed deployment
 
-Same application codebase for a single VPS and for a later split. Move a service by changing endpoints in `gridline.env`, not by forking the app.
+Same application codebase for a single VPS and for a later split. Move a service by changing endpoints in `ispsolutions.env`, not by forking the app.
 
 ## Architecture
 
@@ -42,16 +42,16 @@ Role examples live in `deploy/vps/env/*.env.example`. Required in production: `A
 
 | Variable | Single VPS | Split |
 |---|---|---|
-| `DATABASE_URL` | `postgres://…@postgres:5432/gridline` | private IP / VPN of DB VPS |
+| `DATABASE_URL` | `postgres://…@postgres:5432/ispsolutions` | private IP / VPN of DB VPS |
 | `DATABASE_SSL_MODE` | `disable` | `require` or `verify-full` |
 | `REDIS_URL` | `redis://:pass@redis:6379/0` | Redis VPS or keep on app VPS |
-| `GRIDLINE_INTERNAL_URL` | `http://web:3000` | `http://<app-private>:3000` |
+| `ISPSOLUTIONS_INTERNAL_URL` | `http://web:3000` | `http://<app-private>:3000` |
 | `GENIEACS_NBI_URL` | `http://genieacs:7557` | `http://<net-private>:7557` |
 | `RADIUS_HOST` | `freeradius` | network VPS address |
 | `INTERNAL_SERVICE_TOKEN` | shared | shared, rotate together |
 | `MONGODB_URL` | optional probe | optional; GenieACS owns Mongo |
 
-Secrets stay in `gridline.env` (mode 600). Never log them.
+Secrets stay in `ispsolutions.env` (mode 600). Never log them.
 
 ## Adapters
 
@@ -62,7 +62,7 @@ Secrets stay in `gridline.env` (mode 600). Never log them.
 | Jobs | `src/lib/isp/jobs.ts` | Postgres queue, idempotency, SKIP LOCKED |
 | RADIUS | `src/lib/isp/radius-rest.ts` | host/ports from env; REST still in-app |
 | GenieACS | `src/lib/isp/acs.ts`, `acs-nbi.ts` | NBI URL from tenant row then env |
-| Traffic | `src/lib/isp/traffic-collector.ts` | snapshots; dashboard falls back to `radius_sessions` |
+| Traffic | `src/lib/isp/traffic-collector.ts` | Redis live + minute/hourly/daily; dashboard falls back to `radius_sessions` |
 | MikroTik | `src/lib/isp/mikrotik.ts` | `MIKROTIK_API_TIMEOUT` |
 | Health | `/api/v1/health` live, `/api/v1/ready` deps | degraded ≠ false success |
 
@@ -74,11 +74,11 @@ Authenticated with `Authorization: Bearer $INTERNAL_SERVICE_TOKEN` (or `ACS_EDGE
 
 - `POST /api/internal/jobs` — claim and run queued jobs
 - `GET /api/internal/jobs` — queue depth
-- `POST /api/internal/traffic` — snapshot RADIUS sessions
+- `POST /api/internal/traffic` — snapshot RADIUS sessions (optional `action`: `router-poll`, `aggregate`, `retain`)
 - `GET /api/internal/traffic` — collector freshness
 - existing `GET /api/internal/acs-ports`, `POST /api/internal/acs-auth`
 
-Caddy blocks `/api/internal*` on the public hostname. Sidecars and workers use `GRIDLINE_INTERNAL_URL` on the Docker/VPN network.
+Caddy blocks `/api/internal*` on the public hostname. Sidecars and workers use `ISPSOLUTIONS_INTERNAL_URL` on the Docker/VPN network.
 
 ## Health
 
@@ -111,10 +111,10 @@ No automatic Postgres failover. Promote a replica only with a planned cutover so
 ## Single-VPS
 
 ```bash
-sudo bash /opt/gridline/deploy/vps/install.sh --domain ops.example.co.ke --email you@example.co.ke
+sudo bash /opt/ispsolutions/deploy/vps/install.sh --domain ops.example.co.ke --email you@example.co.ke
 # compose file: deploy/vps/docker-compose.yml
 curl -fsS https://ops.example.co.ke/api/v1/health
-sudo bash /opt/gridline/deploy/vps/backup.sh
+sudo bash /opt/ispsolutions/deploy/vps/backup.sh
 ```
 
 Migrate independently: `docker compose exec web node scripts/migrate.mjs` or restart web (entrypoint migrates unless `SKIP_MIGRATE=1`).
@@ -140,7 +140,7 @@ Migrate independently: `docker compose exec web node scripts/migrate.mjs` or res
 ### FreeRADIUS
 
 1. `compose.network-services.yml` on the network VPS.
-2. `GRIDLINE_URL=http://<app-private>:3000` with the tenant RADIUS API key.
+2. `ISPSOLUTIONS_URL=http://<app-private>:3000` with the tenant RADIUS API key.
 3. `RADIUS_HOST=<network-vps>` on the app. MikroTik NAS still UDP 1812/1813 to that VPS.
 4. Test PPPoE/static/hotspot authorize, accounting, and disconnect (agent CoA). Distinguish daemon down vs Access-Reject.
 
@@ -148,13 +148,13 @@ Migrate independently: `docker compose exec web node scripts/migrate.mjs` or res
 
 1. Move mongo + genieacs + cwmp-edge together (Mongo stays local to GenieACS).
 2. Set `GENIEACS_NBI_URL` and `GENIEACS_CWMP_URL` on the app. Keep NBI private.
-3. Point `GRIDLINE_INTERNAL_URL` on GenieACS/cwmp-edge at the app private URL (digest auth extension).
+3. Point `ISPSOLUTIONS_INTERNAL_URL` on GenieACS/cwmp-edge at the app private URL (digest auth extension).
 4. Sync from ACS, reboot a test CPE, confirm task `sent` vs CPE still pending.
 
 ### Traffic collectors
 
 1. `compose.traffic-collector.yml` with a unique `COLLECTOR_ID`.
-2. `GRIDLINE_INTERNAL_URL` + `INTERNAL_SERVICE_TOKEN`.
+2. `ISPSOLUTIONS_INTERNAL_URL` + `INTERNAL_SERVICE_TOKEN`.
 3. Interval via `TRAFFIC_COLLECTION_INTERVAL`. Duplicate buckets are rejected.
 4. Customer traffic panel shows live / last updated / data unavailable — never estimated bps.
 
@@ -167,16 +167,16 @@ Migrate independently: `docker compose exec web node scripts/migrate.mjs` or res
 
 ```bash
 # migrate (web role only)
-docker compose -f deploy/vps/docker-compose.yml --env-file gridline.env exec web node scripts/migrate.mjs
+docker compose -f deploy/vps/docker-compose.yml --env-file ispsolutions.env exec web node scripts/migrate.mjs
 
 # backup / restore
 sudo bash deploy/vps/backup.sh
-sudo bash deploy/vps/restore.sh /opt/gridline/backups/gridline-YYYYMMDDTHHMMSSZ.sql.gz
+sudo bash deploy/vps/restore.sh /opt/ispsolutions/backups/ispsolutions-YYYYMMDDTHHMMSSZ.sql.gz
 
 # split example (each VPS)
-docker compose -f deploy/vps/compose.database.yml --env-file gridline.env up -d
-docker compose -f deploy/vps/compose.network-services.yml --env-file gridline.env up -d
-docker compose -f deploy/vps/compose.application.yml --env-file gridline.env up -d
+docker compose -f deploy/vps/compose.database.yml --env-file ispsolutions.env up -d
+docker compose -f deploy/vps/compose.network-services.yml --env-file ispsolutions.env up -d
+docker compose -f deploy/vps/compose.application.yml --env-file ispsolutions.env up -d
 ```
 
 ## Limitations

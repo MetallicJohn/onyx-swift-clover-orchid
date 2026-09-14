@@ -18,9 +18,9 @@ MikroTik NAS  --UDP 1812/1813-->  FreeRADIUS (compose)
 
 `GET /api/v1/radius/bootstrap/{slug}` (HTTP Basic, password = tenant RADIUS API key)
 
-That writes `mods-available/rest`, `sites-enabled/gridline`, and `clients.conf` (WireGuard overlay + RFC1918 + each router NAS).
+That writes `mods-available/rest`, `sites-enabled/ispsolutions`, and `clients.conf` (WireGuard overlay + RFC1918 + each router NAS).
 
-1. Sign in → **RADIUS → Copy VPS env** into `/opt/gridline/gridline.env`
+1. Sign in → **RADIUS → Copy VPS env** into `/opt/ispsolutions/ispsolutions.env`
 2. `docker compose -f deploy/vps/docker-compose.yml up -d freeradius`
 3. Point MikroTik at the VPS **UDP 1812/1813** with the NAS secret (MikroTik snippet on the same page)
 
@@ -31,7 +31,7 @@ That writes `mods-available/rest`, `sites-enabled/gridline`, and `clients.conf` 
 - `POST /api/v1/radius/accounting/{slug}`
 - `GET  /api/v1/radius/bootstrap/{slug}`
 
-Auth: HTTP Basic (`username=gridline`, password = API key), Bearer, or `X-Radius-Key`.
+Auth: HTTP Basic (`username=ispsolutions`, password = API key), Bearer, or `X-Radius-Key`.
 
 Authorize returns rlm_rest JSON (`control:Cleartext-Password`, `Mikrotik-Group` = PCQ package profile, framed IP, session timeout). It does **not** send `Mikrotik-Rate-Limit` (that would create a dynamic simple queue per session). Rejects unknown, suspended, expired, and bundle-exhausted users (HTTP 200 + Auth-Type Reject).
 
@@ -45,4 +45,4 @@ Queues `pppoe.disable` / `hotspot.disable` on the MikroTik agent. A `radclient` 
 
 **Status:** REST adapter + bootstrap + compose daemon **implemented**. Live UDP handshake needs the VPS container + a NAS.
 
-To run FreeRADIUS on another VPS, set `GRIDLINE_URL` to the application private URL and `RADIUS_HOST` on the app to that VPS. Same authorize/accounting/CoA workflows. See [distributed.md](distributed.md).
+To run FreeRADIUS on another VPS, set `ISPSOLUTIONS_URL` to the application private URL and `RADIUS_HOST` on the app to that VPS. Same authorize/accounting/CoA workflows. See [distributed.md](distributed.md).

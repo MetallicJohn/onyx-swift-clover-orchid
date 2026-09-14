@@ -132,7 +132,7 @@ alter table tenants add column if not exists suspended_at timestamptz;
 
 do $$
 begin
-  grant select, insert, update, delete on saas_plans, platform_audit_log, platform_settings, support_sessions, infra_nodes to gridline;
+  grant select, insert, update, delete on saas_plans, platform_audit_log, platform_settings, support_sessions, infra_nodes to ispsolutions;
 exception
   when undefined_object then null;
   when insufficient_privilege then null;

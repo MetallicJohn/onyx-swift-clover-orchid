@@ -41,7 +41,7 @@ begin
         or tenant_id = current_setting('app.tenant_id', true)
       )
   $p$;
-  grant select, insert, update, delete on incoming_payments to gridline;
+  grant select, insert, update, delete on incoming_payments to ispsolutions;
 exception
   when undefined_object then null;
   when insufficient_privilege then null;

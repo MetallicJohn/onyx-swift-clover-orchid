@@ -21,7 +21,7 @@ create index if not exists password_resets_hash_idx on password_resets (token_ha
 do $$
 begin
   begin
-    grant select, insert, update, delete on table password_resets to gridline;
+    grant select, insert, update, delete on table password_resets to ispsolutions;
   exception
     when undefined_object then null;
     when insufficient_privilege then null;

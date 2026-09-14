@@ -1,7 +1,7 @@
 # Stage 2/3 — application VPS (web, Caddy, optional Redis, workers).
-# Point DATABASE_URL, REDIS_URL, GENIEACS_NBI_URL, RADIUS_HOST, GRIDLINE_INTERNAL_URL
+# Point DATABASE_URL, REDIS_URL, GENIEACS_NBI_URL, RADIUS_HOST, ISPSOLUTIONS_INTERNAL_URL
 # at the private addresses of the other VPS servers. Do not publish Postgres/Redis/NBI.
-name: gridline-application
+name: ispsolutions-application
 
 services:
   redis:
@@ -25,10 +25,10 @@ services:
       context: ../..
       dockerfile: deploy/vps/Dockerfile
       args:
-        GIT_SHA: ${GRIDLINE_GIT_SHA:-unknown}
+        GIT_SHA: ${ISPSOLUTIONS_GIT_SHA:-unknown}
     restart: unless-stopped
     env_file:
-      - ../../gridline.env
+      - ../../ispsolutions.env
     environment:
       HOST: "0.0.0.0"
       PORT: "3000"
@@ -38,7 +38,7 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
       GENIEACS_NBI_URL: ${GENIEACS_NBI_URL}
       GENIEACS_CWMP_URL: ${GENIEACS_CWMP_URL}
-      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL:-http://web:3000}
+      ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL:-http://web:3000}
       RADIUS_HOST: ${RADIUS_HOST}
       MONGODB_URL: ${MONGODB_URL:-}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${ACS_EDGE_TOKEN}}
@@ -59,15 +59,15 @@ services:
       context: ../..
       dockerfile: deploy/vps/Dockerfile
       args:
-        GIT_SHA: ${GRIDLINE_GIT_SHA:-unknown}
+        GIT_SHA: ${ISPSOLUTIONS_GIT_SHA:-unknown}
     restart: unless-stopped
     env_file:
-      - ../../gridline.env
+      - ../../ispsolutions.env
     environment:
       NODE_ENV: production
       ROLE: worker
       SKIP_MIGRATE: "1"
-      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL:-http://web:3000}
+      ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL:-http://web:3000}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${ACS_EDGE_TOKEN}}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
     depends_on:
@@ -81,7 +81,7 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      GRIDLINE_DOMAIN: ${GRIDLINE_DOMAIN}
+      ISPSOLUTIONS_DOMAIN: ${ISPSOLUTIONS_DOMAIN:-${GRIDLINE_DOMAIN}}
       ACME_EMAIL: ${ACME_EMAIL}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

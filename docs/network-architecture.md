@@ -10,7 +10,7 @@ SaaS (TanStack)
 
 The hub conf is generated in Settings → Network (`wg-ispsolutions.conf`). Routers initiate with persistent keepalive so they work behind NAT. Do not expose Winbox/API on WAN.
 
-Future vendors implement `RouterProvider` (MikroTik is first). FreeRADIUS and GenieACS are **separate processes**, not in the web container. They can share the VPS or move behind `GRIDLINE_INTERNAL_URL` / `GENIEACS_NBI_URL` / `RADIUS_HOST` — [distributed.md](distributed.md).
+Future vendors implement `RouterProvider` (MikroTik is first). FreeRADIUS and GenieACS are **separate processes**, not in the web container. They can share the VPS or move behind `ISPSOLUTIONS_INTERNAL_URL` / `GENIEACS_NBI_URL` / `RADIUS_HOST` — [distributed.md](distributed.md).
 
 IPAM: `ip_pools` today; allocation states (AVAILABLE/RESERVED/ASSIGNED/…) land in a later IPAM milestone. Design `ip_addresses` for IPv6 when implemented.
 

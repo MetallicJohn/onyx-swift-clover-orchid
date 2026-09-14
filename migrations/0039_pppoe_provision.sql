@@ -28,7 +28,7 @@ create index if not exists service_provisioning_tenant_idx on service_provisioni
 
 do $$
 begin
-  grant select, insert, update, delete on service_provisioning to gridline;
+  grant select, insert, update, delete on service_provisioning to ispsolutions;
 exception
   when undefined_object then null;
   when insufficient_privilege then null;

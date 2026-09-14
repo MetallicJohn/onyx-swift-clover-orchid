@@ -5,9 +5,11 @@ import { loadServiceConfig } from "./runtime-config.ts";
 type MemRow = { value: string; exp: number };
 
 const memory = new Map<string, MemRow>();
+const lists = new Map<string, { values: string[]; exp: number }>();
 
 function now() {
-  return Date.now();
+  const n = Date.now();
+  return n;
 }
 
 function memGet(key: string) {
@@ -20,6 +22,16 @@ function memGet(key: string) {
   return row.value;
 }
 
+function listRow(key: string) {
+  const row = lists.get(key);
+  if (!row) return null;
+  if (row.exp && row.exp < now()) {
+    lists.delete(key);
+    return null;
+  }
+  return row;
+}
+
 export type RedisLike = {
   configured: boolean;
   kind: "memory" | "redis";
@@ -28,6 +40,8 @@ export type RedisLike = {
   set: (key: string, value: string, ttlSec?: number) => Promise<void>;
   del: (key: string) => Promise<void>;
   setNx: (key: string, value: string, ttlSec?: number) => Promise<boolean>;
+  pushRing: (key: string, value: string, max: number, ttlSec?: number) => Promise<void>;
+  lrange: (key: string, start: number, stop: number) => Promise<string[]>;
 };
 
 function memoryRedis(): RedisLike {
@@ -45,11 +59,31 @@ function memoryRedis(): RedisLike {
     },
     async del(key) {
       memory.delete(key);
+      lists.delete(key);
     },
     async setNx(key, value, ttlSec) {
       if (memGet(key) != null) return false;
       memory.set(key, { value, exp: ttlSec ? now() + ttlSec * 1000 : 0 });
       return true;
+    },
+    async pushRing(key, value, max, ttlSec) {
+      const row = listRow(key) || { values: [], exp: 0 };
+      row.values.push(value);
+      const keep = Math.max(1, max);
+      if (row.values.length > keep) row.values = row.values.slice(-keep);
+      row.exp = ttlSec ? now() + ttlSec * 1000 : 0;
+      lists.set(key, row);
+    },
+    async lrange(key, start, stop) {
+      const row = listRow(key);
+      if (!row) return [];
+      const len = row.values.length;
+      let s = start < 0 ? len + start : start;
+      let e = stop < 0 ? len + stop : stop;
+      s = Math.max(0, s);
+      e = Math.min(len - 1, e);
+      if (e < s) return [];
+      return row.values.slice(s, e + 1);
     },
   };
 }
@@ -72,7 +106,9 @@ function encodeResp(args: string[]) {
   return out;
 }
 
-function tryDecode(buf: Buffer): { value: string | null; size: number } | null {
+type RespValue = string | null | RespValue[];
+
+function tryDecode(buf: Buffer): { value: RespValue; size: number } | null {
   if (buf.length < 3) return null;
   const text = buf.toString("utf8");
   const kind = text[0];
@@ -93,6 +129,21 @@ function tryDecode(buf: Buffer): { value: string | null; size: number } | null {
     if (buf.length < end) return null;
     return { value: buf.subarray(start, start + len).toString("utf8"), size: end };
   }
+  if (kind === "*") {
+    const nl = text.indexOf("\r\n");
+    if (nl < 0) return null;
+    const count = Number(text.slice(1, nl));
+    if (count < 0) return { value: null, size: nl + 2 };
+    let consumed = nl + 2;
+    const items: RespValue[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const part = tryDecode(buf.subarray(consumed));
+      if (!part) return null;
+      items.push(part.value);
+      consumed += part.size;
+    }
+    return { value: items, size: consumed };
+  }
   throw new Error("unsupported redis reply");
 }
 
@@ -102,7 +153,7 @@ async function redisSession(url: string, useTls: boolean, commands: string[][], 
   if (parsed.password) chain.push(["AUTH", parsed.password]);
   if (parsed.db) chain.push(["SELECT", String(parsed.db)]);
   chain.push(...commands);
-  return new Promise<Array<string | null>>((resolve, reject) => {
+  return new Promise<RespValue[]>((resolve, reject) => {
     const onConnect = () => {
       sock.write(chain.map(encodeResp).join(""));
     };
@@ -111,7 +162,7 @@ async function redisSession(url: string, useTls: boolean, commands: string[][], 
         ? tls.connect({ host: parsed.host, port: parsed.port }, onConnect)
         : net.connect({ host: parsed.host, port: parsed.port }, onConnect);
     let buf = Buffer.alloc(0);
-    const replies: Array<string | null> = [];
+    const replies: RespValue[] = [];
     const timer = setTimeout(() => {
       sock.destroy();
       reject(new Error("redis timeout"));
@@ -161,7 +212,7 @@ function remoteRedis(url: string, useTls: boolean): RedisLike {
     },
     async get(key) {
       const r = await cmd(["GET", key]);
-      return r == null ? null : String(r);
+      return r == null || Array.isArray(r) ? null : String(r);
     },
     async set(key, value, ttlSec) {
       if (ttlSec && ttlSec > 0) await cmd(["SETEX", key, String(ttlSec), value]);
@@ -173,6 +224,20 @@ function remoteRedis(url: string, useTls: boolean): RedisLike {
     async setNx(key, value, ttlSec) {
       const r = await cmd(["SET", key, value, "NX", ...(ttlSec ? ["EX", String(ttlSec)] : [])]);
       return String(r || "").toUpperCase() === "OK";
+    },
+    async pushRing(key, value, max, ttlSec) {
+      const keep = Math.max(1, max);
+      const commands: string[][] = [
+        ["RPUSH", key, value],
+        ["LTRIM", key, String(-keep), "-1"],
+      ];
+      if (ttlSec && ttlSec > 0) commands.push(["EXPIRE", key, String(ttlSec)]);
+      await redisSession(url, useTls, commands);
+    },
+    async lrange(key, start, stop) {
+      const r = await cmd(["LRANGE", key, String(start), String(stop)]);
+      if (!Array.isArray(r)) return [];
+      return r.map((v) => (v == null ? "" : Array.isArray(v) ? JSON.stringify(v) : String(v)));
     },
   };
 }
@@ -194,6 +259,7 @@ export function resetRedisForTests() {
   cached = null;
   cachedUrl = "";
   memory.clear();
+  lists.clear();
 }
 
 export async function redisHealth() {

@@ -18,7 +18,7 @@ export const Route = createFileRoute("/api/internal/traffic")({
         if (!authorizedInternal(request)) return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
         const sql = await getSql();
         await applyRls(sql, { bypass: true });
-        let body: { collectorId?: string } = {};
+        let body: { collectorId?: string; action?: string; pollRouters?: boolean } = {};
         try {
           body = (await request.json()) as typeof body;
         } catch {
@@ -29,7 +29,27 @@ export const Route = createFileRoute("/api/internal/traffic")({
             0,
             80,
           ) || "default";
-        const out = await collectTrafficSnapshot(sql, { collectorId });
+        const action = String(body.action || "snapshot").trim();
+        if (action === "router-poll") {
+          const { pollRouterTelemetry } = await import("@/lib/isp/traffic-router");
+          const out = await pollRouterTelemetry(sql, { collectorId });
+          return Response.json({ ok: true, requestId: requestIdOf(request), ...out });
+        }
+        if (action === "aggregate") {
+          const { aggregateHourly, aggregateDaily } = await import("@/lib/isp/traffic-aggregate");
+          const hourly = await aggregateHourly(sql);
+          const daily = await aggregateDaily(sql);
+          return Response.json({ ok: true, requestId: requestIdOf(request), hourly, daily });
+        }
+        if (action === "retain") {
+          const { retainTrafficData } = await import("@/lib/isp/traffic-aggregate");
+          const out = await retainTrafficData(sql);
+          return Response.json({ ok: true, requestId: requestIdOf(request), ...out });
+        }
+        const out = await collectTrafficSnapshot(sql, {
+          collectorId,
+          pollRouters: body.pollRouters === true || action === "snapshot+routers",
+        });
         return Response.json({ ok: true, requestId: requestIdOf(request), ...out });
       },
     },

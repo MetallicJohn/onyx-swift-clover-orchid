@@ -49,13 +49,13 @@ test("remote URLs and pool options are accepted", () => {
   const cfg = loadServiceConfig({
     NODE_ENV: "production",
     APP_SECRET: "secret-secret-secret-secret-1234",
-    DATABASE_URL: "postgres://gridline:x@10.200.0.20:5432/gridline",
+    DATABASE_URL: "postgres://ispsolutions:x@10.200.0.20:5432/ispsolutions",
     DATABASE_POOL_MAX: "20",
     DATABASE_SSL_MODE: "require",
     GENIEACS_NBI_URL: "http://10.200.0.30:7557",
     REDIS_URL: "redis://:pass@10.200.0.10:6379/0",
     RADIUS_HOST: "10.200.0.30",
-    GRIDLINE_INTERNAL_URL: "http://10.200.0.10:3000",
+    ISPSOLUTIONS_INTERNAL_URL: "http://10.200.0.10:3000",
   } as NodeJS.ProcessEnv);
   assert.equal(cfg.genieacsNbiUrl, "http://10.200.0.30:7557");
   assert.equal(cfg.radiusHost, "10.200.0.30");

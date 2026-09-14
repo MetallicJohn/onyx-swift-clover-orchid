@@ -8,7 +8,7 @@ const http = require("node:http");
 const https = require("node:https");
 const { URL } = require("node:url");
 
-const INTERNAL = String(process.env.GRIDLINE_INTERNAL_URL || "http://web:3000").replace(/\/+$/, "");
+const INTERNAL = String(process.env.ISPSOLUTIONS_INTERNAL_URL || process.env.GRIDLINE_INTERNAL_URL || "http://web:3000").replace(/\/+$/, "");
 const TOKEN = String(process.env.ACS_EDGE_TOKEN || "");
 
 function postAuth(kind, username) {

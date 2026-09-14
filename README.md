@@ -7,8 +7,8 @@ ISP operations console (multi-tenant SaaS): customers, packages, billing, M-Pesa
 Point your domain A record at the server, then:
 
 ```bash
-git clone https://github.com/MetallicJohn/onyx-swift-clover-orchid.git /opt/gridline
-sudo bash /opt/gridline/deploy/vps/install.sh --domain ops.yourisp.co.ke --email you@yourisp.co.ke
+git clone https://github.com/MetallicJohn/onyx-swift-clover-orchid.git /opt/ispsolutions
+sudo bash /opt/ispsolutions/deploy/vps/install.sh --domain ops.yourisp.co.ke --email you@yourisp.co.ke
 ```
 
 That starts Caddy (HTTPS), Postgres, ISP Solutions, MongoDB, and GenieACS. WireGuard stays on the host kernel (UDP 51820). Use a VPS with about 4 GB RAM.

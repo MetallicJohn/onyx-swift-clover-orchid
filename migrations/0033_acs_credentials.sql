@@ -15,7 +15,7 @@ create table if not exists acs_isp_credentials (
 
 do $$
 begin
-  grant select, insert, update, delete on acs_isp_credentials to gridline;
+  grant select, insert, update, delete on acs_isp_credentials to ispsolutions;
 exception
   when undefined_object then null;
   when insufficient_privilege then null;

@@ -29,15 +29,26 @@ export type TrafficLine = {
   bytes_in: number;
   bytes_out: number;
   started_at: string | null;
+  last_seen: string | null;
+  duration_sec: number | null;
+  router_id: string;
+  router_name: string;
+  up_bps: number | null;
+  down_bps: number | null;
   download_mbps: number;
   upload_mbps: number;
+  bundle_used_mb: number;
+  bundle_mb: number;
+  source: string;
+  spark: Array<{ at: number; up_bps: number | null; down_bps: number | null }>;
 };
 
 export type CustomerTraffic = {
   at: string;
-  source: "radius-accounting" | "traffic-collector";
+  source: "radius-accounting" | "traffic-collector" | "routeros";
   freshness: "live" | "stale" | "unavailable";
   last_collected_at: string | null;
+  fresh: boolean;
   lines: TrafficLine[];
 };
 
@@ -208,8 +219,10 @@ export async function customerTraffic(sql: Sql, tenantId: string, customerId: st
     access_method: string;
     download_mbps: number;
     upload_mbps: number;
+    bundle_used_mb: number;
+    bundle_mb: number;
   }>`select s.id, s.username, s.static_ip, p.name as package_name, s.status, s.access_method,
-            p.download_mbps, p.upload_mbps
+            p.download_mbps, p.upload_mbps, s.bundle_used_mb, p.bundle_mb
      from services s join packages p on p.id = s.package_id
      where s.tenant_id = ${tenantId} and s.customer_id = ${customerId} and s.deleted_at is null
      order by s.created_at desc`;
@@ -240,22 +253,35 @@ export async function customerTraffic(sql: Sql, tenantId: string, customerId: st
 
   let source: CustomerTraffic["source"] = "radius-accounting";
   let lastCollected: string | null = null;
+  const cache = new Map<string, { collected_at: string; router_id: string; router_name: string; up_bps: number | null; down_bps: number | null; source: string; online: boolean }>();
+  const sparks = new Map<string, TrafficLine["spark"]>();
   try {
-    const { latestSamplesForUsernames, liveTrafficFromCache, trafficFreshness } = await import("./traffic-collector.ts");
+    const { latestSamplesForUsernames, liveTrafficFromCache, shortSparkForUser, trafficFreshness } = await import("./traffic-collector.ts");
     for (const user of usernames) {
       const cached = await liveTrafficFromCache(tenantId, user);
       if (cached) {
+        const existing = liveByUser.get(user);
         liveByUser.set(user, {
           username: user,
           framed_ip: cached.framed_ip,
           nas_ip: cached.nas_ip,
           bytes_in: cached.bytes_in,
           bytes_out: cached.bytes_out,
-          started_at: cached.collected_at,
-          stopped_at: null,
+          started_at: existing?.started_at || cached.collected_at,
+          stopped_at: cached.online ? null : cached.collected_at,
         });
-        source = "traffic-collector";
+        cache.set(user, {
+          collected_at: cached.collected_at,
+          router_id: cached.router_id,
+          router_name: cached.router_name,
+          up_bps: cached.up_bps,
+          down_bps: cached.down_bps,
+          source: cached.source,
+          online: cached.online,
+        });
+        source = cached.source === "routeros" ? "routeros" : "traffic-collector";
         lastCollected = cached.collected_at;
+        sparks.set(user, await shortSparkForUser(tenantId, user));
       }
     }
     const samples = await latestSamplesForUsernames(sql, tenantId, usernames);
@@ -274,14 +300,19 @@ export async function customerTraffic(sql: Sql, tenantId: string, customerId: st
       source = "traffic-collector";
     }
     const freshness = trafficFreshness(lastCollected || sessions[0]?.started_at || null);
+    const resolved = source === "radius-accounting" && sessions.length ? ("live" as const) : freshness;
     return {
       at: new Date().toISOString(),
       source,
-      freshness: source === "radius-accounting" && sessions.length ? "live" : freshness,
+      freshness: resolved,
       last_collected_at: lastCollected,
+      fresh: resolved === "live",
       lines: lines.map((line) => {
         const ses = line.username ? liveByUser.get(line.username) : undefined;
+        const cached = line.username ? cache.get(line.username) : undefined;
         const online = Boolean(ses && !ses.stopped_at);
+        const started = online ? ses?.started_at || null : null;
+        const startedMs = started ? Date.parse(started) : NaN;
         return {
           service_id: line.id,
           username: line.username || "",
@@ -293,9 +324,19 @@ export async function customerTraffic(sql: Sql, tenantId: string, customerId: st
           nas_ip: online ? ses?.nas_ip || "" : "",
           bytes_in: online ? Number(ses?.bytes_in || 0) : 0,
           bytes_out: online ? Number(ses?.bytes_out || 0) : 0,
-          started_at: online ? ses?.started_at || null : null,
+          started_at: started,
+          last_seen: cached?.collected_at || (online ? ses?.started_at || null : null),
+          duration_sec: online && Number.isFinite(startedMs) ? Math.max(0, Math.floor((Date.now() - startedMs) / 1000)) : null,
+          router_id: cached?.router_id || "",
+          router_name: cached?.router_name || "",
+          up_bps: online ? cached?.up_bps ?? null : null,
+          down_bps: online ? cached?.down_bps ?? null : null,
           download_mbps: Number(line.download_mbps || 0),
           upload_mbps: Number(line.upload_mbps || 0),
+          bundle_used_mb: Number(line.bundle_used_mb || 0),
+          bundle_mb: Number(line.bundle_mb || 0),
+          source: cached?.source || (online ? "radius-accounting" : ""),
+          spark: line.username ? sparks.get(line.username) || [] : [],
         };
       }),
     };
@@ -308,9 +349,12 @@ export async function customerTraffic(sql: Sql, tenantId: string, customerId: st
     source: "radius-accounting",
     freshness: sessions.length ? "live" : "unavailable",
     last_collected_at: sessions[0]?.started_at || null,
+    fresh: Boolean(sessions.length),
     lines: lines.map((line) => {
       const ses = line.username ? liveByUser.get(line.username) : undefined;
       const online = Boolean(ses && !ses.stopped_at);
+      const started = online ? ses?.started_at || null : null;
+      const startedMs = started ? Date.parse(started) : NaN;
       return {
         service_id: line.id,
         username: line.username || "",
@@ -322,9 +366,19 @@ export async function customerTraffic(sql: Sql, tenantId: string, customerId: st
         nas_ip: online ? ses?.nas_ip || "" : "",
         bytes_in: online ? Number(ses?.bytes_in || 0) : 0,
         bytes_out: online ? Number(ses?.bytes_out || 0) : 0,
-        started_at: online ? ses?.started_at || null : null,
+        started_at: started,
+        last_seen: online ? ses?.started_at || null : null,
+        duration_sec: online && Number.isFinite(startedMs) ? Math.max(0, Math.floor((Date.now() - startedMs) / 1000)) : null,
+        router_id: "",
+        router_name: "",
+        up_bps: null,
+        down_bps: null,
         download_mbps: Number(line.download_mbps || 0),
         upload_mbps: Number(line.upload_mbps || 0),
+        bundle_used_mb: Number(line.bundle_used_mb || 0),
+        bundle_mb: Number(line.bundle_mb || 0),
+        source: online ? "radius-accounting" : "",
+        spark: [],
       };
     }),
   };

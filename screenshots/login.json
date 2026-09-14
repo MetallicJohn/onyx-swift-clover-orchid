@@ -5,11 +5,11 @@
       "width": 1280,
       "height": 800,
       "status": 200,
-      "title": "Gridline",
+      "title": "ISP Solutions",
       "hasCanvas": false,
-      "bodyTextLen": 213,
-      "bodyTextHash": "a38706527ce1fed253751b9c3b7f5cc2d8f944f14c4d44a35cea2f46aa94422f",
-      "bodyTextPrefix": "Gridline Sign in to your ISP Use the email and password from sig",
+      "bodyTextLen": 251,
+      "bodyTextHash": "719ef679fdb791d4f3af4e1cb5b7a4bc06066312e159bf7b97427904e08018ed",
+      "bodyTextPrefix": "IS ISP Solutions ISP Solutions Sign in to your ISP Use the email",
       "horizontalOverflow": false,
       "consoleErrors": [],
       "pageErrors": [],
@@ -19,20 +19,18 @@
       "width": 390,
       "height": 844,
       "status": 200,
-      "title": "Gridline",
+      "title": "ISP Solutions",
       "hasCanvas": false,
-      "bodyTextLen": 213,
-      "bodyTextHash": "a38706527ce1fed253751b9c3b7f5cc2d8f944f14c4d44a35cea2f46aa94422f",
-      "bodyTextPrefix": "Gridline Sign in to your ISP Use the email and password from sig",
+      "bodyTextLen": 251,
+      "bodyTextHash": "719ef679fdb791d4f3af4e1cb5b7a4bc06066312e159bf7b97427904e08018ed",
+      "bodyTextPrefix": "IS ISP Solutions ISP Solutions Sign in to your ISP Use the email",
       "horizontalOverflow": false,
       "consoleErrors": [],
       "pageErrors": [],
       "screenshot": "/workspace/screenshots/login-mobile.png"
     }
   },
-  "brandWarnings": [
-    "BRAND NOTE: no custom public/og.jpg — the platform will serve the og.grok.me placeholder. Custom cards are the default for games of every kind (DOM board/word games included), whimsical apps, creative tools, and brand-forward pages — only plain utilities (converters, CRUD trackers, admin dashboards) keep the placeholder. If this app is not a plain utility, finish the brand-asset pass per /workspace/.grok/skills/og/SKILL.md."
-  ],
+  "brandWarnings": [],
   "authWarnings": [],
   "verdictFile": "/workspace/screenshots/login.json"
 }

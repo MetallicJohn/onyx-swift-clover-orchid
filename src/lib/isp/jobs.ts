@@ -191,7 +191,30 @@ export async function executeJob(sql: Sql, job: JobRow) {
     const { collectTrafficSnapshot } = await import("./traffic-collector.ts");
     return collectTrafficSnapshot(sql, {
       collectorId: String(payload.collectorId || job.locked_by || "default"),
+      pollRouters: payload.pollRouters === true,
     });
+  }
+
+  if (job.kind === "traffic.router.poll") {
+    await applyRls(sql, { bypass: true });
+    const { pollRouterTelemetry } = await import("./traffic-router.ts");
+    return pollRouterTelemetry(sql, {
+      collectorId: String(payload.collectorId || job.locked_by || "default"),
+    });
+  }
+
+  if (job.kind === "traffic.aggregate.hourly") {
+    await applyRls(sql, { bypass: true });
+    const { aggregateHourly } = await import("./traffic-aggregate.ts");
+    const hour = payload.hour ? new Date(String(payload.hour)) : undefined;
+    return aggregateHourly(sql, { hour });
+  }
+
+  if (job.kind === "traffic.aggregate.daily") {
+    await applyRls(sql, { bypass: true });
+    const { aggregateDaily } = await import("./traffic-aggregate.ts");
+    const day = payload.day ? new Date(String(payload.day)) : undefined;
+    return aggregateDaily(sql, { day });
   }
 
   if (job.kind === "genieacs.sync") {

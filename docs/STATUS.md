@@ -15,10 +15,11 @@
 | Password reset | Operator/superadmin email reset (hashed token, 30 min). Portal password + SMS reset. Admin/staff can set a password. Email sends only with Resend; otherwise the link is shown. |
 | Custom domain login | Same-origin Origin/Host match plus tenant `public_base_url`. CSRF stays on. Proven in `auth-origins.test.ts`. |
 | Invoice / statement PDFs | pdfkit A4 from live billing + ledger. Tenant-branded. View/download/print/email. |
-| VPS publish | Docker Compose + Caddy + Postgres. First install, then auto-pull of `main`. Platform deploy remains Vercel. |
-| Secrets | No published `gridline-dev-secret-change-me`. Production or any `DATABASE_URL` requires `APP_SECRET`. |
+| VPS publish | Docker Compose + Caddy + Postgres. Deploy only after green CI on `main`: backup, pull, migrate, health, rollback. Timer fetches GitHub but does not rebuild unless `ISPSOLUTIONS_AUTO_DEPLOY=1`. Platform deploy remains Vercel. |
+| Secrets | No published development secret. Production or any `DATABASE_URL` requires `APP_SECRET`. |
 | ACS TR-069 security | Per-ISP digest auth, sealed secrets, URL lock provision/preset, optional HTTPS URLs. NBI unpublished. Proven in `acs-security.test.ts`. Live CPE session is not run in CI. |
 | Split-ready deploy | Env-validated adapters, Postgres job queue, optional Redis, compose roles, `/api/v1/ready`. Proven in `runtime-config.test.ts`, `jobs.test.ts`, `distributed.test.ts`. Live multi-VPS cutover is not run in CI. |
+| Traffic monitoring | Four-tier telemetry (Redis live, minute, hourly/daily). RADIUS remains billing authority. Batched MikroTik REST. Proven in `traffic-collector.test.ts`. Live NAS/NetFlow collection is not run in CI. |
 
 ## Simulated / architecture-only
 

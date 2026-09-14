@@ -53,14 +53,18 @@ test("compose role files exist and single-VPS does not publish data-plane ports"
 });
 
 test("application code does not fall back to docker DNS when internal URL is unset", () => {
-  const prev = process.env.GRIDLINE_INTERNAL_URL;
+  const prev = process.env.ISPSOLUTIONS_INTERNAL_URL;
+  const prevLegacy = process.env.GRIDLINE_INTERNAL_URL;
+  delete process.env.ISPSOLUTIONS_INTERNAL_URL;
   delete process.env.GRIDLINE_INTERNAL_URL;
   try {
     assert.equal(internalRadiusBaseUrl(""), "");
     assert.equal(internalRadiusBaseUrl("https://ops.example"), "https://ops.example");
   } finally {
-    if (prev == null) delete process.env.GRIDLINE_INTERNAL_URL;
-    else process.env.GRIDLINE_INTERNAL_URL = prev;
+    if (prev == null) delete process.env.ISPSOLUTIONS_INTERNAL_URL;
+    else process.env.ISPSOLUTIONS_INTERNAL_URL = prev;
+    if (prevLegacy == null) delete process.env.GRIDLINE_INTERNAL_URL;
+    else process.env.GRIDLINE_INTERNAL_URL = prevLegacy;
   }
   const radius = read("src/lib/isp/radius-rest.ts");
   assert.doesNotMatch(radius, /return pub \|\| "http:\/\/web:3000"/);

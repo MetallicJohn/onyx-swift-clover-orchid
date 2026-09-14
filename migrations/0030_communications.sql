@@ -60,9 +60,9 @@ create index if not exists comm_recipients_tenant_idx on comm_recipients (tenant
 
 do $$
 begin
-  grant select, insert, update, delete on comm_templates to gridline;
-  grant select, insert, update, delete on comm_campaigns to gridline;
-  grant select, insert, update, delete on comm_recipients to gridline;
+  grant select, insert, update, delete on comm_templates to ispsolutions;
+  grant select, insert, update, delete on comm_campaigns to ispsolutions;
+  grant select, insert, update, delete on comm_recipients to ispsolutions;
 exception
   when undefined_object then null;
   when insufficient_privilege then null;

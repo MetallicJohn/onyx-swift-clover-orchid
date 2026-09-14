@@ -1,6 +1,6 @@
 # ISP Solutions architecture (living)
 
-Last updated: 2026-09-14 — CR-028 distributed deployment (env/adapters, same codebase).
+Last updated: 2026-09-14 — CR-031 traffic monitoring (four-tier telemetry, billing stays on RADIUS).
 
 ## Authoritative backend
 

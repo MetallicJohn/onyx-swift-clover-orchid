@@ -65,7 +65,9 @@ export function defaultNasClients(secret: string, routers: Array<{ name: string;
 }
 
 export function internalRadiusBaseUrl(publicBase = "") {
-  const fromEnv = (process.env.GRIDLINE_INTERNAL_URL || "").trim().replace(/\/+$/, "");
+  const fromEnv = (process.env.ISPSOLUTIONS_INTERNAL_URL || process.env.GRIDLINE_INTERNAL_URL || "")
+    .trim()
+    .replace(/\/+$/, "");
   if (fromEnv) return fromEnv;
   const pub = (publicBase || "").trim().replace(/\/+$/, "");
   return pub;
@@ -74,8 +76,8 @@ export function internalRadiusBaseUrl(publicBase = "") {
 export function radiusVpsEnv(opts: { slug: string; apiKey: string; nasSecret: string; baseUrl?: string }) {
   const url = (opts.baseUrl || internalRadiusBaseUrl()).replace(/\/+$/, "");
   return [
-    `GRIDLINE_URL=${url || "http://web:3000"}`,
-    `GRIDLINE_SLUG=${opts.slug || "your-isp"}`,
+    `ISPSOLUTIONS_URL=${url || "http://web:3000"}`,
+    `ISPSOLUTIONS_SLUG=${opts.slug || "your-isp"}`,
     `RADIUS_API_KEY=${opts.apiKey || "frk_replace_me"}`,
     `RADIUS_NAS_SECRET=${opts.nasSecret || ""}`,
   ].join("\n");

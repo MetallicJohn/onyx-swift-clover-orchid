@@ -136,7 +136,7 @@ export async function buildHealthReport(kind: "live" | "ready" = "live"): Promis
     degraded,
     service: "ispsolutions-web",
     role,
-    sha: process.env.GRIDLINE_GIT_SHA || "",
+    sha: process.env.ISPSOLUTIONS_GIT_SHA || process.env.GRIDLINE_GIT_SHA || "",
     checks,
     metrics: metricSnapshot(),
   };

@@ -8,7 +8,7 @@ Settings → Network:
 
 - One X25519 keypair per ISP (`tenants.wg_public` / sealed `wg_private_ref`)
 - Public endpoint hostname or IP + UDP listen port (default 51820)
-- Download `wg-ispsolutions.conf` (`wg-quick`) and a root install script for the VPS. An older `wg-gridline` hub is brought down and replaced.
+- Download `wg-ispsolutions.conf` (`wg-quick`) and a root install script for the VPS. A previous overlay name on the host is brought down and replaced.
 
 `[Peer]` stanzas are built from live routers. Client private keys are not written into the server file. Rotate hub keys only if the VPS key leaked — then reinstall the server conf and re-copy every enroll script.
 
@@ -16,7 +16,7 @@ Settings → Network:
 
 Routers → Copy script emits RouterOS v7 that:
 
-- Sets `wg-ispsolutions` **private-key** (router keypair; public half stored on `routers.wg_public`). Re-paste on older boxes also renames `wg-gridline`.
+- Sets `wg-ispsolutions` **private-key** (router keypair; public half stored on `routers.wg_public`). Re-paste on older boxes also renames a previous overlay.
 - Adds a peer with the **hub public key**, `endpoint-address` / `endpoint-port`, allowed-address `10.200.0.0/24`, keepalive 25s
 - Assigns the overlay address and locks API/Winbox to `10.200.0.0/24`
 

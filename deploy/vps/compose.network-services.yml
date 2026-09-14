@@ -2,7 +2,7 @@
 # NBI (7557) and Mongo stay off the public internet. Bind NBI to a private
 # address (GENIEACS_NBI_BIND) and firewall it to the application VPS.
 # RADIUS UDP 1812/1813 and TR-069 7551-7999 are the only intended public ports.
-name: gridline-network
+name: ispsolutions-network
 
 services:
   mongo:
@@ -32,7 +32,7 @@ services:
       GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
       GENIEACS_EXT_DIR: /opt/genieacs/ext
       GENIEACS_EXT_TIMEOUT: "8000"
-      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL}
+      ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL}
       ACS_EDGE_TOKEN: ${ACS_EDGE_TOKEN}
     volumes:
       - ./genieacs/ext:/opt/genieacs/ext:ro
@@ -61,7 +61,7 @@ services:
     command: ["node", "cwmp-edge.mjs"]
     environment:
       GENIEACS_CWMP_URL: ${GENIEACS_CWMP_URL:-http://genieacs:7547}
-      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL}
+      ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL}
       ACS_EDGE_TOKEN: ${ACS_EDGE_TOKEN}
       ACS_TLS_CERT: ${ACS_TLS_CERT:-}
       ACS_TLS_KEY: ${ACS_TLS_KEY:-}
@@ -80,8 +80,8 @@ services:
       dockerfile: deploy/vps/freeradius/Dockerfile
     restart: unless-stopped
     environment:
-      GRIDLINE_URL: ${GRIDLINE_URL}
-      GRIDLINE_SLUG: ${GRIDLINE_SLUG:-}
+      ISPSOLUTIONS_URL: ${ISPSOLUTIONS_URL}
+      ISPSOLUTIONS_SLUG: ${ISPSOLUTIONS_SLUG:-}
       RADIUS_API_KEY: ${RADIUS_API_KEY:-}
     ports:
       - "1812:1812/udp"

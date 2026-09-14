@@ -1,6 +1,6 @@
 # Stage 3 — traffic collector VPS (one or more). Posts snapshots to the
 # application internal API. Does not open a database connection.
-name: gridline-collector
+name: ispsolutions-collector
 
 services:
   collector:
@@ -8,13 +8,14 @@ services:
       context: ../..
       dockerfile: deploy/vps/Dockerfile
       args:
-        GIT_SHA: ${GRIDLINE_GIT_SHA:-unknown}
+        GIT_SHA: ${ISPSOLUTIONS_GIT_SHA:-unknown}
     restart: unless-stopped
     environment:
       NODE_ENV: production
       ROLE: collector
       SKIP_MIGRATE: "1"
-      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL}
+      ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
       TRAFFIC_COLLECTION_INTERVAL: ${TRAFFIC_COLLECTION_INTERVAL:-30}
+      TRAFFIC_ROUTER_INTERVAL: ${TRAFFIC_ROUTER_INTERVAL:-60}
       COLLECTOR_ID: ${COLLECTOR_ID:-default}

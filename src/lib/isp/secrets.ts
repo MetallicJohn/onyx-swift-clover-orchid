@@ -2,7 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 
 const PREFIX = "enc:v1:";
 
-const globalSeal = globalThis as typeof globalThis & { __gridlineSealSecret__?: string };
+const globalSeal = globalThis as typeof globalThis & { __ispsolutionsSealSecret__?: string };
 
 function configuredSecret() {
   const fromEnv = (process.env.APP_SECRET || process.env.BETTER_AUTH_SECRET || "").trim();
@@ -17,8 +17,8 @@ function keyBytes() {
     throw new Error("APP_SECRET or BETTER_AUTH_SECRET is required");
   }
   // Preview only (no DATABASE_URL, not production): random per process. Never a published default.
-  globalSeal.__gridlineSealSecret__ ??= randomBytes(32).toString("hex");
-  return createHash("sha256").update(globalSeal.__gridlineSealSecret__).digest();
+  globalSeal.__ispsolutionsSealSecret__ ??= randomBytes(32).toString("hex");
+  return createHash("sha256").update(globalSeal.__ispsolutionsSealSecret__).digest();
 }
 
 export function seal(plain: string) {

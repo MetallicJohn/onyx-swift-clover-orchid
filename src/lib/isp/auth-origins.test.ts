@@ -77,13 +77,13 @@ test("tenant public_base_url is trusted even when Host is the platform URL", asy
 
 test("env extras include Vercel production and BETTER_AUTH_URL", () => {
   const origins = extraOriginsFromEnv({
-    BETTER_AUTH_URL: "https://gridline.grok.me",
+    BETTER_AUTH_URL: "https://ispsolutions.grok.me",
     VERCEL_PROJECT_PRODUCTION_URL: "ops.imani.ke",
-    VERCEL_URL: "gridline-abc.vercel.app",
+    VERCEL_URL: "ispsolutions-abc.vercel.app",
   });
-  assert.ok(origins.includes("https://gridline.grok.me"));
+  assert.ok(origins.includes("https://ispsolutions.grok.me"));
   assert.ok(origins.includes("https://ops.imani.ke"));
-  assert.ok(origins.includes("https://gridline-abc.vercel.app"));
+  assert.ok(origins.includes("https://ispsolutions-abc.vercel.app"));
 });
 
 test("resolveAuthTrustedOrigins unions same-origin, env, and tenant URLs", async () => {

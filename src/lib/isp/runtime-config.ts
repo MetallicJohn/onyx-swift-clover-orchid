@@ -18,10 +18,16 @@ export const JOB_QUEUES = [
 
 export type JobQueueName = (typeof JOB_QUEUES)[number];
 
-function raw(key: string) {
-  const v = process.env[key];
+function raw(key: string, env: NodeJS.ProcessEnv = process.env) {
+  const v = env[key];
   return typeof v === "string" ? v.trim() : "";
 }
+
+/** Prefer the ISP Solutions key; accept a previous key so existing env files keep working. */
+export function envValue(env: NodeJS.ProcessEnv, primary: string, previous?: string) {
+  return raw(primary, env) || (previous ? raw(previous, env) : "");
+}
+
 
 export function isProductionRuntime(env: NodeJS.ProcessEnv = process.env) {
   return env.NODE_ENV === "production" || Boolean((env.DATABASE_URL || "").trim());
@@ -145,9 +151,11 @@ export function loadServiceConfig(env: NodeJS.ProcessEnv = process.env): Service
 
   const nbi = parseHttpUrl(env.GENIEACS_NBI_URL || "", "GENIEACS_NBI_URL", { allowEmpty: true });
   const cwmp = parseHttpUrl(env.GENIEACS_CWMP_URL || "", "GENIEACS_CWMP_URL", { allowEmpty: true });
-  const internal = parseHttpUrl(env.GRIDLINE_INTERNAL_URL || env.APP_URL || "", "GRIDLINE_INTERNAL_URL", {
-    allowEmpty: true,
-  });
+  const internal = parseHttpUrl(
+    envValue(env, "ISPSOLUTIONS_INTERNAL_URL", "GRIDLINE_INTERNAL_URL") || env.APP_URL || "",
+    "ISPSOLUTIONS_INTERNAL_URL",
+    { allowEmpty: true },
+  );
   const appUrl = parseHttpUrl(env.APP_URL || env.BETTER_AUTH_URL || "", "APP_URL", { allowEmpty: true });
   const redis = (env.REDIS_URL || "").trim();
   const collector = parseHttpUrl(env.TRAFFIC_COLLECTOR_URL || "", "TRAFFIC_COLLECTOR_URL", { allowEmpty: true });
@@ -157,7 +165,7 @@ export function loadServiceConfig(env: NodeJS.ProcessEnv = process.env): Service
   if (production) {
     assertNotLoopbackHost(nbi, "GENIEACS_NBI_URL", true);
     assertNotLoopbackHost(cwmp, "GENIEACS_CWMP_URL", true);
-    assertNotLoopbackHost(internal, "GRIDLINE_INTERNAL_URL", true);
+    assertNotLoopbackHost(internal, "ISPSOLUTIONS_INTERNAL_URL", true);
     assertNotLoopbackHost(collector, "TRAFFIC_COLLECTOR_URL", true);
     if (redis) {
       try {

@@ -68,9 +68,9 @@ create index if not exists service_grace_events_grace_idx on service_grace_event
 
 do $$
 begin
-  grant select, insert, update, delete on grace_policies to gridline;
-  grant select, insert, update, delete on service_grace_periods to gridline;
-  grant select, insert, update, delete on service_grace_events to gridline;
+  grant select, insert, update, delete on grace_policies to ispsolutions;
+  grant select, insert, update, delete on service_grace_periods to ispsolutions;
+  grant select, insert, update, delete on service_grace_events to ispsolutions;
 exception
   when undefined_object then null;
   when insufficient_privilege then null;

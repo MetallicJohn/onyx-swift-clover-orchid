@@ -56,7 +56,7 @@ on conflict (kind, value) do nothing;
 
 do $$
 begin
-  grant select, insert, update, delete on saas_trial_claims to gridline;
+  grant select, insert, update, delete on saas_trial_claims to ispsolutions;
 exception
   when undefined_object then null;
   when insufficient_privilege then null;

@@ -16,7 +16,7 @@ ARG GIT_SHA=unknown
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
-ENV GRIDLINE_GIT_SHA=$GIT_SHA
+ENV ISPSOLUTIONS_GIT_SHA=$GIT_SHA
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates \
   && rm -rf /var/lib/apt/lists/*

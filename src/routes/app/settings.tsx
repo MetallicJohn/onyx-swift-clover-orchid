@@ -672,8 +672,8 @@ function SettingsPage() {
             This VPS is <span className="font-mono text-fg">{hub?.address || "10.200.0.1/24"}</span> on{" "}
             <span className="font-mono text-fg">{hub?.network || "10.200.0.0/24"}</span>. Routers dial{" "}
             <span className="font-mono text-fg">wg-ispsolutions</span>. Winbox and API stay on the overlay. Paste the
-            public hostname or IP of the server, then run the install script — it replaces an older{" "}
-            <span className="font-mono">wg-gridline</span> hub.
+            public hostname or IP of the server, then run the install script — it replaces an older hub
+            interface if one is still present.
           </p>
           <form
             className="grid gap-3"

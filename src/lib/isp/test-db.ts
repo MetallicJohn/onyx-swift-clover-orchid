@@ -37,12 +37,12 @@ async function applyMigrations(exec: (text: string) => Promise<unknown>) {
 const ROLE_SQL = `
 do $$ begin
   begin
-    create role gridline nologin nosuperuser nobypassrls;
+    create role ispsolutions nologin nosuperuser nobypassrls;
   exception when duplicate_object then null;
   end;
 end $$;
-grant usage on schema public to gridline;
-grant select, insert, update, delete on all tables in schema public to gridline;
+grant usage on schema public to ispsolutions;
+grant select, insert, update, delete on all tables in schema public to ispsolutions;
 `;
 
 export type TestDb = {
@@ -69,7 +69,7 @@ async function openPglite(): Promise<TestDb> {
   async function asRole(tenantId: string) {
     await pg.query("select set_config('app.bypass_rls', $1, false)", ["off"]);
     await pg.query("select set_config('app.tenant_id', $1, false)", [tenantId]);
-    await pg.exec("set role gridline");
+    await pg.exec("set role ispsolutions");
   }
   await bypass();
   return { sql, bypass, asRole, close: async () => pg.close() };
@@ -106,7 +106,7 @@ async function openPostgres(url: string): Promise<TestDb> {
   async function asRole(tenantId: string) {
     await client.query("select set_config('app.bypass_rls', $1, false)", ["off"]);
     await client.query("select set_config('app.tenant_id', $1, false)", [tenantId]);
-    await client.query("set role gridline");
+    await client.query("set role ispsolutions");
   }
   await bypass();
   return {
@@ -126,6 +126,6 @@ async function openPostgres(url: string): Promise<TestDb> {
 export async function openTestDb(): Promise<TestDb> {
   process.env.APP_SECRET ||= "test-secret-not-for-production";
   const url = process.env.DATABASE_URL?.trim();
-  if (url && process.env.GRIDLINE_TEST_PG === "1") return openPostgres(url);
+  if (url && (process.env.ISPSOLUTIONS_TEST_PG === "1" || process.env.GRIDLINE_TEST_PG === "1")) return openPostgres(url);
   return openPglite();
 }

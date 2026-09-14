@@ -6,7 +6,7 @@ create table if not exists user_active_tenant (
   updated_at timestamptz not null default now()
 );
 
-alter table routers add column if not exists api_user text not null default 'gridline';
+alter table routers add column if not exists api_user text not null default 'ispsolutions';
 alter table routers add column if not exists api_password text not null default '';
 alter table routers add column if not exists api_port integer not null default 443;
 alter table routers add column if not exists api_host text not null default '';

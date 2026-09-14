@@ -1,7 +1,7 @@
 // Idempotent GenieACS Mongo config. Digest auth + connection-request auth.
 // Run from compose genieacs-init against mongodb://mongo/genieacs.
 
-const auth = 'AUTH(USERNAME, EXT("gridline", "passwordFor", USERNAME))';
+const auth = 'AUTH(USERNAME, EXT("ispsolutions", "passwordFor", USERNAME))';
 const connreq = "AUTH(username, password)";
 
 db = db.getSiblingDB("genieacs");
@@ -14,4 +14,4 @@ db.config.updateOne(
   { upsert: true },
 );
 
-print("gridline cwmp security config upserted");
+print("ispsolutions cwmp security config upserted");

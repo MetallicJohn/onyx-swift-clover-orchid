@@ -41,7 +41,7 @@ test("signup provisions an ISP the owner can use", async () => {
   const { sql, close } = await openTestDb();
   try {
     const user = await createCredentialAccount(sql, {
-      email: "jane@gridline.test",
+      email: "jane@ispsolutions.test",
       password: "SignupPass1",
       name: "Jane Wanjiku",
     });
@@ -92,8 +92,8 @@ test("platform superadmin can create an ISP with an owner login", async () => {
   const { sql, close } = await openTestDb();
   try {
     const first = await createCredentialAccount(sql, {
-      email: "ops@gridline.test",
-      password: "Gridline1!",
+      email: "ops@ispsolutions.test",
+      password: "OpsPass12",
       name: "Ops",
     });
     await ensureFirstPlatformAdmin(sql, first.id);

@@ -1,0 +1,10 @@
+[Unit]
+Description=Fetch ISP Solutions from GitHub; deploy only when auto-deploy is on
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Nice=10
+Environment=INSTALL_DIR=/opt/ispsolutions
+ExecStart=/opt/ispsolutions/deploy/vps/update.sh

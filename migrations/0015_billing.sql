@@ -72,7 +72,7 @@ create index if not exists saas_payment_intents_checkout_idx on saas_payment_int
 
 do $$
 begin
-  grant select, insert, update, delete on all tables in schema public to gridline;
+  grant select, insert, update, delete on all tables in schema public to ispsolutions;
 exception
   when undefined_object then null;
   when insufficient_privilege then null;

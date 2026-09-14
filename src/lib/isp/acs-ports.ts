@@ -95,7 +95,7 @@ export async function loadAcsPlatformSettings(sql: Sql): Promise<AcsPlatformSett
 export async function resolveAcsPublicHost(sql: Sql, fallbackBase = "") {
   const cfg = await loadAcsPlatformSettings(sql);
   if (cfg.acs_public_host) return normalizeAcsHost(cfg.acs_public_host);
-  const envHost = (process.env.ACS_PUBLIC_HOST || process.env.GRIDLINE_DOMAIN || "").trim();
+  const envHost = (process.env.ACS_PUBLIC_HOST || process.env.ISPSOLUTIONS_DOMAIN || process.env.GRIDLINE_DOMAIN || "").trim();
   if (envHost) return normalizeAcsHost(envHost);
   if (fallbackBase) {
     try {

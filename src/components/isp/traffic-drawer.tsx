@@ -3,8 +3,8 @@ import { Badge, statusTone } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/input";
 import { accessMethodLabel, formatBytes, formatDateTime } from "@/lib/isp/display";
-import { customerTrafficFn } from "@/lib/isp/server-lifecycle";
-import { bytesToBps, formatBps, meterPercent, TRAFFIC_FRESHNESS_LABEL, TRAFFIC_POLL_MS, TRAFFIC_SOURCE_LABEL } from "@/lib/isp/traffic-format";
+import { customerTrafficFn, customerTrafficHistoryFn } from "@/lib/isp/server-lifecycle";
+import { bytesToBps, formatBps, formatDuration, meterPercent, TRAFFIC_FRESHNESS_LABEL, TRAFFIC_POLL_MS, TRAFFIC_SOURCE_LABEL } from "@/lib/isp/traffic-format";
 
 type TrafficSnap = Awaited<ReturnType<typeof customerTrafficFn>>;
 type TrafficLine = TrafficSnap["lines"][number];
@@ -31,6 +31,7 @@ export function TrafficDrawer({
   const [filter, setFilter] = useState(serviceId || "");
   const [rates, setRates] = useState<Record<string, Rate>>({});
   const prev = useRef<Map<string, Sample>>(new Map());
+  const [history, setHistory] = useState<Array<{ at: string; avg_down_bps: number; avg_up_bps: number; bytes_out: number; bytes_in: number }>>([]);
 
   useEffect(() => {
     if (serviceId) setFilter(serviceId);
@@ -57,11 +58,20 @@ export function TrafficDrawer({
         const now = Date.now();
         for (const line of data.lines) {
           const last = prev.current.get(line.service_id);
-          if (line.online && last) {
+          const derived =
+            line.online && last
+              ? {
+                  down: bytesToBps(last.bytesOut, line.bytes_out, last.at, now),
+                  up: bytesToBps(last.bytesIn, line.bytes_in, last.at, now),
+                }
+              : undefined;
+          if (line.down_bps != null || line.up_bps != null) {
             nextRates[line.service_id] = {
-              down: bytesToBps(last.bytesOut, line.bytes_out, last.at, now),
-              up: bytesToBps(last.bytesIn, line.bytes_in, last.at, now),
+              down: line.down_bps ?? derived?.down ?? 0,
+              up: line.up_bps ?? derived?.up ?? 0,
             };
+          } else if (derived) {
+            nextRates[line.service_id] = derived;
           }
           if (line.online) {
             prev.current.set(line.service_id, {
@@ -83,6 +93,31 @@ export function TrafficDrawer({
     }
 
     void tick();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, customerId, serviceId]);
+
+  useEffect(() => {
+    if (!open) {
+      setHistory([]);
+      return;
+    }
+    let cancelled = false;
+    let timer = 0;
+    async function loadHistory() {
+      try {
+        const data = await customerTrafficHistoryFn({
+          data: { customer_id: customerId, service_id: serviceId || undefined, hours: 24 },
+        });
+        if (!cancelled) setHistory(data.buckets);
+      } catch {
+        if (!cancelled) setHistory([]);
+      }
+      if (!cancelled) timer = window.setTimeout(loadHistory, 60_000);
+    }
+    void loadHistory();
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
@@ -134,6 +169,8 @@ export function TrafficDrawer({
           <TrafficCard key={line.service_id} line={line} rate={rates[line.service_id]} />
         ))}
 
+        {history.length > 0 ? <HourlyChart buckets={history} /> : null}
+
         {snap && snap.freshness === "unavailable" && live.length === 0 ? (
           <p className="rounded-md border border-border bg-elevated px-3 py-3 text-sm">
             Traffic data unavailable. Values are not estimated.
@@ -152,7 +189,9 @@ export function TrafficDrawer({
 }
 
 function TrafficCard({ line, rate }: { line: TrafficLine; rate?: Rate }) {
-  const measuring = line.online && !rate;
+  const known = rate || (line.down_bps != null || line.up_bps != null ? { down: line.down_bps ?? 0, up: line.up_bps ?? 0 } : undefined);
+  const measuring = line.online && !known;
+  const used = line.bundle_mb > 0 ? Math.min(100, (line.bundle_used_mb / line.bundle_mb) * 100) : 0;
   return (
     <div className="grid gap-2 rounded-xl border border-border bg-elevated p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -162,26 +201,75 @@ function TrafficCard({ line, rate }: { line: TrafficLine; rate?: Rate }) {
             {accessMethodLabel(line.access_method)}
             {line.username ? ` · ${line.username}` : ""}
             {line.framed_ip ? ` · ${line.framed_ip}` : ""}
+            {line.router_name ? ` · ${line.router_name}` : ""}
           </div>
         </div>
         <Badge tone={statusTone(line.online ? "online" : "offline")}>{line.online ? "Online" : "No session"}</Badge>
       </div>
       {line.online ? (
         <>
-          <Meter label="Download" bps={rate?.down ?? null} cap={line.download_mbps} measuring={measuring} />
-          <Meter label="Upload" bps={rate?.up ?? null} cap={line.upload_mbps} measuring={measuring} />
+          <Meter label="Download" bps={known?.down ?? null} cap={line.download_mbps} measuring={measuring} />
+          <Meter label="Upload" bps={known?.up ?? null} cap={line.upload_mbps} measuring={measuring} />
+          {line.spark.length > 1 ? <Spark points={line.spark} /> : null}
           <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-3">
             <Stat label="Downloaded" value={formatBytes(line.bytes_out)} />
             <Stat label="Uploaded" value={formatBytes(line.bytes_in)} />
             <Stat label="Combined" value={formatBytes(line.bytes_in + line.bytes_out)} />
+            <Stat label="Duration" value={formatDuration(line.duration_sec)} />
+            <Stat label="Last seen" value={formatDateTime(line.last_seen)} />
             <Stat label="Session start" value={formatDateTime(line.started_at)} />
+            <Stat label="Router" value={line.router_name || "—"} />
             <Stat label="NAS" value={line.nas_ip || "—"} />
             <Stat label="Framed IP" value={line.framed_ip || "—"} />
+            {line.bundle_mb > 0 ? (
+              <Stat label="Package used" value={`${line.bundle_used_mb} / ${line.bundle_mb} MB (${Math.round(used)}%)`} />
+            ) : null}
           </dl>
         </>
       ) : (
-        <p className="text-sm text-muted">Offline. Last known IP {line.framed_ip || "none"}.</p>
+        <p className="text-sm text-muted">
+          Offline. Last known IP {line.framed_ip || "none"}
+          {line.last_seen ? ` · last seen ${formatDateTime(line.last_seen)}` : ""}.
+        </p>
       )}
+    </div>
+  );
+}
+
+function Spark({ points }: { points: TrafficLine["spark"] }) {
+  const downs = points.map((p) => p.down_bps).filter((n): n is number => n != null && n >= 0);
+  const max = Math.max(1, ...downs);
+  return (
+    <div className="flex h-10 items-end gap-px" aria-hidden>
+      {points.slice(-48).map((p, i) => {
+        const v = p.down_bps == null ? 0 : p.down_bps;
+        const h = Math.max(2, Math.round((v / max) * 40));
+        return <span key={`${p.at}-${i}`} className="flex-1 rounded-sm bg-accent/70" style={{ height: `${h}px` }} />;
+      })}
+    </div>
+  );
+}
+
+function HourlyChart({
+  buckets,
+}: {
+  buckets: Array<{ at: string; avg_down_bps: number; avg_up_bps: number; bytes_out: number; bytes_in: number }>;
+}) {
+  const max = Math.max(1, ...buckets.map((b) => b.avg_down_bps));
+  return (
+    <div className="grid gap-1 rounded-xl border border-border bg-elevated p-3">
+      <div className="text-xs font-medium text-muted">Hourly download (aggregates)</div>
+      <div className="flex h-16 items-end gap-px">
+        {buckets.map((b) => (
+          <span
+            key={b.at}
+            title={`${formatDateTime(b.at)} · ${formatBps(b.avg_down_bps)}`}
+            className="flex-1 rounded-sm bg-accent/80"
+            style={{ height: `${Math.max(2, Math.round((b.avg_down_bps / max) * 64))}px` }}
+          />
+        ))}
+      </div>
+      <p className="text-xs text-subtle">From stored hourly totals — not reconstructed from live samples.</p>
     </div>
   );
 }

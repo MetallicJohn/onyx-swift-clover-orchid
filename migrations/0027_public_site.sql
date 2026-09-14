@@ -20,7 +20,7 @@ on conflict (key) do nothing;
 
 do $$
 begin
-  grant select, insert, update, delete on platform_inquiries to gridline;
+  grant select, insert, update, delete on platform_inquiries to ispsolutions;
 exception
   when undefined_object then null;
   when insufficient_privilege then null;

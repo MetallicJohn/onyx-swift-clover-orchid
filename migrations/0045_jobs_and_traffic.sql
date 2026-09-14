@@ -64,9 +64,9 @@ create index if not exists traffic_samples_live_idx
 
 do $$
 begin
-  grant select, insert, update, delete on job_queue to gridline;
-  grant select, insert, update, delete on traffic_collectors to gridline;
-  grant select, insert, update, delete on traffic_samples to gridline;
+  grant select, insert, update, delete on job_queue to ispsolutions;
+  grant select, insert, update, delete on traffic_collectors to ispsolutions;
+  grant select, insert, update, delete on traffic_samples to ispsolutions;
 exception
   when undefined_object then null;
   when insufficient_privilege then null;

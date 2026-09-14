@@ -3,7 +3,7 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import { agentPullUrl, agentScript, enrollFields } from "./agent";
 import { wgEnrollContext } from "./wireguard";
 import { requireWorkspace as requireWs } from "./workspace";
-import { assertPermission } from "./rbac";
+import { assertPermission, hasPermission } from "./rbac";
 
 type RouterEnroll = {
   id: string;
@@ -85,4 +85,16 @@ export const copyRouterScript = createServerFn({ method: "POST" })
       return { script: await scriptFor(sql, tenantId, next), token: next.enroll_token, rotated: true };
     }
     return { script: await scriptFor(sql, tenantId, r), token: r.enroll_token, rotated: false };
+  });
+
+export const routerTelemetryFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .validator((d: { router_id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    if (!hasPermission(role, "traffic.view") && !hasPermission(role, "routers.read")) {
+      throw new Error("Forbidden");
+    }
+    const { routerTelemetry } = await import("./traffic-router.ts");
+    return routerTelemetry(sql, tenantId, data.router_id);
   });

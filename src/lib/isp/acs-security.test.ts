@@ -44,8 +44,8 @@ test("ACS URL lock script writes TR-098 and TR-181 ManagementServer.URL", () => 
   assert.match(LOCK_URL_SCRIPT, /InternetGatewayDevice\.ManagementServer\.URL/);
   assert.match(LOCK_URL_SCRIPT, /Device\.ManagementServer\.URL/);
   assert.match(LOCK_URL_SCRIPT, /ConnectionRequestUsername/);
-  assert.match(LOCK_URL_SCRIPT, /ext\("gridline", "acsUrlFor"/);
-  assert.match(CWMP_AUTH_DIGEST, /EXT\("gridline", "passwordFor", USERNAME\)/);
+  assert.match(LOCK_URL_SCRIPT, /ext\("ispsolutions", "acsUrlFor"/);
+  assert.match(CWMP_AUTH_DIGEST, /EXT\("ispsolutions", "passwordFor", USERNAME\)/);
 });
 
 test("lookup rejects unknown, disabled, and cross-ISP usernames; does not audit informs", async () => {
@@ -143,8 +143,8 @@ test("applyGenieAcsSecurity puts URL-lock provision/preset and digest auth expre
     assert.equal(on.ok, true);
     assert.ok(on.steps.includes("provision"));
     assert.ok(on.steps.includes("preset"));
-    assert.match(calls.find((c) => c.url.includes("/provisions/gridline-lock-url"))?.body || "", /ManagementServer\.URL/);
-    assert.match(calls.find((c) => c.url.includes("/presets/gridline-lock-url"))?.body || "", /gridline-lock-url/);
+    assert.match(calls.find((c) => c.url.includes("/provisions/ispsolutions-lock-url"))?.body || "", /ManagementServer\.URL/);
+    assert.match(calls.find((c) => c.url.includes("/presets/ispsolutions-lock-url"))?.body || "", /ispsolutions-lock-url/);
     assert.match(calls.find((c) => c.url.includes("cwmp.auth"))?.body || "", /passwordFor/);
     await sql`insert into platform_settings (key, value) values ('acs_lock_url', 'false')
       on conflict (key) do update set value = 'false'`;

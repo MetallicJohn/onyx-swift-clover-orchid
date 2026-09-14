@@ -151,7 +151,7 @@ test("API keys are unique enough for issuance", () => {
   assert.match(newRadiusApiKey(), /^frk_/);
   const basic = presentedRadiusKey(new Request("http://x", { headers: { authorization: `Basic ${Buffer.from("ispsolutions:frk_abc").toString("base64")}` } }));
   assert.equal(basic, "frk_abc");
-  const legacy = presentedRadiusKey(new Request("http://x", { headers: { authorization: `Basic ${Buffer.from("gridline:frk_abc").toString("base64")}` } }));
+  const legacy = presentedRadiusKey(new Request("http://x", { headers: { authorization: `Basic ${Buffer.from("ispsolutions:frk_abc").toString("base64")}` } }));
   assert.equal(legacy, "frk_abc");
   const bearer = presentedRadiusKey(new Request("http://x", { headers: { authorization: "Bearer frk_xyz" } }));
   assert.equal(bearer, "frk_xyz");

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
-BASE="${GRIDLINE_URL:-http://web:3000}"
-SLUG="${GRIDLINE_SLUG:-}"
+BASE="${ISPSOLUTIONS_URL:-${GRIDLINE_URL:-http://web:3000}}"
+SLUG="${ISPSOLUTIONS_SLUG:-${GRIDLINE_SLUG:-}}"
 KEY="${RADIUS_API_KEY:-}"
 RADDB="${RADDB:-/etc/raddb}"
 
@@ -16,7 +16,7 @@ while [ "$i" -lt 40 ]; do
 done
 
 if [ -z "$SLUG" ] || [ -z "$KEY" ]; then
-  echo "[ispsolutions-radius] GRIDLINE_SLUG and RADIUS_API_KEY are required."
+  echo "[ispsolutions-radius] ISPSOLUTIONS_SLUG and RADIUS_API_KEY are required."
   echo "[ispsolutions-radius] Copy them from ISP Solutions → RADIUS → Copy VPS env, then restart this container."
   sleep 15
   exit 1
@@ -29,6 +29,6 @@ printf '%s' "$BOOT" | jq -r .site >"$RADDB/sites-available/ispsolutions"
 printf '%s' "$BOOT" | jq -r .clients >"$RADDB/clients.conf"
 ln -sfn ../mods-available/rest "$RADDB/mods-enabled/rest"
 ln -sfn ../sites-available/ispsolutions "$RADDB/sites-enabled/ispsolutions"
-rm -f "$RADDB/sites-enabled/gridline" "$RADDB/sites-enabled/default" "$RADDB/sites-enabled/inner-tunnel"
+rm -f "$RADDB/sites-enabled/ispsolutions" "$RADDB/sites-enabled/default" "$RADDB/sites-enabled/inner-tunnel"
 echo "[ispsolutions-radius] starting radiusd on UDP 1812/1813"
 exec radiusd -f -l stdout

@@ -18,7 +18,7 @@ export const Route = createFileRoute("/api/v1/health")({
           service: "ispsolutions-web",
           role: process.env.ROLE || "web",
           database,
-          sha: process.env.GRIDLINE_GIT_SHA || "",
+          sha: process.env.ISPSOLUTIONS_GIT_SHA || process.env.GRIDLINE_GIT_SHA || "",
         });
       },
     },

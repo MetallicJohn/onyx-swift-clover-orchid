@@ -1,4 +1,4 @@
--- Gridline ISP SaaS — multi-tenant foundation schema
+-- ISP Solutions — multi-tenant foundation schema
 -- All tenant-owned tables carry tenant_id. Access is scoped via tenant_members.user_id.
 
 create table if not exists tenants (

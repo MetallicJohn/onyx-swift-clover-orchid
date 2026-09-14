@@ -1,21 +1,21 @@
 -- Row-level security for tenant-owned tables.
 -- App queries set app.tenant_id. Migrations/bootstrap set app.bypass_rls=on.
--- The gridline role is a non-superuser used by tests (and PGLite after SET ROLE).
+-- The ispsolutions role is a non-superuser used by tests (and PGLite after SET ROLE).
 -- Superusers still bypass RLS; production DATABASE_URL must not be a superuser.
 
 do $$
 begin
   begin
-    create role gridline nologin nosuperuser nobypassrls;
+    create role ispsolutions nologin nosuperuser nobypassrls;
   exception
     when duplicate_object then null;
     when insufficient_privilege then null;
   end;
 end $$;
 
-grant usage on schema public to gridline;
-grant select, insert, update, delete on all tables in schema public to gridline;
-alter default privileges in schema public grant select, insert, update, delete on tables to gridline;
+grant usage on schema public to ispsolutions;
+grant select, insert, update, delete on all tables in schema public to ispsolutions;
+alter default privileges in schema public grant select, insert, update, delete on tables to ispsolutions;
 
 create unique index if not exists routers_enroll_token_uq
   on routers (enroll_token) where enroll_token is not null and enroll_token <> '';

@@ -9,7 +9,7 @@ import net from "node:net";
 import tls from "node:tls";
 
 const TARGET = process.env.GENIEACS_CWMP_URL || "http://genieacs:7547";
-const INTERNAL = (process.env.GRIDLINE_INTERNAL_URL || "http://web:3000").replace(/\/+$/, "");
+const INTERNAL = (process.env.ISPSOLUTIONS_INTERNAL_URL || process.env.GRIDLINE_INTERNAL_URL || "http://web:3000").replace(/\/+$/, "");
 const TOKEN = process.env.ACS_EDGE_TOKEN || "";
 const REFRESH_MS = Math.max(5000, Number(process.env.ACS_EDGE_REFRESH_MS || 15_000));
 

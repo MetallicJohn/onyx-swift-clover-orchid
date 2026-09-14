@@ -1,5 +1,5 @@
 -- FreeRADIUS REST adapter: per-tenant API key, NAS IP on routers, auth event log.
--- The daemon stays external. Gridline is authorize / accounting over HTTP.
+-- The daemon stays external. ISP Solutions is authorize / accounting over HTTP.
 
 alter table tenants add column if not exists radius_api_key text not null default '';
 
@@ -20,7 +20,7 @@ create index if not exists radius_auth_events_tenant_idx on radius_auth_events (
 do $$
 begin
   begin
-    grant select, insert, update, delete on table radius_auth_events to gridline;
+    grant select, insert, update, delete on table radius_auth_events to ispsolutions;
   exception
     when undefined_object then null;
     when insufficient_privilege then null;

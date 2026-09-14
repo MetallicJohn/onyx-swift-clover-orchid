@@ -72,6 +72,13 @@ export async function getPlatformSettings(sql: Sql) {
     acs_tls: (map.acs_tls === "https" ? "https" : "http") as "http" | "https",
     acs_require_cpe_auth: map.acs_require_cpe_auth !== "false",
     acs_lock_url: map.acs_lock_url !== "false",
+    traffic_enabled: map.traffic_enabled !== "false",
+    traffic_interval_sec: Number(map.traffic_interval_sec || 30),
+    traffic_router_interval_sec: Number(map.traffic_router_interval_sec || 60),
+    traffic_short_hours: Number(map.traffic_short_hours || 24),
+    traffic_hourly_days: Number(map.traffic_hourly_days || 90),
+    traffic_daily_days: Number(map.traffic_daily_days || 730),
+    traffic_source_priority: (map.traffic_source_priority || "radius,routeros,snmp,netflow").trim(),
   };
 }
 
@@ -94,6 +101,13 @@ export async function savePlatformSettings(
     acs_tls: "http" | "https";
     acs_require_cpe_auth: boolean;
     acs_lock_url: boolean;
+    traffic_enabled: boolean;
+    traffic_interval_sec: number;
+    traffic_router_interval_sec: number;
+    traffic_short_hours: number;
+    traffic_hourly_days: number;
+    traffic_daily_days: number;
+    traffic_source_priority: string;
   }>,
 ) {
   await requirePlatformActor(sql, actorUserId);
@@ -135,6 +149,29 @@ export async function savePlatformSettings(
   }
   if (patch.acs_lock_url != null) {
     entries.push(["acs_lock_url", patch.acs_lock_url ? "true" : "false"]);
+  }
+  if (patch.traffic_enabled != null) entries.push(["traffic_enabled", patch.traffic_enabled ? "true" : "false"]);
+  if (patch.traffic_interval_sec != null) {
+    entries.push(["traffic_interval_sec", String(Math.min(300, Math.max(5, Math.round(patch.traffic_interval_sec))))]);
+  }
+  if (patch.traffic_router_interval_sec != null) {
+    entries.push([
+      "traffic_router_interval_sec",
+      String(Math.min(600, Math.max(15, Math.round(patch.traffic_router_interval_sec)))),
+    ]);
+  }
+  if (patch.traffic_short_hours != null) {
+    entries.push(["traffic_short_hours", String(Math.min(168, Math.max(1, Math.round(patch.traffic_short_hours))))]);
+  }
+  if (patch.traffic_hourly_days != null) {
+    entries.push(["traffic_hourly_days", String(Math.min(730, Math.max(7, Math.round(patch.traffic_hourly_days))))]);
+  }
+  if (patch.traffic_daily_days != null) {
+    entries.push(["traffic_daily_days", String(Math.min(3650, Math.max(30, Math.round(patch.traffic_daily_days))))]);
+  }
+  if (patch.traffic_source_priority != null) {
+    const { parseSourcePriority } = await import("./traffic-settings");
+    entries.push(["traffic_source_priority", parseSourcePriority(patch.traffic_source_priority).join(",")]);
   }
   for (const [key, value] of entries) {
     await sql`insert into platform_settings (key, value, updated_at) values (${key}, ${value}, now())

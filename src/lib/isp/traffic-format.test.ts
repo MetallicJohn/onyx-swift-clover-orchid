@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bytesToBps, formatBps, meterPercent, TRAFFIC_POLL_MS } from "./traffic-format.ts";
+import { bytesToBps, formatBps, formatDuration, meterPercent, trafficFreshness, TRAFFIC_POLL_MS } from "./traffic-format.ts";
 
 test("bytesToBps uses octet deltas over wall time", () => {
   // 1_250_000 bytes over 5s = 2_000_000 bps = 2 Mbps
@@ -20,4 +20,13 @@ test("formatBps and meter stay empty until a real sample", () => {
   assert.equal(meterPercent(5_000_000, 10), 50);
   assert.equal(meterPercent(40_000_000, 10), 100);
   assert.equal(TRAFFIC_POLL_MS, 5000);
+});
+
+test("freshness and duration never invent live data", () => {
+  assert.equal(trafficFreshness(null), "unavailable");
+  assert.equal(trafficFreshness("not-a-date"), "unavailable");
+  assert.equal(trafficFreshness(new Date().toISOString(), 30), "live");
+  assert.equal(trafficFreshness(new Date(Date.now() - 10 * 60_000).toISOString(), 30), "stale");
+  assert.equal(formatDuration(null), "—");
+  assert.equal(formatDuration(65), "1m 5s");
 });

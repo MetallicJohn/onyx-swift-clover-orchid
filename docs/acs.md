@@ -6,7 +6,7 @@ GenieACS is a **separate process** (CWMP :7547, NBI :7557, FS :7567, UI on `acs.
 
 - Docker Compose starts MongoDB 7 + `drumsergio/genieacs:1.2.16.0` beside the web app
 - Per-ISP ACS URL, username, password, and connection-request login (sealed). Unique public CWMP port via cwmp-edge
-- CPE → ACS HTTP digest auth: GenieACS `cwmp.auth` = `AUTH(USERNAME, EXT("gridline", "passwordFor", USERNAME))`. The extension looks up the sealed secret on the private `/api/internal/acs-auth` endpoint. Unknown or disabled ISPs are rejected. Informs are not audited
+- CPE → ACS HTTP digest auth: GenieACS `cwmp.auth` = `AUTH(USERNAME, EXT("ispsolutions", "passwordFor", USERNAME))`. The extension looks up the sealed secret on the private `/api/internal/acs-auth` endpoint. Unknown or disabled ISPs are rejected. Informs are not audited
 - ACS → CPE connection-request auth uses the device's stored connection-request username and password
 - Optional HTTPS ACS URLs (`acs_tls`). Default HTTP so existing OLT profiles keep working. Optional TLS on cwmp-edge
 - URL lock preset: on inform, rewrite `ManagementServer.URL` (TR-098 and TR-181) and connection-request credentials for this ISP

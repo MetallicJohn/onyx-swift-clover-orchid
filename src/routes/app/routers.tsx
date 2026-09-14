@@ -11,6 +11,7 @@ import { listAgentQueue, simulateAgentPull } from "@/lib/isp/server-ops";
 import { getWireGuardHub } from "@/lib/isp/server-wg";
 import { copyRouterScript, updateRouter } from "@/lib/isp/server-routers";
 import type { RouterRow } from "@/lib/isp/types";
+import { RouterMonitor } from "@/components/isp/router-monitor";
 
 export const Route = createFileRoute("/app/routers")({ component: RoutersPage });
 
@@ -294,6 +295,10 @@ function RoutersPage() {
           </tbody>
         </table>
       </div>
+
+      {apiRouter && (hasPermission(role, "traffic.view") || hasPermission(role, "routers.read")) ? (
+        <RouterMonitor routerId={apiRouter} />
+      ) : null}
 
       {canManage ? (
       <>

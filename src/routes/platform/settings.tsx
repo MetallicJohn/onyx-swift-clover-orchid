@@ -25,6 +25,13 @@ function SettingsPage() {
     acs_tls: "http" as "http" | "https",
     acs_require_cpe_auth: true,
     acs_lock_url: true,
+    traffic_enabled: true,
+    traffic_interval_sec: 30,
+    traffic_router_interval_sec: 60,
+    traffic_short_hours: 24,
+    traffic_hourly_days: 90,
+    traffic_daily_days: 730,
+    traffic_source_priority: "radius,routeros,snmp,netflow",
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -194,6 +201,72 @@ function SettingsPage() {
             />
             <span>Lock ACS URL on inform (rewrite the ONU if it is redirected)</span>
           </label>
+          <p className="mt-4 text-xs font-medium tracking-wide text-muted uppercase">Traffic monitoring</p>
+          <p className="text-xs text-muted">
+            Realtime rates stay in Redis. PostgreSQL only stores minute/hourly/daily aggregates. Billing still uses RADIUS
+            accounting — not these samples.
+          </p>
+          <label className="flex h-11 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.traffic_enabled}
+              onChange={(e) => setForm({ ...form, traffic_enabled: e.target.checked })}
+            />
+            Enable traffic collectors
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Realtime interval (seconds)">
+              <Input
+                type="number"
+                min={5}
+                max={300}
+                value={form.traffic_interval_sec}
+                onChange={(e) => setForm({ ...form, traffic_interval_sec: Number(e.target.value) })}
+              />
+            </Field>
+            <Field label="Router poll interval (seconds)">
+              <Input
+                type="number"
+                min={15}
+                max={600}
+                value={form.traffic_router_interval_sec}
+                onChange={(e) => setForm({ ...form, traffic_router_interval_sec: Number(e.target.value) })}
+              />
+            </Field>
+            <Field label="Short-term retention (hours)">
+              <Input
+                type="number"
+                min={1}
+                max={168}
+                value={form.traffic_short_hours}
+                onChange={(e) => setForm({ ...form, traffic_short_hours: Number(e.target.value) })}
+              />
+            </Field>
+            <Field label="Hourly retention (days)">
+              <Input
+                type="number"
+                min={7}
+                max={730}
+                value={form.traffic_hourly_days}
+                onChange={(e) => setForm({ ...form, traffic_hourly_days: Number(e.target.value) })}
+              />
+            </Field>
+            <Field label="Daily retention (days)">
+              <Input
+                type="number"
+                min={30}
+                max={3650}
+                value={form.traffic_daily_days}
+                onChange={(e) => setForm({ ...form, traffic_daily_days: Number(e.target.value) })}
+              />
+            </Field>
+            <Field label="Source priority">
+              <Input
+                value={form.traffic_source_priority}
+                onChange={(e) => setForm({ ...form, traffic_source_priority: e.target.value })}
+              />
+            </Field>
+          </div>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
           {ok ? <p className="text-sm text-ok">{ok}</p> : null}
           <Button type="submit" disabled={busy}>

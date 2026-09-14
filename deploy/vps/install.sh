@@ -5,8 +5,8 @@ set -euo pipefail
 
 DOMAIN=""
 EMAIL=""
-INSTALL_DIR="/opt/gridline"
-GIT_URL="${GRIDLINE_GIT_URL:-https://github.com/MetallicJohn/onyx-swift-clover-orchid.git}"
+INSTALL_DIR="/opt/ispsolutions"
+GIT_URL="${ISPSOLUTIONS_GIT_URL:-https://github.com/MetallicJohn/onyx-swift-clover-orchid.git}"
 
 usage() {
   echo "Usage: sudo bash deploy/vps/install.sh --domain ops.yourisp.co.ke --email you@yourisp.co.ke"
@@ -38,7 +38,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-echo "[gridline] installing Docker, git, and WireGuard"
+echo "[ispsolutions] installing Docker, git, and WireGuard"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y ca-certificates curl git ufw wireguard rsync
@@ -50,7 +50,7 @@ systemctl enable --now docker
 git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
 
 if [[ "$REPO_ROOT" != "$INSTALL_DIR" ]]; then
-  echo "[gridline] publishing checkout to $INSTALL_DIR"
+  echo "[ispsolutions] publishing checkout to $INSTALL_DIR"
   mkdir -p "$INSTALL_DIR"
   if [[ ! -d "$INSTALL_DIR/.git" ]]; then
     if [[ -z "$(ls -A "$INSTALL_DIR" 2>/dev/null || true)" ]]; then
@@ -61,6 +61,7 @@ if [[ "$REPO_ROOT" != "$INSTALL_DIR" ]]; then
         --exclude .output \
         --exclude .vercel \
         --exclude .git \
+        --exclude ispsolutions.env \
         --exclude gridline.env \
         "$REPO_ROOT/" "$INSTALL_DIR/"
     fi
@@ -69,9 +70,12 @@ fi
 cd "$INSTALL_DIR"
 chmod +x "$INSTALL_DIR/deploy/vps/update.sh" "$INSTALL_DIR/deploy/vps/entrypoint.sh" 2>/dev/null || true
 
-ENV_FILE="$INSTALL_DIR/gridline.env"
+ENV_FILE="$INSTALL_DIR/ispsolutions.env"
+if [[ ! -f "$ENV_FILE" && -f "$INSTALL_DIR/gridline.env" ]]; then
+  mv "$INSTALL_DIR/gridline.env" "$ENV_FILE"
+fi
 if [[ ! -f "$ENV_FILE" ]]; then
-  echo "[gridline] writing $ENV_FILE"
+  echo "[ispsolutions] writing $ENV_FILE"
   POSTGRES_PASSWORD="$(openssl rand -hex 24)"
   APP_SECRET="$(openssl rand -hex 32)"
   REDIS_PASSWORD="$(openssl rand -hex 24)"
@@ -81,12 +85,12 @@ if [[ ! -f "$ENV_FILE" ]]; then
 NODE_ENV=production
 HOST=0.0.0.0
 PORT=3000
-GRIDLINE_DOMAIN=$DOMAIN
+ISPSOLUTIONS_DOMAIN=$DOMAIN
 ACME_EMAIL=$EMAIL
-POSTGRES_USER=gridline
-POSTGRES_DB=gridline
+POSTGRES_USER=ispsolutions
+POSTGRES_DB=ispsolutions
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-DATABASE_URL=postgres://gridline:${POSTGRES_PASSWORD}@postgres:5432/gridline
+DATABASE_URL=postgres://ispsolutions:${POSTGRES_PASSWORD}@postgres:5432/ispsolutions
 APP_SECRET=$APP_SECRET
 BETTER_AUTH_SECRET=$APP_SECRET
 BETTER_AUTH_URL=https://$DOMAIN
@@ -94,9 +98,9 @@ BETTER_AUTH_TRUSTED_ORIGINS=https://$DOMAIN,https://www.$DOMAIN
 GENIEACS_NBI_URL=http://genieacs:7557
 GENIEACS_CWMP_URL=http://genieacs:7547
 GENIEACS_UI_JWT_SECRET=$(openssl rand -hex 32)
-GRIDLINE_URL=http://web:3000
-GRIDLINE_INTERNAL_URL=http://web:3000
-GRIDLINE_SLUG=
+ISPSOLUTIONS_URL=http://web:3000
+ISPSOLUTIONS_INTERNAL_URL=http://web:3000
+ISPSOLUTIONS_SLUG=
 RADIUS_API_KEY=
 RADIUS_NAS_SECRET=$(openssl rand -hex 16)
 RADIUS_HOST=freeradius
@@ -108,14 +112,16 @@ REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
 MONGODB_URL=mongodb://mongo:27017/genieacs
 DATABASE_SSL_MODE=disable
 WORKER_CONCURRENCY=2
+ISPSOLUTIONS_AUTO_DEPLOY=0
 TRAFFIC_COLLECTION_INTERVAL=30
+TRAFFIC_ROUTER_INTERVAL=60
 LOG_LEVEL=info
 EOF
   chmod 600 "$ENV_FILE"
 else
-  echo "[gridline] keeping existing $ENV_FILE"
-  if ! grep -q '^GRIDLINE_DOMAIN=' "$ENV_FILE"; then
-    echo "GRIDLINE_DOMAIN=$DOMAIN" >>"$ENV_FILE"
+  echo "[ispsolutions] keeping existing $ENV_FILE"
+  if ! grep -q '^ISPSOLUTIONS_DOMAIN=' "$ENV_FILE"; then
+    echo "ISPSOLUTIONS_DOMAIN=$DOMAIN" >>"$ENV_FILE"
   fi
   if ! grep -q '^ACME_EMAIL=' "$ENV_FILE"; then
     echo "ACME_EMAIL=$EMAIL" >>"$ENV_FILE"
@@ -126,10 +132,10 @@ else
   if ! grep -q '^GENIEACS_UI_JWT_SECRET=' "$ENV_FILE"; then
     echo "GENIEACS_UI_JWT_SECRET=$(openssl rand -hex 32)" >>"$ENV_FILE"
   fi
-  if ! grep -q '^GRIDLINE_URL=' "$ENV_FILE"; then
-    echo "GRIDLINE_URL=http://web:3000" >>"$ENV_FILE"
-    echo "GRIDLINE_INTERNAL_URL=http://web:3000" >>"$ENV_FILE"
-    echo "GRIDLINE_SLUG=" >>"$ENV_FILE"
+  if ! grep -q '^ISPSOLUTIONS_URL=' "$ENV_FILE"; then
+    echo "ISPSOLUTIONS_URL=http://web:3000" >>"$ENV_FILE"
+    echo "ISPSOLUTIONS_INTERNAL_URL=http://web:3000" >>"$ENV_FILE"
+    echo "ISPSOLUTIONS_SLUG=" >>"$ENV_FILE"
     echo "RADIUS_API_KEY=" >>"$ENV_FILE"
     echo "RADIUS_NAS_SECRET=$(openssl rand -hex 16)" >>"$ENV_FILE"
   fi
@@ -154,25 +160,27 @@ if command -v ufw >/dev/null 2>&1; then
   ufw --force enable || true
 fi
 
-echo "[gridline] building and starting containers (first build takes several minutes)"
+echo "[ispsolutions] building and starting containers (first build takes several minutes)"
 INSTALL_DIR="$INSTALL_DIR" bash "$INSTALL_DIR/deploy/vps/update.sh" --force
 
 echo
 echo "ISP Solutions is publishing at https://$DOMAIN"
 echo "Point DNS A/AAAA for $DOMAIN at this VPS, then wait for TLS."
-echo "After this, each GitHub push is pulled and rebuilt on the VPS within a few minutes."
+echo "After this, deploy from the VPS only after GitHub CI on main is green:"
+echo "  sudo bash $INSTALL_DIR/deploy/vps/update.sh --apply"
+echo "Do not deploy untested branches. The 5-minute timer fetches origin/main but does not rebuild unless ISPSOLUTIONS_AUTO_DEPLOY=1."
 echo
 echo "Next:"
 echo "  1. Sign in at https://$DOMAIN/login (signup creates the first ISP owner)."
 echo "  2. Settings → Public URL = https://$DOMAIN"
-echo "  3. Settings → Network: hub endpoint = this VPS public IP or $DOMAIN, then run the VPS install script (creates wg-ispsolutions, migrates wg-gridline)"
+echo "  3. Settings → Network: hub endpoint = this VPS public IP or $DOMAIN, then run the VPS install script (creates wg-ispsolutions)"
 echo "  4. Routers → Copy script onto each MikroTik"
 echo "  5. Point DNS at this VPS. In ISP Solutions → System settings set ACS public host to the VPS IP or $DOMAIN."
 echo "  6. Each ISP is assigned a unique TR-069 port (7551–7999). CPE ACS URL and digest login come from ACS → Credentials."
 echo "  7. Firewall: TCP 80, 443, 7551-7999, UDP 1812, 1813, 51820. Do not publish GenieACS NBI (7557), Mongo, Redis, or the ACS auth endpoint."
 echo "  8. ISP Solutions → GenieACS → NBI (http://genieacs:7557, internal only) → Sync from ACS"
-echo "  9. RADIUS → Copy VPS env into gridline.env, then restart the freeradius container"
-echo " 10. Publish now: sudo bash $INSTALL_DIR/deploy/vps/update.sh"
+echo "  9. RADIUS → Copy VPS env into ispsolutions.env, then restart the freeradius container"
+echo " 10. After green CI on main: sudo bash $INSTALL_DIR/deploy/vps/update.sh --apply"
 echo
 echo "Health: curl -fsS https://$DOMAIN/api/v1/health"
 echo "Ready:  curl -fsS https://$DOMAIN/api/v1/ready"

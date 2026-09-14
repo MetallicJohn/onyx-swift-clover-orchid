@@ -25,8 +25,11 @@ Enroll token is a capability. Router list does not return enroll tokens. Copy-sc
 CPE → ACS is HTTP digest against the per-ISP ACS username and password. Connection-request login is a separate secret written onto the ONU. NBI, Mongo, and the ACS auth endpoint stay on the private network (not published). Informs are not written to `audit_logs`. Optional HTTPS ACS URLs default off so existing OLT profiles keep working. URL lock rewrites the ONU ACS URL on inform so it cannot be redirected.
 
 ## OWASP notes (M0.5)
-SQL is parameterized. XSS: React escaping. CSRF: same-site middleware (`assertSameSiteRequest`). SSRF: MikroTik REST only to configured `api_host` / WG address. Command injection: RouterOS values are quoted via `rosQuote`. Do not log secrets.
+SQL is parameterized. XSS: React escaping. CSRF: same-site middleware (`assertSameSiteRequest`). SSRF: MikroTik REST only to configured `api_host` / WG address (collectors never take a URL from the client). Command injection: RouterOS values are quoted via `rosQuote`. Do not log secrets. Traffic Redis keys are tenant-prefixed; unmapped sessions are not attributed.
 
 ## Service-to-service
 `INTERNAL_SERVICE_TOKEN` (or `ACS_EDGE_TOKEN`) on `/api/internal/*`. Caddy returns 404 for that prefix on the public hostname. Postgres, Redis, Mongo, and GenieACS NBI bind privately. Structured logs redact password/token/secret keys (`src/lib/isp/obs.ts`).
+
+## Production deploy
+Do not publish from Grok or an untested branch. GitHub Actions `publish-vps` SSHs only after green `checks` on `main`, using repo secrets (`VPS_HOST`, `VPS_SSH_KEY`). The VPS updater backs up Postgres before rebuild and rolls back the previous SHA if `/api/v1/health` fails. The deploy key never belongs in the app env file.
 

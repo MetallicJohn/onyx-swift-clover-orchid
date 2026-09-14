@@ -165,3 +165,16 @@ export const customerTrafficFn = createServerFn({ method: "GET" })
     }
     return traffic;
   });
+
+export const customerTrafficHistoryFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .validator((d: { customer_id: string; service_id?: string; hours?: number }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWorkspace(context.userId);
+    if (!hasPermission(role, "traffic.view") && !hasPermission(role, "services.read")) {
+      throw new Error("Forbidden");
+    }
+    const { customerTrafficHistory, serviceTrafficHistory } = await import("./traffic-aggregate.ts");
+    if (data.service_id) return serviceTrafficHistory(sql, tenantId, data.service_id, { hours: data.hours });
+    return customerTrafficHistory(sql, tenantId, data.customer_id, { hours: data.hours });
+  });

@@ -30,7 +30,7 @@ create table if not exists customer_account_settings (
 
 do $$
 begin
-  grant select, insert, update, delete on customer_account_settings to gridline;
+  grant select, insert, update, delete on customer_account_settings to ispsolutions;
 exception
   when undefined_object then null;
   when insufficient_privilege then null;

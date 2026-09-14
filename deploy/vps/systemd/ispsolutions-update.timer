@@ -1,5 +1,5 @@
 [Unit]
-Description=Publish ISP Solutions from GitHub when we push
+Description=Fetch ISP Solutions from GitHub (deploys only if ISPSOLUTIONS_AUTO_DEPLOY=1)
 
 [Timer]
 OnBootSec=3min

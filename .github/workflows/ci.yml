@@ -5,6 +5,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -13,7 +16,7 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: gridline
+          POSTGRES_DB: ispsolutions
         ports:
           - 5432:5432
         options: >-
@@ -37,18 +40,24 @@ jobs:
       - run: npm test
       - name: Apply migrations on clean Postgres
         env:
-          DATABASE_URL: postgres://postgres:postgres@localhost:5432/gridline
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/ispsolutions
         run: npm run test:db
       - name: RLS and domain proofs on Postgres
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
-          GRIDLINE_TEST_PG: "1"
+          ISPSOLUTIONS_TEST_PG: "1"
         run: npm run test:pg
 
+  # Production VPS: only after checks pass, only on main, never from a PR or Grok sandbox.
+  # Secrets: VPS_HOST, VPS_SSH_KEY required. VPS_USER (default root), VPS_PATH
+  # (default /opt/ispsolutions), VPS_HEALTH_URL (optional public https://…/api/v1/health).
   publish-vps:
     needs: checks
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    concurrency:
+      group: vps-publish
+      cancel-in-progress: false
     steps:
       - name: Gate
         id: gate
@@ -58,15 +67,54 @@ jobs:
         run: |
           if [ -z "$HOST" ] || [ -z "$KEY" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "No VPS_HOST / VPS_SSH_KEY — the VPS timer will pull this commit."
+            echo "VPS_HOST or VPS_SSH_KEY is not set. CI will not SSH."
+            echo "Verify this run is green, back up the database, then on the VPS:"
+            echo "  sudo bash /opt/ispsolutions/deploy/vps/update.sh --apply"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "VPS_HOST is set; SSH username and path use secrets or defaults."
           fi
       - name: Publish to VPS
         if: steps.gate.outputs.skip != 'true'
         uses: appleboy/ssh-action@v1.2.2
+        env:
+          INSTALL_DIR: ${{ secrets.VPS_PATH }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER || 'root' }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          script: sudo bash /opt/gridline/deploy/vps/update.sh
+          command_timeout: 20m
+          envs: INSTALL_DIR
+          script: |
+            set -euo pipefail
+            INSTALL_DIR="${INSTALL_DIR:-/opt/ispsolutions}"
+            if [ ! -x "$INSTALL_DIR/deploy/vps/update.sh" ] && [ -x /opt/gridline/deploy/vps/update.sh ]; then
+              INSTALL_DIR=/opt/gridline
+            fi
+            if [ ! -x "$INSTALL_DIR/deploy/vps/update.sh" ] && [ ! -f "$INSTALL_DIR/deploy/vps/update.sh" ]; then
+              echo "No update.sh under $INSTALL_DIR" >&2
+              exit 1
+            fi
+            if [ -f "$INSTALL_DIR/deploy/vps/backup.sh" ]; then
+              sudo env INSTALL_DIR="$INSTALL_DIR" bash "$INSTALL_DIR/deploy/vps/backup.sh" || true
+            fi
+            sudo env INSTALL_DIR="$INSTALL_DIR" ISPSOLUTIONS_FROM_CI=1 bash "$INSTALL_DIR/deploy/vps/update.sh" --from-ci
+      - name: Public health
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          HEALTH_URL: ${{ secrets.VPS_HEALTH_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$HEALTH_URL" ]; then
+            echo "VPS_HEALTH_URL not set — skip public probe (in-container health already ran on the VPS)"
+            exit 0
+          fi
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS "$HEALTH_URL" | grep -q '"ok":true'; then
+              echo "public health ok"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "public health failed" >&2
+          exit 1

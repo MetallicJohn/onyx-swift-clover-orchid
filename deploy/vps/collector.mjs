@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 /**
- * Thin traffic collector: asks the application to snapshot RADIUS sessions.
- * The collector can run on another VPS; it never talks to PostgreSQL directly.
+ * Thin traffic collector: asks the application to snapshot RADIUS sessions
+ * into Redis + minute aggregates. The collector can run on another VPS; it
+ * never talks to PostgreSQL directly.
  */
-const BASE = (process.env.GRIDLINE_INTERNAL_URL || process.env.APP_URL || "").replace(/\/+$/, "");
+const BASE = (process.env.ISPSOLUTIONS_INTERNAL_URL || process.env.GRIDLINE_INTERNAL_URL || process.env.APP_URL || "").replace(/\/+$/, "");
 const TOKEN = (process.env.INTERNAL_SERVICE_TOKEN || process.env.TRAFFIC_COLLECTOR_API_KEY || process.env.ACS_EDGE_TOKEN || "").trim();
 const INTERVAL = Math.max(5000, Number(process.env.TRAFFIC_COLLECTION_INTERVAL || 30) * 1000);
 const COLLECTOR_ID = (process.env.COLLECTOR_ID || "default").slice(0, 80);
 
 if (!BASE) {
-  console.error(JSON.stringify({ ts: new Date().toISOString(), level: "error", msg: "GRIDLINE_INTERNAL_URL is required", service: "collector" }));
+  console.error(JSON.stringify({ ts: new Date().toISOString(), level: "error", msg: "ISPSOLUTIONS_INTERNAL_URL is required", service: "collector" }));
   process.exit(1);
 }
 if (!TOKEN) {

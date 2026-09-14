@@ -2,14 +2,14 @@
 	email {$ACME_EMAIL}
 }
 
-{$GRIDLINE_DOMAIN} {
+{$ISPSOLUTIONS_DOMAIN} {
 	encode gzip zstd
 	@internal path /api/internal*
 	respond @internal 404
 	reverse_proxy web:3000
 }
 
-acs.{$GRIDLINE_DOMAIN} {
+acs.{$ISPSOLUTIONS_DOMAIN} {
 	encode gzip zstd
 	reverse_proxy genieacs:3000
 }
@@ -18,4 +18,4 @@ acs.{$GRIDLINE_DOMAIN} {
 # (cwmp-edge → genieacs:7547). HTTPS on those ports is optional: set ACS_TLS_CERT and
 # ACS_TLS_KEY (or *_FILE) on cwmp-edge, then issue https:// ACS URLs from System settings.
 # GenieACS NBI (7557), Mongo, Redis, Postgres, and /api/internal/* stay off the public internet.
-# Workers and collectors must use GRIDLINE_INTERNAL_URL on the private/VPN address, not this site.
+# Workers and collectors must use ISPSOLUTIONS_INTERNAL_URL on the private/VPN address, not this site.

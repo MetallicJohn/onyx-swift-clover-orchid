@@ -29,7 +29,13 @@ export function meterPercent(bps: number | null | undefined, mbpsCap: number) {
 export const TRAFFIC_POLL_MS = 5000;
 export const TRAFFIC_SOURCE_LABEL: Record<string, string> = {
   "radius-accounting": "RADIUS accounting",
+  radius: "RADIUS accounting",
   "traffic-collector": "Traffic collector",
+  routeros: "RouterOS",
+  router_api: "RouterOS",
+  snmp: "SNMP",
+  netflow: "NetFlow",
+  "agent-heartbeat": "Agent heartbeat",
 };
 
 export const TRAFFIC_FRESHNESS_LABEL: Record<string, string> = {
@@ -37,3 +43,25 @@ export const TRAFFIC_FRESHNESS_LABEL: Record<string, string> = {
   stale: "last updated (stale)",
   unavailable: "data unavailable",
 };
+
+export function trafficFreshness(collectedAt: string | null | undefined, intervalSec = 30) {
+  if (!collectedAt) return "unavailable" as const;
+  const t = Date.parse(collectedAt);
+  if (Number.isNaN(t)) return "unavailable" as const;
+  const age = Date.now() - t;
+  if (age <= Math.max(5, intervalSec) * 3 * 1000) return "live" as const;
+  if (age <= 15 * 60 * 1000) return "stale" as const;
+  return "unavailable" as const;
+}
+
+export function formatDuration(sec: number | null | undefined) {
+  if (sec == null || !Number.isFinite(sec) || sec < 0) return "—";
+  const s = Math.floor(sec);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  if (h > 48) return `${Math.floor(h / 24)}d ${h % 24}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${r}s`;
+  return `${r}s`;
+}

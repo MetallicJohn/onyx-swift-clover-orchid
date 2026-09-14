@@ -9,11 +9,11 @@ type Sql = {
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
 };
 
-export const CWMP_AUTH_DIGEST = 'AUTH(USERNAME, EXT("gridline", "passwordFor", USERNAME))';
+export const CWMP_AUTH_DIGEST = 'AUTH(USERNAME, EXT("ispsolutions", "passwordFor", USERNAME))';
 export const CWMP_AUTH_OPEN = "true";
 export const CWMP_CONNECTION_REQUEST_AUTH = "AUTH(username, password)";
-export const LOCK_URL_PROVISION = "gridline-lock-url";
-export const LOCK_URL_PRESET = "gridline-lock-url";
+export const LOCK_URL_PROVISION = "ispsolutions-lock-url";
+export const LOCK_URL_PRESET = "ispsolutions-lock-url";
 
 export function safeEqual(a: string, b: string) {
   const left = Buffer.from(a);
@@ -44,7 +44,7 @@ export function hs256Jwt(payload: Record<string, unknown>, secret: string) {
 }
 
 function dummyWork() {
-  open(seal("gridline-acs-auth-dummy"));
+  open(seal("ispsolutions-acs-auth-dummy"));
 }
 
 function platformNbi(): AcsNbiConfig {
@@ -60,13 +60,13 @@ export const LOCK_URL_SCRIPT = `const now = Date.now();
 const igdUser = declare("InternetGatewayDevice.ManagementServer.Username", {value: 1});
 const devUser = declare("Device.ManagementServer.Username", {value: 1});
 const username = String((igdUser.value && igdUser.value[0]) || (devUser.value && devUser.value[0]) || "");
-const url = ext("gridline", "acsUrlFor", username);
+const url = ext("ispsolutions", "acsUrlFor", username);
 if (url) {
   declare("InternetGatewayDevice.ManagementServer.URL", {value: now}).value = [now, url];
   declare("Device.ManagementServer.URL", {value: now}).value = [now, url];
 }
-const crUser = ext("gridline", "connreqUserFor", username);
-const crPass = ext("gridline", "connreqPasswordFor", username);
+const crUser = ext("ispsolutions", "connreqUserFor", username);
+const crPass = ext("ispsolutions", "connreqPasswordFor", username);
 if (crUser && crPass) {
   declare("InternetGatewayDevice.ManagementServer.ConnectionRequestUsername", {value: now}).value = [now, crUser];
   declare("InternetGatewayDevice.ManagementServer.ConnectionRequestPassword", {value: now}).value = [now, crPass];

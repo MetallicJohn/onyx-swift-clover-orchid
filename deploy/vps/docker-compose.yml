@@ -1,22 +1,22 @@
 # Stage 1 — single VPS (install.sh default).
-# Run from /opt/gridline:
-#   docker compose -f deploy/vps/docker-compose.yml --env-file gridline.env up -d
+# Run from /opt/ispsolutions:
+#   docker compose -f deploy/vps/docker-compose.yml --env-file ispsolutions.env up -d
 # Split later with compose.application.yml + compose.database.yml + compose.network-services.yml
 # (env endpoints only — same application image).
-name: gridline
+name: ispsolutions
 
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-gridline}
+      POSTGRES_USER: ${POSTGRES_USER:-ispsolutions}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-gridline}
+      POSTGRES_DB: ${POSTGRES_DB:-ispsolutions}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gridline} -d ${POSTGRES_DB:-gridline}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ispsolutions} -d ${POSTGRES_DB:-ispsolutions}"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -42,10 +42,10 @@ services:
       context: ../..
       dockerfile: deploy/vps/Dockerfile
       args:
-        GIT_SHA: ${GRIDLINE_GIT_SHA:-unknown}
+        GIT_SHA: ${ISPSOLUTIONS_GIT_SHA:-unknown}
     restart: unless-stopped
     env_file:
-      - ../../gridline.env
+      - ../../ispsolutions.env
     environment:
       HOST: "0.0.0.0"
       PORT: "3000"
@@ -53,7 +53,7 @@ services:
       ROLE: web
       GENIEACS_NBI_URL: ${GENIEACS_NBI_URL:-http://genieacs:7557}
       GENIEACS_CWMP_URL: ${GENIEACS_CWMP_URL:-http://genieacs:7547}
-      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL:-http://web:3000}
+      ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL:-http://web:3000}
       REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
       MONGODB_URL: ${MONGODB_URL:-mongodb://mongo:27017/genieacs}
       RADIUS_HOST: ${RADIUS_HOST:-freeradius}
@@ -77,15 +77,15 @@ services:
       context: ../..
       dockerfile: deploy/vps/Dockerfile
       args:
-        GIT_SHA: ${GRIDLINE_GIT_SHA:-unknown}
+        GIT_SHA: ${ISPSOLUTIONS_GIT_SHA:-unknown}
     restart: unless-stopped
     env_file:
-      - ../../gridline.env
+      - ../../ispsolutions.env
     environment:
       NODE_ENV: production
       ROLE: worker
       SKIP_MIGRATE: "1"
-      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL:-http://web:3000}
+      ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL:-http://web:3000}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${ACS_EDGE_TOKEN}}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
     depends_on:
@@ -97,17 +97,18 @@ services:
       context: ../..
       dockerfile: deploy/vps/Dockerfile
       args:
-        GIT_SHA: ${GRIDLINE_GIT_SHA:-unknown}
+        GIT_SHA: ${ISPSOLUTIONS_GIT_SHA:-unknown}
     restart: unless-stopped
     env_file:
-      - ../../gridline.env
+      - ../../ispsolutions.env
     environment:
       NODE_ENV: production
       ROLE: collector
       SKIP_MIGRATE: "1"
-      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL:-http://web:3000}
+      ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL:-http://web:3000}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${ACS_EDGE_TOKEN}}
       TRAFFIC_COLLECTION_INTERVAL: ${TRAFFIC_COLLECTION_INTERVAL:-30}
+      TRAFFIC_ROUTER_INTERVAL: ${TRAFFIC_ROUTER_INTERVAL:-60}
       COLLECTOR_ID: ${COLLECTOR_ID:-default}
     depends_on:
       web:
@@ -138,7 +139,7 @@ services:
       GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
       GENIEACS_EXT_DIR: /opt/genieacs/ext
       GENIEACS_EXT_TIMEOUT: "8000"
-      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL:-http://web:3000}
+      ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL:-http://web:3000}
       ACS_EDGE_TOKEN: ${ACS_EDGE_TOKEN}
     volumes:
       - ./genieacs/ext:/opt/genieacs/ext:ro
@@ -166,7 +167,7 @@ services:
     command: ["node", "cwmp-edge.mjs"]
     environment:
       GENIEACS_CWMP_URL: ${GENIEACS_CWMP_URL:-http://genieacs:7547}
-      GRIDLINE_INTERNAL_URL: ${GRIDLINE_INTERNAL_URL:-http://web:3000}
+      ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL:-http://web:3000}
       ACS_EDGE_TOKEN: ${ACS_EDGE_TOKEN}
       ACS_TLS_CERT: ${ACS_TLS_CERT:-}
       ACS_TLS_KEY: ${ACS_TLS_KEY:-}
@@ -186,8 +187,8 @@ services:
       dockerfile: deploy/vps/freeradius/Dockerfile
     restart: unless-stopped
     environment:
-      GRIDLINE_URL: ${GRIDLINE_URL:-http://web:3000}
-      GRIDLINE_SLUG: ${GRIDLINE_SLUG:-}
+      ISPSOLUTIONS_URL: ${ISPSOLUTIONS_URL:-http://web:3000}
+      ISPSOLUTIONS_SLUG: ${ISPSOLUTIONS_SLUG:-}
       RADIUS_API_KEY: ${RADIUS_API_KEY:-}
     depends_on:
       - web
@@ -202,7 +203,7 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      GRIDLINE_DOMAIN: ${GRIDLINE_DOMAIN}
+      ISPSOLUTIONS_DOMAIN: ${ISPSOLUTIONS_DOMAIN:-${GRIDLINE_DOMAIN}}
       ACME_EMAIL: ${ACME_EMAIL}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
