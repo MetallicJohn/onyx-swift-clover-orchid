@@ -35,7 +35,7 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": [
         "warn",
-        { allowConstantExport: true, allowExportNames: ["statusTone", "useTheme", "usePublicTheme"] },
+        { allowConstantExport: true, allowExportNames: ["statusTone", "useTheme", "usePublicTheme", "usePortal"] },
       ],
       "@typescript-eslint/no-unused-vars": [
         "warn",

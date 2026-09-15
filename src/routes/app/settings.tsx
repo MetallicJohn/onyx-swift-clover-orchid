@@ -528,9 +528,9 @@ function SettingsPage() {
           </p>
           <p className="text-sm text-muted">
             Customers sign in at{" "}
-            <Link to="/portal" className="text-accent hover:underline">
+            <a href="/portal" className="text-accent hover:underline">
               /portal
-            </Link>
+            </a>
             .
           </p>
           {companyNote ? (

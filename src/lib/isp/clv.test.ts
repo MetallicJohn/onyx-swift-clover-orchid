@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  CLV_LEGEND,
   CLV_METRICS,
   emptyClv,
   expectedTenureMonths,
@@ -14,6 +15,14 @@ import {
 } from "./clv.ts";
 import { loadReports } from "./reports.ts";
 import { openTestDb } from "./test-db.ts";
+
+test("lifetime legend names CLV, ARPU, LTV, and CAC", () => {
+  assert.deepEqual(
+    CLV_LEGEND.map((k) => k.term),
+    ["CLV", "ARPU", "LTV", "CAC"],
+  );
+  assert.equal(CLV_LEGEND.find((k) => k.id === "cac")?.meaning.includes("Not on this book"), true);
+});
 
 test("CLV catalog names the Insights lifetime rows", () => {
   assert.deepEqual(

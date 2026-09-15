@@ -149,9 +149,13 @@ export const portalInvoicePdf = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const sql = await getSql();
     const ctx = await portalContext(sql, data.token);
-    const { doc, filename, pdf } = await makeInvoicePdf(sql, ctx.tenantId, data.id);
-    if (doc.customer.id !== ctx.customer.id) throw new Error("Invoice not found");
-    return pdfPayload(filename, pdf);
+    const { makePortalInvoiceFile, publicErrorMessage } = await import("./customer-portal");
+    try {
+      const { filename, pdf } = await makePortalInvoiceFile(sql, ctx, data.id);
+      return pdfPayload(filename, pdf);
+    } catch (err) {
+      throw new Error(publicErrorMessage(err));
+    }
   });
 
 export const portalStatementPdf = createServerFn({ method: "POST" })
@@ -159,6 +163,11 @@ export const portalStatementPdf = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const sql = await getSql();
     const ctx = await portalContext(sql, data.token);
-    const { filename, pdf } = await makeStatementPdf(sql, ctx.tenantId, ctx.customer.id);
-    return pdfPayload(filename, pdf);
+    const { makePortalStatementFile, publicErrorMessage } = await import("./customer-portal");
+    try {
+      const { filename, pdf } = await makePortalStatementFile(sql, ctx);
+      return pdfPayload(filename, pdf);
+    } catch (err) {
+      throw new Error(publicErrorMessage(err));
+    }
   });

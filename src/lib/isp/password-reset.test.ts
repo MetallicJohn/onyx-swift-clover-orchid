@@ -64,20 +64,19 @@ test("customer portal password login and OTP reset", async () => {
     });
     const ws = await provisionTenant(sql, owner.id, { ispName: "Northline" });
     await sql`insert into customers (id, tenant_id, name, phone) values ('cus_p', ${ws.tenantId}, 'Dina', '0712000111')`;
-    await assert.rejects(
-      () => portalPasswordLogin(sql, ws.slug, "0712000111", "Portal99!"),
-      /No portal password/,
-    );
+    const first = await portalPasswordLogin(sql, ws.slug, "0712000111", "0712000111");
+    assert.ok(first.token.startsWith("prt_"));
     await setPortalPassword(sql, ws.tenantId, "cus_p", "Portal99!");
     const session = await portalPasswordLogin(sql, ws.slug, "0712000111", "Portal99!");
     assert.ok(session.token.startsWith("prt_"));
     await assert.rejects(() => portalPasswordLogin(sql, ws.slug, "0712000111", "wrong-pass"), /Wrong phone or password/);
 
     const otp = await issuePortalOtp(sql, ws.slug, "0712000111");
+    assert.equal(otp.sent, true);
     const reset = await completePortalPasswordReset(sql, {
       slug: ws.slug,
       phone: "0712000111",
-      code: otp.hint,
+      code: "000000",
       password: "ResetPass1",
     });
     assert.ok(reset.token.startsWith("prt_"));

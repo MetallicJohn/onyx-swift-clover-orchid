@@ -3,8 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
+import { Hint } from "@/components/ui/tooltip";
 import { assignPaybillPayments, getAuditLog, getIncomingPayments, getReports } from "@/lib/isp/server-more";
-import { emptyClv, presentClv, type ClvKpiRow, type ClvSnapshot } from "@/lib/isp/clv";
+import { emptyClv, presentClv, CLV_LEGEND, type ClvKpiRow, type ClvSnapshot } from "@/lib/isp/clv";
 import { emptyRetention, presentRetention, type RetentionKpiRow } from "@/lib/isp/retention";
 import { hasPermission } from "@/lib/isp/rbac";
 import { kes } from "@/lib/utils";
@@ -592,42 +593,61 @@ function LifetimeValue({ snap, loaded }: { snap: ClvSnapshot; loaded: boolean })
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Predicted CLV" value={loaded ? kesOrDash(snap.predictedClvKes) : "…"} sub="ARPU ÷ monthly churn" />
-        <Stat label="This-month ARPU" value={loaded ? kesOrDash(snap.arpu) : "…"} sub={`${snap.activeCustomers} active customers`} />
+        <Stat
+          label="Predicted CLV"
+          value={loaded ? kesOrDash(snap.predictedClvKes) : "…"}
+          sub="ARPU ÷ monthly churn"
+          hint={legendOf("clv")}
+        />
+        <Stat
+          label="This-month ARPU"
+          value={loaded ? kesOrDash(snap.arpu) : "…"}
+          sub={`${snap.activeCustomers} active customers`}
+          hint={legendOf("arpu")}
+        />
         <Stat
           label="Avg realized LTV"
           value={loaded ? kesOrDash(snap.realizedAvgKes) : "…"}
           sub={`${snap.payingCustomers} paying · all confirmed`}
+          hint={legendOf("ltv")}
         />
         <Stat
           label="Expected tenure"
           value={loaded ? monthsOrDash(snap.expectedTenureMonths) : "…"}
           sub={snap.churnRate == null ? "Needs a start-of-month book" : "1 / this month’s churn"}
+          hint="How long a customer is expected to stay: 1 ÷ this month’s churn."
         />
       </div>
 
       <section className="overflow-hidden rounded-xl bg-surface shadow-card">
         <div className="border-b border-border px-4 py-4 md:px-5">
           <h2 className="font-medium">Customer lifetime value</h2>
-          <p className="mt-1 text-sm text-muted">
-            Revenue CLV from confirmed collections and this month’s churn. Gross margin and CAC are listed so you know
-            they are missing — this console does not invent profit or acquisition cost.
-          </p>
+          <ul className="mt-2 flex flex-wrap gap-x-4">
+            {CLV_LEGEND.map((item) => (
+              <li key={item.id}>
+                <Hint label={item.term} meaning={item.meaning} className="font-medium tracking-wide">
+                  {item.term}
+                </Hint>
+              </li>
+            ))}
+          </ul>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[40rem] text-left text-sm">
+          <table className="w-full text-left text-sm">
             <thead className="text-xs text-muted">
               <tr>
                 <th className="px-4 py-3 font-medium md:px-5">Metric</th>
-                <th className="px-4 py-3 font-medium">What it is</th>
                 <th className="px-4 py-3 font-medium">This book</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {rows.map((row) => (
                 <tr key={row.id}>
-                  <td className="px-4 py-3 font-medium md:px-5">{row.metric}</td>
-                  <td className="px-4 py-3 text-muted">{row.measure}</td>
+                  <td className="px-4 py-3 font-medium md:px-5">
+                    <Hint label={row.metric} meaning={row.measure} className="font-medium text-fg">
+                      {row.metric}
+                    </Hint>
+                  </td>
                   <td className="px-4 py-3">
                     <div className={`font-medium tabular-nums ${valueTone(row.tone)}`}>{loaded ? row.value : "…"}</div>
                     <div className="mt-0.5 text-xs text-subtle">{loaded ? row.detail : "Loading"}</div>
@@ -658,7 +678,11 @@ function LifetimeValue({ snap, loaded }: { snap: ClvSnapshot; loaded: boolean })
                   <th className="px-4 py-3 font-medium">Live</th>
                   <th className="px-4 py-3 font-medium">List / mo</th>
                   <th className="px-4 py-3 font-medium">Collected this month</th>
-                  <th className="px-4 py-3 font-medium">Predicted CLV</th>
+                  <th className="px-4 py-3 font-medium">
+                    <Hint label="Predicted CLV" meaning={legendOf("clv")} className="text-xs font-medium">
+                      Predicted CLV
+                    </Hint>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -679,7 +703,12 @@ function LifetimeValue({ snap, loaded }: { snap: ClvSnapshot; loaded: boolean })
 
       <section className="overflow-hidden rounded-xl bg-surface shadow-card">
         <div className="border-b border-border px-4 py-4 md:px-5">
-          <h2 className="font-medium">Highest realized LTV</h2>
+          <h2 className="font-medium">
+            Highest realized{" "}
+            <Hint label="LTV" meaning={legendOf("ltv")} className="font-medium text-fg">
+              LTV
+            </Hint>
+          </h2>
           <p className="mt-1 text-sm text-muted">
             Confirmed collections on the account, including customers who have already left. Not a forecast.
           </p>
@@ -723,6 +752,10 @@ function LifetimeValue({ snap, loaded }: { snap: ClvSnapshot; loaded: boolean })
       </section>
     </div>
   );
+}
+
+function legendOf(id: (typeof CLV_LEGEND)[number]["id"]) {
+  return CLV_LEGEND.find((item) => item.id === id)?.meaning ?? "";
 }
 
 function kesOrDash(amount: number | null | undefined) {
@@ -782,10 +815,30 @@ function valueTone(tone: RetentionKpiRow["tone"] | ClvKpiRow["tone"]) {
   return "text-fg";
 }
 
-function Stat({ label, value, sub, tone }: { label: string; value: string; sub: string; tone?: "danger" }) {
+function Stat({
+  label,
+  value,
+  sub,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  hint?: string;
+  tone?: "danger";
+}) {
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
-      <div className="text-xs text-muted">{label}</div>
+      <div className="text-xs text-muted">
+        {hint ? (
+          <Hint label={label} meaning={hint} className="text-xs">
+            {label}
+          </Hint>
+        ) : (
+          label
+        )}
+      </div>
       <div className={`mt-1 text-xl font-semibold tabular-nums ${tone === "danger" ? "text-danger" : ""}`}>{value}</div>
       <div className="mt-1 text-xs text-subtle">{sub}</div>
     </div>

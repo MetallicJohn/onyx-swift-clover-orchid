@@ -11,6 +11,7 @@ export function Dialog({
   description,
   children,
   className,
+  placement = "modal",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -18,6 +19,7 @@ export function Dialog({
   description?: string;
   children: ReactNode;
   className?: string;
+  placement?: "modal" | "drawer";
 }) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
@@ -25,7 +27,10 @@ export function Dialog({
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-bg/70" />
         <DialogPrimitive.Content
           className={cn(
-            "fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-xl border border-border bg-surface shadow-card outline-none sm:inset-auto sm:left-1/2 sm:top-1/2 sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl",
+            "fixed z-50 flex flex-col overflow-hidden border border-border bg-surface text-fg shadow-card outline-none",
+            placement === "drawer"
+              ? "inset-x-0 bottom-0 max-h-[92dvh] w-full rounded-t-xl sm:inset-y-0 sm:left-auto sm:right-0 sm:h-dvh sm:max-w-md sm:rounded-none"
+              : "inset-x-0 bottom-0 max-h-[92dvh] w-full rounded-t-xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl",
             className,
           )}
         >

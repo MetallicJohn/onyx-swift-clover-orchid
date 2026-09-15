@@ -17,18 +17,13 @@ import {
   webfamBalance,
 } from "./messaging";
 import { activateVoucher, expireDueVouchers, generateVouchers, revokeVoucher } from "./hotspot";
-import { listCustomerInbox } from "./inbox";
 import { createStkIntent, settleStkIntent } from "./payments";
 import { disconnectRadiusUser, publicRadiusAccount, renderFreeRadiusUsers } from "./radius";
 import { mikrotikProfileName } from "./pcq";
 import { ensureRadiusApiKey, radiusConfigBundle, rotateRadiusApiKey, defaultNasClients, ensureRadiusNasSecret, radiusVpsEnv, internalRadiusBaseUrl } from "./radius-rest";
 import { open } from "./secrets";
 import { assertPermission, hasPermission } from "./rbac";
-import { changePortalPassword, issuePortalOtp, portalContext, portalPasswordLogin, verifyPortalOtp } from "./portal";
-import { customerGraceEligibility, customerSelfGrant } from "./grace";
-import { completePortalPasswordReset } from "./password-reset";
 import { issueResellerOtp, resellerHome, verifyResellerOtp } from "./reseller-portal";
-import { openTicket } from "./tickets";
 import { acsConnection, loadAcsConfig, refreshCpeInform, saveAcsConfig, syncAcsDevices } from "./acs";
 import {
   completeAcsConfigText,
@@ -638,42 +633,17 @@ export const workspaceSlug = createServerFn({ method: "GET" })
     return t ?? { slug: "", name: "" };
   });
 
-export const requestPortalOtp = createServerFn({ method: "POST" })
-  .validator((d: { slug: string; phone: string }) => d)
-  .handler(async ({ data }) => {
-    const sql = await getSql();
-    return issuePortalOtp(sql, data.slug, data.phone);
-  });
-
-export const verifyPortalLogin = createServerFn({ method: "POST" })
-  .validator((d: { slug: string; phone: string; code: string }) => d)
-  .handler(async ({ data }) => {
-    const sql = await getSql();
-    return verifyPortalOtp(sql, data.slug, data.phone, data.code);
-  });
-
-export const portalPasswordSignIn = createServerFn({ method: "POST" })
-  .validator((d: { slug: string; phone: string; password: string }) => d)
-  .handler(async ({ data }) => {
-    const sql = await getSql();
-    return portalPasswordLogin(sql, data.slug, data.phone, data.password);
-  });
-
-export const portalChangePassword = createServerFn({ method: "POST" })
-  .validator((d: { token: string; current: string; password: string }) => d)
-  .handler(async ({ data }) => {
-    const sql = await getSql();
-    const ctx = await portalContext(sql, data.token);
-    await changePortalPassword(sql, ctx.tenantId, ctx.customer.id, data.current, data.password);
-    return { ok: true };
-  });
-
-export const completePortalPasswordResetFn = createServerFn({ method: "POST" })
-  .validator((d: { slug: string; phone: string; code: string; password: string }) => d)
-  .handler(async ({ data }) => {
-    const sql = await getSql();
-    return completePortalPasswordReset(sql, data);
-  });
+export {
+  requestPortalOtp,
+  verifyPortalLogin,
+  portalPasswordSignIn,
+  portalChangePassword,
+  completePortalPasswordResetFn,
+  getPortalHome,
+  portalPay,
+  portalRequestGrace,
+  portalOpenTicket,
+} from "./server-portal";
 
 export const requestResellerOtp = createServerFn({ method: "POST" })
   .validator((d: { slug: string; phone: string }) => d)
@@ -694,106 +664,6 @@ export const getResellerHome = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const sql = await getSql();
     return resellerHome(sql, data.token);
-  });
-
-export const getPortalHome = createServerFn({ method: "POST" })
-  .validator((d: { token: string }) => d)
-  .handler(async ({ data }) => {
-    const sql = await getSql();
-    const ctx = await portalContext(sql, data.token);
-    const services = await sql<{
-      id: string;
-      package_name: string;
-      access_method: string;
-      username: string | null;
-      status: string;
-      period_end: string | null;
-      access_until: string | null;
-      expiry_source: string;
-      grace_expires_at: string | null;
-      grace_days_granted: number | null;
-      grace_status: string | null;
-    }>`select s.id, p.name as package_name, s.access_method, s.username, s.status,
-              s.period_end::text as period_end, s.access_until::text as access_until, s.expiry_source,
-              g.expires_at::text as grace_expires_at, g.days_granted as grace_days_granted,
-              g.status as grace_status
-       from services s join packages p on p.id = s.package_id
-       left join service_grace_periods g
-         on g.service_id = s.id and g.tenant_id = s.tenant_id and g.status = 'active'
-       where s.tenant_id = ${ctx.tenantId} and s.customer_id = ${ctx.customer.id} and s.deleted_at is null`;
-    const eligibility = await Promise.all(
-      services.map(async (s) => customerGraceEligibility(sql, ctx.tenantId, ctx.customer.id, s.id)),
-    );
-    const invoices = await sql<{
-      id: string;
-      number: string;
-      amount_kes: number;
-      paid_kes: number;
-      remaining_kes: number;
-      status: string;
-      due_date: string;
-    }>`select id, number, amount_kes, paid_kes,
-              case when status = 'paid' then 0 else greatest(0, amount_kes - paid_kes) end as remaining_kes,
-              status, due_date::text as due_date
-       from invoices where tenant_id = ${ctx.tenantId} and customer_id = ${ctx.customer.id}
-       order by issued_at desc`;
-    const [loy] = await sql<{ points: number }>`
-      select points from loyalty_accounts where tenant_id = ${ctx.tenantId} and customer_id = ${ctx.customer.id}`;
-    const inbox = await listCustomerInbox(sql, ctx.tenantId, ctx.customer.id);
-    return { ...ctx, services, invoices, points: loy?.points ?? 0, inbox, eligibility };
-  });
-
-export const portalPay = createServerFn({ method: "POST" })
-  .validator((d: { token: string; invoice_id: string }) => d)
-  .handler(async ({ data }) => {
-    const sql = await getSql();
-    const ctx = await portalContext(sql, data.token);
-    const intent = await createStkIntent(sql, {
-      tenantId: ctx.tenantId,
-      invoiceId: data.invoice_id,
-      provider: "mpesa",
-    });
-    if (!intent.checkout_id.startsWith("ws_")) {
-      return { ...intent, paid: false, note: "Complete the M-Pesa prompt on your phone." };
-    }
-    try {
-      const pay = await settleStkIntent(sql, {
-        tenantId: ctx.tenantId,
-        ispName: ctx.isp.name,
-        checkoutId: intent.checkout_id,
-      });
-      return { ...intent, paid: true, payment_id: pay.id, note: "Sandbox payment confirmed." };
-    } catch (e) {
-      return { ...intent, paid: false, note: e instanceof Error ? e.message : "Waiting for payment" };
-    }
-  });
-
-export const portalRequestGrace = createServerFn({ method: "POST" })
-  .validator((d: { token: string; service_id: string; days: number }) => d)
-  .handler(async ({ data }) => {
-    const sql = await getSql();
-    const ctx = await portalContext(sql, data.token);
-    return customerSelfGrant(sql, {
-      tenantId: ctx.tenantId,
-      customerId: ctx.customer.id,
-      serviceId: data.service_id,
-      days: data.days,
-      ispName: ctx.isp.name,
-    });
-  });
-
-export const portalOpenTicket = createServerFn({ method: "POST" })
-  .validator((d: { token: string; title: string }) => d)
-  .handler(async ({ data }) => {
-    const sql = await getSql();
-    const ctx = await portalContext(sql, data.token);
-    const opened = await openTicket(sql, ctx.tenantId, {
-      title: data.title.trim(),
-      category: "support",
-      priority: "normal",
-      customer_id: ctx.customer.id,
-    });
-    return opened;
   });
 
 export const getMessaging = createServerFn({ method: "GET" })

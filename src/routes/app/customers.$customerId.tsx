@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { accessMethodLabel, formatDate, formatDateTime, formatMac, remainingLabel } from "@/lib/isp/display";
+import { accountState, accountStateLabel, customerRecordPath, normalizeProfileSearch, type ProfileTab } from "@/lib/isp/customer-desk-format";
 import { hasPermission } from "@/lib/isp/rbac";
 import { getAccountNumberSettingsFn } from "@/lib/isp/server-account-numbers";
 import { extendGraceFn, grantGraceFn, revokeGraceFn } from "@/lib/isp/server-grace";
@@ -39,10 +40,13 @@ import { effectiveAccessIso, expirySourceLabel, openExpiryForm } from "@/lib/isp
 import type { ServiceRow, ServiceStatus } from "@/lib/isp/types";
 import { cn, kes } from "@/lib/utils";
 
-export const Route = createFileRoute("/app/customers/$customerId")({ component: CustomerRecordPage });
+export const Route = createFileRoute("/app/customers/$customerId")({
+  validateSearch: (search: Record<string, unknown>) => normalizeProfileSearch(search),
+  component: CustomerRecordPage,
+});
 
 type RecordData = Awaited<ReturnType<typeof getCustomerFn>>;
-type Tab = "overview" | "services" | "billing" | "tickets" | "messages" | "activity";
+type Tab = ProfileTab;
 type GraceMode = "grant" | "extend" | "revoke";
 
 const TABS: { id: Tab; label: string }[] = [
@@ -56,11 +60,12 @@ const TABS: { id: Tab; label: string }[] = [
 
 function CustomerRecordPage() {
   const { customerId } = Route.useParams();
+  const search = Route.useSearch();
   const navigate = useNavigate();
   const [data, setData] = useState<RecordData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("overview");
-  const [editing, setEditing] = useState(false);
+  const [tab, setTab] = useState<Tab>(search.tab || (search.action === "add-service" ? "services" : "overview"));
+  const [editing, setEditing] = useState(search.action === "edit");
   const [form, setForm] = useState({
     name: "",
     phone: "",
@@ -76,7 +81,7 @@ function CustomerRecordPage() {
   const [trafficOpen, setTrafficOpen] = useState(false);
   const [trafficService, setTrafficService] = useState<string | undefined>(undefined);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [provisionOpen, setProvisionOpen] = useState(false);
+  const [provisionOpen, setProvisionOpen] = useState(search.action === "add-service");
   const [expiry, setExpiry] = useState<ExpiryForm | null>(null);
   const [grace, setGrace] = useState<{ id: string; mode: GraceMode } | null>(null);
   const [reassign, setReassign] = useState<{ id: string; to: string } | null>(null);
@@ -107,10 +112,15 @@ function CustomerRecordPage() {
 
   useEffect(() => {
     setError(null);
-    setEditing(false);
     load().catch((e) => setError(e instanceof Error ? e.message : "Could not load customer"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId]);
+
+  useEffect(() => {
+    setEditing(search.action === "edit");
+    setProvisionOpen(search.action === "add-service");
+    setTab(search.tab || (search.action === "add-service" ? "services" : "overview"));
+  }, [customerId, search.tab, search.action]);
 
   const role = data?.workspace.role || "";
   const canManage = hasPermission(role, "customers.manage");
@@ -159,6 +169,16 @@ function CustomerRecordPage() {
 
   const c = data.customer;
   const leftover = data.services;
+  const liveCount = data.services.filter((s) => s.status === "active" || s.status === "grace").length;
+  const suspendedCount = data.services.filter((s) => s.status === "suspended").length;
+  const derivedStatus = accountState({ customerStatus: c.status, live: liveCount, suspended: suspendedCount });
+
+  function goTab(next: Tab, action?: "add-service" | "edit") {
+    setTab(next);
+    if (action === "edit") setEditing(true);
+    if (action === "add-service") setProvisionOpen(true);
+    window.history.replaceState(window.history.state, "", customerRecordPath(customerId, { tab: next === "overview" ? undefined : next, action }));
+  }
 
   return (
     <div className="space-y-6">
@@ -212,7 +232,7 @@ function CustomerRecordPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Badge tone={statusTone(c.status)}>{c.status}</Badge>
+        <Badge tone={statusTone(derivedStatus)}>{accountStateLabel(derivedStatus)}</Badge>
         <span className="text-sm text-muted">{c.service_count} service{c.service_count === 1 ? "" : "s"}</span>
         <span className="text-sm text-muted">Outstanding {kes(c.balance_kes)}</span>
         <TagList tags={c.tags} />
@@ -335,7 +355,7 @@ function CustomerRecordPage() {
               "h-11 shrink-0 rounded-lg px-4 text-sm font-medium transition-colors",
               tab === t.id ? "bg-accent text-accent-fg" : "text-muted hover:bg-elevated hover:text-fg",
             )}
-            onClick={() => setTab(t.id)}
+            onClick={() => goTab(t.id)}
           >
             {t.label}
             {t.id === "services" ? ` (${data.services.length})` : ""}
@@ -367,6 +387,7 @@ function CustomerRecordPage() {
                 void run(async () => {
                   await createService({ data: payload });
                   setProvisionOpen(false);
+                  window.history.replaceState(window.history.state, "", customerRecordPath(customerId, { tab: "services" }));
                 }, "Service provisioned")
               }
             />

@@ -380,6 +380,26 @@ var Check = createLucideIcon("check", [["path", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var ChevronLeft = createLucideIcon("chevron-left", [["path", {
+	d: "m15 18-6-6 6-6",
+	key: "1wnfg3"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var ChevronRight = createLucideIcon("chevron-right", [["path", {
+	d: "m9 18 6-6-6-6",
+	key: "mthhwq"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var CreditCard = createLucideIcon("credit-card", [["rect", {
 	width: "20",
 	height: "14",
@@ -457,6 +477,44 @@ var Eye = createLucideIcon("eye", [["path", {
 	cy: "12",
 	r: "3",
 	key: "1v7zrd"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var FileText = createLucideIcon("file-text", [
+	["path", {
+		d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z",
+		key: "1rqfz7"
+	}],
+	["path", {
+		d: "M14 2v4a2 2 0 0 0 2 2h4",
+		key: "tnqrlb"
+	}],
+	["path", {
+		d: "M10 9H8",
+		key: "b1mrlr"
+	}],
+	["path", {
+		d: "M16 13H8",
+		key: "t4e002"
+	}],
+	["path", {
+		d: "M16 17H8",
+		key: "z1uh3a"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var Funnel = createLucideIcon("funnel", [["path", {
+	d: "M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z",
+	key: "sc7q7i"
 }]]);
 /**
 * @license lucide-react v0.510.0 - ISC
@@ -629,6 +687,29 @@ var List = createLucideIcon("list", [
 	["path", {
 		d: "M8 6h13",
 		key: "ik3vkj"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var LogOut = createLucideIcon("log-out", [
+	["path", {
+		d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4",
+		key: "1uf3rs"
+	}],
+	["polyline", {
+		points: "16 17 21 12 16 7",
+		key: "1gabdz"
+	}],
+	["line", {
+		x1: "21",
+		x2: "9",
+		y1: "12",
+		y2: "12",
+		key: "1uyos4"
 	}]
 ]);
 /**
@@ -1244,6 +1325,21 @@ var UserPlus = createLucideIcon("user-plus", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var User = createLucideIcon("user", [["path", {
+	d: "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2",
+	key: "975kel"
+}], ["circle", {
+	cx: "12",
+	cy: "7",
+	r: "4",
+	key: "17ys0d"
+}]]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var Users = createLucideIcon("users", [
 	["path", {
 		d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2",
@@ -1325,4 +1421,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { Activity as $, List as A, Check as B, Plus as C, Menu as D, Monitor as E, Handshake as F, Bell as G, Cable as H, Eye as I, ArrowLeft as J, ArrowUpRight as K, Ellipsis as L, LayoutDashboard as M, Import as N, MapPinned as O, Headset as P, ArchiveRestore as Q, Download as R, Printer as S, Moon as T, Building2 as U, ChartColumn as V, Boxes as W, ArrowDownRight as X, ArrowDown as Y, Archive as Z, Server as _, Users as a, Receipt as b, TriangleAlert as c, Sun as d, Sparkles as f, Settings as g, Share2 as h, Wallet as i, LayoutGrid as j, Mail as k, Trash2 as l, Shield as m, Wrench as n, UserPlus as o, Smartphone as p, ArrowRight as q, Wifi as r, Upload as s, X as t, Ticket as u, Search as v, Network as w, Radio as x, Router as y, CreditCard as z };
+export { ArrowRight as $, Mail as A, Eye as B, Printer as C, Monitor as D, Moon as E, Import as F, ChevronLeft as G, Download as H, Headset as I, Cable as J, Check as K, Handshake as L, List as M, LayoutGrid as N, Menu as O, LayoutDashboard as P, ArrowUpRight as Q, Funnel as R, Radio as S, Network as T, CreditCard as U, Ellipsis as V, ChevronRight as W, Boxes as X, Building2 as Y, Bell as Z, Settings as _, Users as a, Activity as at, Router as b, Upload as c, Ticket as d, ArrowLeft as et, Sun as f, Share2 as g, Shield as h, Wallet as i, ArchiveRestore as it, LogOut as j, MapPinned as k, TriangleAlert as l, Smartphone as m, Wrench as n, ArrowDownRight as nt, User as o, Sparkles as p, ChartColumn as q, Wifi as r, Archive as rt, UserPlus as s, X as t, ArrowDown as tt, Trash2 as u, Server as v, Plus as w, Receipt as x, Search as y, FileText as z };

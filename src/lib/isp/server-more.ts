@@ -26,11 +26,14 @@ export const assignOpenTicket = createServerFn({ method: "POST" })
 
 export const commentOpenTicket = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { id: string; body: string }) => d)
+  .validator((d: { id: string; body: string; internal?: boolean }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, role === "technician" ? "jobs.update" : "tickets.manage");
-    await commentTicket(sql, tenantId, data.id, context.userId, data.body);
+    await commentTicket(sql, tenantId, data.id, context.userId, data.body, {
+      internal: data.internal !== false,
+      authorKind: "staff",
+    });
     return { ok: true };
   });
 

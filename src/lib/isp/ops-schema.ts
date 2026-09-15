@@ -114,6 +114,10 @@ const _STATEMENTS = [
     token text not null unique,
     created_at timestamptz not null default now()
   )`,
+  `alter table customers add column if not exists portal_password_is_initial boolean not null default true`,
+  `alter table ticket_comments add column if not exists is_internal boolean not null default false`,
+  `alter table ticket_comments add column if not exists author_kind text not null default 'staff'`,
+  `alter table tickets add column if not exists service_id text`,
   `create table if not exists cpe_devices (
     id text primary key,
     tenant_id text not null references tenants(id) on delete cascade,

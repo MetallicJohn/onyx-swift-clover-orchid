@@ -7,6 +7,29 @@ type Sql = {
   query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
 };
 
+export const CLV_LEGEND = [
+  {
+    id: "clv",
+    term: "CLV",
+    meaning: "Customer lifetime value. Predicted revenue = this-month ARPU ÷ monthly churn. Not profit.",
+  },
+  {
+    id: "arpu",
+    term: "ARPU",
+    meaning: "Average revenue per active customer this month, from confirmed collections.",
+  },
+  {
+    id: "ltv",
+    term: "LTV",
+    meaning: "Realized lifetime value. Confirmed collections already on the account, including customers who left.",
+  },
+  {
+    id: "cac",
+    term: "CAC",
+    meaning: "Customer acquisition cost. Not on this book — marketing and sales spend are not recorded.",
+  },
+] as const;
+
 export const CLV_METRICS = [
   { id: "predicted", metric: "Predicted CLV", measure: "This-month ARPU ÷ monthly churn" },
   { id: "arpu", metric: "This-month ARPU", measure: "Confirmed collections / active customers" },

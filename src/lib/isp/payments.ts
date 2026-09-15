@@ -85,7 +85,7 @@ export async function applyConfirmedPayment(
 
 export async function createStkIntent(
   sql: Sql,
-  opts: { tenantId: string; invoiceId: string; provider: string; amountKes?: number },
+  opts: { tenantId: string; invoiceId: string; provider: string; amountKes?: number; phone?: string },
 ) {
   await ensureOpsSchema(sql);
   const [inv] = await sql<{ id: string; customer_id: string; amount_kes: number; paid_kes: number; status: string }>`
@@ -106,13 +106,14 @@ export async function createStkIntent(
   let checkout = `ws_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
   let note = "queued";
 
+  const payPhone = (opts.phone || cus?.phone || "").trim();
   const adapter = stkAdapter(opts.provider);
   if (adapter) {
     const [invFull] = await sql<{ number: string }>`select number from invoices where id = ${inv.id}`;
     const parts = (cus?.name || "Customer").trim().split(/\s+/);
     const started = await adapter.start(sql, {
       tenantId: opts.tenantId,
-      phone: cus?.phone ?? "",
+      phone: payPhone,
       amount,
       invoiceId: inv.id,
       invoiceNumber: invFull?.number || inv.id,
@@ -127,8 +128,8 @@ export async function createStkIntent(
 
   const id = nid("int");
   await sql`insert into payment_intents (id, tenant_id, invoice_id, customer_id, provider, amount_kes, phone, checkout_id, status)
-    values (${id}, ${opts.tenantId}, ${inv.id}, ${inv.customer_id}, ${opts.provider}, ${amount}, ${cus?.phone ?? ""}, ${checkout}, 'pending')`;
-  return { id, checkout_id: checkout, phone: cus?.phone ?? "", amount_kes: amount, note };
+    values (${id}, ${opts.tenantId}, ${inv.id}, ${inv.customer_id}, ${opts.provider}, ${amount}, ${payPhone}, ${checkout}, 'pending')`;
+  return { id, checkout_id: checkout, phone: payPhone, amount_kes: amount, note };
 }
 
 export async function settleStkIntent(

@@ -54,7 +54,7 @@ function TicketActions({
   onToggleUpdate: () => void;
   onStatus: (status: string) => void;
   onCommentChange: (value: string) => void;
-  onSaveNote: () => void;
+  onSaveNote: (visibleToCustomer: boolean) => void;
   canAssign: boolean;
   canUpdate: boolean;
 }) {
@@ -102,10 +102,13 @@ function TicketActions({
               </option>
             ))}
           </Select>
-          <div className="flex items-center gap-2">
-            <Input className="h-9" placeholder="Add a note" value={comment} onChange={(e) => onCommentChange(e.target.value)} />
-            <Button size="sm" variant="secondary" className="shrink-0" onClick={onSaveNote}>
-              Save
+          <div className="flex flex-wrap items-center gap-2">
+            <Input className="h-9 min-w-40 flex-1" placeholder="Add a note" value={comment} onChange={(e) => onCommentChange(e.target.value)} />
+            <Button size="sm" variant="secondary" className="shrink-0" onClick={() => onSaveNote(false)}>
+              Internal note
+            </Button>
+            <Button size="sm" variant="ghost" className="shrink-0" onClick={() => onSaveNote(true)}>
+              Reply to customer
             </Button>
           </div>
         </div>
@@ -258,10 +261,10 @@ function TicketsPage() {
           await load();
         }}
         onCommentChange={(value) => setComment({ ...comment, [t.id]: value })}
-        onSaveNote={async () => {
+        onSaveNote={async (visibleToCustomer) => {
           const body = (comment[t.id] || "").trim();
           if (!body) return;
-          await commentOpenTicket({ data: { id: t.id, body } });
+          await commentOpenTicket({ data: { id: t.id, body, internal: !visibleToCustomer } });
           setComment({ ...comment, [t.id]: "" });
           setUpdating(null);
         }}

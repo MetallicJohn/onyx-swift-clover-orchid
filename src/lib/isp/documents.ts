@@ -181,8 +181,8 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
         select id, name, billing_interval from packages where tenant_id = ${tenantId}`
     : [];
   const services = svcIds.length
-    ? await sql<{ id: string; period_end: string | null; username: string | null }>`
-        select id, period_end::text as period_end, username from services where tenant_id = ${tenantId}`
+    ? await sql<{ id: string; period_end: string | null }>`
+        select id, period_end::text as period_end from services where tenant_id = ${tenantId}`
     : [];
   const pkgBy = new Map(packages.map((p) => [p.id, p]));
   const svcBy = new Map(services.map((s) => [s.id, s]));

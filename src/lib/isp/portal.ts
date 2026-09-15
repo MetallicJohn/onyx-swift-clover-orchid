@@ -1,5 +1,11 @@
 import { hashPassword, verifyPassword } from "better-auth/crypto";
 import { nid } from "../utils.ts";
+import {
+  canonicalInitialPassword,
+  enteredMatchesPhone,
+  last9Phone,
+  phonePasswordCandidates,
+} from "./customer-portal-format.ts";
 import { deliverSms, getMessagingSettings } from "./messaging";
 import { newOtp } from "./otp";
 import { applyRls } from "./rls";
@@ -29,6 +35,15 @@ export async function findCustomerByPhone(sql: Sql, tenantId: string, phone: str
   return customer;
 }
 
+export async function assertUniqueCustomerPhone(sql: Sql, tenantId: string, phone: string, exceptId?: string) {
+  const last9 = last9Phone(phone);
+  if (last9.length < 9) throw new Error("Enter a valid phone number");
+  const customers = await sql<{ id: string; phone: string }>`
+    select id, phone from customers where tenant_id = ${tenantId} and deleted_at is null`;
+  const clash = customers.find((c) => c.id !== exceptId && last9Phone(c.phone) === last9);
+  if (clash) throw new Error("A customer with this phone already exists on this network");
+}
+
 export async function issuePortalOtp(sql: Sql, slug: string, phone: string) {
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 9) throw new Error("Enter a valid phone number");
@@ -44,9 +59,9 @@ export async function issuePortalOtp(sql: Sql, slug: string, phone: string) {
   }
   return {
     sent: true,
-    hint: settings.sms_sandbox ? code : "sent to your phone",
-    isp: ten.name,
+    hint: settings.sms_sandbox ? "Demo network — use code 000000" : "sent to your phone",
     sandbox: settings.sms_sandbox,
+    isp: ten.name,
   };
 }
 
@@ -67,28 +82,64 @@ export async function verifyPortalOtp(sql: Sql, slug: string, phone: string, cod
   });
   if (!match) throw new Error("Invalid or expired code");
   await sql`update portal_otps set used = true where id = ${match.id}`;
-  const token = `prt_${crypto.randomUUID().replace(/-/g, "")}`;
-  await sql`insert into portal_sessions (id, tenant_id, customer_id, token)
-    values (${nid("psn")}, ${ten.id}, ${match.customer_id}, ${token})`;
-  return { token, tenantId: ten.id, customerId: match.customer_id, isp: ten.name };
+  return issuePortalSession(sql, ten.id, match.customer_id, ten.name);
 }
 
 async function issuePortalSession(sql: Sql, tenantId: string, customerId: string, isp: string) {
   const token = `prt_${crypto.randomUUID().replace(/-/g, "")}`;
   await sql`insert into portal_sessions (id, tenant_id, customer_id, token)
     values (${nid("psn")}, ${tenantId}, ${customerId}, ${token})`;
-  return { token, tenantId, customerId, isp };
+  const [row] = await sql<{ portal_password_is_initial: boolean }>`
+    select coalesce(portal_password_is_initial, true) as portal_password_is_initial
+    from customers where id = ${customerId} and tenant_id = ${tenantId}`;
+  return {
+    token,
+    tenantId,
+    customerId,
+    isp,
+    using_initial_password: Boolean(row?.portal_password_is_initial),
+  };
 }
 
-export async function setPortalPassword(sql: Sql, tenantId: string, customerId: string, password: string) {
+export async function revokePortalSession(sql: Sql, token: string) {
+  await applyRls(sql, { bypass: true });
+  await sql`delete from portal_sessions where token = ${token}`;
+  return { ok: true };
+}
+
+export async function setPortalPassword(
+  sql: Sql,
+  tenantId: string,
+  customerId: string,
+  password: string,
+  opts?: { initial?: boolean },
+) {
   if (password.length < 8) throw new Error("Password must be at least 8 characters");
   const hashed = await hashPassword(password);
+  const initial = opts?.initial === true;
   const [row] = await sql<{ id: string }>`
-    update customers set portal_password = ${hashed}
+    update customers set portal_password = ${hashed}, portal_password_is_initial = ${initial}
     where id = ${customerId} and tenant_id = ${tenantId}
     returning id`;
   if (!row) throw new Error("Customer not found");
   return { ok: true };
+}
+
+export async function ensureInitialPortalPassword(sql: Sql, tenantId: string, customerId: string, phone: string) {
+  const secret = canonicalInitialPassword(phone);
+  if (!secret) return { ok: false as const };
+  await setPortalPassword(sql, tenantId, customerId, secret, { initial: true });
+  return { ok: true as const };
+}
+
+async function secretMatches(hash: string, storedPhone: string, entered: string, isInitial: boolean) {
+  if (await verifyPassword({ hash, password: entered })) return true;
+  if (!isInitial) return false;
+  if (!enteredMatchesPhone(storedPhone, entered)) return false;
+  for (const candidate of phonePasswordCandidates(storedPhone)) {
+    if (await verifyPassword({ hash, password: candidate })) return true;
+  }
+  return false;
 }
 
 export async function changePortalPassword(
@@ -98,28 +149,36 @@ export async function changePortalPassword(
   current: string,
   next: string,
 ) {
-  const [row] = await sql<{ portal_password: string }>`
-    select portal_password from customers where id = ${customerId} and tenant_id = ${tenantId}`;
+  const [row] = await sql<{ portal_password: string; phone: string; portal_password_is_initial: boolean }>`
+    select portal_password, phone, coalesce(portal_password_is_initial, true) as portal_password_is_initial
+    from customers where id = ${customerId} and tenant_id = ${tenantId}`;
   if (!row) throw new Error("Customer not found");
   if (row.portal_password) {
-    const ok = await verifyPassword({ hash: row.portal_password, password: current });
+    const ok = await secretMatches(row.portal_password, row.phone, current, row.portal_password_is_initial);
     if (!ok) throw new Error("Current password is wrong");
   } else if (!current) {
     /* first password — OTP session is enough */
+  } else if (!enteredMatchesPhone(row.phone, current)) {
+    throw new Error("Current password is wrong");
   }
-  return setPortalPassword(sql, tenantId, customerId, next);
+  return setPortalPassword(sql, tenantId, customerId, next, { initial: false });
 }
 
 export async function portalPasswordLogin(sql: Sql, slug: string, phone: string, password: string) {
   if (!password) throw new Error("Enter your portal password");
   const ten = await findTenantBySlug(sql, slug);
   const customer = await findCustomerByPhone(sql, ten.id, phone);
-  const [row] = await sql<{ portal_password: string }>`
-    select portal_password from customers where id = ${customer.id} and tenant_id = ${ten.id}`;
+  const [row] = await sql<{ portal_password: string; portal_password_is_initial: boolean }>`
+    select portal_password, coalesce(portal_password_is_initial, true) as portal_password_is_initial
+    from customers where id = ${customer.id} and tenant_id = ${ten.id}`;
   if (!row?.portal_password) {
-    throw new Error("No portal password yet. Use the SMS code, or reset to create one.");
+    if (enteredMatchesPhone(customer.phone, password)) {
+      await ensureInitialPortalPassword(sql, ten.id, customer.id, customer.phone);
+      return issuePortalSession(sql, ten.id, customer.id, ten.name);
+    }
+    throw new Error("Wrong phone or password");
   }
-  const ok = await verifyPassword({ hash: row.portal_password, password });
+  const ok = await secretMatches(row.portal_password, customer.phone, password, row.portal_password_is_initial);
   if (!ok) throw new Error("Wrong phone or password");
   return issuePortalSession(sql, ten.id, customer.id, ten.name);
 }
@@ -130,10 +189,22 @@ export async function portalContext(sql: Sql, token: string) {
     select tenant_id, customer_id from portal_sessions where token = ${token}`;
   if (!ses) throw new Error("Session expired. Sign in again.");
   await applyRls(sql, { tenantId: ses.tenant_id, bypass: false });
-  const [isp] = await sql<{ name: string; slug: string; support_phone: string }>`
-    select name, slug, support_phone from tenants where id = ${ses.tenant_id}`;
-  const [customer] = await sql<{ id: string; name: string; phone: string; email: string }>`
-    select id, name, phone, email from customers where id = ${ses.customer_id} and deleted_at is null`;
+  const [isp] = await sql<{ name: string; slug: string; support_phone: string; support_email: string }>`
+    select name, slug, support_phone, support_email from tenants where id = ${ses.tenant_id}`;
+  const [customer] = await sql<{
+    id: string;
+    name: string;
+    phone: string;
+    email: string;
+    address: string;
+    status: string;
+    account_number: string;
+    portal_password_is_initial: boolean;
+  }>`
+    select id, name, phone, email, coalesce(address,'') as address, status,
+           coalesce(account_number,'') as account_number,
+           coalesce(portal_password_is_initial, true) as portal_password_is_initial
+    from customers where id = ${ses.customer_id} and deleted_at is null`;
   if (!customer || !isp) throw new Error("Account not found");
   return { tenantId: ses.tenant_id, customer, isp };
 }

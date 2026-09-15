@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
@@ -175,6 +175,16 @@ export default defineConfig(({ command, isPreview }) => ({
     noExternal: ["pdfkit"],
   },
   plugins: [
+    {
+      name: "noble-subpath-js",
+      enforce: "pre",
+      resolveId(id) {
+        const m = /^@noble\/(hashes|ciphers|curves)\/([^./]+)$/.exec(id);
+        if (!m) return null;
+        const file = join(workspaceRoot, "node_modules/@noble", m[1], `${m[2]}.js`);
+        return existsSync(file) ? file : null;
+      },
+    },
     pgliteBootstrapPlugin(),
     // Before tanstackStart so /auth/popup never falls through to the SPA.
     authPopupPlugin(),

@@ -1,65 +1,171 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { MoreHorizontal, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ExpiryEditor, type ExpiryForm } from "@/components/isp/service-expiry-editor";
+import {
+  CounterButton,
+  MobileServiceFilters,
+  ServiceCards,
+  ServiceFilterBar,
+  ServiceOverflowMenu,
+  ServicePagination,
+  ServicePreview,
+  ServiceSearch,
+  ServiceSkeleton,
+  ServiceTable,
+  type ServiceActions,
+  type ServicePerms,
+} from "@/components/isp/service-desk-ui";
 import { TrafficDrawer } from "@/components/isp/traffic-drawer";
-import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Field, Input, Select } from "@/components/ui/input";
-import { TablePad, VirtualTableFrame } from "@/components/ui/virtual-scroller";
-import { useTableVirtualizer } from "@/components/ui/use-virtual-scroller";
-import { formatDate, formatMac, remainingLabel } from "@/lib/isp/display";
+import { Field, Input, Select, Textarea } from "@/components/ui/input";
+import { uniqueSmsRecipients } from "@/lib/isp/customer-desk-format";
+import { hasPermission } from "@/lib/isp/rbac";
 import { extendGraceFn, grantGraceFn, revokeGraceFn } from "@/lib/isp/server-grace";
 import { setServiceExpiryFn } from "@/lib/isp/server-expiry";
-import { createService, disconnectService, listServices, rotateServiceSecret, setServiceStatus } from "@/lib/isp/server";
-import { deleteServiceFn, reassignServiceFn } from "@/lib/isp/server-lifecycle";
-import { effectiveAccessIso, expirySourceLabel, openExpiryForm } from "@/lib/isp/service-expiry-format";
-import { hasPermission } from "@/lib/isp/rbac";
+import { queryServicesDeskFn } from "@/lib/isp/server-desk";
+import {
+  createService,
+  disconnectService,
+  retryPppoeProvisionFn,
+  rotateServiceSecret,
+  revealPppoePasswordFn,
+  setServiceStatus,
+} from "@/lib/isp/server";
+import { deleteServiceFn, getServiceFn, reassignServiceFn, updateServiceFn } from "@/lib/isp/server-lifecycle";
+import { broadcastCustomersFn } from "@/lib/isp/server-tags";
+import {
+  EMPTY_SERVICE_FILTERS,
+  selectedServicesCsv,
+  toServiceRow,
+  type ServiceDeskFilters,
+  type ServiceDeskRow,
+  type ServiceDeskSort,
+} from "@/lib/isp/service-desk-format";
+import { openExpiryForm } from "@/lib/isp/service-expiry-format";
 import type { GracePolicy } from "@/lib/isp/grace";
-import type { PackageRow, ServiceRow, ServiceStatus, Workspace } from "@/lib/isp/types";
+import type { ServiceStatus } from "@/lib/isp/types";
 
-export const Route = createFileRoute("/app/services")({ component: ServicesPage });
+type Search = {
+  q?: string;
+  status?: ServiceDeskFilters["status"];
+  access?: ServiceDeskFilters["access"];
+  pkg?: string;
+  customer?: string;
+  location?: string;
+  router?: string;
+  pool?: string;
+  billing?: ServiceDeskFilters["billing"];
+  expiring?: boolean;
+  grace?: boolean;
+  overdue?: boolean;
+  sort?: ServiceDeskSort;
+  dir?: "asc" | "desc";
+  page?: number;
+};
 
-const COLS = 7;
-
-function matchesQuery(s: ServiceRow, q: string) {
-  if (!q) return true;
-  const hay = [
-    s.customer_name,
-    s.customer_phone,
-    s.account_number,
-    s.access_method,
-    s.username,
-    s.static_ip,
-    s.mac_address,
-    s.package_name,
-    s.status,
-    s.suspend_reason,
-    s.notes,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return hay.includes(q);
-}
-
+type DeskPayload = Awaited<ReturnType<typeof queryServicesDeskFn>>;
+type PreviewRecord = Awaited<ReturnType<typeof getServiceFn>>;
 type Panel = { id: string; mode: "grant" | "extend" | "revoke" };
 
+function searchToFilters(search: Search): ServiceDeskFilters {
+  return {
+    ...EMPTY_SERVICE_FILTERS,
+    q: search.q || "",
+    status: search.status || "all",
+    access: search.access || "all",
+    packageName: search.pkg || "",
+    customerId: search.customer || "",
+    location: search.location || "",
+    routerId: search.router || "",
+    poolId: search.pool || "",
+    billing: search.billing || "all",
+    expiringSoon: Boolean(search.expiring),
+    onGrace: Boolean(search.grace),
+    overdue: Boolean(search.overdue) || search.billing === "overdue",
+    sort: search.sort || "created",
+    dir: search.dir || "desc",
+    page: Math.max(1, search.page || 1),
+  };
+}
+
+function filtersToSearch(filters: ServiceDeskFilters): Search {
+  return {
+    q: filters.q || undefined,
+    status: filters.status === "all" ? undefined : filters.status,
+    access: filters.access === "all" ? undefined : filters.access,
+    pkg: filters.packageName || undefined,
+    customer: filters.customerId || undefined,
+    location: filters.location || undefined,
+    router: filters.routerId || undefined,
+    pool: filters.poolId || undefined,
+    billing: filters.billing === "all" ? undefined : filters.billing,
+    expiring: filters.expiringSoon || undefined,
+    grace: filters.onGrace || undefined,
+    overdue: filters.overdue || undefined,
+    sort: filters.sort === "created" ? undefined : filters.sort,
+    dir: filters.sort !== "created" && filters.dir === "asc" ? "asc" : filters.dir === "asc" ? "asc" : undefined,
+    page: filters.page > 1 ? filters.page : undefined,
+  };
+}
+
+export const Route = createFileRoute("/app/services")({
+  validateSearch: (search: Record<string, unknown>): Search => ({
+    q: typeof search.q === "string" ? search.q : undefined,
+    status:
+      search.status === "active" ||
+      search.status === "pending" ||
+      search.status === "expired" ||
+      search.status === "grace" ||
+      search.status === "suspended" ||
+      search.status === "terminated"
+        ? search.status
+        : undefined,
+    access: search.access === "pppoe" || search.access === "static" || search.access === "hotspot" ? search.access : undefined,
+    pkg: typeof search.pkg === "string" ? search.pkg : undefined,
+    customer: typeof search.customer === "string" ? search.customer : undefined,
+    location: typeof search.location === "string" ? search.location : undefined,
+    router: typeof search.router === "string" ? search.router : undefined,
+    pool: typeof search.pool === "string" ? search.pool : undefined,
+    billing: search.billing === "clear" || search.billing === "due" || search.billing === "overdue" ? search.billing : undefined,
+    expiring: search.expiring === true || search.expiring === "true" ? true : undefined,
+    grace: search.grace === true || search.grace === "true" ? true : undefined,
+    overdue: search.overdue === true || search.overdue === "true" ? true : undefined,
+    sort:
+      search.sort === "customer" ||
+      search.sort === "service" ||
+      search.sort === "package" ||
+      search.sort === "access" ||
+      search.sort === "status" ||
+      search.sort === "expiry" ||
+      search.sort === "location" ||
+      search.sort === "router" ||
+      search.sort === "outstanding" ||
+      search.sort === "last_activity"
+        ? search.sort
+        : undefined,
+    dir: search.dir === "asc" || search.dir === "desc" ? search.dir : undefined,
+    page: typeof search.page === "number" ? search.page : typeof search.page === "string" ? Number(search.page) || undefined : undefined,
+  }),
+  component: ServicesRoute,
+});
+
+function ServicesRoute() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  if (pathname !== "/app/services") return <Outlet />;
+  return <ServicesPage />;
+}
+
 function ServicesPage() {
-  const [services, setServices] = useState<ServiceRow[]>([]);
-  const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
-  const [packages, setPackages] = useState<PackageRow[]>([]);
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [policy, setPolicy] = useState<GracePolicy | null>(null);
+  const navigate = Route.useNavigate();
+  const search = Route.useSearch();
+  const filters = useMemo(() => searchToFilters(search), [search]);
+
+  const [desk, setDesk] = useState<DeskPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [draftQ, setDraftQ] = useState(filters.q);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ customer_id: "", package_id: "", username: "", static_ip: "", notes: "" });
   const [secretNote, setSecretNote] = useState<string | null>(null);
@@ -69,61 +175,121 @@ function ServicesPage() {
   const [custom, setCustom] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [traffic, setTraffic] = useState<ServiceRow | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [traffic, setTraffic] = useState<ServiceDeskRow | null>(null);
   const [reassign, setReassign] = useState<{ id: string; to: string } | null>(null);
   const [drop, setDrop] = useState<{ id: string; label: string; reason: string } | null>(null);
+  const [pkgFor, setPkgFor] = useState<ServiceDeskRow | null>(null);
+  const [pkgId, setPkgId] = useState("");
+  const [editFor, setEditFor] = useState<ServiceDeskRow | null>(null);
+  const [edit, setEdit] = useState({ username: "", static_ip: "", mac_address: "", notes: "" });
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState<"sms" | "package" | "grace" | null>(null);
+  const [bulkPkg, setBulkPkg] = useState("");
+  const [bulkBody, setBulkBody] = useState("");
+  const [bulkNote, setBulkNote] = useState<string | null>(null);
+  const [previewFor, setPreviewFor] = useState<ServiceDeskRow | null>(null);
+  const [preview, setPreview] = useState<PreviewRecord | null>(null);
+  const [previewErr, setPreviewErr] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
-  async function load() {
-    const res = await listServices();
-    setServices(res.services);
-    setCustomers(res.customers);
-    setPackages(res.packages);
-    setWorkspace(res.workspace);
-    setPolicy(res.gracePolicy);
-    if (!form.customer_id && res.customers[0]) {
-      setForm((f) => ({ ...f, customer_id: res.customers[0].id, package_id: res.packages[0]?.id ?? "" }));
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestRef = useRef(0);
+
+  function patchSearch(next: Partial<ServiceDeskFilters>) {
+    const merged = { ...filters, ...next };
+    void navigate({ search: filtersToSearch(merged), replace: true });
+  }
+
+  async function loadDesk(nextFilters = filters) {
+    const id = ++requestRef.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await queryServicesDeskFn({
+        data: {
+          q: nextFilters.q,
+          status: nextFilters.status,
+          access: nextFilters.access,
+          packageName: nextFilters.packageName,
+          customerId: nextFilters.customerId,
+          location: nextFilters.location,
+          routerId: nextFilters.routerId,
+          poolId: nextFilters.poolId,
+          billing: nextFilters.billing,
+          expiringSoon: nextFilters.expiringSoon,
+          onGrace: nextFilters.onGrace,
+          overdue: nextFilters.overdue,
+          sort: nextFilters.sort,
+          dir: nextFilters.dir,
+          page: nextFilters.page,
+          pageSize: nextFilters.pageSize,
+        },
+      });
+      if (id !== requestRef.current) return;
+      setDesk(res);
+      setSelected((prev) => {
+        const ids = new Set(res.services.map((s) => s.id));
+        return new Set([...prev].filter((sid) => ids.has(sid)));
+      });
+      if (!form.customer_id && res.customers[0]) {
+        setForm((f) => ({ ...f, customer_id: f.customer_id || res.customers[0].id, package_id: f.package_id || res.packageOptions[0]?.id || "" }));
+      }
+    } catch (err) {
+      if (id !== requestRef.current) return;
+      setError(err instanceof Error ? err.message : "Could not load services");
+    } finally {
+      if (id === requestRef.current) setLoading(false);
     }
   }
 
   useEffect(() => {
-    load().catch(console.error);
+    setDraftQ(filters.q);
+    void loadDesk(filters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [
+    search.q,
+    search.status,
+    search.access,
+    search.pkg,
+    search.customer,
+    search.location,
+    search.router,
+    search.pool,
+    search.billing,
+    search.expiring,
+    search.grace,
+    search.overdue,
+    search.sort,
+    search.dir,
+    search.page,
+  ]);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    await createService({ data: form });
-    setOpen(false);
-    await load();
-  }
-
-  async function setStatus(id: string, status: ServiceStatus) {
-    await setServiceStatus({ data: { id, status } });
-    await load();
-  }
-
-  async function submitExpiry(e: React.FormEvent) {
-    e.preventDefault();
-    if (!expiry || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const out = await setServiceExpiryFn({ data: { id: expiry.service.id, date: expiry.date, reason: expiry.reason } });
-      setExpiry(null);
-      setSecretNote(
-        `Expiry date updated for ${out.customer_name}. Status: ${out.status === "grace" ? "Grace Period" : out.status}. No billing or customer message was sent.`,
-      );
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update expiry date");
-    } finally {
-      setBusy(false);
+  useEffect(() => {
+    if (!previewFor) {
+      setPreview(null);
+      setPreviewErr(null);
+      return;
     }
-  }
+    setPreviewLoading(true);
+    setPreviewErr(null);
+    getServiceFn({ data: { id: previewFor.id } })
+      .then((rec) => {
+        setPreview(rec);
+        setPreviewLoading(false);
+      })
+      .catch((err) => {
+        setPreview(null);
+        setPreviewErr(err instanceof Error ? err.message : "Could not load service");
+        setPreviewLoading(false);
+      });
+  }, [previewFor]);
 
-  const role = workspace?.role || "";
+  const rows = desk?.services ?? [];
+  const customers = desk?.customers ?? [];
+  const packageOptions = desk?.packageOptions ?? [];
+  const policy: GracePolicy | null = desk?.gracePolicy ?? null;
+  const role = desk?.workspace.role || "";
   const canGrant = hasPermission(role, "services.grace.grant");
   const canExtend = hasPermission(role, "services.grace.extend");
   const canRevoke = hasPermission(role, "services.grace.revoke");
@@ -133,21 +299,122 @@ function ServicesPage() {
   const canReassign = hasPermission(role, "services.reassign") || canManage;
   const canTraffic = hasPermission(role, "traffic.view") || hasPermission(role, "services.read");
   const canRecycle = hasPermission(role, "recycle_bin.view");
+  const canComms = hasPermission(role, "communications.send") || hasPermission(role, "customers.manage");
   const presets = policy?.staff_preset_days?.length ? policy.staff_preset_days : [1, 2, 3, 5, 7];
+  const selectedRows = rows.filter((s) => selected.has(s.id));
+  const allSelected = rows.length > 0 && rows.every((s) => selected.has(s.id));
+  const uniqueCustomers = [...new Map(selectedRows.map((s) => [s.customer_id, { id: s.customer_id, phone: s.customer_phone }])).values()];
+  const smsPlan = uniqueSmsRecipients(uniqueCustomers);
+  const counters = desk?.counters ?? { total: 0, active: 0, pending: 0, expired: 0, suspended: 0, grace: 0 };
+  const perms: ServicePerms = { canManage, canDelete, canExpiry, canGrant, canExtend, canRevoke, canReassign, canTraffic, canComms };
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return services;
-    return services.filter((s) => matchesQuery(s, q));
-  }, [services, query]);
+  function onSearchChange(value: string) {
+    setDraftQ(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      patchSearch({ q: value, page: 1 });
+    }, 300);
+  }
 
-  const { parentRef, virtualizer, rows: vis, padTop, padBottom } = useTableVirtualizer(filtered.length, 48);
+  function onSort(id: ServiceDeskSort) {
+    if (filters.sort === id) patchSearch({ dir: filters.dir === "asc" ? "desc" : "asc", page: 1 });
+    else patchSearch({ sort: id, dir: id === "customer" || id === "package" ? "asc" : "desc", page: 1 });
+  }
+
+  const actions: ServiceActions = {
+    onPreview: setPreviewFor,
+    onEdit: (s) => {
+      setEditFor(s);
+      setEdit({ username: s.username || "", static_ip: s.static_ip || "", mac_address: s.mac_address, notes: s.notes });
+      setPreviewFor(null);
+    },
+    onPackage: (s) => {
+      setPkgFor(s);
+      setPkgId(s.package_id);
+    },
+    onExpiry: (s) => {
+      setActionError(null);
+      setExpiry(openExpiryForm(toServiceRow(s)));
+    },
+    onTraffic: setTraffic,
+    onSuspend: (s) => void setStatus(s.id, "suspended"),
+    onRestore: (s) => void setStatus(s.id, "active"),
+    onGrant: (s) => {
+      setPanel({ id: s.id, mode: "grant" });
+      setDays(presets[2] ?? 3);
+      setActionError(null);
+    },
+    onExtend: (s) => {
+      setPanel({ id: s.id, mode: "extend" });
+      setDays(presets[0] ?? 1);
+      setActionError(null);
+    },
+    onRevoke: (s) => {
+      setPanel({ id: s.id, mode: "revoke" });
+      setActionError(null);
+    },
+    onDisconnect: (s) => {
+      void disconnectService({ data: { id: s.id } }).then(() => setSecretNote(`Disconnect queued for ${s.identity}`));
+    },
+    onRotate: (s) => {
+      if (!window.confirm("Rotate the PPPoE password? The current password stops working immediately.")) return;
+      void rotateServiceSecret({ data: { id: s.id, confirm: true } }).then((r) => {
+        setSecretNote(`New PPPoE password for ${r.username}: ${r.password}`);
+      });
+    },
+    onReveal: (s) => {
+      void revealPppoePasswordFn({ data: { id: s.id } }).then((r) => {
+        setSecretNote(`PPPoE password for ${r.username}: ${r.password}`);
+      });
+    },
+    onRetry: (s) => {
+      void retryPppoeProvisionFn({ data: { id: s.id } }).then(() => {
+        setSecretNote(`Provisioning retried for ${s.identity}`);
+        void loadDesk(filters);
+      });
+    },
+    onReassign: (s) => setReassign({ id: s.id, to: customers.find((c) => c.id !== s.customer_id)?.id || "" }),
+    onDelete: (s) => setDrop({ id: s.id, label: `${s.customer_name} · ${s.package_name}`, reason: "" }),
+  };
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    await createService({ data: form });
+    setOpen(false);
+    await loadDesk(filters);
+  }
+
+  async function setStatus(id: string, status: ServiceStatus) {
+    const verb = status === "suspended" ? "Suspend" : "Restore";
+    if (!window.confirm(`${verb} this service?`)) return;
+    await setServiceStatus({ data: { id, status } });
+    await loadDesk(filters);
+  }
+
+  async function submitExpiry(e: React.FormEvent) {
+    e.preventDefault();
+    if (!expiry || busy) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      const out = await setServiceExpiryFn({ data: { id: expiry.service.id, date: expiry.date, reason: expiry.reason } });
+      setExpiry(null);
+      setSecretNote(
+        `Expiry date updated for ${out.customer_name}. Status: ${out.status === "grace" ? "Grace Period" : out.status}. No billing or customer message was sent.`,
+      );
+      await loadDesk(filters);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not update expiry date");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submitGrace(e: React.FormEvent) {
     e.preventDefault();
     if (!panel) return;
     setBusy(true);
-    setError(null);
+    setActionError(null);
     try {
       const chosen = custom ? Number(custom) : days;
       if (panel.mode === "grant") {
@@ -160,41 +427,133 @@ function ServicesPage() {
       setPanel(null);
       setReason("");
       setCustom("");
-      await load();
+      await loadDesk(filters);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update grace period");
+      setActionError(err instanceof Error ? err.message : "Could not update grace period");
     } finally {
       setBusy(false);
     }
   }
 
-  const panelService = panel ? services.find((s) => s.id === panel.id) : null;
+  async function runBulk() {
+    if (!selectedRows.length) return;
+    setBusy(true);
+    setBulkNote(null);
+    try {
+      if (bulk === "sms") {
+        const ids = smsPlan.recipients.map((r) => r.id);
+        if (!ids.length) throw new Error("None of the selected services have a valid customer mobile.");
+        if (!window.confirm(`Queue SMS for ${ids.length} customer${ids.length === 1 ? "" : "s"}? ${smsPlan.skipped.length} skipped.`)) {
+          setBusy(false);
+          return;
+        }
+        const res = await broadcastCustomersFn({
+          data: { customer_ids: ids, channels: ["sms"], subject: "", body: bulkBody },
+        });
+        setBulkNote(`SMS queued for ${res.sms} · failed ${res.failed}`);
+      } else if (bulk === "package") {
+        if (!bulkPkg) throw new Error("Choose a package");
+        if (!window.confirm(`Change package on ${selectedRows.length} service${selectedRows.length === 1 ? "" : "s"}? Invoices are not created.`)) {
+          setBusy(false);
+          return;
+        }
+        for (const row of selectedRows) await updateServiceFn({ data: { id: row.id, package_id: bulkPkg } });
+        setBulkNote(`Package updated on ${selectedRows.length} services.`);
+      } else if (bulk === "grace") {
+        const targets = selectedRows.filter((s) => s.status !== "terminated" && !s.grace_active);
+        if (!targets.length) throw new Error("None of the selected services can receive Grace Period.");
+        if (!window.confirm(`Grant Grace Period to ${targets.length} service${targets.length === 1 ? "" : "s"}?`)) {
+          setBusy(false);
+          return;
+        }
+        for (const row of targets) await grantGraceFn({ data: { service_id: row.id, days: presets[2] ?? 3, reason: "Bulk grant" } });
+        setBulkNote(`Grace Period granted on ${targets.length} services.`);
+      }
+      setBulk(null);
+      setBulkBody("");
+      setBulkPkg("");
+      await loadDesk(filters);
+    } catch (err) {
+      setBulkNote(err instanceof Error ? err.message : "Could not complete");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function exportSelected() {
+    const csv = selectedServicesCsv(selectedRows.length ? selectedRows : rows);
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = selectedRows.length ? "ispsolutions-services-selected.csv" : "ispsolutions-services.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const panelService = panel ? rows.find((s) => s.id === panel.id) : null;
+  const empty = !loading && !error && rows.length === 0;
+  const noSearch = empty && Boolean(filters.q);
+  const noFilter = empty && !filters.q && (filters.status !== "all" || filters.access !== "all" || filters.packageName || filters.customerId || filters.location || filters.routerId || filters.poolId || filters.billing !== "all" || filters.expiringSoon || filters.onGrace || filters.overdue);
+  const noneYet = empty && !filters.q && !noFilter;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">Services</h1>
-          <p className="text-sm text-muted">
-            Access goes offline on unpaid invoices, expired time, or a used-up data cap. A confirmed payment restores
-            and extends the period. Grace Period keeps a line online temporarily without changing the renewal date.
-          </p>
+          <p className="text-sm text-muted">Manage internet connections, access credentials, packages, network assignments and service status.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {canRecycle ? (
-            <Link
-              to="/app/recycle-bin"
-              className="inline-flex h-11 items-center rounded-md border border-border bg-elevated px-4 text-sm font-medium hover:bg-surface"
-            >
-              Recycle Bin
-            </Link>
-          ) : null}
-          {canManage ? <Button onClick={() => setOpen(true)}>Provision service</Button> : null}
+          <ServiceOverflowMenu canRecycle={canRecycle} selectedCount={selectedRows.length} onExport={exportSelected} />
+          {canManage ? <Button onClick={() => setOpen(true)}>Add service</Button> : null}
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        <CounterButton
+          label="Total"
+          value={counters.total}
+          active={filters.status === "all" && !filters.overdue && !filters.onGrace && !filters.expiringSoon}
+          onClick={() => patchSearch({ ...EMPTY_SERVICE_FILTERS, q: filters.q, page: 1 })}
+        />
+        <CounterButton
+          label="Active"
+          value={counters.active}
+          active={filters.status === "active"}
+          onClick={() => patchSearch({ status: filters.status === "active" ? "all" : "active", page: 1 })}
+        />
+        <CounterButton
+          label="Pending"
+          value={counters.pending}
+          active={filters.status === "pending"}
+          onClick={() => patchSearch({ status: filters.status === "pending" ? "all" : "pending", page: 1 })}
+        />
+        <CounterButton
+          label="Expired"
+          value={counters.expired}
+          active={filters.status === "expired"}
+          onClick={() => patchSearch({ status: filters.status === "expired" ? "all" : "expired", page: 1 })}
+        />
+        <CounterButton
+          label="Suspended"
+          value={counters.suspended}
+          active={filters.status === "suspended"}
+          onClick={() => patchSearch({ status: filters.status === "suspended" ? "all" : "suspended", page: 1 })}
+        />
+        <CounterButton
+          label="Grace Period"
+          value={counters.grace}
+          active={filters.status === "grace" || filters.onGrace}
+          onClick={() => patchSearch({ status: filters.status === "grace" ? "all" : "grace", onGrace: false, page: 1 })}
+        />
+      </div>
+
+      {secretNote ? <p className="text-sm text-accent">{secretNote}</p> : null}
+
       {canManage && open ? (
         <form onSubmit={submit} className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2">
+          <h2 className="font-medium md:col-span-2">Add service</h2>
           <Field label="Customer">
             <Select value={form.customer_id} onChange={(e) => setForm({ ...form, customer_id: e.target.value })}>
               {customers.map((c) => (
@@ -206,7 +565,7 @@ function ServicesPage() {
           </Field>
           <Field label="Package">
             <Select value={form.package_id} onChange={(e) => setForm({ ...form, package_id: e.target.value })}>
-              {packages.map((p) => (
+              {packageOptions.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} · {p.access_method}
                 </option>
@@ -231,216 +590,280 @@ function ServicesPage() {
         </form>
       ) : null}
 
-      {secretNote ? <p className="text-sm text-accent">{secretNote}</p> : null}
-
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <label className="relative block min-w-0 flex-1">
-          <span className="sr-only">Search services</span>
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" strokeWidth={1.75} />
-          <Input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search name, phone, package, MAC, status…"
-            className="pl-10"
-            autoComplete="off"
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="min-w-0 flex-1">
+          <ServiceSearch
+            value={draftQ}
+            onChange={onSearchChange}
+            onClear={() => {
+              setDraftQ("");
+              patchSearch({ q: "", page: 1 });
+            }}
+            loading={loading && Boolean(draftQ)}
           />
-        </label>
-        <p className="shrink-0 text-xs text-muted sm:text-right">
-          {filtered.length === services.length
-            ? `${services.length} line${services.length === 1 ? "" : "s"}`
-            : `${filtered.length} of ${services.length}`}
-        </p>
+        </div>
+        <MobileServiceFilters
+          open={filterOpen}
+          onOpenChange={setFilterOpen}
+          filters={filters}
+          packages={desk?.packages ?? []}
+          locations={desk?.locations ?? []}
+          routers={desk?.routers ?? []}
+          pools={desk?.pools ?? []}
+          customers={customers}
+          onChange={(next) => patchSearch(next)}
+          onClear={() => patchSearch({ ...EMPTY_SERVICE_FILTERS, q: filters.q, page: 1 })}
+        />
       </div>
 
-      <VirtualTableFrame parentRef={parentRef} className="rounded-xl border border-border bg-surface">
-        <table className="w-full min-w-[56rem] text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-surface text-xs text-muted">
-            <tr>
-              <th className="px-3 py-2 font-medium">Name</th>
-              <th className="px-3 py-2 font-medium">Phone</th>
-              <th className="px-3 py-2 font-medium">Package</th>
-              <th className="px-3 py-2 font-medium">Status</th>
-              <th className="px-3 py-2 font-medium">MAC address</th>
-              <th className="px-3 py-2 font-medium">Expiry date</th>
-              <th className="sticky right-0 bg-surface px-2 py-2 text-right font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            <TablePad height={padTop} colSpan={COLS} />
-            {vis.map((v) => {
-              const s = filtered[v.index];
-              const activeGrace = Boolean(s.grace_active && s.grace_expires_at);
-              const identity = s.username || s.static_ip || "—";
-              return (
-                <tr key={s.id} data-index={v.index} ref={virtualizer.measureElement} className="h-12">
-                  <td className="max-w-48 px-3 py-1.5">
-                    <Link
-                      to="/app/customers/$customerId"
-                      params={{ customerId: s.customer_id }}
-                      className="inline-flex min-h-11 max-w-full items-center truncate font-medium hover:text-accent hover:underline"
-                    >
-                      {s.customer_name}
-                    </Link>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs">{s.customer_phone || "—"}</td>
-                  <td className="max-w-40 px-3 py-1.5">
-                    <div className="truncate">{s.package_name}</div>
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <div className="flex items-center gap-1">
-                      <Badge tone={statusTone(s.status)}>{s.status === "grace" ? "Grace Period" : s.status}</Badge>
-                      {activeGrace && s.grace_expires_at ? (
-                        <span className="hidden text-xs text-warn xl:inline">{remainingLabel(s.grace_expires_at)}</span>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs">{formatMac(s.mac_address)}</td>
-                  <td className="whitespace-nowrap px-3 py-1.5">
-                    <div>{formatDate(effectiveAccessIso(s))}</div>
-                    <div className="text-xs text-subtle">{expirySourceLabel(s.expiry_source, s.grace_active)}</div>
-                  </td>
-                  <td className="sticky right-0 bg-surface px-1 py-1 text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          aria-label={`Actions for ${s.customer_name}`}
-                          className="size-11"
-                        >
-                          <MoreHorizontal className="size-4" strokeWidth={1.75} />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" side="bottom">
-                        <DropdownMenuLabel>{s.customer_name}</DropdownMenuLabel>
-                        <div className="px-3 pb-2 text-xs text-muted">
-                          {s.access_method.toUpperCase()} · {identity}
-                          {s.suspend_reason ? ` · ${s.suspend_reason}` : ""}
-                        </div>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem asChild>
-                          <Link to="/app/customers/$customerId" params={{ customerId: s.customer_id }}>
-                            View customer
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link to="/app/services/$serviceId" params={{ serviceId: s.id }}>
-                            View service
-                          </Link>
-                        </DropdownMenuItem>
-                        {canTraffic ? (
-                          <DropdownMenuItem onSelect={() => setTraffic(s)}>Realtime traffic</DropdownMenuItem>
-                        ) : null}
-                        <DropdownMenuSeparator />
-                        {canExpiry ? (
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              setError(null);
-                              setExpiry(openExpiryForm(s));
-                            }}
-                          >
-                            Edit expiry date
-                          </DropdownMenuItem>
-                        ) : null}
-                        {canManage && s.status !== "active" ? (
-                          <DropdownMenuItem onSelect={() => void setStatus(s.id, "active")}>Restore</DropdownMenuItem>
-                        ) : null}
-                        {canManage && s.status === "active" ? (
-                          <DropdownMenuItem onSelect={() => void setStatus(s.id, "suspended")}>Suspend</DropdownMenuItem>
-                        ) : null}
-                        {canGrant && !activeGrace && s.status !== "terminated" ? (
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              setPanel({ id: s.id, mode: "grant" });
-                              setDays(presets[2] ?? 3);
-                              setError(null);
-                            }}
-                          >
-                            Grant Grace Period
-                          </DropdownMenuItem>
-                        ) : null}
-                        {canExtend && activeGrace ? (
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              setPanel({ id: s.id, mode: "extend" });
-                              setDays(presets[0] ?? 1);
-                              setError(null);
-                            }}
-                          >
-                            Extend Grace Period
-                          </DropdownMenuItem>
-                        ) : null}
-                        {canRevoke && activeGrace ? (
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              setPanel({ id: s.id, mode: "revoke" });
-                              setError(null);
-                            }}
-                          >
-                            Revoke Grace Period
-                          </DropdownMenuItem>
-                        ) : null}
-                        {canManage ? (
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              void disconnectService({ data: { id: s.id } }).then(() => {
-                                setSecretNote(`Disconnect queued for ${identity}`);
-                              });
-                            }}
-                          >
-                            Disconnect
-                          </DropdownMenuItem>
-                        ) : null}
-                        {canManage && s.access_method === "pppoe" ? (
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              if (!window.confirm("Rotate the PPPoE password? The current password stops working immediately.")) return;
-                              void rotateServiceSecret({ data: { id: s.id, confirm: true } }).then((r) => {
-                                setSecretNote(`New PPPoE password for ${r.username}: ${r.password}`);
-                              });
-                            }}
-                          >
-                            New password
-                          </DropdownMenuItem>
-                        ) : null}
-                        {canReassign ? (
-                          <DropdownMenuItem
-                            onSelect={() => setReassign({ id: s.id, to: customers.find((c) => c.id !== s.customer_id)?.id || "" })}
-                          >
-                            Reassign
-                          </DropdownMenuItem>
-                        ) : null}
-                        {canDelete ? (
-                          <DropdownMenuItem
-                            danger
-                            onSelect={() =>
-                              setDrop({
-                                id: s.id,
-                                label: `${s.customer_name} · ${s.package_name}`,
-                                reason: "",
-                              })
-                            }
-                          >
-                            Move to Recycle Bin
-                          </DropdownMenuItem>
-                        ) : null}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </td>
-                </tr>
-              );
-            })}
-            <TablePad height={padBottom} colSpan={COLS} />
-          </tbody>
-        </table>
-        {filtered.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-muted">
-            {services.length === 0 ? "No services yet." : "No lines match that search."}
+      <ServiceFilterBar
+        filters={filters}
+        packages={desk?.packages ?? []}
+        locations={desk?.locations ?? []}
+        routers={desk?.routers ?? []}
+        pools={desk?.pools ?? []}
+        customers={customers}
+        matching={desk?.total ?? 0}
+        onChange={(next) => patchSearch(next)}
+        onClear={() => patchSearch({ ...EMPTY_SERVICE_FILTERS, q: filters.q, page: 1 })}
+      />
+
+      {canManage && selectedRows.length ? (
+        <div className="space-y-3 rounded-xl border border-border bg-surface p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm">
+              {selectedRows.length} selected · {uniqueCustomers.length} customer{uniqueCustomers.length === 1 ? "" : "s"}
+              {bulk === "sms" ? ` · ${smsPlan.recipients.length} valid mobile${smsPlan.recipients.length === 1 ? "" : "s"}` : ""}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  const n = selectedRows.filter((s) => s.status === "active" || s.status === "grace").length;
+                  if (!n) return;
+                  if (!window.confirm(`Suspend ${n} service${n === 1 ? "" : "s"}?`)) return;
+                  void (async () => {
+                    setBusy(true);
+                    try {
+                      for (const s of selectedRows) {
+                        if (s.status === "active" || s.status === "grace") await setServiceStatus({ data: { id: s.id, status: "suspended" } });
+                      }
+                      await loadDesk(filters);
+                    } finally {
+                      setBusy(false);
+                    }
+                  })();
+                }}
+              >
+                Suspend
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  const n = selectedRows.filter((s) => s.status === "suspended").length;
+                  if (!n) return;
+                  if (!window.confirm(`Restore ${n} service${n === 1 ? "" : "s"}?`)) return;
+                  void (async () => {
+                    setBusy(true);
+                    try {
+                      for (const s of selectedRows) {
+                        if (s.status === "suspended") await setServiceStatus({ data: { id: s.id, status: "active" } });
+                      }
+                      await loadDesk(filters);
+                    } finally {
+                      setBusy(false);
+                    }
+                  })();
+                }}
+              >
+                Restore
+              </Button>
+              {canGrant ? (
+                <Button size="sm" variant={bulk === "grace" ? "default" : "secondary"} onClick={() => setBulk("grace")}>
+                  Grant Grace Period
+                </Button>
+              ) : null}
+              <Button size="sm" variant={bulk === "package" ? "default" : "secondary"} onClick={() => setBulk("package")}>
+                Change package
+              </Button>
+              {canComms ? (
+                <Button size="sm" variant={bulk === "sms" ? "default" : "secondary"} onClick={() => setBulk("sms")}>
+                  Send SMS
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  const targets = selectedRows.filter((s) => s.access_method === "pppoe" && (s.status === "pending" || /fail|retry|error/i.test(s.provision_overall)));
+                  if (!targets.length) return;
+                  if (!window.confirm(`Retry provisioning on ${targets.length} PPPoE line${targets.length === 1 ? "" : "s"}?`)) return;
+                  void (async () => {
+                    setBusy(true);
+                    try {
+                      for (const s of targets) await retryPppoeProvisionFn({ data: { id: s.id } });
+                      setBulkNote(`Provisioning retried on ${targets.length} services.`);
+                      await loadDesk(filters);
+                    } finally {
+                      setBusy(false);
+                    }
+                  })();
+                }}
+              >
+                Retry provisioning
+              </Button>
+              <Button size="sm" variant="secondary" onClick={exportSelected}>
+                Export selected
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setSelected(new Set());
+                  setBulk(null);
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+          {bulk === "package" ? (
+            <div className="flex flex-wrap items-end gap-2">
+              <Field label="Package">
+                <Select value={bulkPkg} onChange={(e) => setBulkPkg(e.target.value)}>
+                  <option value="">Choose package</option>
+                  {packageOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} · {p.access_method}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Button disabled={busy || !bulkPkg} onClick={() => void runBulk()}>
+                Apply to {selectedRows.length}
+              </Button>
+            </div>
+          ) : null}
+          {bulk === "grace" ? (
+            <div className="space-y-2">
+              <p className="text-sm text-muted">
+                Grants the default staff preset ({presets[2] ?? 3} days) to eligible selected lines. Renewal dates do not change.
+              </p>
+              <Button disabled={busy} onClick={() => void runBulk()}>
+                Confirm grant
+              </Button>
+            </div>
+          ) : null}
+          {bulk === "sms" ? (
+            <div className="grid gap-3 md:max-w-xl">
+              <p className="text-sm text-muted">
+                SMS will be queued for {smsPlan.recipients.length} of {uniqueCustomers.length} customers.
+                {smsPlan.skipped.length ? ` ${smsPlan.skipped.length} skipped (missing, invalid, or duplicate numbers).` : ""}
+              </p>
+              <Field label="SMS">
+                <Textarea value={bulkBody} onChange={(e) => setBulkBody(e.target.value)} required />
+              </Field>
+              <Button disabled={busy || !bulkBody.trim() || !smsPlan.recipients.length} onClick={() => void runBulk()}>
+                Send SMS to {smsPlan.recipients.length}
+              </Button>
+            </div>
+          ) : null}
+          {bulkNote ? <p className="text-sm text-accent">{bulkNote}</p> : null}
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="rounded-xl border border-border bg-surface p-6 text-center">
+          <p className="text-sm text-danger">{error}</p>
+          <Button className="mt-3" variant="secondary" onClick={() => void loadDesk(filters)}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
+
+      {loading && !rows.length ? <ServiceSkeleton /> : null}
+
+      {empty ? (
+        <div className="rounded-xl border border-border bg-surface p-8 text-center">
+          <p className="text-sm text-muted">
+            {noneYet ? "No services yet." : noSearch ? "No search results." : "No results for the selected filters."}
           </p>
-        ) : null}
-      </VirtualTableFrame>
+          <div className="mt-3 flex flex-wrap justify-center gap-2">
+            {noneYet && canManage ? <Button onClick={() => setOpen(true)}>Add service</Button> : null}
+            {noSearch ? (
+              <Button variant="secondary" onClick={() => patchSearch({ q: "", page: 1 })}>
+                Clear search
+              </Button>
+            ) : null}
+            {noFilter ? (
+              <Button variant="secondary" onClick={() => patchSearch({ ...EMPTY_SERVICE_FILTERS, q: filters.q, page: 1 })}>
+                Clear filters
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {!empty && rows.length ? (
+        <>
+          <ServiceTable
+            rows={rows}
+            selected={selected}
+            allSelected={allSelected}
+            onToggle={(id) =>
+              setSelected((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+              })
+            }
+            onToggleAll={() => setSelected(allSelected ? new Set() : new Set(rows.map((s) => s.id)))}
+            onPreview={setPreviewFor}
+            perms={perms}
+            actions={actions}
+            sort={filters.sort}
+            dir={filters.dir}
+            onSort={onSort}
+          />
+          <ServiceCards
+            rows={rows}
+            selected={selected}
+            onToggle={(id) =>
+              setSelected((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+              })
+            }
+            onPreview={setPreviewFor}
+            perms={perms}
+            actions={actions}
+          />
+          <ServicePagination page={desk?.page ?? 1} pages={desk?.pages ?? 1} total={desk?.total ?? 0} onPage={(page) => patchSearch({ page })} />
+        </>
+      ) : null}
+
+      <ServicePreview
+        open={Boolean(previewFor)}
+        onOpenChange={(next) => {
+          if (!next) setPreviewFor(null);
+        }}
+        loading={previewLoading}
+        error={previewErr}
+        service={previewFor}
+        record={preview}
+        perms={perms}
+        onTraffic={() => {
+          if (previewFor) setTraffic(previewFor);
+        }}
+        onEdit={() => {
+          if (previewFor) actions.onEdit(previewFor);
+        }}
+      />
 
       <Dialog
         open={Boolean(panel)}
@@ -463,9 +886,8 @@ function ServicesPage() {
                   <Select
                     value={custom ? "custom" : String(days)}
                     onChange={(e) => {
-                      if (e.target.value === "custom") {
-                        setCustom(String(days));
-                      } else {
+                      if (e.target.value === "custom") setCustom(String(days));
+                      else {
                         setCustom("");
                         setDays(Number(e.target.value));
                       }
@@ -481,13 +903,7 @@ function ServicesPage() {
                 </Field>
                 {custom ? (
                   <Field label="Custom days">
-                    <Input
-                      type="number"
-                      min={1}
-                      max={policy?.staff_max_days ?? 14}
-                      value={custom}
-                      onChange={(e) => setCustom(e.target.value)}
-                    />
+                    <Input type="number" min={1} max={policy?.staff_max_days ?? 14} value={custom} onChange={(e) => setCustom(e.target.value)} />
                   </Field>
                 ) : null}
               </>
@@ -495,7 +911,7 @@ function ServicesPage() {
             <Field label="Reason (optional)">
               <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Note for the audit log" />
             </Field>
-            {error ? <p className="text-sm text-danger">{error}</p> : null}
+            {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
             <div className="flex flex-wrap gap-2">
               <Button type="submit" disabled={busy}>
                 {panel.mode === "grant" ? "Grant" : panel.mode === "extend" ? "Extend" : "Revoke"}
@@ -517,21 +933,123 @@ function ServicesPage() {
         description="Changes access only. Paid-through date, invoices, and customer messages stay as they are."
       >
         {expiry ? (
-          <ExpiryEditor
-            form={expiry}
-            setForm={setExpiry}
-            busy={busy}
-            error={error}
-            onSubmit={submitExpiry}
-            onClose={() => setExpiry(null)}
-          />
+          <ExpiryEditor form={expiry} setForm={setExpiry} busy={busy} error={actionError} onSubmit={submitExpiry} onClose={() => setExpiry(null)} />
+        ) : null}
+      </Dialog>
+
+      <Dialog
+        open={Boolean(pkgFor)}
+        onOpenChange={(next) => {
+          if (!next) setPkgFor(null);
+        }}
+        title="Change package"
+        description="Updates the line and QoS profile. Invoices and payments are not created."
+      >
+        {pkgFor ? (
+          <form
+            className="grid gap-3"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              setActionError(null);
+              try {
+                await updateServiceFn({ data: { id: pkgFor.id, package_id: pkgId } });
+                setPkgFor(null);
+                setSecretNote(`Package updated for ${pkgFor.customer_name}.`);
+                await loadDesk(filters);
+              } catch (err) {
+                setActionError(err instanceof Error ? err.message : "Could not change package");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <Field label="Package">
+              <Select value={pkgId} onChange={(e) => setPkgId(e.target.value)}>
+                {packageOptions.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {p.access_method}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={busy}>
+                Save package
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setPkgFor(null)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Dialog>
+
+      <Dialog
+        open={Boolean(editFor)}
+        onOpenChange={(next) => {
+          if (!next) setEditFor(null);
+        }}
+        title="Edit service"
+        description="Updates credentials and network identity. Invoices are not changed."
+      >
+        {editFor ? (
+          <form
+            className="grid gap-3"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              setActionError(null);
+              try {
+                await updateServiceFn({
+                  data: {
+                    id: editFor.id,
+                    username: edit.username,
+                    static_ip: edit.static_ip,
+                    mac_address: edit.mac_address,
+                    notes: edit.notes,
+                  },
+                });
+                setEditFor(null);
+                setSecretNote(`Service updated for ${editFor.customer_name}.`);
+                await loadDesk(filters);
+              } catch (err) {
+                setActionError(err instanceof Error ? err.message : "Could not update service");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <Field label="Username">
+              <Input value={edit.username} onChange={(e) => setEdit({ ...edit, username: e.target.value })} />
+            </Field>
+            <Field label="Static IP">
+              <Input value={edit.static_ip} onChange={(e) => setEdit({ ...edit, static_ip: e.target.value })} />
+            </Field>
+            <Field label="MAC address">
+              <Input value={edit.mac_address} onChange={(e) => setEdit({ ...edit, mac_address: e.target.value })} />
+            </Field>
+            <Field label="Notes">
+              <Input value={edit.notes} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} />
+            </Field>
+            {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={busy}>
+                Save
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setEditFor(null)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
         ) : null}
       </Dialog>
 
       <TrafficDrawer
         open={Boolean(traffic)}
-        onOpenChange={(open) => {
-          if (!open) setTraffic(null);
+        onOpenChange={(next) => {
+          if (!next) setTraffic(null);
         }}
         customerId={traffic?.customer_id || ""}
         customerName={traffic?.customer_name}
@@ -553,13 +1071,13 @@ function ServicesPage() {
               e.preventDefault();
               if (!reassign.to) return;
               setBusy(true);
-              setError(null);
+              setActionError(null);
               try {
                 await reassignServiceFn({ data: { id: reassign.id, customer_id: reassign.to, confirm: true } });
                 setReassign(null);
-                await load();
+                await loadDesk(filters);
               } catch (err) {
-                setError(err instanceof Error ? err.message : "Could not reassign");
+                setActionError(err instanceof Error ? err.message : "Could not reassign");
               } finally {
                 setBusy(false);
               }
@@ -569,7 +1087,7 @@ function ServicesPage() {
               <Select value={reassign.to} onChange={(e) => setReassign({ ...reassign, to: e.target.value })} required>
                 <option value="">Select customer</option>
                 {customers
-                  .filter((c) => c.id !== services.find((row) => row.id === reassign.id)?.customer_id)
+                  .filter((c) => c.id !== rows.find((row) => row.id === reassign.id)?.customer_id)
                   .map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -577,7 +1095,7 @@ function ServicesPage() {
                   ))}
               </Select>
             </Field>
-            {error ? <p className="text-sm text-danger">{error}</p> : null}
+            {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
             <div className="flex flex-wrap gap-2">
               <Button type="submit" disabled={busy || !reassign.to}>
                 Confirm reassignment
@@ -604,14 +1122,14 @@ function ServicesPage() {
             onSubmit={async (e) => {
               e.preventDefault();
               setBusy(true);
-              setError(null);
+              setActionError(null);
               try {
                 await deleteServiceFn({ data: { id: drop.id, reason: drop.reason, confirm: true } });
                 setDrop(null);
                 setSecretNote("Service moved to the Recycle Bin. Customer kept. No invoice or message was sent.");
-                await load();
+                await loadDesk(filters);
               } catch (err) {
-                setError(err instanceof Error ? err.message : "Could not delete service");
+                setActionError(err instanceof Error ? err.message : "Could not delete service");
               } finally {
                 setBusy(false);
               }
@@ -619,14 +1137,9 @@ function ServicesPage() {
           >
             <p className="text-sm">{drop.label}</p>
             <Field label="Reason">
-              <Input
-                required
-                value={drop.reason}
-                onChange={(e) => setDrop({ ...drop, reason: e.target.value })}
-                placeholder="Why this line is being removed"
-              />
+              <Input required value={drop.reason} onChange={(e) => setDrop({ ...drop, reason: e.target.value })} placeholder="Why this line is being removed" />
             </Field>
-            {error ? <p className="text-sm text-danger">{error}</p> : null}
+            {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
             <div className="flex flex-wrap gap-2">
               <Button type="submit" variant="danger" disabled={busy || !drop.reason.trim()}>
                 Move to Recycle Bin
@@ -641,4 +1154,3 @@ function ServicesPage() {
     </div>
   );
 }
-

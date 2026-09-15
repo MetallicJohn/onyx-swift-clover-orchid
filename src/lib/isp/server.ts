@@ -264,10 +264,12 @@ export const createCustomer = createServerFn({ method: "POST" })
     assertPermission(workspace.role, "customers.manage");
     const name = data.name.trim();
     if (!name) throw new Error("Name is required");
+    const notes = (data.notes || "").trim().slice(0, 4000);
     await assertCustomerQuota(sql, workspace.tenantId);
+    const { assertUniqueCustomerPhone, ensureInitialPortalPassword, setPortalPassword } = await import("./portal");
+    await assertUniqueCustomerPhone(sql, workspace.tenantId, data.phone);
     const id = nid("cus");
     const accountNumber = await allocateAccountNumber(sql, workspace.tenantId, data.account_number);
-    const notes = (data.notes || "").trim().slice(0, 4000);
     try {
       await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status, account_number, notes)
         values (${id}, ${workspace.tenantId}, ${data.type || "individual"}, ${name}, ${data.phone.trim()}, ${data.email.trim()}, ${data.address.trim()}, 'active', ${accountNumber}, ${notes})`;
@@ -277,8 +279,9 @@ export const createCustomer = createServerFn({ method: "POST" })
       throw err;
     }
     if (data.portal_password) {
-      const { setPortalPassword } = await import("./portal");
       await setPortalPassword(sql, workspace.tenantId, id, data.portal_password);
+    } else {
+      await ensureInitialPortalPassword(sql, workspace.tenantId, id, data.phone);
     }
     if (data.tag_ids?.length) await setCustomerTags(sql, workspace.tenantId, id, data.tag_ids);
     await emit(sql, {
@@ -298,6 +301,8 @@ export const updateCustomer = createServerFn({ method: "POST" })
     assertPermission(workspace.role, "customers.manage");
     const name = data.name.trim();
     if (!name) throw new Error("Name is required");
+    const { assertUniqueCustomerPhone } = await import("./portal");
+    await assertUniqueCustomerPhone(sql, workspace.tenantId, data.phone, data.id);
     const notes = (data.notes ?? "").trim().slice(0, 4000);
     const rows = await sql<{ id: string; account_number: string }>`
       update customers
@@ -1017,8 +1022,19 @@ export const importCustomers = createServerFn({ method: "POST" })
       }
       const cid = nid("cus");
       const accountNumber = await allocateAccountNumber(sql, tid, undefined);
-      await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status, account_number)
-        values (${cid}, ${tid}, 'individual', ${row.name.trim()}, ${row.phone || ""}, ${row.email || ""}, ${row.address || ""}, 'active', ${accountNumber})`;
+      try {
+        const { assertUniqueCustomerPhone, ensureInitialPortalPassword } = await import("./portal");
+        if ((row.phone || "").replace(/\D/g, "").length >= 9) {
+          await assertUniqueCustomerPhone(sql, tid, row.phone);
+        }
+        await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status, account_number)
+          values (${cid}, ${tid}, 'individual', ${row.name.trim()}, ${row.phone || ""}, ${row.email || ""}, ${row.address || ""}, 'active', ${accountNumber})`;
+        if (row.phone) await ensureInitialPortalPassword(sql, tid, cid, row.phone);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`Row ${line}: ${msg}`);
+        continue;
+      }
       const sid = nid("svc");
       const periodEnd = new Date(Date.now() + 30 * 86400_000).toISOString();
       await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end)

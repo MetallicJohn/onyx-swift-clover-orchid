@@ -51,6 +51,12 @@ import { Route as PlatformSettingsRouteImport } from './routes/platform/settings
 import { Route as PlatformSubscriptionsRouteImport } from './routes/platform/subscriptions'
 import { Route as PlatformTenantsRouteImport } from './routes/platform/tenants'
 import { Route as PortalIndexRouteImport } from './routes/portal/index'
+import { Route as PortalInvoicesRouteImport } from './routes/portal/invoices'
+import { Route as PortalPayRouteImport } from './routes/portal/pay'
+import { Route as PortalPaymentsRouteImport } from './routes/portal/payments'
+import { Route as PortalProfileRouteImport } from './routes/portal/profile'
+import { Route as PortalServicesRouteImport } from './routes/portal/services'
+import { Route as PortalTicketsRouteImport } from './routes/portal/tickets'
 import { Route as ResellerIndexRouteImport } from './routes/reseller/index'
 import { Route as ApiAgentAckRouteImport } from './routes/api/agent/ack'
 import { Route as ApiAgentHeartbeatRouteImport } from './routes/api/agent/heartbeat'
@@ -68,6 +74,7 @@ import { Route as AppCustomersCustomerIdRouteImport } from './routes/app/custome
 import { Route as AppServicesServiceIdRouteImport } from './routes/app/services.$serviceId'
 import { Route as PlatformTenantsTenantIdRouteImport } from './routes/platform/tenants.$tenantId'
 import { Route as ApiV1CronBillingRouteImport } from './routes/api/v1/cron/billing'
+import { Route as ApiV1PortalActionRouteImport } from './routes/api/v1/portal/$action'
 import { Route as ApiWebhooksKopokopoSlugRouteImport } from './routes/api/webhooks/kopokopo/$slug'
 import { Route as ApiWebhooksMpesaSlugRouteImport } from './routes/api/webhooks/mpesa/$slug'
 import { Route as ApiV1RadiusActionSlugRouteImport } from './routes/api/v1/radius/$action.$slug'
@@ -282,6 +289,36 @@ const PortalIndexRoute = PortalIndexRouteImport.update({
   path: '/',
   getParentRoute: () => PortalRoute,
 } as any)
+const PortalInvoicesRoute = PortalInvoicesRouteImport.update({
+  id: '/invoices',
+  path: '/invoices',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalPayRoute = PortalPayRouteImport.update({
+  id: '/pay',
+  path: '/pay',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalPaymentsRoute = PortalPaymentsRouteImport.update({
+  id: '/payments',
+  path: '/payments',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalProfileRoute = PortalProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalServicesRoute = PortalServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => PortalRoute,
+} as any)
+const PortalTicketsRoute = PortalTicketsRouteImport.update({
+  id: '/tickets',
+  path: '/tickets',
+  getParentRoute: () => PortalRoute,
+} as any)
 const ResellerIndexRoute = ResellerIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -367,6 +404,11 @@ const ApiV1CronBillingRoute = ApiV1CronBillingRouteImport.update({
   path: '/api/v1/cron/billing',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1PortalActionRoute = ApiV1PortalActionRouteImport.update({
+  id: '/api/v1/portal/$action',
+  path: '/api/v1/portal/$action',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWebhooksKopokopoSlugRoute = ApiWebhooksKopokopoSlugRouteImport.update({
   id: '/api/webhooks/kopokopo/$slug',
   path: '/api/webhooks/kopokopo/$slug',
@@ -423,6 +465,12 @@ export interface FileRoutesByFullPath {
   '/platform/settings': typeof PlatformSettingsRoute
   '/platform/subscriptions': typeof PlatformSubscriptionsRoute
   '/platform/tenants': typeof PlatformTenantsRouteWithChildren
+  '/portal/invoices': typeof PortalInvoicesRoute
+  '/portal/pay': typeof PortalPayRoute
+  '/portal/payments': typeof PortalPaymentsRoute
+  '/portal/profile': typeof PortalProfileRoute
+  '/portal/services': typeof PortalServicesRoute
+  '/portal/tickets': typeof PortalTicketsRoute
   '/app/': typeof AppIndexRoute
   '/platform/': typeof PlatformIndexRoute
   '/portal/': typeof PortalIndexRoute
@@ -443,6 +491,7 @@ export interface FileRoutesByFullPath {
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
+  '/api/v1/portal/$action': typeof ApiV1PortalActionRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
@@ -483,6 +532,12 @@ export interface FileRoutesByTo {
   '/platform/settings': typeof PlatformSettingsRoute
   '/platform/subscriptions': typeof PlatformSubscriptionsRoute
   '/platform/tenants': typeof PlatformTenantsRouteWithChildren
+  '/portal/invoices': typeof PortalInvoicesRoute
+  '/portal/pay': typeof PortalPayRoute
+  '/portal/payments': typeof PortalPaymentsRoute
+  '/portal/profile': typeof PortalProfileRoute
+  '/portal/services': typeof PortalServicesRoute
+  '/portal/tickets': typeof PortalTicketsRoute
   '/app': typeof AppIndexRoute
   '/platform': typeof PlatformIndexRoute
   '/portal': typeof PortalIndexRoute
@@ -503,6 +558,7 @@ export interface FileRoutesByTo {
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
+  '/api/v1/portal/$action': typeof ApiV1PortalActionRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
@@ -548,6 +604,12 @@ export interface FileRoutesById {
   '/platform/settings': typeof PlatformSettingsRoute
   '/platform/subscriptions': typeof PlatformSubscriptionsRoute
   '/platform/tenants': typeof PlatformTenantsRouteWithChildren
+  '/portal/invoices': typeof PortalInvoicesRoute
+  '/portal/pay': typeof PortalPayRoute
+  '/portal/payments': typeof PortalPaymentsRoute
+  '/portal/profile': typeof PortalProfileRoute
+  '/portal/services': typeof PortalServicesRoute
+  '/portal/tickets': typeof PortalTicketsRoute
   '/app/': typeof AppIndexRoute
   '/platform/': typeof PlatformIndexRoute
   '/portal/': typeof PortalIndexRoute
@@ -568,6 +630,7 @@ export interface FileRoutesById {
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
+  '/api/v1/portal/$action': typeof ApiV1PortalActionRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
@@ -614,6 +677,12 @@ export interface FileRouteTypes {
     | '/platform/settings'
     | '/platform/subscriptions'
     | '/platform/tenants'
+    | '/portal/invoices'
+    | '/portal/pay'
+    | '/portal/payments'
+    | '/portal/profile'
+    | '/portal/services'
+    | '/portal/tickets'
     | '/app/'
     | '/platform/'
     | '/portal/'
@@ -634,6 +703,7 @@ export interface FileRouteTypes {
     | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
     | '/api/v1/cron/billing'
+    | '/api/v1/portal/$action'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
     | '/api/v1/radius/$action/$slug'
@@ -674,6 +744,12 @@ export interface FileRouteTypes {
     | '/platform/settings'
     | '/platform/subscriptions'
     | '/platform/tenants'
+    | '/portal/invoices'
+    | '/portal/pay'
+    | '/portal/payments'
+    | '/portal/profile'
+    | '/portal/services'
+    | '/portal/tickets'
     | '/app'
     | '/platform'
     | '/portal'
@@ -694,6 +770,7 @@ export interface FileRouteTypes {
     | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
     | '/api/v1/cron/billing'
+    | '/api/v1/portal/$action'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
     | '/api/v1/radius/$action/$slug'
@@ -738,6 +815,12 @@ export interface FileRouteTypes {
     | '/platform/settings'
     | '/platform/subscriptions'
     | '/platform/tenants'
+    | '/portal/invoices'
+    | '/portal/pay'
+    | '/portal/payments'
+    | '/portal/profile'
+    | '/portal/services'
+    | '/portal/tickets'
     | '/app/'
     | '/platform/'
     | '/portal/'
@@ -758,6 +841,7 @@ export interface FileRouteTypes {
     | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
     | '/api/v1/cron/billing'
+    | '/api/v1/portal/$action'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
     | '/api/v1/radius/$action/$slug'
@@ -789,6 +873,7 @@ export interface RootRouteChildren {
   ApiV1HealthRoute: typeof ApiV1HealthRoute
   ApiV1ReadyRoute: typeof ApiV1ReadyRoute
   ApiV1CronBillingRoute: typeof ApiV1CronBillingRoute
+  ApiV1PortalActionRoute: typeof ApiV1PortalActionRoute
   ApiWebhooksKopokopoSlugRoute: typeof ApiWebhooksKopokopoSlugRoute
   ApiWebhooksMpesaSlugRoute: typeof ApiWebhooksMpesaSlugRoute
   ApiV1RadiusActionSlugRoute: typeof ApiV1RadiusActionSlugRoute
@@ -1090,6 +1175,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalIndexRouteImport
       parentRoute: typeof PortalRoute
     }
+    '/portal/invoices': {
+      id: '/portal/invoices'
+      path: '/invoices'
+      fullPath: '/portal/invoices'
+      preLoaderRoute: typeof PortalInvoicesRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/pay': {
+      id: '/portal/pay'
+      path: '/pay'
+      fullPath: '/portal/pay'
+      preLoaderRoute: typeof PortalPayRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/payments': {
+      id: '/portal/payments'
+      path: '/payments'
+      fullPath: '/portal/payments'
+      preLoaderRoute: typeof PortalPaymentsRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/profile': {
+      id: '/portal/profile'
+      path: '/profile'
+      fullPath: '/portal/profile'
+      preLoaderRoute: typeof PortalProfileRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/services': {
+      id: '/portal/services'
+      path: '/services'
+      fullPath: '/portal/services'
+      preLoaderRoute: typeof PortalServicesRouteImport
+      parentRoute: typeof PortalRoute
+    }
+    '/portal/tickets': {
+      id: '/portal/tickets'
+      path: '/tickets'
+      fullPath: '/portal/tickets'
+      preLoaderRoute: typeof PortalTicketsRouteImport
+      parentRoute: typeof PortalRoute
+    }
     '/reseller/': {
       id: '/reseller/'
       path: '/'
@@ -1207,6 +1334,13 @@ declare module '@tanstack/react-router' {
       path: '/api/v1/cron/billing'
       fullPath: '/api/v1/cron/billing'
       preLoaderRoute: typeof ApiV1CronBillingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/portal/$action': {
+      id: '/api/v1/portal/$action'
+      path: '/api/v1/portal/$action'
+      fullPath: '/api/v1/portal/$action'
+      preLoaderRoute: typeof ApiV1PortalActionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/webhooks/kopokopo/$slug': {
@@ -1346,10 +1480,22 @@ const PlatformRouteWithChildren = PlatformRoute._addFileChildren(
 )
 
 interface PortalRouteChildren {
+  PortalInvoicesRoute: typeof PortalInvoicesRoute
+  PortalPayRoute: typeof PortalPayRoute
+  PortalPaymentsRoute: typeof PortalPaymentsRoute
+  PortalProfileRoute: typeof PortalProfileRoute
+  PortalServicesRoute: typeof PortalServicesRoute
+  PortalTicketsRoute: typeof PortalTicketsRoute
   PortalIndexRoute: typeof PortalIndexRoute
 }
 
 const PortalRouteChildren: PortalRouteChildren = {
+  PortalInvoicesRoute: PortalInvoicesRoute,
+  PortalPayRoute: PortalPayRoute,
+  PortalPaymentsRoute: PortalPaymentsRoute,
+  PortalProfileRoute: PortalProfileRoute,
+  PortalServicesRoute: PortalServicesRoute,
+  PortalTicketsRoute: PortalTicketsRoute,
   PortalIndexRoute: PortalIndexRoute,
 }
 
@@ -1394,6 +1540,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1HealthRoute: ApiV1HealthRoute,
   ApiV1ReadyRoute: ApiV1ReadyRoute,
   ApiV1CronBillingRoute: ApiV1CronBillingRoute,
+  ApiV1PortalActionRoute: ApiV1PortalActionRoute,
   ApiWebhooksKopokopoSlugRoute: ApiWebhooksKopokopoSlugRoute,
   ApiWebhooksMpesaSlugRoute: ApiWebhooksMpesaSlugRoute,
   ApiV1RadiusActionSlugRoute: ApiV1RadiusActionSlugRoute,

@@ -16,7 +16,7 @@ Product milestones are complete except the items you asked to skip.
 | Hotspot vouchers | Implemented and tested — no captive portal |
 | Notifications SMS/WA/inbox | Implemented and tested — email queued |
 | Tickets + field (console) | Implemented and tested — **native apps skipped** |
-| Customer portal | Implemented and tested |
+| Customer portal | Implemented and tested — phone login, customer-safe DTOs, STK poll; native apps not built |
 | GenieACS inventory + NBI adapter | Implemented and tested — **daemon is the compose sidecar, not in-process TR-069** |
 | Loyalty / referrals / resellers | Implemented and tested |
 | SaaS platform plans | Implemented — invoice-and-pay via M-Pesa, **Stripe skipped** |

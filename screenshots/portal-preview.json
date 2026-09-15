@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/portal",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "ISP Solutions",
+      "hasCanvas": false,
+      "bodyTextLen": 247,
+      "bodyTextHash": "63870574cc0e1dc2942f65ea8a802a6594656f5513a9bf4c3d70da97ec00c1c3",
+      "bodyTextPrefix": "IS ISP Solutions ISP Solutions Customer portal Sign in with the ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/portal-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "ISP Solutions",
+      "hasCanvas": false,
+      "bodyTextLen": 247,
+      "bodyTextHash": "63870574cc0e1dc2942f65ea8a802a6594656f5513a9bf4c3d70da97ec00c1c3",
+      "bodyTextPrefix": "IS ISP Solutions ISP Solutions Customer portal Sign in with the ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/portal-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/portal-preview.json"
+}

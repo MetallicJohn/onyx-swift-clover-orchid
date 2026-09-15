@@ -10,13 +10,13 @@ type Sql = {
 export async function openTicket(
   sql: Sql,
   tenantId: string,
-  data: { title: string; category: string; priority: string; customer_id?: string | null; assigned_to?: string },
+  data: { title: string; category: string; priority: string; customer_id?: string | null; assigned_to?: string; service_id?: string | null },
 ) {
   const id = nid("tkt");
   const due = dueAt(data.priority);
-  await sql`insert into tickets (id, tenant_id, customer_id, title, category, priority, status, assigned_to, due_at)
+  await sql`insert into tickets (id, tenant_id, customer_id, title, category, priority, status, assigned_to, due_at, service_id)
     values (${id}, ${tenantId}, ${data.customer_id || null}, ${data.title.trim()}, ${data.category}, ${data.priority},
-            ${data.assigned_to ? "assigned" : "new"}, ${data.assigned_to || ""}, ${due.toISOString()})`;
+            ${data.assigned_to ? "assigned" : "new"}, ${data.assigned_to || ""}, ${due.toISOString()}, ${data.service_id || null})`;
   await emit(sql, {
     type: "ticket.created",
     tenantId,
@@ -31,11 +31,20 @@ export async function assignTicket(sql: Sql, tenantId: string, ticketId: string,
   await emit(sql, { type: "ticket.updated", tenantId, payload: { ticket_id: ticketId, status: "assigned", assigned_to: userId } });
 }
 
-export async function commentTicket(sql: Sql, tenantId: string, ticketId: string, authorId: string, body: string) {
+export async function commentTicket(
+  sql: Sql,
+  tenantId: string,
+  ticketId: string,
+  authorId: string,
+  body: string,
+  opts?: { internal?: boolean; authorKind?: "staff" | "customer" },
+) {
   const text = body.trim();
   if (!text) throw new Error("Comment required");
-  await sql`insert into ticket_comments (id, tenant_id, ticket_id, author_id, body)
-    values (${nid("tcm")}, ${tenantId}, ${ticketId}, ${authorId}, ${text})`;
+  const internal = opts?.internal === true;
+  const kind = opts?.authorKind === "customer" ? "customer" : "staff";
+  await sql`insert into ticket_comments (id, tenant_id, ticket_id, author_id, body, is_internal, author_kind)
+    values (${nid("tcm")}, ${tenantId}, ${ticketId}, ${authorId}, ${text}, ${internal}, ${kind})`;
 }
 
 export async function listStaff(sql: Sql, tenantId: string) {
