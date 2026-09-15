@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/portal?slug=imani",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "ISP Solutions",
+      "hasCanvas": false,
+      "bodyTextLen": 109,
+      "bodyTextHash": "c9a0f0019114ad0e21ba13abcfe1a4abccf28c5c3896e4a21c6820d768849508",
+      "bodyTextPrefix": "IS ISP Solutions ISP Solutions Customer portal Password SMS code",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/portal-no-slug.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "ISP Solutions",
+      "hasCanvas": false,
+      "bodyTextLen": 109,
+      "bodyTextHash": "c9a0f0019114ad0e21ba13abcfe1a4abccf28c5c3896e4a21c6820d768849508",
+      "bodyTextPrefix": "IS ISP Solutions ISP Solutions Customer portal Password SMS code",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/portal-no-slug-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/portal-no-slug.json"
+}

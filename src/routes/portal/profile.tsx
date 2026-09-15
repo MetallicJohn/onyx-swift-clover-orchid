@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { accountStatusLabel } from "@/lib/isp/customer-portal-format";
 import { portalChangePassword } from "@/lib/isp/server-portal";
-import { usePortal } from "../portal";
+import { usePortal } from "@/lib/isp/portal-context";
 
 export const Route = createFileRoute("/portal/profile")({ component: PortalProfile });
 

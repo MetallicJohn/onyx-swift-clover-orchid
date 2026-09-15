@@ -17,8 +17,10 @@ import {
   ensureInitialPortalPassword,
   portalContext,
   portalPasswordLogin,
+  resolvePortalNetwork,
   setPortalPassword,
 } from "./portal.ts";
+import { portalSlugFromSearch, slugFromPortalHost } from "./portal-network.ts";
 import {
   customerSafeText,
   enteredMatchesPhone,
@@ -48,6 +50,20 @@ function assertSafe(payload: unknown) {
     assert.equal(lower.includes(needle), false, `leaked ${needle}`);
   }
 }
+
+test("portal host and link pick the ISP without a typed slug", () => {
+  const tenants = [
+    { slug: "imani", public_base_url: "https://portal.imani.ke" },
+    { slug: "northline", public_base_url: "https://northline.example" },
+  ];
+  assert.equal(slugFromPortalHost("portal.imani.ke", tenants), "imani");
+  assert.equal(slugFromPortalHost("www.portal.imani.ke", tenants), "imani");
+  assert.equal(slugFromPortalHost("imani.ispsolutions.app", tenants), "imani");
+  assert.equal(slugFromPortalHost("portal.ispsolutions.app", tenants), null);
+  assert.equal(slugFromPortalHost("grok.com", tenants), null);
+  assert.equal(portalSlugFromSearch("?slug=imani"), "imani");
+  assert.equal(portalSlugFromSearch("isp=northline"), "northline");
+});
 
 test("phone variants match the registered number", () => {
   assert.equal(enteredMatchesPhone("0712000111", "0712000111"), true);
@@ -98,6 +114,27 @@ test("portal invoice sanitizer strips credentials and masks receipts", () => {
   assert.ok(!JSON.stringify(safe).includes("QKSECRET99"));
   assert.ok(!JSON.stringify(safe).toLowerCase().includes("pppoe"));
   assert.ok(!JSON.stringify(safe).toLowerCase().includes("mbps"));
+});
+
+test("portal network resolves from the ISP domain", async () => {
+  const { sql, close } = await openTestDb();
+  try {
+    const owner = await createCredentialAccount(sql, {
+      email: "host-owner@isp.test",
+      password: "OwnerPass1",
+      name: "Owner",
+    });
+    const ws = await provisionTenant(sql, owner.id, { ispName: "HostNet" });
+    await sql`update tenants set public_base_url = 'https://portal.hostnet.ke' where id = ${ws.tenantId}`;
+    const byHost = await resolvePortalNetwork(sql, { host: "portal.hostnet.ke" });
+    assert.equal(byHost?.slug, ws.slug);
+    assert.equal(byHost?.source, "host");
+    const bySlug = await resolvePortalNetwork(sql, { slug: ws.slug, host: "unrelated.example" });
+    assert.equal(bySlug?.source, "slug");
+    assert.equal(await resolvePortalNetwork(sql, { host: "other.ke" }), null);
+  } finally {
+    await close();
+  }
 });
 
 test("customer portal phone login, safe DTO, STK pending, ticket privacy", async () => {

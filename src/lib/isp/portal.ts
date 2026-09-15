@@ -9,6 +9,7 @@ import {
 import { deliverSms, getMessagingSettings } from "./messaging";
 import { newOtp } from "./otp";
 import { applyRls } from "./rls";
+import { slugFromPortalHost } from "./portal-network.ts";
 
 export { newOtp } from "./otp";
 
@@ -20,9 +21,34 @@ type Sql = {
 export async function findTenantBySlug(sql: Sql, slug: string) {
   await applyRls(sql, { bypass: true });
   const [ten] = await sql<{ id: string; name: string }>`select id, name from tenants where slug = ${slug.trim()}`;
-  if (!ten) throw new Error("Unknown network. Check the ISP slug.");
+  if (!ten) throw new Error("Unknown network");
   await applyRls(sql, { tenantId: ten.id, bypass: false });
   return ten;
+}
+
+export async function resolvePortalNetwork(
+  sql: Sql,
+  opts: { host?: string; slug?: string },
+): Promise<{ slug: string; name: string; source: "slug" | "host" } | null> {
+  const asked = (opts.slug || "").trim().toLowerCase();
+  await applyRls(sql, { bypass: true });
+  try {
+    if (asked) {
+      const [named] = await sql<{ slug: string; name: string }>`
+        select slug, name from tenants where lower(slug) = ${asked}`;
+      if (named) return { slug: named.slug, name: named.name, source: "slug" };
+    }
+    const host = (opts.host || "").trim();
+    if (!host) return null;
+    const rows = await sql<{ slug: string; name: string; public_base_url: string }>`
+      select slug, name, coalesce(public_base_url, '') as public_base_url from tenants`;
+    const slug = slugFromPortalHost(host, rows);
+    if (!slug) return null;
+    const ten = rows.find((r) => r.slug === slug);
+    return ten ? { slug: ten.slug, name: ten.name, source: "host" } : null;
+  } finally {
+    await applyRls(sql, { bypass: false, tenantId: "" });
+  }
 }
 
 export async function findCustomerByPhone(sql: Sql, tenantId: string, phone: string) {

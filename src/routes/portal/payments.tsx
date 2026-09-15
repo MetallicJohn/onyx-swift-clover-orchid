@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import type { PortalPaymentPage } from "@/lib/isp/customer-portal-dto";
 import { getPortalPayments } from "@/lib/isp/server-portal";
-import { usePortal } from "../portal";
+import { usePortal } from "@/lib/isp/portal-context";
 
 export const Route = createFileRoute("/portal/payments")({ component: PortalPayments });
 

@@ -24,6 +24,7 @@ import {
   issuePortalOtp,
   portalContext,
   portalPasswordLogin,
+  resolvePortalNetwork,
   revokePortalSession,
   verifyPortalOtp,
 } from "@/lib/isp/portal";
@@ -55,8 +56,20 @@ async function handlePortalApi(action: string, request: Request, method: string)
     const url = new URL(request.url);
     const sql = await getSql();
 
+    if (action === "network" && method === "POST") {
+      const found = await resolvePortalNetwork(sql, {
+        host: String(body.host || url.hostname || ""),
+        slug: String(body.slug || url.searchParams.get("slug") || ""),
+      });
+      if (!found) return json({ error: "Unknown network" }, 404);
+      return json({ version: PORTAL_API_VERSION, slug: found.slug, name: found.name, source: found.source });
+    }
     if (action === "session" && method === "POST") {
-      const slug = String(body.slug || "");
+      let slug = String(body.slug || "");
+      if (!slug) {
+        const found = await resolvePortalNetwork(sql, { host: String(body.host || url.hostname || "") });
+        slug = found?.slug || "";
+      }
       const phone = String(body.phone || "");
       const password = String(body.password || "");
       const lim = rateLimit(`portal-api:${slug}:${phone}`, 12, 15 * 60_000);

@@ -3,7 +3,7 @@ import { EmptyState, ErrorBanner, InvoiceRow, PortalCard } from "@/components/is
 import { Button } from "@/components/ui/button";
 import { downloadPdf, printPdf } from "@/lib/isp/pdf-client";
 import { portalInvoicePdf, portalStatementPdf } from "@/lib/isp/server-docs";
-import { usePortal } from "../portal";
+import { usePortal } from "@/lib/isp/portal-context";
 import { useState } from "react";
 
 export const Route = createFileRoute("/portal/invoices")({ component: PortalInvoices });

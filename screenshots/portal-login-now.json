@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/portal",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "ISP Solutions",
+      "hasCanvas": false,
+      "bodyTextLen": 128,
+      "bodyTextHash": "5bf19e426ef0c53ea4745eba9c8977cdca3afac7fcb53da7d7ec225c968470f7",
+      "bodyTextPrefix": "IS ISP Solutions ISP Solutions Customer portal Password SMS code",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/portal-login-now.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "ISP Solutions",
+      "hasCanvas": false,
+      "bodyTextLen": 128,
+      "bodyTextHash": "5bf19e426ef0c53ea4745eba9c8977cdca3afac7fcb53da7d7ec225c968470f7",
+      "bodyTextPrefix": "IS ISP Solutions ISP Solutions Customer portal Password SMS code",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/portal-login-now-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/portal-login-now.json"
+}

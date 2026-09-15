@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { BrandMark } from "@/components/isp/brand-mark";
 import { EmptyState, PasswordBanner, PortalCard, StatTile, SupportLine } from "@/components/isp/portal-ui";
@@ -9,32 +9,141 @@ import { usePublicTheme } from "@/components/theme-provider";
 import { APP_NAME } from "@/lib/brand";
 import { accountStatusLabel } from "@/lib/isp/customer-portal-format";
 import { formatDate } from "@/lib/isp/display";
-import { readPortalSession, readPortalSlug, writePortalSession } from "@/lib/isp/portal-session";
+import { portalSlugFromSearch } from "@/lib/isp/portal-network";
+import {
+  readPasswordOfferDismissed,
+  readPortalSlug,
+  writePasswordOfferDismissed,
+} from "@/lib/isp/portal-session";
 import {
   completePortalPasswordResetFn,
   portalChangePassword,
   portalPasswordSignIn,
   requestPortalOtp,
+  resolvePortalNetworkFn,
   verifyPortalLogin,
 } from "@/lib/isp/server-portal";
 import { kes } from "@/lib/utils";
-import { usePortal } from "../portal";
+import { usePortal, usePortalGate, usePortalSession } from "@/lib/isp/portal-context";
 
 export const Route = createFileRoute("/portal/")({
+  validateSearch: (search: Record<string, unknown>): { slug?: string; isp?: string } => ({
+    slug: typeof search.slug === "string" && search.slug ? search.slug : undefined,
+    isp: typeof search.isp === "string" && search.isp ? search.isp : undefined,
+  }),
   component: PortalIndex,
 });
 
 function PortalIndex() {
-  const session = readPortalSession();
-  if (session?.token) return <Dashboard />;
-  return <PortalLogin />;
+  const session = usePortalSession();
+  const [skipPw, setSkipPw] = useState(readPasswordOfferDismissed);
+
+  if (!session) return <PortalLogin />;
+
+  if (session.home.customer.using_initial_password && !skipPw) {
+    return (
+      <FirstLoginPassword
+        token={session.token}
+        phone={session.home.customer.phone}
+        onSkip={() => {
+          writePasswordOfferDismissed();
+          setSkipPw(true);
+        }}
+        onSaved={async () => {
+          writePasswordOfferDismissed();
+          await session.refresh();
+          setSkipPw(true);
+        }}
+      />
+    );
+  }
+
+  return <Dashboard />;
+}
+
+function FirstLoginPassword({
+  token,
+  phone,
+  onSkip,
+  onSaved,
+}: {
+  token: string;
+  phone: string;
+  onSkip: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <div className="mx-auto max-w-md py-6">
+      <h1 className="text-2xl font-semibold tracking-tight">Set a stronger password?</h1>
+      <p className="mt-2 text-sm text-muted">
+        You signed in with your phone number as the default password. Changing it is recommended, not required. You
+        can skip this and change it later under Profile.
+      </p>
+      <form
+        className="mt-6 grid gap-3"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setError(null);
+          if (password !== confirm) {
+            setError("Passwords do not match");
+            return;
+          }
+          setBusy(true);
+          try {
+            await portalChangePassword({ data: { token, current: phone, password } });
+            await onSaved();
+          } catch (ex) {
+            setError(ex instanceof Error ? ex.message : "Could not update password");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <Field label="New password">
+          <Input
+            type="password"
+            required
+            minLength={8}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+          />
+        </Field>
+        <Field label="Confirm">
+          <Input
+            type="password"
+            required
+            minLength={8}
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            autoComplete="new-password"
+          />
+        </Field>
+        {error ? <p className="text-sm text-danger">{error}</p> : null}
+        <Button type="submit" disabled={busy}>
+          Save password and continue
+        </Button>
+        <Button type="button" variant="ghost" onClick={onSkip} disabled={busy}>
+          Skip for now
+        </Button>
+      </form>
+    </div>
+  );
 }
 
 function PortalLogin() {
-  const initialSlug =
-    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("slug") || readPortalSlug() : readPortalSlug();
-  const [slug, setSlug] = useState(initialSlug);
-  const [debounced, setDebounced] = useState(slug);
+  const { establish } = usePortalGate();
+  const searchStr = useRouterState({ select: (s) => s.location.searchStr });
+  const fromLink = portalSlugFromSearch(searchStr);
+  const [slug, setSlug] = useState(fromLink);
+  const [debounced, setDebounced] = useState(fromLink);
+  const [askNetwork, setAskNetwork] = useState(!fromLink);
+  const [networkLocked, setNetworkLocked] = useState(Boolean(fromLink));
   const { branding } = usePublicTheme(debounced, "portal");
   const brandName = branding?.displayName || APP_NAME;
   const [phone, setPhone] = useState("");
@@ -45,73 +154,30 @@ function PortalLogin() {
   const [hint, setHint] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [offerPassword, setOfferPassword] = useState(false);
-  const [token, setToken] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(slug.trim()), 400);
     return () => clearTimeout(t);
   }, [slug]);
 
-  function goHome() {
-    window.location.assign("/portal/");
-  }
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const fromLink = portalSlugFromSearch(window.location.search);
+    void resolvePortalNetworkFn({
+      data: { host: window.location.host, slug: fromLink || readPortalSlug() },
+    })
+      .then((found) => {
+        if (!found?.slug) return;
+        setSlug(found.slug);
+        setDebounced(found.slug);
+        setAskNetwork(false);
+        if (found.source === "host" || fromLink) setNetworkLocked(true);
+      })
+      .catch(() => undefined);
+  }, []);
 
-  async function opened(nextToken: string, usingInitial?: boolean) {
-    writePortalSession({ token: nextToken, slug: slug.trim() });
-    if (usingInitial) {
-      setToken(nextToken);
-      setPassword("");
-      setConfirm("");
-      setOfferPassword(true);
-      return;
-    }
-    goHome();
-  }
-
-  if (offerPassword) {
-    return (
-      <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-4 py-12">
-        <h1 className="text-2xl font-semibold tracking-tight">Set a stronger password?</h1>
-        <p className="mt-2 text-sm text-muted">
-          You signed in with your phone number as the default password. Changing it is recommended, not required. You can skip this and change it later under Profile.
-        </p>
-        <form
-          className="mt-6 grid gap-3"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setError(null);
-            if (password !== confirm) {
-              setError("Passwords do not match");
-              return;
-            }
-            setBusy(true);
-            try {
-              await portalChangePassword({ data: { token, current: phone, password } });
-              goHome();
-            } catch (ex) {
-              setError(ex instanceof Error ? ex.message : "Could not update password");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <Field label="New password">
-            <Input type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-          </Field>
-          <Field label="Confirm">
-            <Input type="password" required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
-          </Field>
-          {error ? <p className="text-sm text-danger">{error}</p> : null}
-          <Button type="submit" disabled={busy}>
-            Save password and continue
-          </Button>
-          <Button type="button" variant="ghost" onClick={goHome}>
-            Skip for now
-          </Button>
-        </form>
-      </main>
-    );
+  async function opened(nextToken: string) {
+    await establish(nextToken, slug.trim());
   }
 
   return (
@@ -120,25 +186,26 @@ function PortalLogin() {
         <BrandMark name={brandName} logo={branding?.logo} size={20} /> {brandName}
       </Link>
       <h1 className="text-2xl font-semibold tracking-tight">Customer portal</h1>
-      <p className="mt-2 text-sm text-muted">
-        Sign in with the phone on your account. The first password is that same phone number. Changing it is recommended, not required.
-      </p>
-      <div className="mt-5 flex gap-2">
-        {(["password", "otp", "reset"] as const).map((m) => (
-          <Button
-            key={m}
-            size="sm"
-            variant={mode === m ? "default" : "secondary"}
-            onClick={() => {
-              setMode(m);
-              setError(null);
-              setHint(null);
-            }}
-          >
-            {m === "password" ? "Password" : m === "otp" ? "SMS code" : "Reset"}
-          </Button>
-        ))}
-      </div>
+      {mode !== "reset" ? (
+        <div className="mt-5 flex gap-2">
+          {(["password", "otp"] as const).map((m) => (
+            <Button
+              key={m}
+              size="sm"
+              variant={mode === m ? "default" : "secondary"}
+              onClick={() => {
+                setMode(m);
+                setError(null);
+                setHint(null);
+              }}
+            >
+              {m === "password" ? "Password" : "SMS code"}
+            </Button>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-muted">We’ll send a code to this phone so you can set a new password.</p>
+      )}
       <form
         className="mt-6 grid gap-3"
         onSubmit={async (e) => {
@@ -146,9 +213,10 @@ function PortalLogin() {
           setError(null);
           setBusy(true);
           try {
+            if (!slug.trim()) throw new Error("Open the portal link from your ISP.");
             if (mode === "password") {
               const r = await portalPasswordSignIn({ data: { slug, phone, password } });
-              await opened(r.token, r.using_initial_password);
+              await opened(r.token);
               return;
             }
             if (mode === "otp") {
@@ -157,7 +225,7 @@ function PortalLogin() {
                 setHint(r.hint);
               } else {
                 const r = await verifyPortalLogin({ data: { slug, phone, code } });
-                await opened(r.token, r.using_initial_password);
+                await opened(r.token);
               }
               return;
             }
@@ -168,7 +236,7 @@ function PortalLogin() {
             }
             if (password !== confirm) throw new Error("Passwords do not match");
             const r = await completePortalPasswordResetFn({ data: { slug, phone, code, password } });
-            await opened(r.token, false);
+            await opened(r.token);
           } catch (ex) {
             setError(ex instanceof Error ? ex.message : "Could not sign in");
           } finally {
@@ -176,10 +244,18 @@ function PortalLogin() {
           }
         }}
       >
-        <Field label="Network">
-          <Input required placeholder="your ISP slug" value={slug} onChange={(e) => setSlug(e.target.value)} autoComplete="organization" />
-        </Field>
-        <Field label="Phone number (username)">
+        {askNetwork ? (
+          <Field label="Network">
+            <Input
+              required
+              placeholder="Network code from your ISP"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              autoComplete="organization"
+            />
+          </Field>
+        ) : null}
+        <Field label="Phone number">
           <Input required placeholder="0712…" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="username" inputMode="tel" />
         </Field>
         {mode === "password" ? (
@@ -190,7 +266,6 @@ function PortalLogin() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
-              placeholder="Your phone number, unless you changed it"
             />
           </Field>
         ) : null}
@@ -211,9 +286,48 @@ function PortalLogin() {
           </>
         ) : null}
         {error ? <p className="text-sm text-danger">{error}</p> : null}
-        <Button type="submit" disabled={busy}>
-          {mode === "password" ? "Sign in" : !hint ? "Send code" : mode === "reset" ? "Save password and open" : "Open account"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <Button type="submit" disabled={busy}>
+            {mode === "password" ? "Sign in" : !hint ? "Send code" : mode === "reset" ? "Save password and open" : "Open account"}
+          </Button>
+          {mode === "reset" ? (
+            <button
+              type="button"
+              className="text-sm text-muted hover:text-fg"
+              onClick={() => {
+                setMode("password");
+                setError(null);
+                setHint(null);
+              }}
+            >
+              Back to sign in
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="text-sm text-muted hover:text-fg"
+              onClick={() => {
+                setMode("reset");
+                setError(null);
+                setHint(null);
+                setPassword("");
+                setConfirm("");
+                setCode("");
+              }}
+            >
+              Reset password
+            </button>
+          )}
+        </div>
+        {!askNetwork && !networkLocked ? (
+          <button
+            type="button"
+            className="justify-self-start text-xs text-subtle hover:text-muted"
+            onClick={() => setAskNetwork(true)}
+          >
+            Wrong network?
+          </button>
+        ) : null}
       </form>
     </main>
   );

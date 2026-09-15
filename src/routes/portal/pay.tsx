@@ -7,7 +7,7 @@ import { Field, Input, Select } from "@/components/ui/input";
 import type { PortalStkPoll } from "@/lib/isp/customer-portal-dto";
 import { portalPay, portalPayStatus } from "@/lib/isp/server-portal";
 import { kes } from "@/lib/utils";
-import { usePortal } from "../portal";
+import { usePortal } from "@/lib/isp/portal-context";
 
 export const Route = createFileRoute("/portal/pay")({
   component: PortalPay,

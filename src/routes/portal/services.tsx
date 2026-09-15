@@ -4,7 +4,7 @@ import { EmptyState, ErrorBanner, PortalCard, ServiceCard } from "@/components/i
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
 import { portalRequestGrace } from "@/lib/isp/server-portal";
-import { usePortal } from "../portal";
+import { usePortal } from "@/lib/isp/portal-context";
 
 export const Route = createFileRoute("/portal/services")({ component: PortalServices });
 

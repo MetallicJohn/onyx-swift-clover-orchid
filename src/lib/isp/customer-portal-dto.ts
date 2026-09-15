@@ -4,6 +4,7 @@ export const PORTAL_API_VERSION = "v1" as const;
 
 /** Versioned customer API at /api/v1/portal/:action — shared by the web portal and future Android/iOS clients. */
 export const PORTAL_API_ACTIONS = [
+  "network",
   "session",
   "otp",
   "otp-verify",

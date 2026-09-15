@@ -7,7 +7,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { PORTAL_TICKET_CATEGORIES } from "@/lib/isp/customer-portal-dto";
 import { formatDateTime } from "@/lib/isp/display";
 import { portalOpenTicket, portalReplyTicket } from "@/lib/isp/server-portal";
-import { usePortal } from "../portal";
+import { usePortal } from "@/lib/isp/portal-context";
 
 export const Route = createFileRoute("/portal/tickets")({ component: PortalTickets });
 

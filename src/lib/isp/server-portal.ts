@@ -20,6 +20,7 @@ import {
   issuePortalOtp,
   portalContext,
   portalPasswordLogin,
+  resolvePortalNetwork,
   revokePortalSession,
   verifyPortalOtp,
 } from "./portal";
@@ -30,6 +31,13 @@ function wrap<T>(fn: () => Promise<T>) {
     throw new Error(publicErrorMessage(err));
   });
 }
+
+export const resolvePortalNetworkFn = createServerFn({ method: "POST" })
+  .validator((d: { host?: string; slug?: string }) => d)
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    return wrap(() => resolvePortalNetwork(sql, { host: data.host, slug: data.slug }));
+  });
 
 export const portalPasswordSignIn = createServerFn({ method: "POST" })
   .validator((d: { slug: string; phone: string; password: string }) => d)
