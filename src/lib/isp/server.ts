@@ -712,12 +712,19 @@ export const listBilling = createServerFn({ method: "GET" })
       select i.id, i.customer_id, c.name as customer_name, i.number, i.amount_kes,
              i.subtotal_kes, i.tax_kes, i.tax_rate, i.paid_kes,
              case when i.status = 'paid' then 0 else greatest(0, i.amount_kes - i.paid_kes) end as remaining_kes,
-             i.status, i.due_date::text as due_date, i.issued_at::text as issued_at, i.notes
-      from invoices i join customers c on c.id = i.customer_id
+             i.status, i.due_date::text as due_date, i.issued_at::text as issued_at, i.notes,
+             coalesce(i.service_id, '') as service_id,
+             coalesce(s.account_number, '') as service_account,
+             coalesce(nullif(s.name, ''), p.name, '') as service_name
+      from invoices i
+      join customers c on c.id = i.customer_id
+      left join services s on s.id = i.service_id and s.tenant_id = i.tenant_id
+      left join packages p on p.id = s.package_id
       where i.tenant_id = ${tid}
       order by i.issued_at desc`;
     const payments = await sql<PaymentRow>`
-      select p.id, p.customer_id, c.name as customer_name, p.invoice_id, p.provider, p.amount_kes, p.reference, p.status, p.paid_at::text as paid_at
+      select p.id, p.customer_id, c.name as customer_name, p.invoice_id, p.provider, p.amount_kes, p.reference, p.status, p.paid_at::text as paid_at,
+             coalesce(p.service_id, '') as service_id
       from payments p join customers c on c.id = p.customer_id
       where p.tenant_id = ${tid}
       order by p.paid_at desc`;
@@ -731,8 +738,11 @@ export const listBilling = createServerFn({ method: "GET" })
       package_name: string;
       price_kes: number;
       billing_interval: string;
+      account_number: string;
+      service_name: string;
     }>`
-      select s.customer_id, p.id as package_id, s.id as service_id, p.name as package_name, p.price_kes, p.billing_interval
+      select s.customer_id, p.id as package_id, s.id as service_id, p.name as package_name, p.price_kes, p.billing_interval,
+             coalesce(s.account_number, '') as account_number, coalesce(s.name, '') as service_name
       from services s join packages p on p.id = s.package_id
       where s.tenant_id = ${tid} and s.deleted_at is null and s.status in ('active','grace','suspended','pending')
       order by p.price_kes`;

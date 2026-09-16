@@ -25,6 +25,7 @@ import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAcsRouteImport } from './routes/app/acs'
 import { Route as AppAdminRouteImport } from './routes/app/admin'
 import { Route as AppAiRouteImport } from './routes/app/ai'
+import { Route as AppBillingRouteImport } from './routes/app/billing'
 import { Route as AppCustomersRouteImport } from './routes/app/customers'
 import { Route as AppFieldRouteImport } from './routes/app/field'
 import { Route as AppHotspotRouteImport } from './routes/app/hotspot'
@@ -164,6 +165,11 @@ const AppAdminRoute = AppAdminRouteImport.update({
 const AppAiRoute = AppAiRouteImport.update({
   id: '/ai',
   path: '/ai',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppBillingRoute = AppBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCustomersRoute = AppCustomersRouteImport.update({
@@ -486,6 +492,7 @@ export interface FileRoutesByFullPath {
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
+  '/app/billing': typeof AppBillingRoute
   '/app/customers': typeof AppCustomersRouteWithChildren
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
@@ -560,6 +567,7 @@ export interface FileRoutesByTo {
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
+  '/app/billing': typeof AppBillingRoute
   '/app/customers': typeof AppCustomersRouteWithChildren
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
@@ -639,6 +647,7 @@ export interface FileRoutesById {
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
+  '/app/billing': typeof AppBillingRoute
   '/app/customers': typeof AppCustomersRouteWithChildren
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
@@ -719,6 +728,7 @@ export interface FileRouteTypes {
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
+    | '/app/billing'
     | '/app/customers'
     | '/app/field'
     | '/app/hotspot'
@@ -793,6 +803,7 @@ export interface FileRouteTypes {
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
+    | '/app/billing'
     | '/app/customers'
     | '/app/field'
     | '/app/hotspot'
@@ -871,6 +882,7 @@ export interface FileRouteTypes {
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
+    | '/app/billing'
     | '/app/customers'
     | '/app/field'
     | '/app/hotspot'
@@ -1086,6 +1098,13 @@ declare module '@tanstack/react-router' {
       path: '/ai'
       fullPath: '/app/ai'
       preLoaderRoute: typeof AppAiRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/billing': {
+      id: '/app/billing'
+      path: '/billing'
+      fullPath: '/app/billing'
+      preLoaderRoute: typeof AppBillingRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/customers': {
@@ -1539,6 +1558,7 @@ interface AppRouteChildren {
   AppAcsRoute: typeof AppAcsRoute
   AppAdminRoute: typeof AppAdminRoute
   AppAiRoute: typeof AppAiRoute
+  AppBillingRoute: typeof AppBillingRoute
   AppCustomersRoute: typeof AppCustomersRouteWithChildren
   AppFieldRoute: typeof AppFieldRoute
   AppHotspotRoute: typeof AppHotspotRoute
@@ -1561,6 +1581,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAcsRoute: AppAcsRoute,
   AppAdminRoute: AppAdminRoute,
   AppAiRoute: AppAiRoute,
+  AppBillingRoute: AppBillingRoute,
   AppCustomersRoute: AppCustomersRouteWithChildren,
   AppFieldRoute: AppFieldRoute,
   AppHotspotRoute: AppHotspotRoute,
