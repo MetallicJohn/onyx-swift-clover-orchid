@@ -1,8 +1,9 @@
 import { provisionServiceAccess } from "./access.ts";
 import { intervalDays } from "./billing.ts";
+import { nairobiDate } from "./empty-tenant.ts";
 import {
   activeGrant,
-  consumeActiveGrantsForCustomer,
+  consumeActiveGrantsForService,
   ensureSystemGrant,
   expireDueGrants,
   notifyNearingGrants,
@@ -39,7 +40,7 @@ export async function customerHasOverdue(
   sql: Sql,
   tenantId: string,
   customerId: string,
-  today = new Date().toISOString().slice(0, 10),
+  today = nairobiDate(),
 ) {
   const rows = await sql<{ id: string }>`
     select id from invoices
@@ -48,6 +49,58 @@ export async function customerHasOverdue(
       and due_date::text < ${today}
     limit 1`;
   return Boolean(rows[0]);
+}
+
+export async function serviceHasOverdue(
+  sql: Sql,
+  tenantId: string,
+  serviceId: string,
+  customerId: string,
+  today = nairobiDate(),
+) {
+  const rows = await sql<{ id: string }>`
+    select i.id from invoices i
+    where i.tenant_id = ${tenantId} and i.customer_id = ${customerId}
+      and i.status in ('issued','due','overdue','partial')
+      and i.due_date::text < ${today}
+      and (
+        i.service_id = ${serviceId}
+        or exists (
+          select 1 from invoice_items ii
+          where ii.invoice_id = i.id and ii.tenant_id = i.tenant_id and ii.service_id = ${serviceId}
+        )
+        or (
+          (i.service_id is null or i.service_id = '')
+          and not exists (
+            select 1 from invoice_items ii
+            where ii.invoice_id = i.id and ii.tenant_id = i.tenant_id
+              and ii.service_id is not null and ii.service_id <> ''
+          )
+        )
+      )
+    limit 1`;
+  return Boolean(rows[0]);
+}
+
+async function invoiceServiceIds(
+  sql: Sql,
+  tenantId: string,
+  invoiceId: string,
+  customerId: string,
+  serviceId: string | null,
+) {
+  if (serviceId) return [serviceId];
+  const items = await sql<{ service_id: string }>`
+    select distinct service_id from invoice_items
+    where invoice_id = ${invoiceId} and tenant_id = ${tenantId}
+      and service_id is not null and service_id <> ''`;
+  if (items.length) return items.map((i) => i.service_id);
+  const svcs = await sql<{ id: string }>`
+    select id from services
+    where tenant_id = ${tenantId} and customer_id = ${customerId}
+      and deleted_at is null and status in ('active','grace')`;
+  if (svcs.length === 1) return [svcs[0]!.id];
+  return [];
 }
 
 async function notify(
@@ -79,16 +132,32 @@ async function setServiceState(
   await provisionServiceAccess(sql, tenantId, serviceId);
 }
 
-export async function grantPaidPeriod(sql: Sql, tenantId: string, customerId: string, now = new Date()) {
-  const svcs = await sql<{
-    id: string;
-    period_end: string | null;
-    billing_interval: string;
-    validity_hours: number;
-  }>`select s.id, s.period_end::text as period_end, p.billing_interval, p.validity_hours
-     from services s join packages p on p.id = s.package_id
-     where s.tenant_id = ${tenantId} and s.customer_id = ${customerId}
-       and s.deleted_at is null and s.status <> 'terminated'`;
+export async function grantPaidPeriod(
+  sql: Sql,
+  tenantId: string,
+  customerId: string,
+  now = new Date(),
+  serviceId?: string,
+) {
+  const svcs = serviceId
+    ? await sql<{
+        id: string;
+        period_end: string | null;
+        billing_interval: string;
+        validity_hours: number;
+      }>`select s.id, s.period_end::text as period_end, p.billing_interval, p.validity_hours
+         from services s join packages p on p.id = s.package_id
+         where s.tenant_id = ${tenantId} and s.id = ${serviceId} and s.customer_id = ${customerId}
+           and s.deleted_at is null and s.status <> 'terminated'`
+    : await sql<{
+        id: string;
+        period_end: string | null;
+        billing_interval: string;
+        validity_hours: number;
+      }>`select s.id, s.period_end::text as period_end, p.billing_interval, p.validity_hours
+         from services s join packages p on p.id = s.package_id
+         where s.tenant_id = ${tenantId} and s.customer_id = ${customerId}
+           and s.deleted_at is null and s.status <> 'terminated'`;
   for (const s of svcs) {
     const next = extendPeriodEnd(s.period_end, now, periodMs(s.billing_interval, s.validity_hours));
     await sql`update services
@@ -99,19 +168,34 @@ export async function grantPaidPeriod(sql: Sql, tenantId: string, customerId: st
   return svcs.length;
 }
 
-export async function restorePaidAccess(sql: Sql, tenantId: string, customerId: string) {
-  await grantPaidPeriod(sql, tenantId, customerId);
-  if (await customerHasOverdue(sql, tenantId, customerId)) {
+export async function restorePaidAccess(sql: Sql, tenantId: string, customerId: string, serviceId?: string) {
+  const targetId = serviceId || "";
+  if (!targetId) {
+    const live = await sql<{ id: string }>`
+      select id from services
+      where tenant_id = ${tenantId} and customer_id = ${customerId}
+        and deleted_at is null and status <> 'terminated'`;
+    if (live.length === 1) return restorePaidAccess(sql, tenantId, customerId, live[0]!.id);
+    if (live.length !== 1) return { restored: 0, held: false };
+  }
+
+  await grantPaidPeriod(sql, tenantId, customerId, new Date(), targetId);
+  if (await serviceHasOverdue(sql, tenantId, targetId, customerId)) {
     return { restored: 0, held: true };
   }
-  await consumeActiveGrantsForCustomer(sql, tenantId, customerId);
+  await consumeActiveGrantsForService(sql, tenantId, targetId);
   const svcs = await sql<{ id: string }>`
     select id from services
-    where tenant_id = ${tenantId} and customer_id = ${customerId}
+    where tenant_id = ${tenantId} and id = ${targetId} and customer_id = ${customerId}
       and deleted_at is null and status in ('grace','suspended','pending')`;
   await sql`update services set status = 'active', suspend_reason = ''
-    where customer_id = ${customerId} and tenant_id = ${tenantId}
+    where id = ${targetId} and customer_id = ${customerId} and tenant_id = ${tenantId}
       and deleted_at is null and status in ('grace','suspended','pending')`;
+  await sql`update hotspot_vouchers v
+    set status = 'active', used_at = coalesce(v.used_at, now()), expires_at = coalesce(v.expires_at, s.period_end)
+    from services s
+    where v.service_id = s.id and v.tenant_id = ${tenantId} and s.id = ${targetId}
+      and v.status = 'unused'`;
   for (const s of svcs) await provisionServiceAccess(sql, tenantId, s.id);
   return { restored: svcs.length, held: false };
 }
@@ -217,15 +301,16 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
   const invoices = await sql<{
     id: string;
     customer_id: string;
+    service_id: string | null;
     number: string;
     amount_kes: number;
     status: string;
     due_date: string;
-  }>`select id, customer_id, number, amount_kes, status, due_date::text as due_date
+  }>`select id, customer_id, service_id, number, amount_kes, status, due_date::text as due_date
      from invoices where tenant_id = ${tenantId} and status in ('issued','due','overdue','partial')
        and amount_kes > paid_kes`;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = nairobiDate();
   let due = 0;
   let overdue = 0;
   let grace = 0;
@@ -253,7 +338,10 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
     if (inv.due_date >= today) continue;
 
     const daysPast = Math.floor((Date.parse(today) - Date.parse(inv.due_date)) / 86400000);
-    const services = await sql<{
+    const targetIds = await invoiceServiceIds(sql, tenantId, inv.id, inv.customer_id, inv.service_id);
+    if (!targetIds.length) continue;
+    const wanted = new Set(targetIds);
+    const live = await sql<{
       id: string;
       status: string;
       name: string;
@@ -262,6 +350,7 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
        from services s join packages p on p.id = s.package_id
        where s.tenant_id = ${tenantId} and s.customer_id = ${inv.customer_id}
          and s.deleted_at is null and s.status in ('active','grace')`;
+    const services = live.filter((s) => wanted.has(s.id));
 
     for (const svc of services) {
       const svcVars = { ...vars, service_name: svc.name };

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { APP_NAME } from "@/lib/brand";
+import { DATE_FORMATS, DEFAULT_DATE_FORMAT, dateFormatExample, formatDate, normalizeDateFormat, setActiveDateFormat, type DateFormatId } from "@/lib/isp/display";
 import { AppearanceSettings } from "@/components/isp/appearance-settings";
 import { CustomerTagsSettings } from "@/components/isp/customer-tags-settings";
 import { AccountNumberSettings } from "@/components/isp/account-number-settings";
@@ -130,7 +131,12 @@ function SettingsPage() {
   const { tab: tabParam } = Route.useSearch();
   const tab: TabId = tabParam ?? "company";
   const [ws, setWs] = useState<Workspace | null>(null);
-  const [form, setForm] = useState({ name: "", supportEmail: "", supportPhone: "" });
+  const [form, setForm] = useState({
+    name: "",
+    supportEmail: "",
+    supportPhone: "",
+    dateFormat: DEFAULT_DATE_FORMAT as DateFormatId,
+  });
   const [brand, setBrand] = useState({
     address: "",
     website: "",
@@ -244,7 +250,9 @@ function SettingsPage() {
       name: d.workspace.tenantName,
       supportEmail: d.workspace.supportEmail,
       supportPhone: d.workspace.supportPhone,
+      dateFormat: normalizeDateFormat(d.workspace.dateFormat),
     });
+    setActiveDateFormat(d.workspace.dateFormat || DEFAULT_DATE_FORMAT);
     setTestPhone(d.workspace.supportPhone || "");
     setMsg({
       payment_sms: m.payment_sms,
@@ -502,7 +510,8 @@ function SettingsPage() {
             }
             setCompanyBusy(true);
             try {
-              await renameTenant({ data: form });
+              const savedCompany = await renameTenant({ data: form });
+              setActiveDateFormat(savedCompany.dateFormat || form.dateFormat);
               setCompanyNote({ ok: true, text: "Company settings applied." });
               await load();
             } catch (err) {
@@ -522,6 +531,22 @@ function SettingsPage() {
           <Field label="Support phone">
             <Input value={form.supportPhone} onChange={(e) => setForm({ ...form, supportPhone: e.target.value })} />
           </Field>
+          <Field label="Date format">
+            <Select
+              value={form.dateFormat}
+              onChange={(e) => setForm({ ...form, dateFormat: normalizeDateFormat(e.target.value) })}
+            >
+              {DATE_FORMATS.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label} — {opt.sample}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <p className="text-xs text-muted">
+            Used on every page, invoice, statement, and SMS. Preview:{" "}
+            <span className="font-medium text-fg">{dateFormatExample(form.dateFormat)}</span>. Default is dd/mm/yy.
+          </p>
           <p className="text-xs text-subtle">
             Role: {ws?.role} · Plan: {ws?.status} · Customer portal slug:{" "}
             <span className="font-mono text-fg">{slug}</span>
@@ -1352,7 +1377,7 @@ function SettingsPage() {
                       ? "Trial ended — choose a paid plan"
                       : `${plan.days_left} day${plan.days_left === 1 ? "" : "s"} left`
                     : plan.period_end
-                      ? `Renews ${plan.period_end.slice(0, 10)}`
+                      ? `Renews ${formatDate(plan.period_end)}`
                       : null}
                 </div>
               </div>

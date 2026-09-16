@@ -203,6 +203,7 @@ export async function authorizeRadius(
     framed_ip: string;
     group_name: string;
     status: string;
+    suspend_reason: string;
     period_end: string | null;
     access_until: string | null;
     expiry_source: string;
@@ -212,7 +213,7 @@ export async function authorizeRadius(
     grant_expires_at: string | null;
     package_name: string;
   }>`select a.username, a.password, a.enabled, a.framed_ip, a.group_name,
-            s.status, s.period_end::text as period_end, s.access_until::text as access_until, s.expiry_source,
+            s.status, coalesce(s.suspend_reason,'') as suspend_reason, s.period_end::text as period_end, s.access_until::text as access_until, s.expiry_source,
             s.bundle_used_mb, p.bundle_mb, p.grace_days,
             g.expires_at::text as grant_expires_at, p.name as package_name
      from radius_accounts a
@@ -228,7 +229,7 @@ export async function authorizeRadius(
   }
   const accessEnd = effectiveAccessEndMs(row);
   let reason = "";
-  if (!row.enabled || row.status === "suspended" || row.status === "terminated") reason = "suspended";
+  if (!row.enabled || row.status === "suspended" || row.status === "terminated" || row.suspend_reason === "awaiting_payment") reason = "suspended";
   else if (row.bundle_mb > 0 && row.bundle_used_mb >= row.bundle_mb) reason = "bundle";
   else if (accessEnd > 0 && accessEnd <= Date.now()) {
     reason = "expired";

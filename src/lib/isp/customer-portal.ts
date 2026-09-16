@@ -1,4 +1,6 @@
-import { remainingKes } from "./billing.ts";
+import { remainingKes, invoiceBelongsToService } from "./billing.ts";
+import { nairobiDate } from "./empty-tenant.ts";
+import { DEFAULT_DATE_FORMAT, normalizeDateFormat } from "./display.ts";
 import {
   PORTAL_TICKET_CATEGORIES,
   type PortalCustomer,
@@ -67,11 +69,13 @@ function presentIsp(ctx: PortalCtx) {
     slug: ctx.isp.slug,
     support_phone: ctx.isp.support_phone || "",
     support_email: ctx.isp.support_email || "",
+    date_format: normalizeDateFormat(ctx.isp.date_format || DEFAULT_DATE_FORMAT),
   };
 }
 
 function asDate(iso: string | null) {
-  return iso ? iso.slice(0, 10) : null;
+  if (!iso) return null;
+  return nairobiDate(iso) || iso.slice(0, 10);
 }
 
 function fileSafe(name: string) {
@@ -115,46 +119,57 @@ export function sanitizeStatementForPortal(doc: StatementDocument): StatementDoc
 export async function loadPortalServices(sql: Sql, ctx: PortalCtx): Promise<PortalService[]> {
   const rows = await sql<{
     id: string;
+    name: string;
+    account_number: string;
     package_name: string;
     price_kes: number;
     billing_interval: string;
+    access_method: string;
+    location: string;
     status: string;
     period_end: string | null;
     access_until: string | null;
     grace_expires_at: string | null;
   }>`
-    select s.id, p.name as package_name, p.price_kes, p.billing_interval, s.status,
+    select s.id, coalesce(nullif(s.name,''), p.name) as name, coalesce(s.account_number,'') as account_number,
+           p.name as package_name, p.price_kes, p.billing_interval, s.access_method,
+           coalesce(c.address,'') as location, s.status,
            s.period_end::text as period_end, s.access_until::text as access_until,
            g.expires_at::text as grace_expires_at
     from services s
     join packages p on p.id = s.package_id
+    join customers c on c.id = s.customer_id
     left join service_grace_periods g
       on g.service_id = s.id and g.tenant_id = s.tenant_id and g.status = 'active'
     where s.tenant_id = ${ctx.tenantId} and s.customer_id = ${ctx.customer.id} and s.deleted_at is null
     order by s.created_at desc`;
 
-  const balances = await sql<{ service_id: string; balance: number; inv_status: string }>`
-    select ii.service_id, greatest(0, i.amount_kes - i.paid_kes)::int as balance, i.status as inv_status
-    from invoice_items ii
-    join invoices i on i.id = ii.invoice_id and i.tenant_id = ii.tenant_id
-    where ii.tenant_id = ${ctx.tenantId} and i.customer_id = ${ctx.customer.id}
-      and i.status in ('issued','due','overdue','partial')
-      and ii.service_id is not null`;
+  const balances = await sql<{ invoice_id: string; service_id: string; balance: number; inv_status: string }>`
+    select i.id as invoice_id,
+           coalesce(nullif(i.service_id,''), ii.service_id) as service_id,
+           greatest(0, i.amount_kes - i.paid_kes)::int as balance,
+           i.status as inv_status
+    from invoices i
+    left join lateral (
+      select service_id from invoice_items
+      where invoice_id = i.id and tenant_id = i.tenant_id
+        and service_id is not null and service_id <> ''
+      limit 1
+    ) ii on true
+    where i.tenant_id = ${ctx.tenantId} and i.customer_id = ${ctx.customer.id}
+      and i.status in ('issued','due','overdue','partial')`;
 
   const byService = new Map<string, { balance: number; status: string }>();
+  const seenInv = new Set<string>();
   for (const b of balances) {
+    if (!b.service_id || seenInv.has(b.invoice_id)) continue;
+    seenInv.add(b.invoice_id);
     const cur = byService.get(b.service_id) ?? { balance: 0, status: b.inv_status };
     cur.balance += b.balance;
     if (b.inv_status === "overdue") cur.status = "overdue";
     else if (cur.status !== "overdue" && b.inv_status === "partial") cur.status = "partial";
     byService.set(b.service_id, cur);
   }
-
-  const [openBal] = await sql<{ n: number }>`
-    select coalesce(sum(greatest(0, amount_kes - paid_kes)),0)::int as n
-    from invoices
-    where tenant_id = ${ctx.tenantId} and customer_id = ${ctx.customer.id}
-      and status in ('issued','due','overdue','partial')`;
 
   const out: PortalService[] = [];
   for (const row of rows) {
@@ -164,7 +179,7 @@ export async function loadPortalServices(sql: Sql, ctx: PortalCtx): Promise<Port
       grace_expires_at: row.grace_expires_at,
     });
     const billed = byService.get(row.id);
-    const outstanding = billed?.balance ?? (rows.length === 1 ? openBal?.n ?? 0 : 0);
+    const outstanding = billed?.balance ?? 0;
     const payStatus = paymentStatusFrom(outstanding, billed?.status ?? (outstanding > 0 ? "due" : null));
     const expiry = row.access_until || row.grace_expires_at || row.period_end;
     let elig: { ok: boolean; reason?: string; allowed_days: number[] } = { ok: false, allowed_days: [] };
@@ -175,15 +190,18 @@ export async function loadPortalServices(sql: Sql, ctx: PortalCtx): Promise<Port
     }
     out.push({
       id: row.id,
-      reference: portalServiceRef(row.id),
-      name: row.package_name,
+      reference: row.account_number || portalServiceRef(row.id),
+      account_number: row.account_number,
+      name: row.name,
       package_name: row.package_name,
       package_price_kes: row.price_kes,
+      access_type: row.access_method === "hotspot" ? "Hotspot" : row.access_method === "static" ? "Dedicated" : "Broadband",
+      location: row.location,
       billing_period: billingPeriodLabel(row.billing_interval),
       renewal_date: asDate(row.period_end),
       expiry_date: asDate(expiry),
       days_remaining: daysRemaining(expiry),
-      next_billing_period: nextPeriodLabel(row.period_end, row.billing_interval),
+      next_billing_period: nextPeriodLabel(row.period_end, row.billing_interval, ctx.isp.date_format),
       status,
       status_label: serviceStatusLabel(status),
       payment_status: payStatus,
@@ -202,18 +220,19 @@ export async function loadPortalInvoices(sql: Sql, ctx: PortalCtx): Promise<Port
   const rows = await sql<{
     id: string;
     number: string;
+    service_id: string | null;
     amount_kes: number;
     paid_kes: number;
     status: string;
     due_date: string;
     issued_at: string;
-  }>`select i.id, i.number, i.amount_kes, i.paid_kes, i.status, i.due_date::text as due_date, i.issued_at::text as issued_at
+  }>`select i.id, i.number, i.service_id, i.amount_kes, i.paid_kes, i.status, i.due_date::text as due_date, i.issued_at::text as issued_at
      from invoices i
      where i.tenant_id = ${ctx.tenantId} and i.customer_id = ${ctx.customer.id}
      order by i.issued_at desc`;
 
-  const items = await sql<{ invoice_id: string; description: string; package_id: string | null }>`
-    select ii.invoice_id, ii.description, ii.package_id
+  const items = await sql<{ invoice_id: string; description: string; package_id: string | null; service_id: string | null }>`
+    select ii.invoice_id, ii.description, ii.package_id, ii.service_id
     from invoice_items ii
     join invoices i on i.id = ii.invoice_id and i.tenant_id = ii.tenant_id
     where i.tenant_id = ${ctx.tenantId} and i.customer_id = ${ctx.customer.id}`;
@@ -225,15 +244,32 @@ export async function loadPortalInvoices(sql: Sql, ctx: PortalCtx): Promise<Port
   const pkgBy = new Map(pkgs.map((p) => [p.id, p]));
   const firstItem = new Map<string, (typeof items)[number]>();
   for (const it of items) if (!firstItem.has(it.invoice_id)) firstItem.set(it.invoice_id, it);
+  const svcIds = [
+    ...new Set(
+      [...rows.map((r) => r.service_id), ...items.map((i) => i.service_id)].filter(Boolean) as string[],
+    ),
+  ];
+  const svcs = svcIds.length
+    ? await sql<{ id: string; account_number: string; name: string }>`
+        select s.id, coalesce(s.account_number,'') as account_number, coalesce(nullif(s.name,''), p.name) as name
+        from services s join packages p on p.id = s.package_id
+        where s.tenant_id = ${ctx.tenantId}`
+    : [];
+  const svcBy = new Map(svcs.map((s) => [s.id, s]));
 
   return rows.map((row) => {
     const remaining = remainingKes(row.amount_kes, row.paid_kes, row.status);
     const status = invoiceStatusFrom(row.status, remaining);
     const item = firstItem.get(row.id);
     const pkg = item?.package_id ? pkgBy.get(item.package_id) : undefined;
+    const sid = row.service_id || item?.service_id || "";
+    const svc = sid ? svcBy.get(sid) : undefined;
     return {
       id: row.id,
       number: row.number,
+      service_id: sid || null,
+      service_name: svc?.name || pkg?.name || customerSafeText(item?.description || "", "Internet service"),
+      account_number: svc?.account_number || "",
       issued_at: asDate(row.issued_at) || row.issued_at.slice(0, 10),
       due_date: row.due_date,
       billing_period: billingPeriodLabel(pkg?.billing_interval || "monthly"),
@@ -349,7 +385,7 @@ export async function loadPortalPaymentMethods(sql: Sql, ctx: PortalCtx): Promis
           kind: "mpesa",
           label: till ? "M-Pesa Till" : "M-Pesa Paybill",
           mode: till ? "till" : "paybill",
-          instructions: `Pay with M-Pesa ${till ? "Till" : "Paybill"} ${p.till_number}. Use your account number as the reference.`,
+          instructions: `Pay with M-Pesa ${till ? "Till" : "Paybill"} ${p.till_number}. Use the service account number as the reference.`,
           public_number: p.till_number,
           stk_available: false,
         });
@@ -570,8 +606,9 @@ export async function makePortalInvoiceFile(sql: Sql, ctx: PortalCtx, invoiceId:
   return { filename: `${fileSafe(doc.brand.slug)}-${fileSafe(doc.invoice.number)}.pdf`, pdf, doc };
 }
 
-export async function makePortalStatementFile(sql: Sql, ctx: PortalCtx) {
-  const doc = sanitizeStatementForPortal(await loadStatementDocument(sql, ctx.tenantId, ctx.customer.id));
+export async function makePortalStatementFile(sql: Sql, ctx: PortalCtx, serviceId?: string) {
+  if (serviceId) await assertOwnService(sql, ctx, serviceId);
+  const doc = sanitizeStatementForPortal(await loadStatementDocument(sql, ctx.tenantId, ctx.customer.id, serviceId));
   const pdf = await renderStatementPdf(doc);
   return { filename: `${fileSafe(doc.brand.slug)}-statement-${fileSafe(doc.customer.accountNo)}.pdf`, pdf, doc };
 }
@@ -579,9 +616,49 @@ export async function makePortalStatementFile(sql: Sql, ctx: PortalCtx) {
 export async function startPortalPayment(
   sql: Sql,
   ctx: PortalCtx,
-  opts: { invoice_id: string; phone?: string; provider?: string },
+  opts: { invoice_id?: string; service_id?: string; phone?: string; provider?: string; confirm_account?: string },
 ): Promise<PortalStkStart> {
-  const inv = await assertOwnInvoice(sql, ctx, opts.invoice_id);
+  let invoiceId = (opts.invoice_id || "").trim();
+  let serviceId = (opts.service_id || "").trim();
+  if (!invoiceId && !serviceId) throw new Error("Select the service you want to pay");
+
+  if (serviceId) {
+    const [svc] = await sql<{ id: string; account_number: string; name: string; deleted_at: string | null }>`
+      select s.id, coalesce(s.account_number,'') as account_number, coalesce(nullif(s.name,''), p.name) as name,
+             s.deleted_at::text as deleted_at
+      from services s join packages p on p.id = s.package_id
+      where s.id = ${serviceId} and s.tenant_id = ${ctx.tenantId} and s.customer_id = ${ctx.customer.id}`;
+    if (!svc || svc.deleted_at) throw new Error("Service not found");
+    const confirm = (opts.confirm_account || "").trim().toUpperCase();
+    if (svc.account_number) {
+      if (!confirm) throw new Error("Confirm the service account number before sending the payment prompt");
+      if (confirm !== svc.account_number.toUpperCase()) {
+        throw new Error("Confirm the service account number before sending the payment prompt");
+      }
+    }
+    if (invoiceId) {
+      const owns = await invoiceBelongsToService(sql, ctx.tenantId, invoiceId, serviceId);
+      if (!owns) throw new Error("That invoice does not belong to this service");
+    }
+    if (!invoiceId) {
+      const open = await sql<{ id: string }>`
+        select i.id from invoices i
+        where i.tenant_id = ${ctx.tenantId} and i.customer_id = ${ctx.customer.id}
+          and i.status in ('issued','due','overdue','partial')
+          and (
+            i.service_id = ${serviceId}
+            or exists (
+              select 1 from invoice_items ii
+              where ii.invoice_id = i.id and ii.tenant_id = i.tenant_id and ii.service_id = ${serviceId}
+            )
+          )
+        order by i.due_date, i.issued_at limit 1`;
+      if (!open[0]) throw new Error("Nothing to pay on this service");
+      invoiceId = open[0].id;
+    }
+  }
+
+  const inv = await assertOwnInvoice(sql, ctx, invoiceId);
   const remaining = remainingKes(inv.amount_kes, inv.paid_kes, inv.status);
   if (remaining <= 0) throw new Error("Invoice already paid");
 
@@ -592,6 +669,22 @@ export async function startPortalPayment(
 
   const phone = (opts.phone || ctx.customer.phone).trim();
   if (phone.replace(/\D/g, "").length < 9) throw new Error("Enter a valid M-Pesa phone number");
+
+  const [svc] = await sql<{ id: string; account_number: string; name: string }>`
+    select s.id, coalesce(s.account_number,'') as account_number, coalesce(nullif(s.name,''), p.name) as name
+    from invoice_items ii
+    join services s on s.id = ii.service_id
+    join packages p on p.id = s.package_id
+    where ii.invoice_id = ${inv.id} and ii.tenant_id = ${ctx.tenantId} and s.customer_id = ${ctx.customer.id}
+      and s.deleted_at is null
+    limit 1`;
+  const [headerSvc] = !svc && serviceId
+    ? await sql<{ id: string; account_number: string; name: string }>`
+        select s.id, coalesce(s.account_number,'') as account_number, coalesce(nullif(s.name,''), p.name) as name
+        from services s join packages p on p.id = s.package_id
+        where s.id = ${serviceId} and s.tenant_id = ${ctx.tenantId}`
+    : [];
+  const billed = svc || headerSvc;
 
   const [pending] = await sql<{ id: string; checkout_id: string; amount_kes: number; phone: string }>`
     select id, checkout_id, amount_kes, phone from payment_intents
@@ -605,6 +698,9 @@ export async function startPortalPayment(
       amount_kes: pending.amount_kes,
       phone: pending.phone || phone,
       invoice_number: inv.number,
+      account_number: billed?.account_number || "",
+      service_id: billed?.id || serviceId || "",
+      service_name: billed?.name || "",
       status: "pending",
       note: "A payment prompt is already in progress. Complete it on your phone, or wait a few minutes to retry.",
     };
@@ -622,6 +718,9 @@ export async function startPortalPayment(
     amount_kes: intent.amount_kes,
     phone: intent.phone || phone,
     invoice_number: inv.number,
+    account_number: billed?.account_number || "",
+    service_id: billed?.id || serviceId || "",
+    service_name: billed?.name || "",
     status: "pending",
     note: intent.note || "Complete the M-Pesa prompt on your phone.",
   };

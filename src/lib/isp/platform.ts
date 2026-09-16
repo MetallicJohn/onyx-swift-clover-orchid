@@ -485,7 +485,33 @@ export async function loadTenantDetail(sql: Sql, actorUserId: string, tenantId: 
       revenue_kes: revenue,
     },
     activity,
+    router_provisioning: await (await import("./router-provisioning")).ensureTenantProvisioning(sql, tenantId),
   };
+}
+
+export async function saveTenantRouterProvisioning(
+  sql: Sql,
+  actorUserId: string,
+  tenantId: string,
+  patch: {
+    enabled?: boolean;
+    token_ttl_hours?: number;
+    require_https?: boolean;
+    allow_pool_push?: boolean;
+  },
+) {
+  await requirePlatformActor(sql, actorUserId);
+  const { saveTenantProvisioning } = await import("./router-provisioning");
+  const settings = await saveTenantProvisioning(sql, tenantId, patch);
+  await writePlatformAudit(sql, {
+    actorUserId,
+    action: "router_provisioning.updated",
+    entityType: "tenant",
+    entityId: tenantId,
+    tenantId,
+    metadata: settings,
+  });
+  return settings;
 }
 
 export async function updateTenantProfile(

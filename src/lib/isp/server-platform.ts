@@ -31,6 +31,7 @@ import {
   requirePlatformActor,
   saveCatalogPlan,
   savePlatformSettings,
+  saveTenantRouterProvisioning,
   startSupportAccess,
   suspendTenant,
   updateTenantProfile,
@@ -375,6 +376,22 @@ export const saveSaasSettings = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql } = await platformSql(context.userId);
     return savePlatformSettings(sql, context.userId, data);
+  });
+
+export const saveSaasRouterProvisioning = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(
+    (d: {
+      tenant_id: string;
+      enabled?: boolean;
+      token_ttl_hours?: number;
+      require_https?: boolean;
+      allow_pool_push?: boolean;
+    }) => d,
+  )
+  .handler(async ({ context, data }) => {
+    const { sql } = await platformSql(context.userId);
+    return saveTenantRouterProvisioning(sql, context.userId, data.tenant_id, data);
   });
 
 export const assignSaasAcsPort = createServerFn({ method: "POST" })

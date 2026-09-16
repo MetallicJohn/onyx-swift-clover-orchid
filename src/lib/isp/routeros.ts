@@ -50,7 +50,7 @@ export function enrollRosScript(opts: {
 :do { /system script remove [find where name=${rosQuote(ROS_PULL_SCRIPT)}] } on-error={}
 /system script add name=${rosQuote(ROS_PULL_SCRIPT)} owner=admin policy=read,write,policy,test,password,sensitive source={
   :do {
-    /tool fetch url=${rosQuote(pull)} mode=https check-certificate=no http-method=get dst-path=${rosQuote(ROS_PULL_FILE)};
+    /tool fetch url=${rosQuote(pull)} mode=https check-certificate=yes http-method=get dst-path=${rosQuote(ROS_PULL_FILE)};
     :delay 2s;
     :if ([:len [/file find where name=${rosQuote(ROS_PULL_FILE)}]] > 0) do={
       /import file-name=${rosQuote(ROS_PULL_FILE)};
@@ -185,6 +185,26 @@ function pcqEnsureRos(payload: Record<string, unknown>) {
 }`;
 }
 
+export type RosPool = { name: string; ranges: string };
+
+export function poolPushRosScript(pools: RosPool[]) {
+  if (!pools.length) {
+    return `# ${APP_NAME} — no IP pools assigned`;
+  }
+  return pools
+    .map((p, i) => {
+      const nameVar = `pool${i}Name`;
+      const rangeVar = `pool${i}Ranges`;
+      return `${localBlock({ [nameVar]: p.name, [rangeVar]: p.ranges })}
+:if ([:len [/ip pool find where name=$${nameVar}]] = 0) do={
+  /ip pool add name=$${nameVar} ranges=$${rangeVar} comment=${rosQuote(`${APP_NAME} pool`)};
+} else={
+  /ip pool set [find where name=$${nameVar}] ranges=$${rangeVar} comment=${rosQuote(`${APP_NAME} pool`)};
+}`;
+    })
+    .join("\n");
+}
+
 export function commandRosScript(kind: string, payload: Record<string, unknown>) {
   const user = String(payload.username || payload.name || "").trim();
   const password = String(payload.password || "");
@@ -196,6 +216,13 @@ export function commandRosScript(kind: string, payload: Record<string, unknown>)
 
   if (kind === "package.sync") {
     return pcqEnsureRos(payload);
+  }
+
+  if (kind === "pool.push") {
+    const pools = Array.isArray(payload.pools)
+      ? (payload.pools as RosPool[]).filter((p) => p && p.name && p.ranges)
+      : [];
+    return poolPushRosScript(pools);
   }
 
   if (kind.startsWith("queue.")) {

@@ -8,6 +8,7 @@ export type StkRequest = {
   amount: number;
   invoiceId: string;
   invoiceNumber: string;
+  accountNumber?: string;
   firstName: string;
   lastName: string;
   email?: string;
@@ -48,7 +49,7 @@ registerStk({
       const pushed = await mpesaStkPush(cfg, {
         phone: req.phone,
         amount: req.amount,
-        account: req.invoiceNumber || "BILL",
+        account: (req.accountNumber || req.invoiceNumber || "BILL").slice(0, 12),
         description: "Internet bill",
         callbackUrl: req.callbackUrl || undefined,
       });

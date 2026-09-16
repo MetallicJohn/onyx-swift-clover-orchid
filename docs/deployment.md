@@ -72,7 +72,9 @@ Repo: Settings → Secrets and variables → Actions.
 1. Sign in at `https://<domain>/login`
 2. Settings → Public URL = `https://<domain>`
 3. Settings → Network: hub endpoint = VPS public IP or hostname, download `wg-ispsolutions.conf` or run the install script (`wg-quick up wg-ispsolutions`).
-4. Routers → Copy script onto each MikroTik
+4. Routers → Add router → paste the **bootstrap** script on the MikroTik (internet check, then HTTPS fetch of `bootstrap.rsc` with certificate validation). Generate bootstrap again if the token expired. Copy enroll remains for factory-reset boxes that already have a peer.
+
+The VPS must present a certificate the router trusts (Let's Encrypt via Caddy is the default). Do not disable `check-certificate` on the router.
 
 Do not put MikroTik or FreeRADIUS inside the web container. GenieACS runs **beside** it (own container + Mongo). Redis, workers, and the traffic collector run beside web on the same compose file; they can move later. See [distributed.md](distributed.md).
 

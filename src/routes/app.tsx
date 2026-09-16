@@ -7,6 +7,7 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { getDashboard, listMyTenants, switchTenant } from "@/lib/isp/server";
 import { platformStatus } from "@/lib/isp/server-more";
 import { getTenantTheme } from "@/lib/isp/server-theme";
+import { setActiveDateFormat } from "@/lib/isp/display";
 import { clearThemeCache, type ThemeConfig } from "@/lib/theme/resolve";
 import type { Workspace } from "@/lib/isp/types";
 
@@ -29,6 +30,7 @@ function AppLayout() {
       .then(([d, t, p]) => {
         if (cancelled) return;
         setWorkspace(d.workspace);
+        setActiveDateFormat(d.workspace.dateFormat);
         setTenants(t.tenants);
         setActiveTenantId(t.activeId || d.workspace.tenantId);
         setPlatformAdmin(p.admin);
@@ -76,6 +78,7 @@ function AppLayout() {
         apply(null);
         const ws = await switchTenant({ data: { tenant_id: id } });
         setWorkspace(ws);
+        setActiveDateFormat(ws.dateFormat);
         setActiveTenantId(id);
         window.location.reload();
       }}

@@ -1,4 +1,4 @@
-import { formatDay, formatMoney, type StatementDocument } from "../document-format.ts";
+import { formatBrandDay, formatMoney, type StatementDocument } from "../document-format.ts";
 import { buildPdf, contentWidth, MARGIN, PdfCtx } from "./engine.ts";
 
 export async function renderStatementPdf(doc: StatementDocument): Promise<Buffer> {
@@ -11,8 +11,8 @@ function drawStatement(ctx: PdfCtx, st: StatementDocument) {
   ctx.continuation = `${st.brand.name}  ·  Statement ${st.customer.accountNo}  ·  continued`;
   ctx.drawBrandHeader("STATEMENT", [
     ["Account", st.customer.accountNo],
-    ["Period", `${formatDay(st.periodStart, st.brand.timezone)} – ${formatDay(st.periodEnd, st.brand.timezone)}`],
-    ["Date", formatDay(st.statementDate, st.brand.timezone)],
+    ["Period", `${formatBrandDay(st.periodStart, st.brand)} – ${formatBrandDay(st.periodEnd, st.brand)}`],
+    ["Date", formatBrandDay(st.statementDate, st.brand)],
   ]);
 
   ctx.partyBlock("Customer", [
@@ -62,7 +62,7 @@ function drawStatement(ctx: PdfCtx, st: StatementDocument) {
   const ledgerRows =
     st.rows.length > 0
       ? st.rows.map((r) => ({
-          date: formatDay(r.date, st.brand.timezone),
+          date: formatBrandDay(r.date, st.brand),
           reference: r.reference,
           description: r.description,
           debit: r.debit ? money(r.debit) : "",
@@ -71,7 +71,7 @@ function drawStatement(ctx: PdfCtx, st: StatementDocument) {
         }))
       : [
           {
-            date: formatDay(st.statementDate, st.brand.timezone),
+            date: formatBrandDay(st.statementDate, st.brand),
             reference: "—",
             description: "No ledger activity in this period",
             debit: "",

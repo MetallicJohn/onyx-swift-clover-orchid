@@ -156,6 +156,7 @@ function toWorkspace(opts: {
     role: opts.role,
     supportEmail: opts.email,
     supportPhone: "",
+    dateFormat: "dd/mm/yy",
     permissions: permissionsFor(opts.role),
   };
 }

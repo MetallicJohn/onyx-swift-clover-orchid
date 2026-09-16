@@ -27,12 +27,16 @@ export async function syncRadiusAccount(
     upload_mbps?: number;
     password?: string;
     package_name?: string;
+    suspend_reason?: string;
   },
 ) {
   const username =
     service.username?.trim() ||
     `${service.access_method}-${service.id.slice(-6)}`;
-  const enabled = service.status === "active" || service.status === "grace" || service.status === "pending";
+  const awaitingPay = service.suspend_reason === "awaiting_payment";
+  const enabled =
+    !awaitingPay &&
+    (service.status === "active" || service.status === "grace" || service.status === "pending");
   const group = mikrotikProfileName(service.package_name || service.access_method);
   const rate = mikrotikRateLimit(service.download_mbps ?? 10, service.upload_mbps ?? 10);
   const existing = await sql<{ id: string; password: string }>`

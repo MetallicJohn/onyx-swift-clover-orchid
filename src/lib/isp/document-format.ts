@@ -1,3 +1,5 @@
+import { DEFAULT_DATE_FORMAT, formatDate } from "./display.ts";
+
 export type BrandProfile = {
   tenantId: string;
   name: string;
@@ -11,6 +13,7 @@ export type BrandProfile = {
   vatRate: number;
   currency: string;
   timezone: string;
+  dateFormat?: string;
   footer: string;
   notes: string;
   brandColor: string;
@@ -51,6 +54,8 @@ export type InvoiceDocument = {
     phone: string;
     email: string;
     address: string;
+    serviceName?: string;
+    serviceStatus?: string;
   };
   lines: InvoiceLine[];
   totals: {
@@ -87,6 +92,7 @@ export type StatementDocument = {
     phone: string;
     email: string;
     address: string;
+    serviceName?: string;
   };
   periodStart: string;
   periodEnd: string;
@@ -156,11 +162,12 @@ export function formatMoney(amount: number, currency = "KES") {
   }
 }
 
-export function formatDay(iso: string, timeZone = "Africa/Nairobi") {
-  const raw = iso.length <= 10 ? `${iso.slice(0, 10)}T12:00:00Z` : iso;
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
-  return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone }).format(d);
+export function formatDay(iso: string, timeZone = "Africa/Nairobi", dateFormat: string = DEFAULT_DATE_FORMAT) {
+  return formatDate(iso, dateFormat, timeZone);
+}
+
+export function formatBrandDay(iso: string, brand: Pick<BrandProfile, "timezone" | "dateFormat">) {
+  return formatDay(iso, brand.timezone || "Africa/Nairobi", brand.dateFormat || DEFAULT_DATE_FORMAT);
 }
 
 export function parseBrandColor(hex: string) {

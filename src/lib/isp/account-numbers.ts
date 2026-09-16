@@ -361,24 +361,51 @@ export async function resetAccountNumberSettings(sql: Sql, tenantId: string, slu
   return saveAccountNumberSettings(sql, tenantId, slug, defaultsForSlug(slug, tenantId));
 }
 
-async function taken(sql: Sql, tenantId: string, value: string, exceptId = "") {
+async function taken(
+  sql: Sql,
+  tenantId: string,
+  value: string,
+  except: { customerId?: string; serviceId?: string } = {},
+) {
   if (!value) return false;
-  const [hit] = exceptId
+  const customerId = except.customerId || "";
+  const serviceId = except.serviceId || "";
+  const [cus] = customerId
     ? await sql<{ id: string }>`
         select id from customers
-        where tenant_id = ${tenantId} and account_number = ${value} and id <> ${exceptId}
+        where tenant_id = ${tenantId} and account_number = ${value} and id <> ${customerId}
         limit 1`
     : await sql<{ id: string }>`
         select id from customers
         where tenant_id = ${tenantId} and account_number = ${value}
         limit 1`;
-  return Boolean(hit);
+  if (cus) return true;
+  const [svc] = serviceId
+    ? await sql<{ id: string }>`
+        select id from services
+        where tenant_id = ${tenantId} and account_number = ${value} and id <> ${serviceId}
+        limit 1`
+    : await sql<{ id: string }>`
+        select id from services
+        where tenant_id = ${tenantId} and account_number = ${value}
+        limit 1`;
+  return Boolean(svc);
 }
 
-export async function assertUniqueAccountNumber(sql: Sql, tenantId: string, value: string, exceptId = "") {
+function exceptFrom(except: { customerId?: string; serviceId?: string } | string = "") {
+  if (typeof except === "string") return { customerId: except, serviceId: "" };
+  return { customerId: except.customerId || "", serviceId: except.serviceId || "" };
+}
+
+export async function assertUniqueAccountNumber(
+  sql: Sql,
+  tenantId: string,
+  value: string,
+  except: { customerId?: string; serviceId?: string } | string = "",
+) {
   const number = normalizeAccountNumber(value);
   if (!number) return "";
-  if (await taken(sql, tenantId, number, exceptId)) {
+  if (await taken(sql, tenantId, number, exceptFrom(except))) {
     throw new Error(`Account number ${number} is already assigned.`);
   }
   return number;
@@ -515,9 +542,54 @@ export async function changeCustomerAccountNumber(
   if (!opts.allowManual) {
     throw new Error("Manual editing of account numbers is turned off. Enable it in Settings → Account numbers.");
   }
-  const unique = await assertUniqueAccountNumber(sql, opts.tenantId, next, opts.customerId);
+  const unique = await assertUniqueAccountNumber(sql, opts.tenantId, next, { customerId: opts.customerId });
   await sql`update customers set account_number = ${unique} where id = ${opts.customerId} and tenant_id = ${opts.tenantId}`;
   return { previous, next: unique };
+}
+
+export async function changeServiceAccountNumber(
+  sql: Sql,
+  opts: { tenantId: string; serviceId: string; next: string; allowManual: boolean },
+) {
+  const [row] = await sql<{ id: string; account_number: string; deleted_at: string | null }>`
+    select id, coalesce(account_number,'') as account_number, deleted_at::text as deleted_at
+    from services where id = ${opts.serviceId} and tenant_id = ${opts.tenantId}`;
+  if (!row) throw new Error("Service not found");
+  if (row.deleted_at) throw new Error("Restore this service before changing its account number.");
+  const previous = row.account_number || "";
+  const next = normalizeAccountNumber(opts.next);
+  if (next === previous) return { previous, next };
+  if (!opts.allowManual) {
+    throw new Error("Manual editing of account numbers is turned off. Enable it in Settings → Account numbers.");
+  }
+  const unique = await assertUniqueAccountNumber(sql, opts.tenantId, next, { serviceId: opts.serviceId });
+  await sql`update services set account_number = ${unique} where id = ${opts.serviceId} and tenant_id = ${opts.tenantId}`;
+  return { previous, next: unique };
+}
+
+export async function ensureServiceAccountNumber(sql: Sql, tenantId: string, serviceId: string, requested?: string | null) {
+  const [row] = await sql<{ account_number: string }>`
+    select coalesce(account_number,'') as account_number
+    from services where id = ${serviceId} and tenant_id = ${tenantId}`;
+  if (!row) throw new Error("Service not found");
+  if (row.account_number) return row.account_number;
+  const number = await allocateAccountNumber(sql, tenantId, requested);
+  if (!number) return "";
+  await sql`update services set account_number = ${number} where id = ${serviceId} and tenant_id = ${tenantId}`;
+  return number;
+}
+
+export async function backfillServiceAccountNumbers(sql: Sql, tenantId: string) {
+  const rows = await sql<{ id: string }>`
+    select id from services
+    where tenant_id = ${tenantId} and coalesce(account_number,'') = ''
+    order by created_at, id`;
+  let n = 0;
+  for (const row of rows) {
+    await ensureServiceAccountNumber(sql, tenantId, row.id);
+    n += 1;
+  }
+  return n;
 }
 
 export async function previewNextAccountNumber(sql: Sql, tenantId: string, slug = "") {
@@ -563,11 +635,11 @@ export async function previewNextAccountNumber(sql: Sql, tenantId: string, slug 
 
 export async function auditAccountChange(
   sql: Sql,
-  opts: { tenantId: string; userId: string; action: string; entityId: string; details?: string },
+  opts: { tenantId: string; userId: string; action: string; entityId: string; details?: string; entityType?: string },
 ) {
   await sql`
     insert into audit_logs (id, tenant_id, user_id, action, entity_type, entity_id, details)
     values (
-      ${nid("aud")}, ${opts.tenantId}, ${opts.userId}, ${opts.action}, 'customer', ${opts.entityId}, ${opts.details || ""}
+      ${nid("aud")}, ${opts.tenantId}, ${opts.userId}, ${opts.action}, ${opts.entityType || "customer"}, ${opts.entityId}, ${opts.details || ""}
     )`;
 }

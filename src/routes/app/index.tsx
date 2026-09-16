@@ -12,6 +12,7 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { getDashboard } from "@/lib/isp/server";
+import { formatDate } from "@/lib/isp/display";
 import type { DashboardData } from "@/lib/isp/types";
 import { cn, kes } from "@/lib/utils";
 
@@ -32,17 +33,15 @@ function greeting() {
 }
 
 function todayLabel() {
-  return new Intl.DateTimeFormat("en-KE", {
+  const weekday = new Intl.DateTimeFormat("en-KE", {
     weekday: "long",
-    day: "numeric",
-    month: "long",
     timeZone: "Africa/Nairobi",
   }).format(new Date());
+  return `${weekday}, ${formatDate(new Date().toISOString())}`;
 }
 
 function shortDay(iso: string) {
-  const d = iso.length <= 10 ? `${iso.slice(0, 10)}T12:00:00Z` : iso;
-  return new Intl.DateTimeFormat("en-KE", { day: "numeric", month: "short" }).format(new Date(d));
+  return formatDate(iso);
 }
 
 function timeAgo(iso: string) {
@@ -74,14 +73,14 @@ function churnTone(band: string) {
   return "ok" as const;
 }
 
-function CardHead({ title, to, link }: { title: string; to?: "/app/billing" | "/app/tickets" | "/app/routers" | "/app/services" | "/app/customers"; link?: string }) {
+function CardHead({ title, to, link }: { title: string; to?: string; link?: string }) {
   return (
     <div className="mb-5 flex items-start justify-between gap-3">
       <h2 className="text-base font-medium tracking-tight">{title}</h2>
       {to && link ? (
-        <Link to={to} className="min-h-11 text-sm text-accent hover:underline">
+        <a href={to} className="min-h-11 text-sm text-accent hover:underline">
           {link}
-        </Link>
+        </a>
       ) : null}
     </div>
   );
@@ -241,9 +240,9 @@ function Overview() {
             <h2 className="text-base font-medium tracking-tight">Revenue, last 14 days</h2>
             <p className="mt-1 text-sm text-muted">{kes(monthTotal)} confirmed in this window</p>
           </div>
-          <Link to="/app/billing" className="min-h-11 text-sm text-accent hover:underline">
+          <a href="/app/billing" className="min-h-11 text-sm text-accent hover:underline">
             Billing
-          </Link>
+          </a>
         </div>
         {data.revenueDays.every((d) => d.amount === 0) ? <Empty text="No confirmed payments in the last two weeks." /> : <RevenueChart days={data.revenueDays} />}
       </Card>

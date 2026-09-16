@@ -1,4 +1,5 @@
 import { nid } from "../utils.ts";
+import { addNairobiDays } from "./empty-tenant.ts";
 import { recordLedger } from "./ledger";
 
 type Sql = {
@@ -97,6 +98,7 @@ export async function issueInvoice(
     amountKes?: number;
     items?: InvoiceItemInput[];
     notes?: string;
+    serviceId?: string;
   },
 ) {
   const rawItems =
@@ -110,10 +112,12 @@ export async function issueInvoice(
   const [{ n }] = await sql<{ n: number }>`select count(*)::int as n from invoices where tenant_id = ${opts.tenantId}`;
   const number = `INV-${String(1000 + (n ?? 0) + 1)}`;
   const id = nid("inv");
+  const itemServiceIds = [...new Set(items.map((i) => i.service_id).filter(Boolean))];
+  const serviceId = opts.serviceId || (itemServiceIds.length === 1 ? itemServiceIds[0] : "") || null;
   await sql`insert into invoices
-    (id, tenant_id, customer_id, number, amount_kes, status, due_date, subtotal_kes, tax_kes, tax_rate, paid_kes, notes)
+    (id, tenant_id, customer_id, service_id, number, amount_kes, status, due_date, subtotal_kes, tax_kes, tax_rate, paid_kes, notes)
     values (
-      ${id}, ${opts.tenantId}, ${opts.customerId}, ${number}, ${totals.total}, 'issued', ${opts.dueDate},
+      ${id}, ${opts.tenantId}, ${opts.customerId}, ${serviceId}, ${number}, ${totals.total}, 'issued', ${opts.dueDate},
       ${totals.subtotal}, ${totals.tax}, ${totals.tax_rate}, 0, ${opts.notes ?? ""}
     )`;
   for (const item of items) {
@@ -127,63 +131,134 @@ export async function issueInvoice(
   await recordLedger(sql, {
     tenantId: opts.tenantId,
     customerId: opts.customerId,
+    serviceId: serviceId || undefined,
     entryType: "invoice",
     debitKes: totals.total,
     refType: "invoice",
     refId: id,
     memo: number,
   });
-  return { id, number, amount_kes: totals.total, subtotal_kes: totals.subtotal, tax_kes: totals.tax, tax_rate: totals.tax_rate };
+  return { id, number, amount_kes: totals.total, subtotal_kes: totals.subtotal, tax_kes: totals.tax, tax_rate: totals.tax_rate, service_id: serviceId || "" };
+}
+
+export async function resolveInvoiceServiceId(sql: Sql, tenantId: string, invoiceId: string) {
+  const [inv] = await sql<{ service_id: string | null }>`
+    select service_id from invoices where id = ${invoiceId} and tenant_id = ${tenantId}`;
+  if (inv?.service_id) return inv.service_id;
+  const [item] = await sql<{ service_id: string }>`
+    select service_id from invoice_items
+    where invoice_id = ${invoiceId} and tenant_id = ${tenantId}
+      and service_id is not null and service_id <> ''
+    limit 1`;
+  return item?.service_id || "";
+}
+
+export async function invoiceBelongsToService(
+  sql: Sql,
+  tenantId: string,
+  invoiceId: string,
+  serviceId: string,
+) {
+  if (!invoiceId || !serviceId) return false;
+  const [row] = await sql<{ id: string }>`
+    select i.id from invoices i
+    where i.id = ${invoiceId} and i.tenant_id = ${tenantId}
+      and (
+        i.service_id = ${serviceId}
+        or exists (
+          select 1 from invoice_items ii
+          where ii.invoice_id = i.id and ii.tenant_id = i.tenant_id and ii.service_id = ${serviceId}
+        )
+      )
+    limit 1`;
+  return Boolean(row);
 }
 
 export async function generateRecurringInvoices(sql: Sql, tenantId: string) {
-  const customers = await sql<{ id: string }>`
-    select distinct c.id from customers c
-    join services s on s.customer_id = c.id
-    where c.tenant_id = ${tenantId} and s.tenant_id = ${tenantId}
+  const services = await sql<{
+    id: string;
+    customer_id: string;
+    package_id: string;
+    name: string;
+    price_kes: number;
+    billing_interval: string;
+  }>`
+    select s.id, s.customer_id, p.id as package_id, p.name, p.price_kes, p.billing_interval
+    from services s
+    join packages p on p.id = s.package_id
+    join customers c on c.id = s.customer_id
+    where s.tenant_id = ${tenantId} and c.tenant_id = ${tenantId}
       and c.deleted_at is null and s.deleted_at is null
       and s.status in ('active','grace')`;
-  const created: Array<{ customerId: string; id: string; number: string; amount_kes: number; dueDate: string }> = [];
-  for (const c of customers) {
-    const pkgs = await sql<{
-      service_id: string;
-      package_id: string;
-      name: string;
-      price_kes: number;
-      billing_interval: string;
-    }>`
-      select s.id as service_id, p.id as package_id, p.name, p.price_kes, p.billing_interval
-      from services s
-      join packages p on p.id = s.package_id
-      where s.tenant_id = ${tenantId} and s.customer_id = ${c.id}
-        and s.deleted_at is null and s.status in ('active','grace')`;
-    if (!pkgs[0]) continue;
+  const created: Array<{ customerId: string; serviceId: string; id: string; number: string; amount_kes: number; dueDate: string }> = [];
+  for (const svc of services) {
+    if (svc.price_kes <= 0) continue;
     const unpaid = await sql<{ id: string }>`
-      select id from invoices where tenant_id = ${tenantId} and customer_id = ${c.id}
-      and status in ('issued','due','overdue','partial') limit 1`;
+      select i.id from invoices i
+      where i.tenant_id = ${tenantId} and i.customer_id = ${svc.customer_id}
+        and i.status in ('issued','due','overdue','partial')
+        and (
+          i.service_id = ${svc.id}
+          or exists (
+            select 1 from invoice_items ii
+            where ii.invoice_id = i.id and ii.tenant_id = i.tenant_id and ii.service_id = ${svc.id}
+          )
+          or (
+            (i.service_id is null or i.service_id = '')
+            and not exists (
+              select 1 from invoice_items ii
+              where ii.invoice_id = i.id and ii.tenant_id = i.tenant_id
+                and ii.service_id is not null and ii.service_id <> ''
+            )
+          )
+        )
+      limit 1`;
     const [last] = await sql<{ issued_at: string }>`
-      select issued_at::text as issued_at from invoices
-      where tenant_id = ${tenantId} and customer_id = ${c.id}
-      order by issued_at desc limit 1`;
-    if (!needsRecurringInvoice({ hasUnpaid: Boolean(unpaid[0]), lastIssuedAt: last?.issued_at ?? null, interval: pkgs[0].billing_interval })) {
+      select i.issued_at::text as issued_at from invoices i
+      where i.tenant_id = ${tenantId} and i.customer_id = ${svc.customer_id}
+        and (
+          i.service_id = ${svc.id}
+          or exists (
+            select 1 from invoice_items ii
+            where ii.invoice_id = i.id and ii.tenant_id = i.tenant_id and ii.service_id = ${svc.id}
+          )
+          or (
+            (i.service_id is null or i.service_id = '')
+            and not exists (
+              select 1 from invoice_items ii
+              where ii.invoice_id = i.id and ii.tenant_id = i.tenant_id
+                and ii.service_id is not null and ii.service_id <> ''
+            )
+          )
+        )
+      order by i.issued_at desc limit 1`;
+    if (!needsRecurringInvoice({ hasUnpaid: Boolean(unpaid[0]), lastIssuedAt: last?.issued_at ?? null, interval: svc.billing_interval })) {
       continue;
     }
-    const due = new Date();
-    due.setDate(due.getDate() + Math.min(intervalDays(pkgs[0].billing_interval), 14));
-    const dueDate = due.toISOString().slice(0, 10);
+    const dueDate = addNairobiDays(Math.min(intervalDays(svc.billing_interval), 14));
     const inv = await issueInvoice(sql, {
       tenantId,
-      customerId: c.id,
+      customerId: svc.customer_id,
+      serviceId: svc.id,
       dueDate,
-      items: pkgs.map((p) => ({
-        description: `${p.name} (${p.billing_interval})`,
-        quantity: 1,
-        unit_kes: p.price_kes,
-        package_id: p.package_id,
-        service_id: p.service_id,
-      })),
+      items: [
+        {
+          description: `${svc.name} (${svc.billing_interval})`,
+          quantity: 1,
+          unit_kes: svc.price_kes,
+          package_id: svc.package_id,
+          service_id: svc.id,
+        },
+      ],
     });
-    created.push({ customerId: c.id, id: inv.id, number: inv.number, amount_kes: inv.amount_kes, dueDate });
+    created.push({
+      customerId: svc.customer_id,
+      serviceId: svc.id,
+      id: inv.id,
+      number: inv.number,
+      amount_kes: inv.amount_kes,
+      dueDate,
+    });
   }
   return created;
 }

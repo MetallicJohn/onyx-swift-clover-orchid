@@ -22,7 +22,7 @@ export function wireModules() {
     const payId = String(p.payment_id || "");
     const amount = Number(p.amount_kes || 0);
     if (p.invoice_paid !== false) {
-      await restorePaidAccess(sql, tenantId, customerId);
+      await restorePaidAccess(sql, tenantId, customerId, String(p.service_id || "") || undefined);
     }
     await awardLoyalty(sql, tenantId, customerId, amount, "payment", payId);
     try {
@@ -59,6 +59,7 @@ export function wireModules() {
       download_mbps: Number(p.download_mbps || 10),
       upload_mbps: Number(p.upload_mbps || 10),
       password: p.password ? String(p.password) : undefined,
+      suspend_reason: p.suspend_reason ? String(p.suspend_reason) : undefined,
     };
     const radius = await syncRadiusAccount(sql, event.tenantId, service);
     await enqueueServiceCommand(sql, event.tenantId, {

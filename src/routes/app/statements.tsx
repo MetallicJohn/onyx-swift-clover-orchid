@@ -15,8 +15,9 @@ import type { CustomerRow } from "@/lib/isp/types";
 import { cn, kes } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/statements")({
-  validateSearch: (search: Record<string, unknown>): { customer?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { customer?: string; service?: string } => ({
     customer: typeof search.customer === "string" && search.customer ? search.customer : undefined,
+    service: typeof search.service === "string" && search.service ? search.service : undefined,
   }),
   component: StatementsPage,
 });
@@ -29,7 +30,7 @@ function statusOf(c: CustomerRow) {
 
 function StatementsPage() {
   const navigate = Route.useNavigate();
-  const { customer: customerParam } = Route.useSearch();
+  const { customer: customerParam, service: serviceParam } = Route.useSearch();
   const listId = useId();
   const req = useRef(0);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
@@ -51,7 +52,7 @@ function StatementsPage() {
     const n = ++req.current;
     setError(null);
     try {
-      const next = await getStatementDocument({ data: { customer_id: customerId } });
+      const next = await getStatementDocument({ data: { customer_id: customerId, service_id: serviceParam } });
       if (n !== req.current) return;
       setDoc(next);
     } catch (ex) {
@@ -65,7 +66,7 @@ function StatementsPage() {
     setId(customerId);
     setNote(null);
     setPicking(false);
-    void navigate({ search: { customer: customerId }, replace: true });
+    void navigate({ search: { customer: customerId, service: serviceParam }, replace: true });
     await loadDoc(customerId);
   }
 
@@ -133,7 +134,7 @@ function StatementsPage() {
     setBusy(true);
     setError(null);
     try {
-      const file = await getStatementPdf({ data: { customer_id: id } });
+      const file = await getStatementPdf({ data: { customer_id: id, service_id: serviceParam } });
       if (mode === "download") downloadPdf(file);
       else if (mode === "print") printPdf(file);
       else viewPdf(file);
@@ -277,7 +278,7 @@ function StatementsPage() {
                     setError(null);
                     setNote(null);
                     try {
-                      const r = await emailStatementPdf({ data: { customer_id: id } });
+                      const r = await emailStatementPdf({ data: { customer_id: id, service_id: serviceParam } });
                       setNote(r.status === "sent" ? `Emailed to ${r.to}` : `Queued for ${r.to}`);
                     } catch (ex) {
                       setError(ex instanceof Error ? ex.message : "Could not email the statement");

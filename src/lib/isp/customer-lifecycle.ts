@@ -1,4 +1,5 @@
 import { enqueueAgentCommand, enqueueServiceCommand } from "./agent.ts";
+import { serviceBalance } from "./ledger.ts";
 import { archiveCustomer, archiveService, listAssignedLiveServices } from "./recycle-bin.ts";
 import type { InvoiceRow, PackageRow, PaymentRow, ServiceRow, TicketRow } from "./types.ts";
 import { listTags } from "./tags.ts";
@@ -385,7 +386,9 @@ export async function customerTraffic(sql: Sql, tenantId: string, customerId: st
 }
 
 const SERVICE_SELECT = `s.id, s.customer_id, c.name as customer_name, c.phone as customer_phone,
-             coalesce(c.account_number, '') as account_number,
+             coalesce(s.account_number, '') as account_number,
+             coalesce(c.account_number, '') as customer_account_number,
+             coalesce(nullif(s.name,''), p.name) as name,
              s.package_id, p.name as package_name,
              s.access_method, s.username, s.static_ip, coalesce(s.mac_address, '') as mac_address,
              s.status, s.created_at::text as created_at,
@@ -431,16 +434,20 @@ export async function loadCustomerRecord(sql: Sql, tenantId: string, customerId:
   );
 
   const invoices = await sql<InvoiceRow>`
-    select i.id, i.customer_id, ${customer.name} as customer_name, i.number, i.amount_kes,
+    select i.id, i.customer_id, ${customer.name} as customer_name, i.service_id, i.number, i.amount_kes,
            i.subtotal_kes, i.tax_kes, i.tax_rate, i.paid_kes,
            case when i.status = 'paid' then 0 else greatest(0, i.amount_kes - i.paid_kes) end as remaining_kes,
-           i.status, i.due_date::text as due_date, i.issued_at::text as issued_at, i.notes
+           i.status, i.due_date::text as due_date, i.issued_at::text as issued_at, i.notes,
+           coalesce(s.account_number,'') as service_account,
+           coalesce(nullif(s.name,''), pk.name, '') as service_name
     from invoices i
+    left join services s on s.id = i.service_id and s.tenant_id = i.tenant_id
+    left join packages pk on pk.id = s.package_id
     where i.tenant_id = ${tenantId} and i.customer_id = ${customerId}
     order by i.issued_at desc`;
 
   const payments = await sql<PaymentRow>`
-    select p.id, p.customer_id, ${customer.name} as customer_name, p.invoice_id, p.provider,
+    select p.id, p.customer_id, ${customer.name} as customer_name, p.invoice_id, p.service_id, p.provider,
            p.amount_kes, p.reference, p.status, p.paid_at::text as paid_at
     from payments p
     where p.tenant_id = ${tenantId} and p.customer_id = ${customerId}
@@ -516,10 +523,20 @@ export async function loadCustomerRecord(sql: Sql, tenantId: string, customerId:
   const tagCatalog = await listTags(sql, tenantId);
 
   const balance = invoices.reduce((sum, i) => sum + (i.remaining_kes || 0), 0);
+  const dueByService = new Map<string, number>();
+  for (const inv of invoices) {
+    const sid = inv.service_id || "";
+    if (!sid) continue;
+    dueByService.set(sid, (dueByService.get(sid) || 0) + (inv.remaining_kes || 0));
+  }
+  const servicesWithDue = services.map((s) => ({
+    ...s,
+    outstanding_kes: dueByService.get(s.id) ?? 0,
+  }));
 
   return {
     customer: { ...customer, tags, service_count: services.length, balance_kes: balance },
-    services,
+    services: servicesWithDue,
     invoices,
     payments,
     tickets,
@@ -602,7 +619,8 @@ export async function loadServiceRecord(sql: Sql, tenantId: string, serviceId: s
     where tenant_id = ${tenantId} and id <> ${service.customer_id} and deleted_at is null
     order by name`;
 
-  return { service, provision: provision ?? null, session: session ?? null, activity, packages, others };
+  const outstanding = await serviceBalance(sql, tenantId, serviceId);
+  return { service: { ...service, outstanding_kes: outstanding }, provision: provision ?? null, session: session ?? null, activity, packages, others };
 }
 
 export { sanitizeMac, nasTeardown };

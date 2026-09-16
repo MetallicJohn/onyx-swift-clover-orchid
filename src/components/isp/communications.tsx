@@ -23,6 +23,7 @@ import {
   type CommVarKey,
 } from "@/lib/isp/comms-format";
 import { hasPermission } from "@/lib/isp/rbac";
+import { formatDate, formatShortDateTime } from "@/lib/isp/display";
 import {
   deleteCommTemplateFn,
   getCampaignFn,
@@ -62,33 +63,20 @@ function toggleValue<T>(list: T[] | undefined, value: T): T[] {
 }
 
 function formatWhen(iso: string | null | undefined) {
-  if (!iso) return "—";
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso.slice(0, 16);
-  return new Intl.DateTimeFormat("en-KE", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Africa/Nairobi",
-  }).format(new Date(t));
+  return formatShortDateTime(iso);
 }
 
 function prettyDate(iso: string) {
   if (!iso) return "";
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso;
-  return new Intl.DateTimeFormat("en-KE", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "Africa/Nairobi",
-  }).format(new Date(t));
+  const formatted = formatDate(iso);
+  return formatted === "—" ? iso : formatted;
 }
 
 function campaignName(category: CommCategory, extras: CommExtras) {
   const label = categoryLabel(category);
-  if (extras.maintenance_date) return `${label} — ${extras.maintenance_date}`;
+  if (extras.maintenance_date) return `${label} — ${prettyDate(extras.maintenance_date) || extras.maintenance_date}`;
   if (extras.area) return `${label} — ${extras.area}`;
-  return `${label} — ${new Intl.DateTimeFormat("en-KE", { day: "numeric", month: "short", timeZone: "Africa/Nairobi" }).format(new Date())}`;
+  return `${label} — ${formatDate(new Date().toISOString())}`;
 }
 
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {

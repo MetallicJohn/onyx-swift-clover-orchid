@@ -27,16 +27,25 @@ async function loadService(sql: Sql, tenantId: string, serviceId: string) {
   return svc ?? null;
 }
 
-export async function allocateStaticIp(sql: Sql, tenantId: string, serviceId: string, customerId: string) {
-  const [pool] = await sql<{ id: string; cidr: string; next_host: number }>`
-    select id, cidr, next_host from ip_pools where tenant_id = ${tenantId} order by name limit 1`;
-  if (!pool) throw new Error("No IP pool configured");
+export async function allocateStaticIp(
+  sql: Sql,
+  tenantId: string,
+  serviceId: string,
+  customerId: string,
+  poolId?: string | null,
+) {
+  const [pool] = poolId
+    ? await sql<{ id: string; cidr: string; next_host: number }>`
+        select id, cidr, next_host from ip_pools where tenant_id = ${tenantId} and id = ${poolId}`
+    : await sql<{ id: string; cidr: string; next_host: number }>`
+        select id, cidr, next_host from ip_pools where tenant_id = ${tenantId} order by name limit 1`;
+  if (!pool) throw new Error(poolId ? "IP pool not found" : "No IP pool configured");
   let host = pool.next_host || 20;
   for (let i = 0; i < 80; i += 1) {
     const { address, nextHost } = nextIpv4(pool.cidr, host);
     host = nextHost;
     const taken = await sql<{ id: string }>`select id from ip_addresses where tenant_id = ${tenantId} and address = ${address}`;
-    const onService = await sql<{ id: string }>`select id from services where tenant_id = ${tenantId} and static_ip = ${address}`;
+    const onService = await sql<{ id: string }>`select id from services where tenant_id = ${tenantId} and static_ip = ${address} and deleted_at is null`;
     if (taken[0] || onService[0]) continue;
     await sql`insert into ip_addresses (id, tenant_id, pool_id, address, family, status, service_id, customer_id)
       values (${nid("ip")}, ${tenantId}, ${pool.id}, ${address}, 'ipv4', 'assigned', ${serviceId}, ${customerId})`;
@@ -45,6 +54,40 @@ export async function allocateStaticIp(sql: Sql, tenantId: string, serviceId: st
     return address;
   }
   throw new Error("IP pool exhausted");
+}
+
+export async function assignStaticIp(
+  sql: Sql,
+  tenantId: string,
+  serviceId: string,
+  customerId: string,
+  address: string,
+  poolId?: string | null,
+) {
+  const ip = address.trim();
+  const parts = ip.split(".").map((n) => Number(n));
+  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+    throw new Error("Enter a valid IPv4 address");
+  }
+  const taken = await sql<{ id: string }>`select id from ip_addresses where tenant_id = ${tenantId} and address = ${ip}`;
+  const onService = await sql<{ id: string }>`
+    select id from services
+    where tenant_id = ${tenantId} and static_ip = ${ip} and id <> ${serviceId} and deleted_at is null`;
+  if (taken[0] || onService[0]) throw new Error("That IP is already assigned");
+  let pool = poolId || "";
+  if (pool) {
+    const [hit] = await sql<{ id: string }>`select id from ip_pools where tenant_id = ${tenantId} and id = ${pool}`;
+    if (!hit) throw new Error("IP pool not found");
+  } else {
+    const [first] = await sql<{ id: string }>`select id from ip_pools where tenant_id = ${tenantId} order by name limit 1`;
+    pool = first?.id || "";
+  }
+  if (pool) {
+    await sql`insert into ip_addresses (id, tenant_id, pool_id, address, family, status, service_id, customer_id)
+      values (${nid("ip")}, ${tenantId}, ${pool}, ${ip}, 'ipv4', 'assigned', ${serviceId}, ${customerId})`;
+  }
+  await sql`update services set static_ip = ${ip} where id = ${serviceId} and tenant_id = ${tenantId}`;
+  return ip;
 }
 
 export async function rotateServicePassword(sql: Sql, tenantId: string, serviceId: string) {

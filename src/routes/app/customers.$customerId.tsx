@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { TagList, TagPicker } from "@/components/isp/tag-picker";
 import { TrafficDrawer } from "@/components/isp/traffic-drawer";
 import { ExpiryEditor, type ExpiryForm } from "@/components/isp/service-expiry-editor";
+import { OnboardWizard } from "@/components/isp/onboard-wizard";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -23,7 +24,6 @@ import { getAccountNumberSettingsFn } from "@/lib/isp/server-account-numbers";
 import { extendGraceFn, grantGraceFn, revokeGraceFn } from "@/lib/isp/server-grace";
 import { setServiceExpiryFn } from "@/lib/isp/server-expiry";
 import {
-  createService,
   disconnectService,
   rotateServiceSecret,
   setCustomerPortalPassword,
@@ -371,25 +371,36 @@ function CustomerRecordPage() {
       {tab === "services" ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm text-muted">One customer, many lines. Deleting a line never deletes this customer.</p>
+            <p className="text-sm text-muted">Each line is billed on its own account number. Paying one service does not restore another.</p>
             {canServices ? (
               <Button size="sm" onClick={() => setProvisionOpen((v) => !v)}>
-                {provisionOpen ? "Cancel" : "Provision service"}
+                {provisionOpen ? "Cancel" : "Add service"}
               </Button>
             ) : null}
           </div>
           {provisionOpen && canServices ? (
-            <ProvisionForm
-              customerId={c.id}
-              packages={data.packages}
-              busy={busy}
-              onSubmit={(payload) =>
-                void run(async () => {
-                  await createService({ data: payload });
-                  setProvisionOpen(false);
-                  window.history.replaceState(window.history.state, "", customerRecordPath(customerId, { tab: "services" }));
-                }, "Service provisioned")
-              }
+            <OnboardWizard
+              open={provisionOpen}
+              onOpenChange={(next) => {
+                setProvisionOpen(next);
+                if (!next) window.history.replaceState(window.history.state, "", customerRecordPath(customerId, { tab: "services" }));
+              }}
+              mode="service"
+              lockedCustomer={{
+                id: c.id,
+                name: c.name,
+                phone: c.phone,
+                email: c.email,
+                account_number: c.account_number,
+                type: c.type,
+                address: c.address,
+              }}
+              allowChangeCustomer={false}
+              onCreated={() => {
+                setProvisionOpen(false);
+                window.history.replaceState(window.history.state, "", customerRecordPath(customerId, { tab: "services" }));
+                void load();
+              }}
             />
           ) : null}
           {data.services.length === 0 ? (
@@ -740,11 +751,12 @@ function ServiceTable({
         <thead className="text-xs text-muted">
           <tr>
             <th className="px-3 py-2 font-medium">Service</th>
+            <th className="px-3 py-2 font-medium">Account</th>
             <th className="px-3 py-2 font-medium">Type</th>
             <th className="px-3 py-2 font-medium">Identity</th>
             <th className="px-3 py-2 font-medium">Status</th>
             <th className="px-3 py-2 font-medium">Expiry</th>
-            <th className="px-3 py-2 font-medium">MAC</th>
+            <th className="px-3 py-2 font-medium">Due</th>
             <th className="px-2 py-2 text-right font-medium">Actions</th>
           </tr>
         </thead>
@@ -760,9 +772,10 @@ function ServiceTable({
                     params={{ serviceId: s.id }}
                     className="inline-flex min-h-11 items-center font-medium hover:text-accent hover:underline"
                   >
-                    {s.package_name}
+                    {s.name || s.package_name}
                   </Link>
                 </td>
+                <td className="px-3 py-1.5 font-mono text-xs">{s.account_number || "—"}</td>
                 <td className="px-3 py-1.5">{accessMethodLabel(s.access_method)}</td>
                 <td className="px-3 py-1.5 font-mono text-xs">{identity}</td>
                 <td className="px-3 py-1.5">
@@ -775,7 +788,7 @@ function ServiceTable({
                   <div>{formatDate(effectiveAccessIso(s))}</div>
                   <div className="text-xs text-subtle">{expirySourceLabel(s.expiry_source, s.grace_active)}</div>
                 </td>
-                <td className="px-3 py-1.5 font-mono text-xs">{formatMac(s.mac_address)}</td>
+                <td className="px-3 py-1.5 font-mono text-xs tabular-nums">{kes(s.outstanding_kes || 0)}</td>
                 <td className="px-1 py-1 text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -789,6 +802,12 @@ function ServiceTable({
                         <Link to="/app/services/$serviceId" params={{ serviceId: s.id }}>
                           View service
                         </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <a href={customerRecordPath(s.customer_id, { tab: "billing" })}>Pay / invoices</a>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <a href={`/app/statements?customer=${s.customer_id}&service=${s.id}`}>View statement</a>
                       </DropdownMenuItem>
                       {canTraffic ? <DropdownMenuItem onSelect={() => onTraffic(s.id)}>Realtime traffic</DropdownMenuItem> : null}
                       <DropdownMenuSeparator />
@@ -832,62 +851,6 @@ function ServiceTable({
   );
 }
 
-function ProvisionForm({
-  customerId,
-  packages,
-  busy,
-  onSubmit,
-}: {
-  customerId: string;
-  packages: RecordData["packages"];
-  busy: boolean;
-  onSubmit: (data: { customer_id: string; package_id: string; username?: string; static_ip?: string; notes?: string }) => void;
-}) {
-  const [packageId, setPackageId] = useState(packages[0]?.id || "");
-  const [username, setUsername] = useState("");
-  const [staticIp, setStaticIp] = useState("");
-  const [notes, setNotes] = useState("");
-  return (
-    <form
-      className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSubmit({
-          customer_id: customerId,
-          package_id: packageId,
-          username: username || undefined,
-          static_ip: staticIp || undefined,
-          notes: notes || undefined,
-        });
-      }}
-    >
-      <Field label="Package">
-        <Select value={packageId} onChange={(e) => setPackageId(e.target.value)} required>
-          {packages.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} · {accessMethodLabel(p.access_method)}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="PPPoE / voucher username">
-        <Input value={username} onChange={(e) => setUsername(e.target.value)} />
-      </Field>
-      <Field label="Static IP (blank = auto from pool)">
-        <Input value={staticIp} onChange={(e) => setStaticIp(e.target.value)} />
-      </Field>
-      <Field label="Service notes">
-        <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </Field>
-      <div>
-        <Button type="submit" disabled={busy || !packageId}>
-          Activate
-        </Button>
-      </div>
-    </form>
-  );
-}
-
 function BillingPane({
   data,
   customerId,
@@ -909,9 +872,9 @@ function BillingPane({
               Open statement
             </a>
           ) : null}
-          <Link to="/app/billing" className="inline-flex min-h-11 items-center text-accent hover:underline">
+          <a href="/app/billing" className="inline-flex min-h-11 items-center text-accent hover:underline">
             Billing
-          </Link>
+          </a>
         </div>
       </div>
       <section className="overflow-x-auto rounded-xl border border-border bg-surface">
@@ -923,6 +886,7 @@ function BillingPane({
             <thead className="text-xs text-muted">
               <tr>
                 <th className="px-4 py-2 font-medium">Number</th>
+                <th className="px-4 py-2 font-medium">Service</th>
                 <th className="px-4 py-2 font-medium">Amount</th>
                 <th className="px-4 py-2 font-medium">Remaining</th>
                 <th className="px-4 py-2 font-medium">Status</th>
@@ -933,6 +897,10 @@ function BillingPane({
               {data.invoices.map((i) => (
                 <tr key={i.id}>
                   <td className="px-4 py-2 font-mono text-xs">{i.number}</td>
+                  <td className="px-4 py-2">
+                    <div>{i.service_name || "—"}</div>
+                    {i.service_account ? <div className="font-mono text-xs text-muted">{i.service_account}</div> : null}
+                  </td>
                   <td className="px-4 py-2 font-mono tabular-nums">{kes(i.amount_kes)}</td>
                   <td className="px-4 py-2 font-mono tabular-nums">{kes(i.remaining_kes)}</td>
                   <td className="px-4 py-2">

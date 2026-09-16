@@ -5,9 +5,10 @@ import { assertTenantMatch } from "./rbac.ts";
 
 test("queries are tenant-scoped in core list handlers", () => {
   const server = readFileSync(new URL("./server.ts", import.meta.url), "utf8");
+  const routers = readFileSync(new URL("./router-provisioning.ts", import.meta.url), "utf8");
   assert.match(server, /from customers where tenant_id = \$\{/);
   assert.match(server, /from invoices where .*tenant_id/);
-  assert.match(server, /from routers where tenant_id = \$\{workspace.tenantId\}/);
+  assert.match(routers, /from routers where tenant_id = \$\{tenantId\}/);
 });
 
 test("active tenant is membership-validated", () => {

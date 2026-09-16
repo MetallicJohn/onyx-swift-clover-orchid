@@ -10,6 +10,7 @@ import {
   type InvoiceLine,
   type StatementDocument,
 } from "./document-format.ts";
+import { normalizeDateFormat } from "./display.ts";
 import { customerBalance } from "./ledger.ts";
 import { DEFAULT_APPEARANCE, DEFAULT_PRESET, isAppearance, isPresetId } from "../theme/presets.ts";
 import { resolvePalette } from "../theme/resolve.ts";
@@ -53,6 +54,7 @@ async function loadBrand(sql: Sql, tenantId: string): Promise<BrandProfile> {
     vat_rate_pct: number;
     currency: string;
     timezone: string;
+    date_format: string;
     invoice_footer: string;
     invoice_notes: string;
     brand_color: string;
@@ -69,6 +71,7 @@ async function loadBrand(sql: Sql, tenantId: string): Promise<BrandProfile> {
   }>`select name, slug, coalesce(address,'') as address, support_phone, support_email,
             coalesce(website,'') as website, coalesce(tax_pin,'') as tax_pin,
             vat_enabled, vat_rate_pct, currency, timezone,
+            coalesce(date_format, 'dd/mm/yy') as date_format,
             coalesce(invoice_footer,'') as invoice_footer, coalesce(invoice_notes,'') as invoice_notes,
             coalesce(brand_color,'') as brand_color,
             coalesce(theme_preset,'teal') as theme_preset,
@@ -121,6 +124,7 @@ async function loadBrand(sql: Sql, tenantId: string): Promise<BrandProfile> {
     vatRate: ten.vat_rate_pct || 0,
     currency: ten.currency || "KES",
     timezone: ten.timezone || "Africa/Nairobi",
+    dateFormat: normalizeDateFormat(ten.date_format),
     footer: ten.invoice_footer,
     notes: ten.invoice_notes,
     brandColor: resolvePalette(
@@ -146,6 +150,7 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
   const [inv] = await sql<{
     id: string;
     customer_id: string;
+    service_id: string | null;
     number: string;
     amount_kes: number;
     subtotal_kes: number;
@@ -156,7 +161,7 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
     due_date: string;
     issued_at: string;
     notes: string;
-  }>`select id, customer_id, number, amount_kes, subtotal_kes, tax_kes, tax_rate, paid_kes, status,
+  }>`select id, customer_id, service_id, number, amount_kes, subtotal_kes, tax_kes, tax_rate, paid_kes, status,
             due_date::text as due_date, issued_at::text as issued_at, coalesce(notes,'') as notes
      from invoices where id = ${invoiceId} and tenant_id = ${tenantId}`;
   if (!inv) throw new Error("Invoice not found");
@@ -181,8 +186,11 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
         select id, name, billing_interval from packages where tenant_id = ${tenantId}`
     : [];
   const services = svcIds.length
-    ? await sql<{ id: string; period_end: string | null }>`
-        select id, period_end::text as period_end from services where tenant_id = ${tenantId}`
+    ? await sql<{ id: string; period_end: string | null; account_number: string; name: string; status: string }>`
+        select s.id, s.period_end::text as period_end, coalesce(s.account_number,'') as account_number,
+               coalesce(nullif(s.name,''), p.name) as name, s.status
+        from services s join packages p on p.id = s.package_id
+        where s.tenant_id = ${tenantId}`
     : [];
   const pkgBy = new Map(packages.map((p) => [p.id, p]));
   const svcBy = new Map(services.map((s) => [s.id, s]));
@@ -197,7 +205,7 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
           return {
             description: item.description,
             packageName: pkg?.name || "",
-            period: billingPeriod(svc?.period_end ?? inv.issued_at, pkg?.billing_interval || "monthly", brand.timezone),
+            period: billingPeriod(svc?.period_end ?? inv.issued_at, pkg?.billing_interval || "monthly", brand),
             quantity: item.quantity,
             unit: item.unit_kes,
             discount: 0,
@@ -209,7 +217,7 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
           {
             description: "Internet service",
             packageName: "",
-            period: billingPeriod(inv.issued_at, "monthly", brand.timezone),
+            period: billingPeriod(inv.issued_at, "monthly", brand),
             quantity: 1,
             unit: inv.subtotal_kes || inv.amount_kes,
             discount: 0,
@@ -227,6 +235,11 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
   const ledger = await customerBalance(sql, tenantId, customer.id);
   const previousBalance = ledger - remaining;
   const payable = invoicePayable(previousBalance, remaining);
+  const headerServiceId = inv.service_id || (svcIds.length === 1 ? svcIds[0] : "") || "";
+  const billed = headerServiceId ? svcBy.get(headerServiceId) : undefined;
+  const accountNo = billed?.account_number
+    ? billed.account_number
+    : resolveAccountNumber(brand.slug, customer.id, customer.account_number);
 
   return {
     kind: "invoice",
@@ -243,10 +256,12 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
     customer: {
       id: customer.id,
       name: customer.name,
-      accountNo: resolveAccountNumber(brand.slug, customer.id, customer.account_number),
+      accountNo,
       phone: customer.phone,
       email: customer.email,
       address: customer.address,
+      serviceName: billed?.name || "",
+      serviceStatus: billed?.status || "",
     },
     lines,
     totals: {
@@ -269,37 +284,73 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
   };
 }
 
-function billingPeriod(endIso: string, interval: string, tz: string) {
-  const end = new Date(endIso.length <= 10 ? `${endIso}T12:00:00Z` : endIso);
-  if (Number.isNaN(end.getTime())) return formatDay(endIso, tz);
+function billingPeriod(endIso: string, interval: string, brand: Pick<BrandProfile, "timezone" | "dateFormat">) {
+  const tz = brand.timezone || "Africa/Nairobi";
+  const fmt = brand.dateFormat;
+  const end = new Date(endIso.length <= 10 ? `${endIso}T12:00:00+03:00` : endIso);
+  if (Number.isNaN(end.getTime())) return formatDay(endIso, tz, fmt);
   const start = new Date(end);
   if (interval === "daily") start.setUTCDate(start.getUTCDate() - 1);
   else if (interval === "weekly") start.setUTCDate(start.getUTCDate() - 7);
   else start.setUTCDate(start.getUTCDate() - 30);
-  return `${formatDay(start.toISOString(), tz)} – ${formatDay(end.toISOString(), tz)}`;
+  return `${formatDay(start.toISOString(), tz, fmt)} – ${formatDay(end.toISOString(), tz, fmt)}`;
 }
 
 export async function loadStatementDocument(
   sql: Sql,
   tenantId: string,
   customerId: string,
+  serviceId?: string,
 ): Promise<StatementDocument> {
   const brand = await loadBrand(sql, tenantId);
   const [customer] = await sql<{ id: string; name: string; phone: string; email: string; address: string; account_number: string }>`
     select id, name, phone, email, address, coalesce(account_number,'') as account_number from customers where id = ${customerId} and tenant_id = ${tenantId}`;
   if (!customer) throw new Error("Customer not found");
-  const ledger = await sql<{
-    created_at: string;
-    entry_type: string;
-    debit_kes: number;
-    credit_kes: number;
-    memo: string;
-    ref_id: string;
-  }>`select created_at::text as created_at, entry_type, debit_kes, credit_kes, memo, coalesce(ref_id,'') as ref_id
-     from customer_ledger
-     where tenant_id = ${tenantId} and customer_id = ${customerId}
-     order by created_at asc, id asc`;
-  const built = buildStatementRows(ledger, 0);
+  const [svc] = serviceId
+    ? await sql<{ id: string; account_number: string; name: string }>`
+        select s.id, coalesce(s.account_number,'') as account_number, coalesce(nullif(s.name,''), p.name) as name
+        from services s join packages p on p.id = s.package_id
+        where s.id = ${serviceId} and s.tenant_id = ${tenantId} and s.customer_id = ${customerId}`
+    : [];
+  const ledger = serviceId
+    ? await sql<{
+        created_at: string;
+        entry_type: string;
+        debit_kes: number;
+        credit_kes: number;
+        memo: string;
+        ref_id: string;
+        service_id: string | null;
+      }>`select created_at::text as created_at, entry_type, debit_kes, credit_kes, memo, coalesce(ref_id,'') as ref_id, service_id
+         from customer_ledger
+         where tenant_id = ${tenantId} and customer_id = ${customerId} and service_id = ${serviceId}
+         order by created_at asc, id asc`
+    : await sql<{
+        created_at: string;
+        entry_type: string;
+        debit_kes: number;
+        credit_kes: number;
+        memo: string;
+        ref_id: string;
+        service_id: string | null;
+      }>`select created_at::text as created_at, entry_type, debit_kes, credit_kes, memo, coalesce(ref_id,'') as ref_id, service_id
+         from customer_ledger
+         where tenant_id = ${tenantId} and customer_id = ${customerId}
+         order by created_at asc, id asc`;
+  const serviceNames = await sql<{ id: string; account_number: string; name: string }>`
+    select s.id, coalesce(s.account_number,'') as account_number, coalesce(nullif(s.name,''), p.name) as name
+    from services s join packages p on p.id = s.package_id
+    where s.tenant_id = ${tenantId} and s.customer_id = ${customerId}`;
+  const byId = new Map(serviceNames.map((s) => [s.id, s]));
+  const labelled = ledger.map((row) => {
+    const svcRow = row.service_id ? byId.get(row.service_id) : undefined;
+    const tag = svcRow ? `${svcRow.name} · ${svcRow.account_number || "no account"}` : "";
+    return {
+      ...row,
+      memo: tag && row.memo && !row.memo.includes(tag) ? `${row.memo} (${tag})` : tag || row.memo,
+    };
+  });
+  const built = buildStatementRows(labelled, 0);
   const first = ledger[0]?.created_at ?? new Date().toISOString();
   const last = ledger[ledger.length - 1]?.created_at ?? new Date().toISOString();
   return {
@@ -308,10 +359,11 @@ export async function loadStatementDocument(
     customer: {
       id: customer.id,
       name: customer.name,
-      accountNo: resolveAccountNumber(brand.slug, customer.id, customer.account_number),
+      accountNo: svc?.account_number || resolveAccountNumber(brand.slug, customer.id, customer.account_number),
       phone: customer.phone,
       email: customer.email,
       address: customer.address,
+      serviceName: svc?.name || "",
     },
     periodStart: first,
     periodEnd: last,

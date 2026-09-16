@@ -16,6 +16,7 @@ import {
   type ServicePerms,
 } from "@/components/isp/service-desk-ui";
 import { TrafficDrawer } from "@/components/isp/traffic-drawer";
+import { OnboardWizard } from "@/components/isp/onboard-wizard";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
@@ -25,7 +26,6 @@ import { extendGraceFn, grantGraceFn, revokeGraceFn } from "@/lib/isp/server-gra
 import { setServiceExpiryFn } from "@/lib/isp/server-expiry";
 import { queryServicesDeskFn } from "@/lib/isp/server-desk";
 import {
-  createService,
   disconnectService,
   retryPppoeProvisionFn,
   rotateServiceSecret,
@@ -166,8 +166,7 @@ function ServicesPage() {
   const [loading, setLoading] = useState(true);
   const [draftQ, setDraftQ] = useState(filters.q);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ customer_id: "", package_id: "", username: "", static_ip: "", notes: "" });
+  const [onboardOpen, setOnboardOpen] = useState(false);
   const [secretNote, setSecretNote] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel | null>(null);
   const [expiry, setExpiry] = useState<ExpiryForm | null>(null);
@@ -232,9 +231,6 @@ function ServicesPage() {
         const ids = new Set(res.services.map((s) => s.id));
         return new Set([...prev].filter((sid) => ids.has(sid)));
       });
-      if (!form.customer_id && res.customers[0]) {
-        setForm((f) => ({ ...f, customer_id: f.customer_id || res.customers[0].id, package_id: f.package_id || res.packageOptions[0]?.id || "" }));
-      }
     } catch (err) {
       if (id !== requestRef.current) return;
       setError(err instanceof Error ? err.message : "Could not load services");
@@ -377,13 +373,6 @@ function ServicesPage() {
     onDelete: (s) => setDrop({ id: s.id, label: `${s.customer_name} · ${s.package_name}`, reason: "" }),
   };
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    await createService({ data: form });
-    setOpen(false);
-    await loadDesk(filters);
-  }
-
   async function setStatus(id: string, status: ServiceStatus) {
     const verb = status === "suspended" ? "Suspend" : "Restore";
     if (!window.confirm(`${verb} this service?`)) return;
@@ -506,7 +495,7 @@ function ServicesPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <ServiceOverflowMenu canRecycle={canRecycle} selectedCount={selectedRows.length} onExport={exportSelected} />
-          {canManage ? <Button onClick={() => setOpen(true)}>Add service</Button> : null}
+          {canManage ? <Button onClick={() => setOnboardOpen(true)}>Add service</Button> : null}
         </div>
       </div>
 
@@ -550,45 +539,6 @@ function ServicesPage() {
       </div>
 
       {secretNote ? <p className="text-sm text-accent">{secretNote}</p> : null}
-
-      {canManage && open ? (
-        <form onSubmit={submit} className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2">
-          <h2 className="font-medium md:col-span-2">Add service</h2>
-          <Field label="Customer">
-            <Select value={form.customer_id} onChange={(e) => setForm({ ...form, customer_id: e.target.value })}>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Package">
-            <Select value={form.package_id} onChange={(e) => setForm({ ...form, package_id: e.target.value })}>
-              {packageOptions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} · {p.access_method}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="PPPoE / voucher username">
-            <Input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
-          </Field>
-          <Field label="Static IP (blank = auto from pool)">
-            <Input value={form.static_ip} onChange={(e) => setForm({ ...form, static_ip: e.target.value })} />
-          </Field>
-          <Field label="Service notes">
-            <Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-          </Field>
-          <div className="flex gap-2">
-            <Button type="submit">Activate</Button>
-            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-          </div>
-        </form>
-      ) : null}
 
       <div className="flex flex-col gap-2 sm:flex-row">
         <div className="min-w-0 flex-1">
@@ -791,7 +741,7 @@ function ServicesPage() {
             {noneYet ? "No services yet." : noSearch ? "No search results." : "No results for the selected filters."}
           </p>
           <div className="mt-3 flex flex-wrap justify-center gap-2">
-            {noneYet && canManage ? <Button onClick={() => setOpen(true)}>Add service</Button> : null}
+            {noneYet && canManage ? <Button onClick={() => setOnboardOpen(true)}>Add service</Button> : null}
             {noSearch ? (
               <Button variant="secondary" onClick={() => patchSearch({ q: "", page: 1 })}>
                 Clear search
@@ -846,6 +796,22 @@ function ServicesPage() {
           <ServicePagination page={desk?.page ?? 1} pages={desk?.pages ?? 1} total={desk?.total ?? 0} onPage={(page) => patchSearch({ page })} />
         </>
       ) : null}
+
+      <OnboardWizard
+        open={onboardOpen}
+        onOpenChange={setOnboardOpen}
+        mode="service"
+        onCreated={(res) => {
+          setOnboardOpen(false);
+          if (res.service_id) {
+            void navigate({ to: "/app/services/$serviceId", params: { serviceId: res.service_id } });
+          } else if (res.customer_id) {
+            void navigate({ to: "/app/customers/$customerId", params: { customerId: res.customer_id } });
+          } else {
+            void loadDesk(filters);
+          }
+        }}
+      />
 
       <ServicePreview
         open={Boolean(previewFor)}

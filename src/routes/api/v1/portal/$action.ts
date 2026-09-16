@@ -143,9 +143,11 @@ async function handlePortalApi(action: string, request: Request, method: string)
     if (action === "pay" && method === "POST") {
       return json(
         await startPortalPayment(sql, ctx, {
-          invoice_id: String(body.invoice_id || ""),
+          invoice_id: body.invoice_id ? String(body.invoice_id) : undefined,
+          service_id: body.service_id ? String(body.service_id) : undefined,
           phone: body.phone ? String(body.phone) : undefined,
           provider: body.provider ? String(body.provider) : undefined,
+          confirm_account: body.confirm_account ? String(body.confirm_account) : undefined,
         }),
       );
     }

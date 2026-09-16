@@ -1,4 +1,4 @@
-import { formatDay, formatMoney, invoiceStatusTone, type InvoiceDocument } from "../document-format.ts";
+import { formatBrandDay, formatMoney, invoiceStatusTone, type InvoiceDocument } from "../document-format.ts";
 import { buildPdf, contentWidth, MARGIN, PdfCtx } from "./engine.ts";
 
 export { invoiceStatusTone };
@@ -13,8 +13,8 @@ function drawInvoice(ctx: PdfCtx, inv: InvoiceDocument) {
   ctx.continuation = `${inv.brand.name}  ·  Invoice ${inv.invoice.number}  ·  continued`;
   ctx.drawBrandHeader("INVOICE", [
     ["Number", inv.invoice.number],
-    ["Issued", formatDay(inv.invoice.issuedAt, inv.brand.timezone)],
-    ["Due", formatDay(inv.invoice.dueDate, inv.brand.timezone)],
+    ["Issued", formatBrandDay(inv.invoice.issuedAt, inv.brand)],
+    ["Due", formatBrandDay(inv.invoice.dueDate, inv.brand)],
     ["Account", inv.customer.accountNo],
   ]);
   ctx.statusChip(inv.invoice.statusLabel, invoiceStatusTone(inv.invoice.statusLabel));
@@ -22,6 +22,7 @@ function drawInvoice(ctx: PdfCtx, inv: InvoiceDocument) {
 
   ctx.partyBlock("Bill to", [
     inv.customer.name,
+    inv.customer.serviceName ? `${inv.customer.serviceName}` : "",
     `Account ${inv.customer.accountNo}`,
     inv.customer.phone,
     inv.customer.email,
@@ -89,7 +90,7 @@ function drawInvoice(ctx: PdfCtx, inv: InvoiceDocument) {
     for (const p of inv.payments) {
       ctx.ensure(14);
       ctx.text(
-        `${p.provider}  ${p.reference}  ${formatDay(p.paidAt, inv.brand.timezone)}`,
+        `${p.provider}  ${p.reference}  ${formatBrandDay(p.paidAt, inv.brand)}`,
         MARGIN.left,
         ctx.y,
         { size: 8, color: ctx.muted },

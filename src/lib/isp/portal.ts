@@ -215,8 +215,8 @@ export async function portalContext(sql: Sql, token: string) {
     select tenant_id, customer_id from portal_sessions where token = ${token}`;
   if (!ses) throw new Error("Session expired. Sign in again.");
   await applyRls(sql, { tenantId: ses.tenant_id, bypass: false });
-  const [isp] = await sql<{ name: string; slug: string; support_phone: string; support_email: string }>`
-    select name, slug, support_phone, support_email from tenants where id = ${ses.tenant_id}`;
+  const [isp] = await sql<{ name: string; slug: string; support_phone: string; support_email: string; date_format: string }>`
+    select name, slug, support_phone, support_email, coalesce(date_format, 'dd/mm/yy') as date_format from tenants where id = ${ses.tenant_id}`;
   const [customer] = await sql<{
     id: string;
     name: string;

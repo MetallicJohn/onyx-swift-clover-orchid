@@ -12,6 +12,7 @@ import { hasPermission } from "@/lib/isp/rbac";
 import { extendGraceFn, grantGraceFn, revokeGraceFn } from "@/lib/isp/server-grace";
 import { setServiceExpiryFn } from "@/lib/isp/server-expiry";
 import { disconnectService, rotateServiceSecret, setServiceStatus } from "@/lib/isp/server";
+import { changeServiceAccountNumberFn, getAccountNumberSettingsFn } from "@/lib/isp/server-account-numbers";
 import { deleteServiceFn, getServiceFn, reassignServiceFn, updateServiceFn } from "@/lib/isp/server-lifecycle";
 import { effectiveAccessIso, expirySourceLabel, openExpiryForm } from "@/lib/isp/service-expiry-format";
 import type { ServiceStatus } from "@/lib/isp/types";
@@ -40,7 +41,9 @@ function ServiceRecordPage() {
     static_ip: "",
     mac_address: "",
     notes: "",
+    account_number: "",
   });
+  const [allowManualAccount, setAllowManualAccount] = useState(false);
 
   async function load() {
     const rec = await getServiceFn({ data: { id: serviceId } });
@@ -51,7 +54,14 @@ function ServiceRecordPage() {
       static_ip: rec.service.static_ip || "",
       mac_address: rec.service.mac_address || "",
       notes: rec.service.notes || "",
+      account_number: rec.service.account_number || "",
     });
+    try {
+      const acc = await getAccountNumberSettingsFn();
+      setAllowManualAccount(Boolean(acc.allow_manual));
+    } catch {
+      setAllowManualAccount(false);
+    }
   }
 
   useEffect(() => {
@@ -124,6 +134,9 @@ function ServiceRecordPage() {
               {s.customer_name}
             </Link>
             {s.account_number ? ` · ${s.account_number}` : ""}
+            {s.customer_account_number && s.customer_account_number !== s.account_number
+              ? ` · Customer ${s.customer_account_number}`
+              : ""}
             {s.customer_phone ? ` · ${s.customer_phone}` : ""}
           </p>
         </div>
@@ -173,6 +186,8 @@ function ServiceRecordPage() {
         <section className="rounded-xl border border-border bg-surface p-4">
           <h2 className="text-sm font-medium">Line</h2>
           <dl className="mt-3 grid gap-2 text-sm">
+            <Fact label="Account" value={s.account_number || "—"} mono />
+            <Fact label="Due" value={kes(s.outstanding_kes || 0)} />
             <Fact label="Username" value={s.username || "—"} mono />
             <Fact label="Static IP" value={s.static_ip || "—"} mono />
             <Fact label="MAC" value={formatMac(s.mac_address)} mono />
@@ -300,6 +315,11 @@ function ServiceRecordPage() {
           onSubmit={(e) => {
             e.preventDefault();
             void run(async () => {
+              if (form.account_number !== (s.account_number || "") && allowManualAccount) {
+                await changeServiceAccountNumberFn({
+                  data: { service_id: s.id, account_number: form.account_number },
+                });
+              }
               await updateServiceFn({
                 data: {
                   id: s.id,
@@ -324,6 +344,18 @@ function ServiceRecordPage() {
               ))}
             </Select>
           </Field>
+          <Field label="Account number">
+            <Input
+              value={form.account_number}
+              onChange={(e) => setForm({ ...form, account_number: e.target.value.toUpperCase() })}
+              disabled={!allowManualAccount}
+            />
+          </Field>
+          {!allowManualAccount ? (
+            <p className="text-xs text-muted md:col-span-2">
+              Manual account-number edits are off. Enable them in Settings → Account numbers.
+            </p>
+          ) : null}
           <Field label="Username">
             <Input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
           </Field>

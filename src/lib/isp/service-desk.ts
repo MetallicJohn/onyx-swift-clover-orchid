@@ -64,19 +64,61 @@ function expiredSql(alias = "s") {
 function outstandingSql() {
   return `exists (
     select 1 from invoices i
-    where i.tenant_id = s.tenant_id and i.customer_id = s.customer_id
+    where i.tenant_id = s.tenant_id
       and i.status in ('due','overdue','issued','partial')
       and greatest(0, i.amount_kes - i.paid_kes) > 0
+      and (
+        i.service_id = s.id
+        or exists (
+          select 1 from invoice_items ii
+          where ii.invoice_id = i.id and ii.tenant_id = i.tenant_id and ii.service_id = s.id
+        )
+        or (
+          i.customer_id = s.customer_id
+          and (i.service_id is null or i.service_id = '')
+          and not exists (
+            select 1 from invoice_items ii
+            where ii.invoice_id = i.id and ii.tenant_id = i.tenant_id
+              and ii.service_id is not null and ii.service_id <> ''
+          )
+          and (
+            select count(*) from services s2
+            where s2.tenant_id = s.tenant_id and s2.customer_id = s.customer_id
+              and s2.deleted_at is null and s2.status <> 'terminated'
+          ) = 1
+        )
+      )
   )`;
 }
 
 function overdueSql() {
   return `exists (
     select 1 from invoices i
-    where i.tenant_id = s.tenant_id and i.customer_id = s.customer_id
+    where i.tenant_id = s.tenant_id
       and i.status in ('due','overdue','issued','partial')
       and greatest(0, i.amount_kes - i.paid_kes) > 0
       and (i.status = 'overdue' or i.due_date < current_date)
+      and (
+        i.service_id = s.id
+        or exists (
+          select 1 from invoice_items ii
+          where ii.invoice_id = i.id and ii.tenant_id = i.tenant_id and ii.service_id = s.id
+        )
+        or (
+          i.customer_id = s.customer_id
+          and (i.service_id is null or i.service_id = '')
+          and not exists (
+            select 1 from invoice_items ii
+            where ii.invoice_id = i.id and ii.tenant_id = i.tenant_id
+              and ii.service_id is not null and ii.service_id <> ''
+          )
+          and (
+            select count(*) from services s2
+            where s2.tenant_id = s.tenant_id and s2.customer_id = s.customer_id
+              and s2.deleted_at is null and s2.status <> 'terminated'
+          ) = 1
+        )
+      )
   )`;
 }
 
@@ -91,6 +133,8 @@ export function serviceDeskWhere(tenantId: string, q: ServiceDeskFilters): { cla
       s.id ilike ${p} escape '#'
       or c.name ilike ${p} escape '#'
       or coalesce(c.account_number,'') ilike ${p} escape '#'
+      or coalesce(s.account_number,'') ilike ${p} escape '#'
+      or coalesce(s.name,'') ilike ${p} escape '#'
       or c.phone ilike ${p} escape '#'
       or c.email ilike ${p} escape '#'
       or c.address ilike ${p} escape '#'
@@ -100,6 +144,10 @@ export function serviceDeskWhere(tenantId: string, q: ServiceDeskFilters): { cla
       or p.name ilike ${p} escape '#'
       or coalesce(sp.framed_ip,'') ilike ${p} escape '#'
       or coalesce(r.name,'') ilike ${p} escape '#'
+      or exists (
+        select 1 from cpe_devices d
+        where d.tenant_id = s.tenant_id and d.service_id = s.id and d.serial ilike ${p} escape '#'
+      )
     )`);
   }
 
@@ -181,13 +229,14 @@ const FROM_SQL = `
     on sp.service_id = s.id and sp.tenant_id = s.tenant_id
   left join routers r on r.id = sp.router_id
   left join (
-    select customer_id,
-           coalesce(sum(greatest(0, amount_kes - paid_kes)),0)::int as balance_kes,
-           bool_or(status = 'overdue' or due_date < current_date) as overdue
-    from invoices
-    where tenant_id = $1 and status in ('due','overdue','issued','partial')
-    group by customer_id
-  ) bal on bal.customer_id = s.customer_id
+    select coalesce(i.service_id, ii.service_id) as service_id,
+           coalesce(sum(greatest(0, i.amount_kes - i.paid_kes)),0)::int as balance_kes,
+           bool_or(i.status = 'overdue' or i.due_date < current_date) as overdue
+    from invoices i
+    left join invoice_items ii on ii.invoice_id = i.id and ii.tenant_id = i.tenant_id and ii.service_id is not null
+    where i.tenant_id = $1 and i.status in ('due','overdue','issued','partial')
+    group by coalesce(i.service_id, ii.service_id)
+  ) bal on bal.service_id = s.id
   left join (
     select username,
            max(greatest(started_at, coalesce(stopped_at, started_at))) as last_at,
@@ -289,7 +338,9 @@ export async function queryServicesDesk(
   const cores = await sql.query<CoreRow>(
     `select s.id, s.customer_id, c.name as customer_name, c.phone as customer_phone,
             coalesce(c.email,'') as customer_email,
-            coalesce(c.account_number,'') as account_number,
+            coalesce(nullif(s.account_number,''), c.account_number,'') as account_number,
+            coalesce(c.account_number,'') as customer_account_number,
+            coalesce(nullif(s.name,''), p.name) as name,
             coalesce(c.address,'') as location,
             s.package_id, p.name as package_name, s.access_method,
             s.username, s.static_ip, coalesce(sp.framed_ip,'') as framed_ip,

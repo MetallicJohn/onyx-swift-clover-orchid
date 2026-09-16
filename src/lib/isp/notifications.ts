@@ -1,4 +1,6 @@
 import { nid } from "../utils.ts";
+import { formatSmsDate } from "./display.ts";
+import { loadTenantDateFormat } from "./tenant-context.ts";
 import { generateRecurringInvoices } from "./billing";
 import { queueEmail, writeInbox } from "./inbox";
 import { channelAllowed, deliverChannel, getMessagingSettings } from "./messaging";
@@ -201,6 +203,15 @@ function render(template: string, vars: NotifyVars) {
   return template.replace(/\{([a-z_]+)\}/g, (_, key: keyof NotifyVars) => vars[key] ?? "");
 }
 
+function withConsoleDates(vars: NotifyVars, dateFormat: string): NotifyVars {
+  return {
+    ...vars,
+    due_date: vars.due_date ? formatSmsDate(vars.due_date, dateFormat) : vars.due_date,
+    grace_until: vars.grace_until ? formatSmsDate(vars.grace_until, dateFormat) : vars.grace_until,
+    renewal_date: vars.renewal_date ? formatSmsDate(vars.renewal_date, dateFormat) : vars.renewal_date,
+  };
+}
+
 export async function ensureNotificationSchema(_sql: Sql) {
   /* schema: migrations/0003_notifications.sql */
 }
@@ -248,7 +259,8 @@ export async function dispatchNotification(
   }>`select id, channel, subject, body, enabled from notification_templates
      where tenant_id = ${opts.tenantId} and event_code = ${opts.event} and enabled = true`;
 
-  const vars: NotifyVars = { ...opts.vars, isp_name: opts.ispName, customer_name: opts.customerName };
+  const dateFormat = await loadTenantDateFormat(sql, opts.tenantId);
+  const vars: NotifyVars = withConsoleDates({ ...opts.vars, isp_name: opts.ispName, customer_name: opts.customerName }, dateFormat);
   let sent = 0;
 
   for (const tpl of templates) {

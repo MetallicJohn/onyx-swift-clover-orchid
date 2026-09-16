@@ -1,4 +1,5 @@
 import { permissionsFor, type Permission } from "./rbac";
+import { normalizeDateFormat } from "./display";
 import type { TenantRole, Workspace } from "./types";
 
 type Sql = {
@@ -11,33 +12,7 @@ export type TenantContext = Workspace & {
   permissions: Permission[];
 };
 
-export async function listMemberships(sql: Sql, userId: string) {
-  return sql<{ tenant_id: string; name: string; slug: string; role: TenantRole; status: string; currency: string; support_email: string; support_phone: string }>`
-    select t.id as tenant_id, t.name, t.slug, m.role, t.status, t.currency, t.support_email, t.support_phone
-    from tenant_members m
-    join tenants t on t.id = m.tenant_id
-    where m.user_id = ${userId}
-    order by t.name`;
-}
-
-async function membership(sql: Sql, userId: string, tenantId: string) {
-  const [row] = await sql<{
-    tenant_id: string;
-    name: string;
-    slug: string;
-    role: TenantRole;
-    status: string;
-    currency: string;
-    support_email: string;
-    support_phone: string;
-  }>`select t.id as tenant_id, t.name, t.slug, m.role, t.status, t.currency, t.support_email, t.support_phone
-     from tenant_members m
-     join tenants t on t.id = m.tenant_id
-     where m.user_id = ${userId} and t.id = ${tenantId}`;
-  return row ?? null;
-}
-
-function toWorkspace(row: {
+type MembershipRow = {
   tenant_id: string;
   name: string;
   slug: string;
@@ -46,7 +21,30 @@ function toWorkspace(row: {
   currency: string;
   support_email: string;
   support_phone: string;
-}): TenantContext {
+  date_format: string;
+};
+
+export async function listMemberships(sql: Sql, userId: string) {
+  return sql<MembershipRow>`
+    select t.id as tenant_id, t.name, t.slug, m.role, t.status, t.currency, t.support_email, t.support_phone,
+           coalesce(t.date_format, 'dd/mm/yy') as date_format
+    from tenant_members m
+    join tenants t on t.id = m.tenant_id
+    where m.user_id = ${userId}
+    order by t.name`;
+}
+
+async function membership(sql: Sql, userId: string, tenantId: string) {
+  const [row] = await sql<MembershipRow>`
+    select t.id as tenant_id, t.name, t.slug, m.role, t.status, t.currency, t.support_email, t.support_phone,
+           coalesce(t.date_format, 'dd/mm/yy') as date_format
+    from tenant_members m
+    join tenants t on t.id = m.tenant_id
+    where m.user_id = ${userId} and t.id = ${tenantId}`;
+  return row ?? null;
+}
+
+function toWorkspace(row: MembershipRow): TenantContext {
   return {
     tenantId: row.tenant_id,
     tenantName: row.name,
@@ -56,8 +54,15 @@ function toWorkspace(row: {
     role: row.role,
     supportEmail: row.support_email,
     supportPhone: row.support_phone,
+    dateFormat: normalizeDateFormat(row.date_format),
     permissions: permissionsFor(row.role),
   };
+}
+
+export async function loadTenantDateFormat(sql: Sql, tenantId: string) {
+  const [row] = await sql<{ date_format: string }>`
+    select coalesce(date_format, 'dd/mm/yy') as date_format from tenants where id = ${tenantId}`;
+  return normalizeDateFormat(row?.date_format);
 }
 
 export async function setActiveTenant(sql: Sql, userId: string, tenantId: string) {
@@ -81,8 +86,10 @@ export async function resolveActiveTenant(sql: Sql, userId: string): Promise<Ten
     currency: string;
     support_email: string;
     support_phone: string;
+    date_format: string;
   }>`select s.id, s.tenant_id, s.reason, s.expires_at::text as expires_at,
-            t.name, t.slug, t.status, t.currency, t.support_email, t.support_phone
+            t.name, t.slug, t.status, t.currency, t.support_email, t.support_phone,
+            coalesce(t.date_format, 'dd/mm/yy') as date_format
      from support_sessions s join tenants t on t.id = s.tenant_id
      where s.actor_user_id = ${userId} and s.status = 'active' and s.expires_at > now()
      order by s.started_at desc limit 1`;
@@ -96,6 +103,7 @@ export async function resolveActiveTenant(sql: Sql, userId: string): Promise<Ten
       currency: support.currency,
       support_email: support.support_email,
       support_phone: support.support_phone,
+      date_format: support.date_format,
     });
     ctx.supportMode = true;
     ctx.supportReason = support.reason;

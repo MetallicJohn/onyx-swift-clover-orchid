@@ -717,7 +717,7 @@ export async function listRecycleBin(
     deleted_by_label: string;
     deletion_reason: string;
     customer_live: boolean;
-  }>`select s.id, s.customer_id, c.name as customer_name, coalesce(c.account_number,'') as account_number,
+  }>`select s.id, s.customer_id, c.name as customer_name, coalesce(s.account_number, c.account_number,'') as account_number,
             c.phone, s.access_method, p.name as package_name, s.username, s.static_ip,
             case when s.original_status = '' then s.status else s.original_status end as original_status,
             s.deleted_at::text as deleted_at, s.deleted_by, s.deleted_by_label, s.deletion_reason,

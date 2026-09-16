@@ -25,6 +25,9 @@ export const TENANT_BUSINESS_TABLES = [
   "job_queue",
   "radius_accounts",
   "agent_commands",
+  "router_provision_events",
+  "router_config_versions",
+  "router_pool_assignments",
   "wireguard_peers",
   "hotspot_vouchers",
   "ip_addresses",
@@ -52,6 +55,7 @@ export const TENANT_BUSINESS_TABLES = [
   "resellers",
   "packages",
   "routers",
+  "tenant_router_provisioning",
   "audit_logs",
   "notification_logs",
   "customer_inbox",
@@ -69,6 +73,17 @@ export function nairobiDate(at: Date | string = new Date()) {
     month: "2-digit",
     day: "2-digit",
   }).format(d);
+}
+
+/** Add whole calendar days on the Africa/Nairobi date, not on the UTC date. */
+export function addNairobiDays(days: number, from: Date | string = new Date()) {
+  const raw = typeof from === "string" ? from.trim() : "";
+  const ymd = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : nairobiDate(from);
+  if (!ymd) return "";
+  const noon = new Date(`${ymd}T12:00:00+03:00`);
+  if (Number.isNaN(noon.getTime())) return "";
+  noon.setTime(noon.getTime() + Math.round(days) * 86400_000);
+  return nairobiDate(noon);
 }
 
 export async function emptyTenantBusinessData(sql: Sql, tenantId: string) {

@@ -22,8 +22,8 @@ export async function makeInvoicePdf(sql: Sql, tenantId: string, invoiceId: stri
   };
 }
 
-export async function makeStatementPdf(sql: Sql, tenantId: string, customerId: string) {
-  const doc = await loadStatementDocument(sql, tenantId, customerId);
+export async function makeStatementPdf(sql: Sql, tenantId: string, customerId: string, serviceId?: string) {
+  const doc = await loadStatementDocument(sql, tenantId, customerId, serviceId);
   const pdf = await renderStatementPdf(doc);
   return {
     doc,
@@ -58,8 +58,8 @@ export async function emailInvoice(sql: Sql, tenantId: string, invoiceId: string
   return { ...result, to: dest, filename };
 }
 
-export async function emailStatement(sql: Sql, tenantId: string, customerId: string, to?: string) {
-  const { doc, pdf, filename } = await makeStatementPdf(sql, tenantId, customerId);
+export async function emailStatement(sql: Sql, tenantId: string, customerId: string, to?: string, serviceId?: string) {
+  const { doc, pdf, filename } = await makeStatementPdf(sql, tenantId, customerId, serviceId);
   const dest = (to || doc.customer.email || "").trim();
   if (!dest.includes("@")) throw new Error("Customer has no email address");
   const closing =

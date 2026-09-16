@@ -1,5 +1,7 @@
 import { nid } from "../utils.ts";
 import { provisionServiceAccess } from "./access.ts";
+import { formatDate } from "./display.ts";
+import { nairobiDate } from "./empty-tenant.ts";
 import { assertTenantMatch } from "./rbac.ts";
 
 type Sql = {
@@ -155,15 +157,7 @@ export function remainingLabel(expiresAt: string, now = new Date()) {
 }
 
 export function formatGraceDate(iso: string | null | undefined) {
-  if (!iso) return "—";
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso.slice(0, 10);
-  return new Intl.DateTimeFormat("en-KE", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "Africa/Nairobi",
-  }).format(new Date(t));
+  return formatDate(iso);
 }
 
 async function writeAudit(
@@ -413,8 +407,8 @@ export async function grantGrace(
   if (paidEnded || svc.status === "suspended" || svc.status === "grace" || svc.status === "pending") {
     await activateGraceAccess(sql, opts.tenantId, svc.id, opts.actorType === "customer" ? "grace_customer" : "grace_staff");
   }
-  const renewal = formatGraceDate(svc.period_end);
-  const until = formatGraceDate(expires.toISOString());
+  const renewal = svc.period_end || "";
+  const until = expires.toISOString();
   await notify(sql, opts.tenantId, opts.ispName, svc.customer_id, "grace.granted", id, {
     service_name: svc.package_name,
     grace_until: until,
@@ -480,8 +474,8 @@ export async function extendGrace(
   }
   await notify(sql, opts.tenantId, opts.ispName, svc.customer_id, "grace.granted", `${grant.id}:ext:${next.toISOString().slice(0, 10)}`, {
     service_name: svc.package_name,
-    grace_until: formatGraceDate(next.toISOString()),
-    renewal_date: formatGraceDate(svc.period_end),
+    grace_until: next.toISOString(),
+    renewal_date: svc.period_end || "",
     days: String(extra),
   });
   return { id: grant.id, days_granted: newDays, expires_at: next.toISOString(), period_end: svc.period_end };
@@ -532,9 +526,26 @@ export async function revokeGrace(
 }
 
 export async function consumeActiveGrantsForCustomer(sql: Sql, tenantId: string, customerId: string, now = new Date()) {
-  const rows = await sql<{ id: string; service_id: string }>`
-    select id, service_id from service_grace_periods
-    where tenant_id = ${tenantId} and customer_id = ${customerId} and status = 'active'`;
+  return consumeActiveGrants(sql, tenantId, { customerId }, now);
+}
+
+export async function consumeActiveGrantsForService(sql: Sql, tenantId: string, serviceId: string, now = new Date()) {
+  return consumeActiveGrants(sql, tenantId, { serviceId }, now);
+}
+
+async function consumeActiveGrants(
+  sql: Sql,
+  tenantId: string,
+  scope: { customerId?: string; serviceId?: string },
+  now = new Date(),
+) {
+  const rows = scope.serviceId
+    ? await sql<{ id: string; service_id: string }>`
+        select id, service_id from service_grace_periods
+        where tenant_id = ${tenantId} and service_id = ${scope.serviceId} and status = 'active'`
+    : await sql<{ id: string; service_id: string }>`
+        select id, service_id from service_grace_periods
+        where tenant_id = ${tenantId} and customer_id = ${scope.customerId || ""} and status = 'active'`;
   for (const row of rows) {
     await sql`update service_grace_periods
       set status = 'consumed', consumed_at = ${now.toISOString()}
@@ -623,8 +634,8 @@ export async function expireDueGrants(sql: Sql, tenantId: string, ispName: strin
     await writeAudit(sql, tenantId, null, "service.grace.expired", row.id);
     await notify(sql, tenantId, ispName, row.customer_id, "grace.expired", row.id, {
       service_name: row.package_name,
-      grace_until: formatGraceDate(row.expires_at),
-      renewal_date: formatGraceDate(row.period_end),
+      grace_until: row.expires_at,
+      renewal_date: row.period_end || "",
     });
     expired += 1;
   }
@@ -652,8 +663,8 @@ export async function notifyNearingGrants(sql: Sql, tenantId: string, ispName: s
   for (const row of rows) {
     sent += await notify(sql, tenantId, ispName, row.customer_id, "grace.ending", row.id, {
       service_name: row.package_name,
-      grace_until: formatGraceDate(row.expires_at),
-      renewal_date: formatGraceDate(row.period_end),
+      grace_until: row.expires_at,
+      renewal_date: row.period_end || "",
     });
   }
   return sent;
@@ -713,7 +724,7 @@ export async function customerGraceEligibility(
     select id from invoices
     where tenant_id = ${tenantId} and customer_id = ${customerId}
       and status in ('issued','due','overdue','partial')
-      and due_date::text < ${now.toISOString().slice(0, 10)}
+      and due_date::text < ${nairobiDate(now)}
     limit 1`;
   const paidEnded = !svc.period_end || Date.parse(svc.period_end) <= now.getTime();
   if (!paidEnded && svc.status === "active" && !overdue) {

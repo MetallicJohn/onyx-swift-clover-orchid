@@ -105,10 +105,16 @@ export function PasswordBanner({ onChange, onDismiss }: { onChange: () => void; 
 export function ServiceCard({
   service,
   onPay,
+  onInvoice,
+  onStatement,
+  onDetails,
   grace,
 }: {
   service: PortalService;
   onPay?: () => void;
+  onInvoice?: () => void;
+  onStatement?: () => void;
+  onDetails?: () => void;
   grace?: ReactNode;
 }) {
   return (
@@ -116,7 +122,7 @@ export function ServiceCard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-medium">{service.name}</p>
-          <p className="text-xs text-muted">{service.reference}</p>
+          <p className="font-mono text-xs text-muted">Account {service.account_number || service.reference}</p>
         </div>
         <div className="flex flex-col items-end gap-1">
           <Badge tone={statusTone(service.status === "grace" ? "grace" : service.status)}>{service.status_label}</Badge>
@@ -128,6 +134,16 @@ export function ServiceCard({
           <dt className="text-xs text-muted">Package</dt>
           <dd>{service.package_name}</dd>
         </div>
+        <div>
+          <dt className="text-xs text-muted">Type</dt>
+          <dd>{service.access_type}</dd>
+        </div>
+        {service.location ? (
+          <div>
+            <dt className="text-xs text-muted">Location</dt>
+            <dd>{service.location}</dd>
+          </div>
+        ) : null}
         <div>
           <dt className="text-xs text-muted">Price</dt>
           <dd className="tabular-nums">{kes(service.package_price_kes)}</dd>
@@ -172,6 +188,28 @@ export function ServiceCard({
           ) : null}
         </div>
       ) : null}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {onPay && service.outstanding_kes > 0 ? (
+          <Button size="sm" variant="secondary" onClick={onPay}>
+            Renew
+          </Button>
+        ) : null}
+        {onInvoice ? (
+          <Button size="sm" variant="secondary" onClick={onInvoice}>
+            Invoice
+          </Button>
+        ) : null}
+        {onStatement ? (
+          <Button size="sm" variant="secondary" onClick={onStatement}>
+            Statement
+          </Button>
+        ) : null}
+        {onDetails ? (
+          <Button size="sm" variant="ghost" onClick={onDetails}>
+            Details
+          </Button>
+        ) : null}
+      </div>
       {service.status === "grace" && service.grace_until ? (
         <p className="mt-2 text-xs text-warn">Grace Period until {formatDate(service.grace_until)}. Renewal date is unchanged.</p>
       ) : null}
@@ -196,7 +234,10 @@ export function InvoiceRow({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-medium">{invoice.number}</p>
-          <p className="text-xs text-muted">{invoice.package_name}</p>
+          <p className="text-xs text-muted">
+            {invoice.service_name || invoice.package_name}
+            {invoice.account_number ? ` · ${invoice.account_number}` : ""}
+          </p>
         </div>
         <Badge tone={statusTone(invoice.status)}>{invoice.status_label}</Badge>
       </div>

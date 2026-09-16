@@ -1,3 +1,4 @@
+import { backfillServiceAccountNumbers } from "./account-numbers";
 import { nid } from "../utils.ts";
 import { enrollFields, wgAddressForIndex } from "./agent";
 import { emptySeededTenantsCreatedOn } from "./empty-tenant";
@@ -21,10 +22,11 @@ export async function provisionServiceAccess(sql: Sql, tenantId: string, service
     username: string | null;
     static_ip: string | null;
     status: string;
+    suspend_reason: string;
     package_name: string;
     download_mbps: number;
     upload_mbps: number;
-  }>`select s.id, s.access_method, s.username, s.static_ip, s.status, p.name as package_name, p.download_mbps, p.upload_mbps
+  }>`select s.id, s.access_method, s.username, s.static_ip, s.status, coalesce(s.suspend_reason,'') as suspend_reason, p.name as package_name, p.download_mbps, p.upload_mbps
      from services s join packages p on p.id = s.package_id
      where s.id = ${serviceId} and s.tenant_id = ${tenantId} and s.deleted_at is null`;
   if (!svc) return null;
@@ -35,11 +37,19 @@ export async function provisionServiceAccess(sql: Sql, tenantId: string, service
   return radius ?? null;
 }
 
-export async function restoreCustomerAccess(sql: Sql, tenantId: string, customerId: string) {
+export async function restoreCustomerAccess(sql: Sql, tenantId: string, customerId: string, serviceId?: string) {
   const { grantPaidPeriod } = await import("./access-policy.ts");
-  const { consumeActiveGrantsForCustomer } = await import("./grace.ts");
-  await grantPaidPeriod(sql, tenantId, customerId);
-  await consumeActiveGrantsForCustomer(sql, tenantId, customerId);
+  const { consumeActiveGrantsForCustomer, consumeActiveGrantsForService } = await import("./grace.ts");
+  await grantPaidPeriod(sql, tenantId, customerId, new Date(), serviceId);
+  if (serviceId) await consumeActiveGrantsForService(sql, tenantId, serviceId);
+  else await consumeActiveGrantsForCustomer(sql, tenantId, customerId);
+  if (serviceId) {
+    await sql`update services set status = 'active', suspend_reason = ''
+      where id = ${serviceId} and customer_id = ${customerId} and tenant_id = ${tenantId}
+        and deleted_at is null and status in ('grace','suspended','pending')`;
+    await provisionServiceAccess(sql, tenantId, serviceId);
+    return;
+  }
   await sql`update services set status = 'active', suspend_reason = ''
     where customer_id = ${customerId} and tenant_id = ${tenantId} and deleted_at is null and status in ('grace','suspended','pending')`;
   const svcs = await sql<{ id: string }>`select id from services where tenant_id = ${tenantId} and customer_id = ${customerId} and deleted_at is null`;
@@ -50,6 +60,11 @@ export async function seedOpsForTenant(sql: Sql, tenantId: string) {
   await ensureOpsSchema(sql);
   await emptySeededTenantsCreatedOn(sql, tenantId);
   await getMessagingSettings(sql, tenantId);
+  try {
+    await backfillServiceAccountNumbers(sql, tenantId);
+  } catch {
+    /* account numbers apply after 0050; ignore on unmigrated previews */
+  }
 
   const providers = [
     { kind: "mpesa", label: "M-Pesa Daraja" },

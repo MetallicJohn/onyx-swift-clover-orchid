@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
-  formatDay,
+  formatBrandDay,
   formatMoney,
   invoiceStatusTone,
   type InvoiceDocument,
@@ -56,7 +56,7 @@ export function InvoicePreview({ doc }: { doc: InvoiceDocument }) {
             <div className="text-xs font-semibold tracking-wide text-paper-muted">INVOICE</div>
             <div className="font-mono">{doc.invoice.number}</div>
             <div className="text-xs text-paper-muted">
-              {formatDay(doc.invoice.issuedAt, doc.brand.timezone)} · due {formatDay(doc.invoice.dueDate, doc.brand.timezone)}
+              {formatBrandDay(doc.invoice.issuedAt, doc.brand)} · due {formatBrandDay(doc.invoice.dueDate, doc.brand)}
             </div>
             <Badge className="mt-2" tone={paperTone(doc.invoice.statusLabel)}>
               {doc.invoice.statusLabel}
@@ -134,7 +134,7 @@ export function InvoicePreview({ doc }: { doc: InvoiceDocument }) {
               {doc.payments.map((p) => (
                 <li key={p.reference} className="flex justify-between gap-3">
                   <span className="text-paper-muted">
-                    {p.provider} {p.reference} · {formatDay(p.paidAt, doc.brand.timezone)}
+                    {p.provider} {p.reference} · {formatBrandDay(p.paidAt, doc.brand)}
                   </span>
                   <Money n={p.amount} currency={ccy} />
                 </li>
@@ -185,7 +185,7 @@ export function StatementPreview({ doc }: { doc: StatementDocument }) {
             <h2 className="text-lg font-semibold">{doc.brand.name}</h2>
             <p className="text-sm text-paper-muted">Statement · Account {doc.customer.accountNo}</p>
             <p className="text-xs text-paper-muted">
-              {formatDay(doc.periodStart, doc.brand.timezone)} – {formatDay(doc.periodEnd, doc.brand.timezone)}
+              {formatBrandDay(doc.periodStart, doc.brand)} – {formatBrandDay(doc.periodEnd, doc.brand)}
             </p>
           </div>
           <div className="text-right">
@@ -222,7 +222,7 @@ export function StatementPreview({ doc }: { doc: StatementDocument }) {
             <tbody>
               {doc.rows.map((r, i) => (
                 <tr key={`${r.date}-${i}`} className="border-b border-paper-line/70">
-                  <td className="py-2 whitespace-nowrap">{formatDay(r.date, doc.brand.timezone)}</td>
+                  <td className="py-2 whitespace-nowrap">{formatBrandDay(r.date, doc.brand)}</td>
                   <td className="py-2 font-mono text-xs">{r.reference}</td>
                   <td className="py-2">{r.description}</td>
                   <td className="py-2 text-right">{r.debit ? formatMoney(r.debit, ccy) : ""}</td>

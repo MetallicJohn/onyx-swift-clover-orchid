@@ -1,4 +1,5 @@
 import { PORTAL_TICKET_CATEGORIES, type PortalAccountStatus, type PortalInvoiceStatus, type PortalPaymentStatus, type PortalServiceStatus } from "./customer-portal-dto.ts";
+import { formatDate } from "./display.ts";
 import { normalizePhone } from "./phone.ts";
 
 export function portalServiceRef(id: string) {
@@ -93,16 +94,14 @@ export function daysRemaining(iso: string | null | undefined, now = Date.now()) 
   return Math.ceil((t - now) / 86400_000);
 }
 
-export function nextPeriodLabel(endIso: string | null, interval: string) {
+export function nextPeriodLabel(endIso: string | null, interval: string, dateFormat?: string) {
   if (!endIso) return null;
   const end = Date.parse(endIso);
   if (!Number.isFinite(end)) return null;
   const days = interval === "daily" ? 1 : interval === "weekly" ? 7 : interval === "yearly" ? 365 : 30;
   const start = new Date(end);
   const stop = new Date(end + days * 86400_000);
-  const fmt = (d: Date) =>
-    new Intl.DateTimeFormat("en-KE", { day: "numeric", month: "short", year: "numeric", timeZone: "Africa/Nairobi" }).format(d);
-  return `${fmt(start)} – ${fmt(stop)}`;
+  return `${formatDate(start.toISOString(), dateFormat)} – ${formatDate(stop.toISOString(), dateFormat)}`;
 }
 
 export function maskReference(ref: string) {

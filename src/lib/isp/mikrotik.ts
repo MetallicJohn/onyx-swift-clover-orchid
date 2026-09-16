@@ -117,6 +117,22 @@ export function compileMikrotik(kind: string, payload: Record<string, unknown>):
     return { rest: pcqRestOps(payload), script };
   }
 
+  if (kind === "pool.push") {
+    const pools = Array.isArray(payload.pools)
+      ? (payload.pools as Array<{ name?: string; ranges?: string }>)
+      : [];
+    return {
+      rest: pools
+        .filter((p) => p.name && p.ranges)
+        .map((p) => ({
+          method: "PUT" as const,
+          path: "/rest/ip/pool",
+          body: { name: String(p.name), ranges: String(p.ranges), comment: `${APP_NAME} pool` },
+        })),
+      script,
+    };
+  }
+
   if (kind.startsWith("queue.")) {
     const qname = String(payload.qname || `pppoe-${user || ip || "host"}`).slice(0, 32);
     const target = ip.includes("/") ? ip : ip ? `${ip}/32` : "";

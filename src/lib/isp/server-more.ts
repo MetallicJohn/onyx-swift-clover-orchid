@@ -176,7 +176,7 @@ export const getIncomingPayments = createServerFn({ method: "GET" })
 
 export const assignPaybillPayments = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { ids: string[]; customer_id: string; invoice_id?: string }) => d)
+  .validator((d: { ids: string[]; customer_id: string; invoice_id?: string; service_id?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId, tenantName, role } = await requireWs(context.userId);
     assertPermission(role, "payments.reconcile");
@@ -187,6 +187,7 @@ export const assignPaybillPayments = createServerFn({ method: "POST" })
       ids: data.ids,
       customerId: data.customer_id,
       invoiceId: data.invoice_id,
+      serviceId: data.service_id,
     });
   });
 

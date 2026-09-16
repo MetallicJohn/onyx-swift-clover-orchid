@@ -10,6 +10,7 @@ import {
   loadInvoiceDocument,
   loadStatementDocument,
 } from "./documents.ts";
+import { formatDay } from "./document-format.ts";
 import { applyConfirmedPayment } from "./payments.ts";
 import { emailInvoice, renderInvoicePdf, renderStatementPdf } from "./pdf/index.ts";
 import { openTestDb } from "./test-db.ts";
@@ -17,6 +18,12 @@ import { openTestDb } from "./test-db.ts";
 test("account numbers are derived from the tenant slug, not a hardcoded ISP", () => {
   assert.equal(accountNumber("northline-ops", "cus_abcdef123456"), "NORT-123456");
   assert.notEqual(accountNumber("imani-networks", "cus_x"), accountNumber("coast-fiber", "cus_x"));
+});
+
+test("document dates default to dd/mm/yy in Nairobi", () => {
+  assert.equal(formatDay("2026-09-16"), "16/09/26");
+  assert.equal(formatDay("2026-09-16T21:30:00Z"), "17/09/26");
+  assert.equal(formatDay("2026-09-16", "Africa/Nairobi", "d MMM yyyy"), "16 Sep 2026");
 });
 
 test("stored account numbers win over the derived slug code", async () => {
@@ -99,6 +106,8 @@ test("invoice and statement PDFs use live tenant data and paginate", async () =>
 
     const partialDoc = await loadInvoiceDocument(sql, "ten_pdf", first.id);
     assert.equal(partialDoc.brand.name, "Coast Fiber");
+    assert.equal(partialDoc.brand.dateFormat, "dd/mm/yy");
+    assert.equal(formatDay(partialDoc.invoice.dueDate, partialDoc.brand.timezone, partialDoc.brand.dateFormat), "20/09/26");
     assert.match(partialDoc.customer.accountNo, /^COAS-/);
     assert.equal(partialDoc.invoice.statusLabel, "Partially Paid");
     assert.equal(partialDoc.totals.payments, 1000);

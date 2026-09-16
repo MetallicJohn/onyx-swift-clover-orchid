@@ -1,5 +1,5 @@
 import { nid } from "../utils.ts";
-import { remainingKes, statusAfterPayment } from "./billing";
+import { remainingKes, resolveInvoiceServiceId, statusAfterPayment } from "./billing";
 import { emit } from "./events";
 import { allocatePayment, recordLedger } from "./ledger";
 import { ensureOpsSchema } from "./ops-schema";
@@ -42,13 +42,15 @@ export async function applyConfirmedPayment(
   const paid = inv.paid_kes + amount;
   const status = statusAfterPayment(inv.amount_kes, paid, inv.status);
   const payId = nid("pay");
-  await sql`insert into payments (id, tenant_id, customer_id, invoice_id, provider, amount_kes, reference, status)
-    values (${payId}, ${opts.tenantId}, ${inv.customer_id}, ${inv.id}, ${opts.provider || "mpesa"}, ${amount}, ${ref}, 'confirmed')`;
+  const serviceId = await resolveInvoiceServiceId(sql, opts.tenantId, inv.id);
+  await sql`insert into payments (id, tenant_id, customer_id, invoice_id, service_id, provider, amount_kes, reference, status)
+    values (${payId}, ${opts.tenantId}, ${inv.customer_id}, ${inv.id}, ${serviceId || null}, ${opts.provider || "mpesa"}, ${amount}, ${ref}, 'confirmed')`;
   await sql`update invoices set status = ${status}, paid_kes = ${paid} where id = ${inv.id} and tenant_id = ${opts.tenantId}`;
   try {
     await recordLedger(sql, {
       tenantId: opts.tenantId,
       customerId: inv.customer_id,
+      serviceId: serviceId || null,
       entryType: "payment",
       creditKes: amount,
       refType: "payment",
@@ -70,6 +72,7 @@ export async function applyConfirmedPayment(
     payload: {
       payment_id: payId,
       customer_id: inv.customer_id,
+      service_id: serviceId,
       invoice_id: inv.id,
       invoice_number: inv.number,
       amount_kes: amount,
@@ -80,7 +83,7 @@ export async function applyConfirmedPayment(
       isp_name: opts.ispName,
     },
   });
-  return { id: payId, amount, status, remaining_kes: remainingKes(inv.amount_kes, paid, status) };
+  return { id: payId, amount, status, remaining_kes: remainingKes(inv.amount_kes, paid, status), service_id: serviceId };
 }
 
 export async function createStkIntent(
@@ -99,6 +102,11 @@ export async function createStkIntent(
   if (prov && !prov.enabled) throw new Error("Provider disabled");
   const [cus] = await sql<{ phone: string; name: string; email: string }>`
     select phone, name, email from customers where id = ${inv.customer_id}`;
+  const serviceId = await resolveInvoiceServiceId(sql, opts.tenantId, inv.id);
+  const [svc] = serviceId
+    ? await sql<{ account_number: string }>`
+        select coalesce(account_number,'') as account_number from services where id = ${serviceId} and tenant_id = ${opts.tenantId}`
+    : [];
   const [ten] = await sql<{ slug: string; public_base_url: string }>`
     select slug, public_base_url from tenants where id = ${opts.tenantId}`;
   const origin = (ten?.public_base_url || "").replace(/\/$/, "");
@@ -117,6 +125,7 @@ export async function createStkIntent(
       amount,
       invoiceId: inv.id,
       invoiceNumber: invFull?.number || inv.id,
+      accountNumber: svc?.account_number || "",
       firstName: parts[0] || "Customer",
       lastName: parts.slice(1).join(" ") || "Pay",
       email: cus?.email,
@@ -127,9 +136,9 @@ export async function createStkIntent(
   }
 
   const id = nid("int");
-  await sql`insert into payment_intents (id, tenant_id, invoice_id, customer_id, provider, amount_kes, phone, checkout_id, status)
-    values (${id}, ${opts.tenantId}, ${inv.id}, ${inv.customer_id}, ${opts.provider}, ${amount}, ${payPhone}, ${checkout}, 'pending')`;
-  return { id, checkout_id: checkout, phone: payPhone, amount_kes: amount, note };
+  await sql`insert into payment_intents (id, tenant_id, invoice_id, customer_id, service_id, provider, amount_kes, phone, checkout_id, status)
+    values (${id}, ${opts.tenantId}, ${inv.id}, ${inv.customer_id}, ${serviceId || null}, ${opts.provider}, ${amount}, ${payPhone}, ${checkout}, 'pending')`;
+  return { id, checkout_id: checkout, phone: payPhone, amount_kes: amount, note, service_id: serviceId };
 }
 
 export async function settleStkIntent(

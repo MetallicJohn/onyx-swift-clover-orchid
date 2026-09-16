@@ -118,30 +118,30 @@ export const emailInvoicePdf = createServerFn({ method: "POST" })
 
 export const getStatementDocument = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { customer_id: string }) => d)
+  .validator((d: { customer_id: string; service_id?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "invoices.read");
-    return loadStatementDocument(sql, tenantId, data.customer_id);
+    return loadStatementDocument(sql, tenantId, data.customer_id, data.service_id);
   });
 
 export const getStatementPdf = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { customer_id: string }) => d)
+  .validator((d: { customer_id: string; service_id?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "invoices.read");
-    const { filename, pdf } = await makeStatementPdf(sql, tenantId, data.customer_id);
+    const { filename, pdf } = await makeStatementPdf(sql, tenantId, data.customer_id, data.service_id);
     return pdfPayload(filename, pdf);
   });
 
 export const emailStatementPdf = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { customer_id: string; to?: string }) => d)
+  .validator((d: { customer_id: string; to?: string; service_id?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "invoices.read");
-    return emailStatement(sql, tenantId, data.customer_id, data.to);
+    return emailStatement(sql, tenantId, data.customer_id, data.to, data.service_id);
   });
 
 export const portalInvoicePdf = createServerFn({ method: "POST" })
@@ -159,13 +159,13 @@ export const portalInvoicePdf = createServerFn({ method: "POST" })
   });
 
 export const portalStatementPdf = createServerFn({ method: "POST" })
-  .validator((d: { token: string }) => d)
+  .validator((d: { token: string; service_id?: string }) => d)
   .handler(async ({ data }) => {
     const sql = await getSql();
     const ctx = await portalContext(sql, data.token);
     const { makePortalStatementFile, publicErrorMessage } = await import("./customer-portal");
     try {
-      const { filename, pdf } = await makePortalStatementFile(sql, ctx);
+      const { filename, pdf } = await makePortalStatementFile(sql, ctx, data.service_id);
       return pdfPayload(filename, pdf);
     } catch (err) {
       throw new Error(publicErrorMessage(err));

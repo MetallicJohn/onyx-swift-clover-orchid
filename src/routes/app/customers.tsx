@@ -15,6 +15,7 @@ import {
   type DeskPerms,
 } from "@/components/isp/customer-desk-ui";
 import { Communications } from "@/components/isp/communications";
+import { OnboardWizard } from "@/components/isp/onboard-wizard";
 import { TagPicker } from "@/components/isp/tag-picker";
 import { TrafficDrawer } from "@/components/isp/traffic-drawer";
 import { Button } from "@/components/ui/button";
@@ -164,6 +165,8 @@ function CustomersPage() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [openForm, setOpenForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [onboardOpen, setOnboardOpen] = useState(false);
+  const [onboardCustomer, setOnboardCustomer] = useState<DeskCustomer | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -309,12 +312,13 @@ function CustomersPage() {
   };
 
   function startCreate() {
-    setEditingId(null);
-    setForm({
-      ...EMPTY_FORM,
-      account_number: accPolicy.enabled && accPolicy.scheme !== "random" ? accPolicy.preview : "",
-    });
-    setOpenForm(true);
+    setOnboardCustomer(null);
+    setOnboardOpen(true);
+  }
+
+  function startAddService(c?: DeskCustomer) {
+    setOnboardCustomer(c ?? (selectedRows.length === 1 ? selectedRows[0] : null));
+    setOnboardOpen(true);
   }
 
   function startEdit(c: DeskCustomer) {
@@ -612,6 +616,11 @@ function CustomersPage() {
                   <Button size="sm" variant={bulk === "notify" ? "default" : "secondary"} onClick={() => setBulk("notify")}>
                     Send notification
                   </Button>
+                  {canServices && selectedRows.length === 1 ? (
+                    <Button size="sm" variant="secondary" onClick={() => startAddService(selectedRows[0])}>
+                      Add service
+                    </Button>
+                  ) : null}
                   {canServices ? (
                     <Button
                       size="sm"
@@ -684,9 +693,9 @@ function CustomersPage() {
             </div>
           ) : null}
 
-          {canManage && openForm ? (
+          {canManage && openForm && editingId ? (
             <form onSubmit={submit} className="grid gap-3 rounded-xl bg-surface p-5 shadow-card md:grid-cols-2 md:p-6">
-              <h2 className="font-medium md:col-span-2">{editingId ? "Edit customer" : "New customer"}</h2>
+              <h2 className="font-medium md:col-span-2">Edit customer</h2>
               <Field label="Name">
                 <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
               </Field>
@@ -854,6 +863,37 @@ function CustomersPage() {
           )}
         </>
       ) : null}
+
+      <OnboardWizard
+        open={onboardOpen}
+        onOpenChange={(next) => {
+          setOnboardOpen(next);
+          if (!next) setOnboardCustomer(null);
+        }}
+        mode={onboardCustomer ? "service" : "customer"}
+        lockedCustomer={
+          onboardCustomer
+            ? {
+                id: onboardCustomer.id,
+                name: onboardCustomer.name,
+                phone: onboardCustomer.phone,
+                email: onboardCustomer.email,
+                account_number: onboardCustomer.account_number,
+                type: onboardCustomer.type,
+                address: onboardCustomer.address,
+              }
+            : null
+        }
+        onCreated={(res) => {
+          setOnboardOpen(false);
+          setOnboardCustomer(null);
+          if (res.service_id) {
+            void navigate({ to: "/app/services/$serviceId", params: { serviceId: res.service_id } });
+          } else {
+            void navigate({ to: "/app/customers/$customerId", params: { customerId: res.customer_id } });
+          }
+        }}
+      />
 
       <TrafficDrawer
         open={Boolean(trafficFor)}

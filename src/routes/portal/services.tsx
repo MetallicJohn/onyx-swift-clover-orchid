@@ -3,7 +3,10 @@ import { useState } from "react";
 import { EmptyState, ErrorBanner, PortalCard, ServiceCard } from "@/components/isp/portal-ui";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
+import { downloadPdf } from "@/lib/isp/pdf-client";
+import { portalStatementPdf } from "@/lib/isp/server-docs";
 import { portalRequestGrace } from "@/lib/isp/server-portal";
+import { formatDate } from "@/lib/isp/display";
 import { usePortal } from "@/lib/isp/portal-context";
 
 export const Route = createFileRoute("/portal/services")({ component: PortalServices });
@@ -23,7 +26,9 @@ function PortalServices() {
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">My services</h1>
-        <p className="mt-1 text-sm text-muted">Each line is listed separately. Dates are for viewing only.</p>
+        <p className="mt-1 text-sm text-muted">
+          Select the service you want to pay for. Each line has its own account number and amount due.
+        </p>
       </div>
       {error ? <ErrorBanner message={error} /> : null}
       {msg ? <p className="text-sm text-ok">{msg}</p> : null}
@@ -33,7 +38,26 @@ function PortalServices() {
             <ServiceCard
               key={s.id}
               service={s}
-              onPay={s.outstanding_kes > 0 ? () => void navigate({ to: "/portal/pay" as never }) : undefined}
+              onPay={s.outstanding_kes > 0 ? () => void navigate({ to: "/portal/pay", search: { service: s.id } as never }) : undefined}
+              onInvoice={() => {
+                const inv = home.invoices.find((i) => i.service_id === s.id && i.balance_kes > 0) || home.invoices.find((i) => i.service_id === s.id);
+                if (inv && inv.balance_kes > 0) {
+                  void navigate({ href: `/portal/pay?invoice=${encodeURIComponent(inv.id)}` });
+                  return;
+                }
+                void navigate({ to: "/portal/invoices" as never });
+              }}
+              onStatement={() => {
+                void (async () => {
+                  setError(null);
+                  try {
+                    const file = await portalStatementPdf({ data: { token, service_id: s.id } });
+                    downloadPdf(file);
+                  } catch (ex) {
+                    setError(ex instanceof Error ? ex.message : "Could not download statement");
+                  }
+                })();
+              }}
               grace={
                 s.can_request_grace ? (
                   <form
@@ -45,7 +69,7 @@ function PortalServices() {
                       try {
                         const days = graceDays[s.id] || s.allowed_grace_days[0];
                         const r = await portalRequestGrace({ data: { token, service_id: s.id, days } });
-                        setMsg(`Grace Period granted until ${String(r.expires_at).slice(0, 10)}. Renewal date is unchanged.`);
+                        setMsg(`Grace Period granted until ${formatDate(r.expires_at)}. Renewal date is unchanged.`);
                         await refresh();
                       } catch (ex) {
                         setError(ex instanceof Error ? ex.message : "Could not add grace");

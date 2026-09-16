@@ -50,6 +50,8 @@ test("router enrollment script is RouterOS v7 and names ISP Solutions", () => {
   assert.match(script, /\/ip service set api disabled=no address=10\.200\.0\.0\/24/);
   assert.match(script, /\/ip service set winbox address=10\.200\.0\.0\/24/);
   assert.match(script, /persistent-keepalive=00:00:25/);
+  assert.match(script, /check-certificate=yes/);
+  assert.doesNotMatch(script, /check-certificate=no/);
   assert.equal(duplicateRisks(script).length, 0);
 });
 
@@ -140,6 +142,7 @@ test("RouterOS syntax errors are rejected; generated scripts are not", () => {
   assert.ok(validateRosScript(":put \"oops").some((i) => i.message.includes("unterminated")));
   assert.ok(validateRosScript("/rest/ppp/secret").some((i) => i.message.includes("REST")));
   assert.ok(validateRosScript(":do { :put 1 } on-error=fail").some((i) => i.message.includes("on-error")));
+  assert.ok(validateRosScript("/tool fetch url=https://x check-certificate=no").some((i) => i.message.includes("certificate")));
   assert.deepEqual(validateRosScript(enroll()), []);
   const wrapped = wrapPullRosScript({
     identity: "edge-01",

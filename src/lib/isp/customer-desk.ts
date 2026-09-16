@@ -115,7 +115,13 @@ export function deskWhere(tenantId: string, q: DeskFilters): { clause: string; p
             s.id ilike ${p} escape '#'
             or coalesce(s.username,'') ilike ${p} escape '#'
             or coalesce(s.static_ip,'') ilike ${p} escape '#'
+            or coalesce(s.account_number,'') ilike ${p} escape '#'
+            or coalesce(s.name,'') ilike ${p} escape '#'
           )
+      )
+      or exists (
+        select 1 from cpe_devices d
+        where d.tenant_id = c.tenant_id and d.customer_id = c.id and d.serial ilike ${p} escape '#'
       )
     )`);
   }

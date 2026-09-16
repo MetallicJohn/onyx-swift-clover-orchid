@@ -105,7 +105,7 @@ export async function setServiceExpiry(
     account_number: string;
   }>`select s.id, s.customer_id, s.status, s.suspend_reason, s.period_end::text as period_end,
             s.access_until::text as access_until, s.expiry_source, s.bundle_used_mb, p.bundle_mb,
-            p.name as package_name, c.name as customer_name, coalesce(c.account_number,'') as account_number
+            p.name as package_name, c.name as customer_name, coalesce(s.account_number, c.account_number,'') as account_number
      from services s
      join packages p on p.id = s.package_id
      join customers c on c.id = s.customer_id

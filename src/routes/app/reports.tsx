@@ -9,6 +9,7 @@ import { emptyClv, presentClv, CLV_LEGEND, type ClvKpiRow, type ClvSnapshot } fr
 import { emptyRetention, presentRetention, type RetentionKpiRow } from "@/lib/isp/retention";
 import { hasPermission } from "@/lib/isp/rbac";
 import { kes } from "@/lib/utils";
+import { formatDate, formatShortDateTime } from "@/lib/isp/display";
 
 export const Route = createFileRoute("/app/reports")({ component: ReportsPage });
 
@@ -17,15 +18,7 @@ type IncomingDesk = Awaited<ReturnType<typeof getIncomingPayments>>;
 type IncomingRow = IncomingDesk["rows"][number];
 
 function nairobiTime(iso: string) {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso.slice(0, 16).replace("T", " ");
-  return new Intl.DateTimeFormat("en-KE", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Africa/Nairobi",
-  }).format(new Date(t));
+  return formatShortDateTime(iso);
 }
 
 function hitTone(status: string) {
@@ -51,6 +44,7 @@ function ReportsPage() {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [customerId, setCustomerId] = useState("");
+  const [serviceId, setServiceId] = useState("");
   const [invoiceId, setInvoiceId] = useState("");
   const [customerQ, setCustomerQ] = useState("");
   const [busy, setBusy] = useState(false);
@@ -84,7 +78,7 @@ function ReportsPage() {
     return desk.rows.filter((r) => {
       if (filter !== "all" && r.status !== filter) return false;
       if (!needle) return true;
-      return `${r.trans_id} ${r.bill_ref} ${r.msisdn} ${r.payer_name} ${r.customer_name || ""} ${r.shortcode}`
+      return `${r.trans_id} ${r.bill_ref} ${r.msisdn} ${r.payer_name} ${r.customer_name || ""} ${r.shortcode} ${r.service_account || ""} ${r.service_name || ""} ${r.match_reason || ""}`
         .toLowerCase()
         .includes(needle);
     });
@@ -101,7 +95,12 @@ function ReportsPage() {
     return list.filter((c) => `${c.name} ${c.phone} ${c.account}`.toLowerCase().includes(needle));
   }, [desk, customerQ]);
 
-  const invoices = (desk?.invoices || []).filter((i) => !customerId || i.customer_id === customerId);
+  const invoices = (desk?.invoices || []).filter((i) => {
+    if (serviceId) return i.service_id === serviceId;
+    if (customerId) return i.customer_id === customerId;
+    return true;
+  });
+  const services = (desk?.services || []).filter((s) => !customerId || s.customer_id === customerId);
 
   function toggle(id: string, on: boolean) {
     setSelected((ids) => (on ? [...new Set([...ids, id])] : ids.filter((x) => x !== id)));
@@ -116,6 +115,7 @@ function ReportsPage() {
         data: {
           ids: selectedRows.map((r) => r.id),
           customer_id: customerId,
+          service_id: serviceId || undefined,
           invoice_id: invoiceId || undefined,
         },
       });
@@ -293,7 +293,7 @@ function ReportsPage() {
                       <span>
                         {g.customer_name} · {g.package_name}
                         <span className="mt-0.5 block text-xs text-muted">
-                          Renewal {g.period_end ? g.period_end.slice(0, 10) : "—"} · access until {g.expires_at.slice(0, 10)}
+                          Renewal {g.period_end ? formatDate(g.period_end) : "—"} · access until {formatDate(g.expires_at)}
                         </span>
                       </span>
                       <span className="font-mono text-xs">{g.days_granted}d</span>
@@ -321,10 +321,17 @@ function ReportsPage() {
           selectedRows={selectedRows}
           selectedKes={selectedKes}
           customers={customers}
+          services={services}
           invoices={invoices}
           customerId={customerId}
           setCustomerId={(id) => {
             setCustomerId(id);
+            setServiceId("");
+            setInvoiceId("");
+          }}
+          serviceId={serviceId}
+          setServiceId={(id) => {
+            setServiceId(id);
             setInvoiceId("");
           }}
           invoiceId={invoiceId}
@@ -370,9 +377,12 @@ function PaybillDesk({
   selectedRows,
   selectedKes,
   customers,
+  services,
   invoices,
   customerId,
   setCustomerId,
+  serviceId,
+  setServiceId,
   invoiceId,
   setInvoiceId,
   customerQ,
@@ -396,9 +406,12 @@ function PaybillDesk({
   selectedRows: IncomingRow[];
   selectedKes: number;
   customers: IncomingDesk["customers"];
+  services: IncomingDesk["services"];
   invoices: IncomingDesk["invoices"];
   customerId: string;
   setCustomerId: (id: string) => void;
+  serviceId: string;
+  setServiceId: (id: string) => void;
   invoiceId: string;
   setInvoiceId: (id: string) => void;
   customerQ: string;
@@ -457,11 +470,11 @@ function PaybillDesk({
         <div>
           <h2 className="font-medium">Assign unmatched</h2>
           <p className="text-sm text-muted">
-            Tick the payments that have no matching account, pick the customer they belong to, then assign. Credits the
-            ledger and open invoices (FIFO unless you pin an invoice).
+            Tick unmatched payments, pick the customer and the service they belong to, then assign. Credits only that
+            service. If a phone has more than one service, leave the hit unmatched until you choose the line.
           </p>
         </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <Field label="Find customer">
             <Input
               placeholder="Name, phone, or account"
@@ -469,16 +482,26 @@ function PaybillDesk({
               onChange={(e) => setCustomerQ(e.target.value)}
             />
           </Field>
-          <Field label="Customer account">
+          <Field label="Customer">
             <Select
               value={customerId}
               onChange={(e) => setCustomerId(e.target.value)}
             >
-              <option value="">Select account</option>
+              <option value="">Select customer</option>
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name} · {c.account}
                   {c.phone ? ` · ${c.phone}` : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Service account">
+            <Select value={serviceId} onChange={(e) => setServiceId(e.target.value)} disabled={!customerId}>
+              <option value="">{services.length > 1 ? "Pick the service" : "Only service (if one)"}</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.account || "No account"} · {s.name}
                 </option>
               ))}
             </Select>
@@ -494,7 +517,7 @@ function PaybillDesk({
             </Select>
           </Field>
           <div className="flex items-end">
-            <Button className="w-full" disabled={busy || !selectedRows.length || !customerId} onClick={onAssign}>
+            <Button className="w-full" disabled={busy || !selectedRows.length || !customerId || (services.length > 1 && !serviceId)} onClick={onAssign}>
               {busy
                 ? "Assigning…"
                 : selectedRows.length
@@ -542,6 +565,7 @@ function PaybillDesk({
                 <th className="px-4 py-3 font-medium">Amount</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Customer</th>
+                <th className="px-4 py-3 font-medium">Service</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -578,6 +602,18 @@ function PaybillDesk({
                     {r.match_reason ? <div className="mt-1 max-w-40 truncate text-xs text-subtle">{r.match_reason}</div> : null}
                   </td>
                   <td className="px-4 py-3">{r.customer_name || <span className="text-muted">Unassigned</span>}</td>
+                  <td className="px-4 py-3">
+                    {r.service_account || r.service_name ? (
+                      <div>
+                        <div className="font-mono text-xs">{r.service_account || "—"}</div>
+                        <div className="text-xs text-muted">{r.service_name || ""}</div>
+                      </div>
+                    ) : r.match_reason === "ambiguous_service" ? (
+                      <span className="text-xs text-warn">Pick a service</span>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

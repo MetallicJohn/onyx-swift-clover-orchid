@@ -2,8 +2,10 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import {
   auditAccountChange,
+  changeServiceAccountNumber,
   defaultsForSlug,
   formatFromSettings,
+  getAccountNumberSettings,
   previewNextAccountNumber,
   resetAccountNumberSettings,
   saveAccountNumberSettings,
@@ -67,4 +69,28 @@ export const resetAccountNumberSettingsFn = createServerFn({ method: "POST" })
       ...desk,
       slug_prefix: defaultsForSlug(workspace.slug).prefix,
     };
+  });
+
+export const changeServiceAccountNumberFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { service_id: string; account_number: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "services.manage");
+    const settings = await getAccountNumberSettings(sql, tenantId);
+    const changed = await changeServiceAccountNumber(sql, {
+      tenantId,
+      serviceId: data.service_id,
+      next: data.account_number,
+      allowManual: settings.allow_manual,
+    });
+    await auditAccountChange(sql, {
+      tenantId,
+      userId: context.userId,
+      action: "account_number.service_changed",
+      entityId: data.service_id,
+      entityType: "service",
+      details: `${changed.previous || "(none)"} → ${changed.next}`,
+    });
+    return changed;
   });

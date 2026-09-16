@@ -39,6 +39,7 @@ export type Workspace = {
   role: TenantRole;
   supportEmail: string;
   supportPhone: string;
+  dateFormat?: string;
   permissions?: string[];
   supportMode?: boolean;
   supportReason?: string;
@@ -90,6 +91,7 @@ export type ServiceRow = {
   customer_phone?: string;
   package_id: string;
   package_name: string;
+  name?: string;
   access_method: AccessMethod;
   username: string | null;
   static_ip: string | null;
@@ -98,6 +100,8 @@ export type ServiceRow = {
   created_at: string;
   period_end: string | null;
   account_number?: string;
+  customer_account_number?: string;
+  outstanding_kes?: number;
   access_until?: string | null;
   expiry_source?: string;
   expiry_change_reason?: string;
@@ -122,6 +126,9 @@ export type InvoiceRow = {
   id: string;
   customer_id: string;
   customer_name: string;
+  service_id?: string | null;
+  service_account?: string;
+  service_name?: string;
   number: string;
   amount_kes: number;
   subtotal_kes: number;
@@ -140,6 +147,7 @@ export type PaymentRow = {
   customer_id: string;
   customer_name: string;
   invoice_id: string | null;
+  service_id?: string | null;
   provider: string;
   amount_kes: number;
   reference: string;
@@ -153,6 +161,11 @@ export type RouterRow = {
   location: string;
   identity: string;
   role: string;
+  model?: string;
+  ros_version?: string;
+  site_pop?: string;
+  management_ip?: string;
+  tenant_id?: string;
   wg_status: string;
   last_seen: string | null;
   cpu_pct: number;
@@ -161,6 +174,14 @@ export type RouterRow = {
   wg_public?: string;
   wg_address?: string;
   agent_version?: string;
+  provisioning_status?: string;
+  provision_token_hint?: string;
+  provision_token_expires_at?: string | null;
+  provisioned_at?: string | null;
+  config_version?: number;
+  reachability?: string;
+  online?: boolean;
+  pool_count?: number;
 };
 
 export type TicketRow = {

@@ -20,6 +20,9 @@ export function validateRosScript(script: string): RosIssue[] {
   if (/\/rest\//.test(text) || /^\s*\?[a-z]+=/m.test(text)) {
     issues.push({ severity: "error", message: "REST/API syntax is not RouterOS script" });
   }
+  if (/check-certificate\s*=\s*no/i.test(text)) {
+    issues.push({ severity: "error", message: "certificate validation must not be disabled" });
+  }
   let braces = 0;
   let inStr = false;
   let escape = false;

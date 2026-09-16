@@ -11,23 +11,24 @@ import { provisionServiceAccess, seedOpsForTenant } from "./access";
 import { allocateStaticIp, disconnectSession, rotateServicePassword } from "./access-service";
 import { getProvisioning, listProvisioning, rotatePppoeCredentials, startPppoeProvision } from "./pppoe-provision";
 import { issueInvoice } from "./billing";
+import { nairobiDate } from "./empty-tenant";
 import { loadChurnScores } from "./churn";
 import { loadDashboard } from "./dashboard";
 import { requestPublicOrigin } from "./auth-origins";
 import { completeOperatorReset, requestOperatorReset } from "./password-reset";
-import { agentPullUrl, agentScript, enrollFields, enqueueAgentCommand, enqueuePackageProfiles, wgAddressForIndex } from "./agent";
+import { agentPullUrl, agentScript, enrollFields, enqueueAgentCommand, enqueuePackageProfiles, nextWgAddress } from "./agent";
 import { mikrotikProfileName } from "./pcq";
 import { mikrotikRateLimit } from "./radius-format";
 import { wgEnrollContext } from "./wireguard";
 import { emit } from "./events";
 import { listInbox } from "./inbox";
 import { applyConfirmedPayment } from "./payments";
-import { consumeActiveGrantsForCustomer, getGracePolicy } from "./grace";
+import { consumeActiveGrantsForService, getGracePolicy } from "./grace";
 import { groupAssignments, listTags, loadAssignments, setCustomerTags } from "./tags";
 import { assertPermission } from "./rbac";
 import { assertCustomerQuota, assertRouterQuota, assertTenantOperable } from "./saas";
 import { assertFeature, featureForAccess } from "./plans";
-import { allocateAccountNumber, changeCustomerAccountNumber, getAccountNumberSettings } from "./account-numbers";
+import { allocateAccountNumber, changeCustomerAccountNumber, ensureServiceAccountNumber, getAccountNumberSettings } from "./account-numbers";
 import { applyRls } from "./rls";
 import { loadAuthUser, provisionTenant, setCredentialPassword, changeOwnPassword, isPlatformAdmin } from "./accounts";
 import { resolveActiveTenant, setActiveTenant } from "./tenant-context";
@@ -39,7 +40,6 @@ import type {
   InvoiceRow,
   PackageRow,
   PaymentRow,
-  RouterRow,
   ServiceRow,
   ServiceStatus,
   TicketRow,
@@ -463,7 +463,9 @@ export const listServices = createServerFn({ method: "GET" })
     assertPermission(workspace.role, "services.read");
     const services = await sql<ServiceRow>`
       select s.id, s.customer_id, c.name as customer_name, c.phone as customer_phone,
-             coalesce(c.account_number, '') as account_number,
+             coalesce(s.account_number, '') as account_number,
+             coalesce(c.account_number, '') as customer_account_number,
+             coalesce(nullif(s.name,''), p.name) as name,
              s.package_id, p.name as package_name,
              s.access_method, s.username, s.static_ip, coalesce(s.mac_address, '') as mac_address,
              s.status, s.created_at::text as created_at,
@@ -531,8 +533,9 @@ export const createService = createServerFn({ method: "POST" })
     const periodEnd = new Date(Date.now() + periodMs(pkg.billing_interval, pkg.validity_hours)).toISOString();
     const initialStatus = pkg.access_method === "pppoe" ? "pending" : "active";
     const notes = (data.notes || "").trim().slice(0, 4000);
-    await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end, notes)
-      values (${id}, ${tid}, ${data.customer_id}, ${data.package_id}, ${pkg.access_method}, ${data.username || null}, ${data.static_ip || null}, ${initialStatus}, ${periodEnd}, ${notes})`;
+    await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end, notes, name)
+      values (${id}, ${tid}, ${data.customer_id}, ${data.package_id}, ${pkg.access_method}, ${data.username || null}, ${data.static_ip || null}, ${initialStatus}, ${periodEnd}, ${notes}, ${pkg.name})`;
+    const serviceAccount = await ensureServiceAccountNumber(sql, tid, id);
     if (pkg.access_method === "static" && !data.static_ip) {
       await allocateStaticIp(sql, tid, id, data.customer_id);
     }
@@ -550,15 +553,24 @@ export const createService = createServerFn({ method: "POST" })
       radius = await provisionServiceAccess(sql, tid, id);
     }
     const unpaid = await sql<{ id: string }>`
-      select id from invoices where tenant_id = ${tid} and customer_id = ${data.customer_id}
-      and status in ('issued','due','overdue','partial') limit 1`;
+      select i.id from invoices i
+      where i.tenant_id = ${tid} and i.customer_id = ${data.customer_id}
+        and i.status in ('issued','due','overdue','partial')
+        and (
+          i.service_id = ${id}
+          or exists (
+            select 1 from invoice_items ii
+            where ii.invoice_id = i.id and ii.tenant_id = i.tenant_id and ii.service_id = ${id}
+          )
+        )
+      limit 1`;
     if (!unpaid[0] && pkg.price_kes > 0) {
-      const due = new Date();
-      due.setDate(due.getDate() + 7);
+      const dueDate = nairobiDate(periodEnd);
       const inv = await issueInvoice(sql, {
         tenantId: tid,
         customerId: data.customer_id,
-        dueDate: due.toISOString().slice(0, 10),
+        serviceId: id,
+        dueDate,
         items: [
           {
             description: `${pkg.name} (${pkg.billing_interval})`,
@@ -573,11 +585,11 @@ export const createService = createServerFn({ method: "POST" })
         customer_name: "",
         invoice_number: inv.number,
         amount: `KES ${inv.amount_kes}`,
-        due_date: due.toISOString().slice(0, 10),
+        due_date: dueDate,
       });
     }
-    await audit(sql, tid, context.userId, "service.created", "service", id);
-    return { id, username: radius?.username, password: radius?.password, provision };
+    await audit(sql, tid, context.userId, "service.created", "service", id, JSON.stringify({ account_number: serviceAccount }));
+    return { id, username: radius?.username, password: radius?.password, provision, account_number: serviceAccount };
   });
 
 export const setServiceStatus = createServerFn({ method: "POST" })
@@ -591,8 +603,8 @@ export const setServiceStatus = createServerFn({ method: "POST" })
         select customer_id from services where id = ${data.id} and tenant_id = ${workspace.tenantId} and deleted_at is null`;
       if (row) {
         const { grantPaidPeriod } = await import("./access-policy");
-        await grantPaidPeriod(sql, workspace.tenantId, row.customer_id);
-        await consumeActiveGrantsForCustomer(sql, workspace.tenantId, row.customer_id);
+        await grantPaidPeriod(sql, workspace.tenantId, row.customer_id, new Date(), data.id);
+        await consumeActiveGrantsForService(sql, workspace.tenantId, data.id);
       }
     }
     const reason = data.status === "suspended" ? "manual" : data.status === "active" ? "" : "invoice";
@@ -878,16 +890,29 @@ export const listRouters = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "routers.read");
-    const routers = await sql<RouterRow>`
-      select id, name, location, identity, role, wg_status, last_seen::text as last_seen, cpu_pct, uptime_hours,
-             wg_public, wg_address, agent_version
-      from routers where tenant_id = ${workspace.tenantId} order by name`;
-    return { workspace, routers };
+    const { listTenantRouters, listAvailablePools, ensureTenantProvisioning } = await import("./router-provisioning");
+    const [routers, pools, provisioning] = await Promise.all([
+      listTenantRouters(sql, workspace.tenantId),
+      listAvailablePools(sql, workspace.tenantId),
+      ensureTenantProvisioning(sql, workspace.tenantId),
+    ]);
+    return { workspace, routers, pools, provisioning };
   });
 
 export const addRouter = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { name: string; location: string; identity: string; role: string }) => d)
+  .validator(
+    (d: {
+      name: string;
+      location?: string;
+      identity?: string;
+      role?: string;
+      model?: string;
+      ros_version?: string;
+      site_pop?: string;
+      management_ip?: string;
+    }) => d,
+  )
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     if (!data.name.trim()) throw new Error("Name is required");
@@ -895,18 +920,41 @@ export const addRouter = createServerFn({ method: "POST" })
     await assertRouterQuota(sql, workspace.tenantId);
     await assertFeature(sql, workspace.tenantId, "mikrotik");
     const id = nid("rtr");
-    const count = await sql<{ n: number }>`select count(*)::int as n from routers where tenant_id = ${workspace.tenantId}`;
     const enroll = enrollFields(data.name);
-    const wgAddress = wgAddressForIndex((count[0]?.n ?? 0) + 1);
-    await sql`insert into routers (id, tenant_id, name, location, identity, role, wg_status, last_seen, cpu_pct, uptime_hours, enroll_token, wg_public, wg_address, agent_version, wg_private_ref)
-      values (${id}, ${workspace.tenantId}, ${data.name.trim()}, ${data.location.trim()}, ${data.identity.trim() || data.name.trim().toLowerCase()}, ${data.role || "access"}, 'pending', now(), 0, 0, ${enroll.token}, ${enroll.wg_public}, ${wgAddress}, '0.2.0', ${enroll.wg_private_sealed})`;
+    const wgAddress = await nextWgAddress(sql, workspace.tenantId);
+    const name = data.name.trim();
+    const site = (data.site_pop || data.location || "").trim();
+    const identity = (data.identity || "").trim() || name.toLowerCase();
+    await sql`insert into routers (
+        id, tenant_id, name, location, identity, role, wg_status, last_seen, cpu_pct, uptime_hours,
+        enroll_token, wg_public, wg_address, agent_version, wg_private_ref,
+        model, ros_version, site_pop, management_ip, provisioning_status
+      ) values (
+        ${id}, ${workspace.tenantId}, ${name}, ${site}, ${identity}, ${data.role || "access"},
+        'pending', null, 0, 0, ${enroll.token}, ${enroll.wg_public}, ${wgAddress}, '0.2.0',
+        ${enroll.wg_private_sealed}, ${(data.model || "").trim()}, ${(data.ros_version || "").trim()},
+        ${site}, ${(data.management_ip || "").trim()}, 'pending'
+      )`;
     await audit(sql, workspace.tenantId, context.userId, "router.created", "router", id);
+    const { issueProvisioningToken, recordProvisionEvent } = await import("./router-provisioning");
+    await recordProvisionEvent(sql, {
+      tenantId: workspace.tenantId,
+      routerId: id,
+      event: "created",
+      actorUserId: context.userId,
+      detail: { name },
+    });
+    const issued = await issueProvisioningToken(sql, {
+      tenantId: workspace.tenantId,
+      routerId: id,
+      actorUserId: context.userId,
+    });
     const [ten] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${workspace.tenantId}`;
     const script = agentScript(
       await wgEnrollContext(sql, workspace.tenantId, {
         id,
-        name: data.name.trim(),
-        identity: data.identity.trim() || data.name.trim().toLowerCase(),
+        name,
+        identity,
         token: enroll.token,
         wg_public: enroll.wg_public,
         wg_private_ref: enroll.wg_private_sealed,
@@ -914,7 +962,15 @@ export const addRouter = createServerFn({ method: "POST" })
         pullUrl: agentPullUrl(ten?.public_base_url || "", enroll.token),
       }),
     );
-    return { id, script, token: enroll.token };
+    return {
+      id,
+      script,
+      token: enroll.token,
+      bootstrap: issued.bootstrap,
+      provision_token: issued.token,
+      provision_expires_at: issued.expires_at,
+      router: issued.router,
+    };
   });
 
 export const listTickets = createServerFn({ method: "GET" })
@@ -960,15 +1016,18 @@ export const setTicketStatus = createServerFn({ method: "POST" })
 
 export const renameTenant = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { name: string; supportEmail: string; supportPhone: string }) => d)
+  .validator((d: { name: string; supportEmail: string; supportPhone: string; dateFormat?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "settings.manage");
     const name = data.name.trim();
     if (!name) throw new Error("Name is required");
-    await sql`update tenants set name = ${name}, support_email = ${data.supportEmail.trim()}, support_phone = ${data.supportPhone.trim()}
+    const { normalizeDateFormat } = await import("./display");
+    const dateFormat = normalizeDateFormat(data.dateFormat);
+    await sql`update tenants set name = ${name}, support_email = ${data.supportEmail.trim()}, support_phone = ${data.supportPhone.trim()},
+      date_format = ${dateFormat}
       where id = ${workspace.tenantId}`;
-    return { ok: true };
+    return { ok: true, dateFormat };
   });
 
 export type ImportRow = {

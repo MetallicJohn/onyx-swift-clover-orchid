@@ -13,6 +13,23 @@ export function wgAddressForIndex(i: number) {
   return `10.200.0.${(i % 250) + 2}/32`;
 }
 
+function overlayLastOctet(address: string) {
+  const host = (address || "").replace(/\/\d+$/, "");
+  const last = Number(host.split(".").pop());
+  return Number.isInteger(last) ? last : 0;
+}
+
+export async function nextWgAddress(sql: Sql, tenantId: string) {
+  const rows = await sql<{ wg_address: string }>`
+    select wg_address from routers where tenant_id = ${tenantId} and wg_address <> ''`;
+  const used = new Set(rows.map((r) => overlayLastOctet(r.wg_address)));
+  used.add(1);
+  for (let i = 2; i <= 254; i += 1) {
+    if (!used.has(i)) return `10.200.0.${i}/32`;
+  }
+  throw new Error("WireGuard overlay 10.200.0.0/24 is full");
+}
+
 export function enrollFields(_name: string) {
   const token = `agt_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
   const keys = generateWireGuardKeypair();

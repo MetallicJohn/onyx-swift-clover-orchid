@@ -8,6 +8,7 @@ import type { PortalHome } from "@/lib/isp/customer-portal-dto";
 import { GateCtx, PortalCtx, type PortalGate } from "@/lib/isp/portal-context";
 import { clearPortalSession, onPortalSession, readPortalSession, writePortalSession } from "@/lib/isp/portal-session";
 import { getPortalHome, portalSignOut } from "@/lib/isp/server-portal";
+import { setActiveDateFormat } from "@/lib/isp/display";
 
 export const Route = createFileRoute("/portal")({
   component: PortalLayout,
@@ -57,6 +58,7 @@ function PortalLayout() {
     try {
       const data = await getPortalHome({ data: { token: stored.token } });
       setHome(data);
+      setActiveDateFormat(data.isp.date_format);
       setToken(stored.token);
     } catch {
       clearPortalSession();
@@ -74,6 +76,7 @@ function PortalLayout() {
     try {
       const data = await getPortalHome({ data: { token: nextToken } });
       setHome(data);
+      setActiveDateFormat(data.isp.date_format);
       setToken(nextToken);
     } catch (err) {
       clearPortalSession();

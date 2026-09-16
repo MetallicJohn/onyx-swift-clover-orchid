@@ -390,7 +390,18 @@ function Dashboard() {
           />
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button className="min-h-12 flex-1 sm:flex-none" onClick={() => void navigate({ to: "/portal/pay" as never })} disabled={d.outstanding_kes <= 0}>
+          <Button
+            className="min-h-12 flex-1 sm:flex-none"
+            onClick={() => {
+              const due = home.services.filter((s) => s.outstanding_kes > 0);
+              if (due.length === 1) {
+                void navigate({ to: "/portal/pay", search: { service: due[0]!.id } as never });
+                return;
+              }
+              void navigate({ to: due.length > 1 ? "/portal/services" : "/portal/pay" } as never);
+            }}
+            disabled={d.outstanding_kes <= 0}
+          >
             Pay now
           </Button>
           <Button variant="secondary" onClick={() => void navigate({ to: "/portal/invoices" as never })}>
@@ -423,10 +434,20 @@ function Dashboard() {
                 <span>
                   {inv.number}
                   <span className="block text-xs text-muted">
-                    {inv.package_name} · due {formatDate(inv.due_date)}
+                    {inv.service_name || inv.package_name}
+                    {inv.account_number ? ` · ${inv.account_number}` : ""} · due {formatDate(inv.due_date)}
                   </span>
                 </span>
-                <span className="tabular-nums font-medium">{kes(inv.balance_kes)}</span>
+                <span className="flex items-center gap-2">
+                  <span className="tabular-nums font-medium">{kes(inv.balance_kes)}</span>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => void navigate({ href: `/portal/pay?invoice=${encodeURIComponent(inv.id)}` })}
+                  >
+                    Pay
+                  </Button>
+                </span>
               </li>
             ))}
           </ul>

@@ -25,7 +25,6 @@ import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAcsRouteImport } from './routes/app/acs'
 import { Route as AppAdminRouteImport } from './routes/app/admin'
 import { Route as AppAiRouteImport } from './routes/app/ai'
-import { Route as AppBillingRouteImport } from './routes/app/billing'
 import { Route as AppCustomersRouteImport } from './routes/app/customers'
 import { Route as AppFieldRouteImport } from './routes/app/field'
 import { Route as AppHotspotRouteImport } from './routes/app/hotspot'
@@ -68,16 +67,24 @@ import { Route as ApiInternalAcsPortsRouteImport } from './routes/api/internal/a
 import { Route as ApiInternalJobsRouteImport } from './routes/api/internal/jobs'
 import { Route as ApiInternalTrafficRouteImport } from './routes/api/internal/traffic'
 import { Route as ApiPlatformTelemetryRouteImport } from './routes/api/platform/telemetry'
+import { Route as ApiRoutersIndexRouteImport } from './routes/api/routers/index'
 import { Route as ApiV1HealthRouteImport } from './routes/api/v1/health'
 import { Route as ApiV1ReadyRouteImport } from './routes/api/v1/ready'
 import { Route as AppCustomersCustomerIdRouteImport } from './routes/app/customers.$customerId'
 import { Route as AppServicesServiceIdRouteImport } from './routes/app/services.$serviceId'
 import { Route as PlatformTenantsTenantIdRouteImport } from './routes/platform/tenants.$tenantId'
+import { Route as ApiRoutersIdIndexRouteImport } from './routes/api/routers/$id/index'
+import { Route as ApiRoutersIdConfigurationHistoryRouteImport } from './routes/api/routers/$id/configuration-history'
+import { Route as ApiRoutersIdPoolsRouteImport } from './routes/api/routers/$id/pools'
+import { Route as ApiRoutersIdProvisioningTokenRouteImport } from './routes/api/routers/$id/provisioning-token'
+import { Route as ApiRoutersIdRevokeTokenRouteImport } from './routes/api/routers/$id/revoke-token'
+import { Route as ApiRoutersIdStatusRouteImport } from './routes/api/routers/$id/status'
 import { Route as ApiV1CronBillingRouteImport } from './routes/api/v1/cron/billing'
 import { Route as ApiV1PortalActionRouteImport } from './routes/api/v1/portal/$action'
 import { Route as ApiWebhooksKopokopoSlugRouteImport } from './routes/api/webhooks/kopokopo/$slug'
 import { Route as ApiWebhooksMpesaSlugRouteImport } from './routes/api/webhooks/mpesa/$slug'
 import { Route as ApiV1RadiusActionSlugRouteImport } from './routes/api/v1/radius/$action.$slug'
+import { Route as ApiVpnRoutersTokenBootstrapDotrscRouteImport } from './routes/api/vpn/routers/$token/bootstrap[.]rsc'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -157,11 +164,6 @@ const AppAdminRoute = AppAdminRouteImport.update({
 const AppAiRoute = AppAiRouteImport.update({
   id: '/ai',
   path: '/ai',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppBillingRoute = AppBillingRouteImport.update({
-  id: '/billing',
-  path: '/billing',
   getParentRoute: () => AppRoute,
 } as any)
 const AppCustomersRoute = AppCustomersRouteImport.update({
@@ -374,6 +376,11 @@ const ApiPlatformTelemetryRoute = ApiPlatformTelemetryRouteImport.update({
   path: '/api/platform/telemetry',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRoutersIndexRoute = ApiRoutersIndexRouteImport.update({
+  id: '/api/routers/',
+  path: '/api/routers/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1HealthRoute = ApiV1HealthRouteImport.update({
   id: '/api/v1/health',
   path: '/api/v1/health',
@@ -398,6 +405,38 @@ const PlatformTenantsTenantIdRoute = PlatformTenantsTenantIdRouteImport.update({
   id: '/$tenantId',
   path: '/$tenantId',
   getParentRoute: () => PlatformTenantsRoute,
+} as any)
+const ApiRoutersIdIndexRoute = ApiRoutersIdIndexRouteImport.update({
+  id: '/api/routers/$id/',
+  path: '/api/routers/$id/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRoutersIdConfigurationHistoryRoute =
+  ApiRoutersIdConfigurationHistoryRouteImport.update({
+    id: '/api/routers/$id/configuration-history',
+    path: '/api/routers/$id/configuration-history',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiRoutersIdPoolsRoute = ApiRoutersIdPoolsRouteImport.update({
+  id: '/api/routers/$id/pools',
+  path: '/api/routers/$id/pools',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRoutersIdProvisioningTokenRoute =
+  ApiRoutersIdProvisioningTokenRouteImport.update({
+    id: '/api/routers/$id/provisioning-token',
+    path: '/api/routers/$id/provisioning-token',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiRoutersIdRevokeTokenRoute = ApiRoutersIdRevokeTokenRouteImport.update({
+  id: '/api/routers/$id/revoke-token',
+  path: '/api/routers/$id/revoke-token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRoutersIdStatusRoute = ApiRoutersIdStatusRouteImport.update({
+  id: '/api/routers/$id/status',
+  path: '/api/routers/$id/status',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ApiV1CronBillingRoute = ApiV1CronBillingRouteImport.update({
   id: '/api/v1/cron/billing',
@@ -424,6 +463,12 @@ const ApiV1RadiusActionSlugRoute = ApiV1RadiusActionSlugRouteImport.update({
   path: '/api/v1/radius/$action/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiVpnRoutersTokenBootstrapDotrscRoute =
+  ApiVpnRoutersTokenBootstrapDotrscRouteImport.update({
+    id: '/api/vpn/routers/$token/bootstrap.rsc',
+    path: '/api/vpn/routers/$token/bootstrap.rsc',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -441,7 +486,6 @@ export interface FileRoutesByFullPath {
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
-  '/app/billing': typeof AppBillingRoute
   '/app/customers': typeof AppCustomersRouteWithChildren
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
@@ -490,11 +534,19 @@ export interface FileRoutesByFullPath {
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
+  '/api/routers/': typeof ApiRoutersIndexRoute
+  '/api/routers/$id/configuration-history': typeof ApiRoutersIdConfigurationHistoryRoute
+  '/api/routers/$id/pools': typeof ApiRoutersIdPoolsRoute
+  '/api/routers/$id/provisioning-token': typeof ApiRoutersIdProvisioningTokenRoute
+  '/api/routers/$id/revoke-token': typeof ApiRoutersIdRevokeTokenRoute
+  '/api/routers/$id/status': typeof ApiRoutersIdStatusRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/v1/portal/$action': typeof ApiV1PortalActionRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
+  '/api/routers/$id/': typeof ApiRoutersIdIndexRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
+  '/api/vpn/routers/$token/bootstrap.rsc': typeof ApiVpnRoutersTokenBootstrapDotrscRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -508,7 +560,6 @@ export interface FileRoutesByTo {
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
-  '/app/billing': typeof AppBillingRoute
   '/app/customers': typeof AppCustomersRouteWithChildren
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
@@ -557,11 +608,19 @@ export interface FileRoutesByTo {
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
+  '/api/routers': typeof ApiRoutersIndexRoute
+  '/api/routers/$id/configuration-history': typeof ApiRoutersIdConfigurationHistoryRoute
+  '/api/routers/$id/pools': typeof ApiRoutersIdPoolsRoute
+  '/api/routers/$id/provisioning-token': typeof ApiRoutersIdProvisioningTokenRoute
+  '/api/routers/$id/revoke-token': typeof ApiRoutersIdRevokeTokenRoute
+  '/api/routers/$id/status': typeof ApiRoutersIdStatusRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/v1/portal/$action': typeof ApiV1PortalActionRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
+  '/api/routers/$id': typeof ApiRoutersIdIndexRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
+  '/api/vpn/routers/$token/bootstrap.rsc': typeof ApiVpnRoutersTokenBootstrapDotrscRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -580,7 +639,6 @@ export interface FileRoutesById {
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
-  '/app/billing': typeof AppBillingRoute
   '/app/customers': typeof AppCustomersRouteWithChildren
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
@@ -629,11 +687,19 @@ export interface FileRoutesById {
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
+  '/api/routers/': typeof ApiRoutersIndexRoute
+  '/api/routers/$id/configuration-history': typeof ApiRoutersIdConfigurationHistoryRoute
+  '/api/routers/$id/pools': typeof ApiRoutersIdPoolsRoute
+  '/api/routers/$id/provisioning-token': typeof ApiRoutersIdProvisioningTokenRoute
+  '/api/routers/$id/revoke-token': typeof ApiRoutersIdRevokeTokenRoute
+  '/api/routers/$id/status': typeof ApiRoutersIdStatusRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
   '/api/v1/portal/$action': typeof ApiV1PortalActionRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
+  '/api/routers/$id/': typeof ApiRoutersIdIndexRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
+  '/api/vpn/routers/$token/bootstrap.rsc': typeof ApiVpnRoutersTokenBootstrapDotrscRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -653,7 +719,6 @@ export interface FileRouteTypes {
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
-    | '/app/billing'
     | '/app/customers'
     | '/app/field'
     | '/app/hotspot'
@@ -702,11 +767,19 @@ export interface FileRouteTypes {
     | '/app/customers/$customerId'
     | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
+    | '/api/routers/'
+    | '/api/routers/$id/configuration-history'
+    | '/api/routers/$id/pools'
+    | '/api/routers/$id/provisioning-token'
+    | '/api/routers/$id/revoke-token'
+    | '/api/routers/$id/status'
     | '/api/v1/cron/billing'
     | '/api/v1/portal/$action'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
+    | '/api/routers/$id/'
     | '/api/v1/radius/$action/$slug'
+    | '/api/vpn/routers/$token/bootstrap.rsc'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -720,7 +793,6 @@ export interface FileRouteTypes {
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
-    | '/app/billing'
     | '/app/customers'
     | '/app/field'
     | '/app/hotspot'
@@ -769,11 +841,19 @@ export interface FileRouteTypes {
     | '/app/customers/$customerId'
     | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
+    | '/api/routers'
+    | '/api/routers/$id/configuration-history'
+    | '/api/routers/$id/pools'
+    | '/api/routers/$id/provisioning-token'
+    | '/api/routers/$id/revoke-token'
+    | '/api/routers/$id/status'
     | '/api/v1/cron/billing'
     | '/api/v1/portal/$action'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
+    | '/api/routers/$id'
     | '/api/v1/radius/$action/$slug'
+    | '/api/vpn/routers/$token/bootstrap.rsc'
   id:
     | '__root__'
     | '/'
@@ -791,7 +871,6 @@ export interface FileRouteTypes {
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
-    | '/app/billing'
     | '/app/customers'
     | '/app/field'
     | '/app/hotspot'
@@ -840,11 +919,19 @@ export interface FileRouteTypes {
     | '/app/customers/$customerId'
     | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
+    | '/api/routers/'
+    | '/api/routers/$id/configuration-history'
+    | '/api/routers/$id/pools'
+    | '/api/routers/$id/provisioning-token'
+    | '/api/routers/$id/revoke-token'
+    | '/api/routers/$id/status'
     | '/api/v1/cron/billing'
     | '/api/v1/portal/$action'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
+    | '/api/routers/$id/'
     | '/api/v1/radius/$action/$slug'
+    | '/api/vpn/routers/$token/bootstrap.rsc'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -872,11 +959,19 @@ export interface RootRouteChildren {
   ApiPlatformTelemetryRoute: typeof ApiPlatformTelemetryRoute
   ApiV1HealthRoute: typeof ApiV1HealthRoute
   ApiV1ReadyRoute: typeof ApiV1ReadyRoute
+  ApiRoutersIndexRoute: typeof ApiRoutersIndexRoute
+  ApiRoutersIdConfigurationHistoryRoute: typeof ApiRoutersIdConfigurationHistoryRoute
+  ApiRoutersIdPoolsRoute: typeof ApiRoutersIdPoolsRoute
+  ApiRoutersIdProvisioningTokenRoute: typeof ApiRoutersIdProvisioningTokenRoute
+  ApiRoutersIdRevokeTokenRoute: typeof ApiRoutersIdRevokeTokenRoute
+  ApiRoutersIdStatusRoute: typeof ApiRoutersIdStatusRoute
   ApiV1CronBillingRoute: typeof ApiV1CronBillingRoute
   ApiV1PortalActionRoute: typeof ApiV1PortalActionRoute
   ApiWebhooksKopokopoSlugRoute: typeof ApiWebhooksKopokopoSlugRoute
   ApiWebhooksMpesaSlugRoute: typeof ApiWebhooksMpesaSlugRoute
+  ApiRoutersIdIndexRoute: typeof ApiRoutersIdIndexRoute
   ApiV1RadiusActionSlugRoute: typeof ApiV1RadiusActionSlugRoute
+  ApiVpnRoutersTokenBootstrapDotrscRoute: typeof ApiVpnRoutersTokenBootstrapDotrscRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -991,13 +1086,6 @@ declare module '@tanstack/react-router' {
       path: '/ai'
       fullPath: '/app/ai'
       preLoaderRoute: typeof AppAiRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/billing': {
-      id: '/app/billing'
-      path: '/billing'
-      fullPath: '/app/billing'
-      preLoaderRoute: typeof AppBillingRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/customers': {
@@ -1294,6 +1382,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPlatformTelemetryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/routers/': {
+      id: '/api/routers/'
+      path: '/api/routers'
+      fullPath: '/api/routers/'
+      preLoaderRoute: typeof ApiRoutersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/health': {
       id: '/api/v1/health'
       path: '/api/v1/health'
@@ -1328,6 +1423,48 @@ declare module '@tanstack/react-router' {
       fullPath: '/platform/tenants/$tenantId'
       preLoaderRoute: typeof PlatformTenantsTenantIdRouteImport
       parentRoute: typeof PlatformTenantsRoute
+    }
+    '/api/routers/$id/': {
+      id: '/api/routers/$id/'
+      path: '/api/routers/$id'
+      fullPath: '/api/routers/$id/'
+      preLoaderRoute: typeof ApiRoutersIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/routers/$id/configuration-history': {
+      id: '/api/routers/$id/configuration-history'
+      path: '/api/routers/$id/configuration-history'
+      fullPath: '/api/routers/$id/configuration-history'
+      preLoaderRoute: typeof ApiRoutersIdConfigurationHistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/routers/$id/pools': {
+      id: '/api/routers/$id/pools'
+      path: '/api/routers/$id/pools'
+      fullPath: '/api/routers/$id/pools'
+      preLoaderRoute: typeof ApiRoutersIdPoolsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/routers/$id/provisioning-token': {
+      id: '/api/routers/$id/provisioning-token'
+      path: '/api/routers/$id/provisioning-token'
+      fullPath: '/api/routers/$id/provisioning-token'
+      preLoaderRoute: typeof ApiRoutersIdProvisioningTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/routers/$id/revoke-token': {
+      id: '/api/routers/$id/revoke-token'
+      path: '/api/routers/$id/revoke-token'
+      fullPath: '/api/routers/$id/revoke-token'
+      preLoaderRoute: typeof ApiRoutersIdRevokeTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/routers/$id/status': {
+      id: '/api/routers/$id/status'
+      path: '/api/routers/$id/status'
+      fullPath: '/api/routers/$id/status'
+      preLoaderRoute: typeof ApiRoutersIdStatusRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/v1/cron/billing': {
       id: '/api/v1/cron/billing'
@@ -1364,6 +1501,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1RadiusActionSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/vpn/routers/$token/bootstrap.rsc': {
+      id: '/api/vpn/routers/$token/bootstrap.rsc'
+      path: '/api/vpn/routers/$token/bootstrap.rsc'
+      fullPath: '/api/vpn/routers/$token/bootstrap.rsc'
+      preLoaderRoute: typeof ApiVpnRoutersTokenBootstrapDotrscRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -1395,7 +1539,6 @@ interface AppRouteChildren {
   AppAcsRoute: typeof AppAcsRoute
   AppAdminRoute: typeof AppAdminRoute
   AppAiRoute: typeof AppAiRoute
-  AppBillingRoute: typeof AppBillingRoute
   AppCustomersRoute: typeof AppCustomersRouteWithChildren
   AppFieldRoute: typeof AppFieldRoute
   AppHotspotRoute: typeof AppHotspotRoute
@@ -1418,7 +1561,6 @@ const AppRouteChildren: AppRouteChildren = {
   AppAcsRoute: AppAcsRoute,
   AppAdminRoute: AppAdminRoute,
   AppAiRoute: AppAiRoute,
-  AppBillingRoute: AppBillingRoute,
   AppCustomersRoute: AppCustomersRouteWithChildren,
   AppFieldRoute: AppFieldRoute,
   AppHotspotRoute: AppHotspotRoute,
@@ -1539,11 +1681,20 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPlatformTelemetryRoute: ApiPlatformTelemetryRoute,
   ApiV1HealthRoute: ApiV1HealthRoute,
   ApiV1ReadyRoute: ApiV1ReadyRoute,
+  ApiRoutersIndexRoute: ApiRoutersIndexRoute,
+  ApiRoutersIdConfigurationHistoryRoute: ApiRoutersIdConfigurationHistoryRoute,
+  ApiRoutersIdPoolsRoute: ApiRoutersIdPoolsRoute,
+  ApiRoutersIdProvisioningTokenRoute: ApiRoutersIdProvisioningTokenRoute,
+  ApiRoutersIdRevokeTokenRoute: ApiRoutersIdRevokeTokenRoute,
+  ApiRoutersIdStatusRoute: ApiRoutersIdStatusRoute,
   ApiV1CronBillingRoute: ApiV1CronBillingRoute,
   ApiV1PortalActionRoute: ApiV1PortalActionRoute,
   ApiWebhooksKopokopoSlugRoute: ApiWebhooksKopokopoSlugRoute,
   ApiWebhooksMpesaSlugRoute: ApiWebhooksMpesaSlugRoute,
+  ApiRoutersIdIndexRoute: ApiRoutersIdIndexRoute,
   ApiV1RadiusActionSlugRoute: ApiV1RadiusActionSlugRoute,
+  ApiVpnRoutersTokenBootstrapDotrscRoute:
+    ApiVpnRoutersTokenBootstrapDotrscRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

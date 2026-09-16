@@ -139,7 +139,7 @@ export function AccountNumberSettings() {
         },
       });
       setForm({ ...EMPTY, ...desk });
-      setSaved("Account number format saved. Existing customers keep their current numbers.");
+      setSaved("Account number format saved. Existing customers and services keep their current numbers.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save");
     } finally {
@@ -150,9 +150,10 @@ export function AccountNumberSettings() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="font-medium">Customer account numbers</h2>
+        <h2 className="font-medium">Account numbers</h2>
         <p className="text-sm text-muted">
-          How this ISP numbers new customers. Changing the format does not rename accounts that already exist.
+          How this ISP numbers new services. Each service gets its own unique account number for payments, invoices, and
+          restore. Customer numbers stay on the profile for backward compatibility.
         </p>
       </div>
 
@@ -161,12 +162,12 @@ export function AccountNumberSettings() {
         <div className="mt-1 font-mono text-2xl tracking-tight">{live.next}</div>
         <p className="mt-1 text-sm text-muted">
           {live.kind === "random"
-            ? `Examples ${live.start}, ${live.second}, ${live.third}. Each new customer gets a unique 5-character code — letters and numbers, no separator. I, O, and L are omitted so they are not read as 1 or 0.`
+            ? `Examples ${live.start}, ${live.second}, ${live.third}. Each new service gets a unique 5-character code — letters and numbers, no separator. I, O, and L are omitted so they are not read as 1 or 0.`
             : live.kind === "suffix"
-              ? `Next number assigned on save of a new customer. Sequence ${live.start}, ${live.second}, ${live.third}. Letter suffix advances A → B → C (then AA). The numeric part stays at the starting number.`
+              ? `Next number assigned on save of a new service. Sequence ${live.start}, ${live.second}, ${live.third}. Letter suffix advances A → B → C (then AA). The numeric part stays at the starting number.`
               : live.kind === "prefix"
-                ? `Next number assigned on save of a new customer. Sequence ${live.start}, ${live.second}, ${live.third}. Letter prefix advances alphabetically. The numeric part stays at the starting number.`
-                : `Next number assigned on save of a new customer. Sequence ${live.start}, ${live.second}, ${live.third}. The number increases; prefix and suffix stay as written.`}
+                ? `Next number assigned on save of a new service. Sequence ${live.start}, ${live.second}, ${live.third}. Letter prefix advances alphabetically. The numeric part stays at the starting number.`
+                : `Next number assigned on save of a new service. Sequence ${live.start}, ${live.second}, ${live.third}. The number increases; prefix and suffix stay as written.`}
         </p>
       </div>
 
@@ -176,7 +177,7 @@ export function AccountNumberSettings() {
           e.preventDefault();
           if (
             !window.confirm(
-              "Save this format for future customers? Existing account numbers stay as they are.",
+              "Save this format for future services and customers? Existing account numbers stay as they are.",
             )
           ) {
             return;

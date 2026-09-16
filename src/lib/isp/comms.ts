@@ -1,6 +1,9 @@
 import { nid } from "../utils.ts";
+import { formatSmsDate } from "./display.ts";
 import { resolveAccountNumber } from "./document-format.ts";
 import { e164, deliverSms, deliverEmail, emailOk, getMessagingSettings } from "./messaging.ts";
+import { effectiveAccessIso } from "./service-expiry-format.ts";
+import { loadTenantDateFormat } from "./tenant-context.ts";
 import {
   type AudienceFilter,
   type CommCategory,
@@ -34,6 +37,8 @@ export type AudienceRow = {
   package_id: string;
   package_name: string;
   period_end: string | null;
+  access_until?: string | null;
+  expiry_source?: string | null;
   balance_kes: number;
   phone_ok: boolean;
   email_ok: boolean;
@@ -145,8 +150,11 @@ export async function resolveAudience(sql: Sql, tenantId: string, filter: Audien
     package_id: string;
     package_name: string;
     period_end: string | null;
+    access_until: string | null;
+    expiry_source: string;
   }>`
-    select s.customer_id, s.status, s.access_method, s.package_id, p.name as package_name, s.period_end::text as period_end
+    select s.customer_id, s.status, s.access_method, s.package_id, p.name as package_name, s.period_end::text as period_end,
+           s.access_until::text as access_until, coalesce(s.expiry_source,'') as expiry_source
     from services s
     join packages p on p.id = s.package_id
     where s.tenant_id = ${tenantId} and s.deleted_at is null`;
@@ -217,6 +225,8 @@ export async function resolveAudience(sql: Sql, tenantId: string, filter: Audien
       package_id: use?.package_id ?? "",
       package_name: use?.package_name ?? "",
       period_end: use?.period_end ?? null,
+      access_until: use?.access_until ?? null,
+      expiry_source: use?.expiry_source ?? "",
       balance_kes: balance,
       phone_ok: phoneOk(c.phone),
       email_ok: emailOk(c.email),
@@ -245,18 +255,25 @@ export function summarizeAudience(rows: AudienceRow[], channel: CommChannel = "s
   return { total: rows.length, valid: valid.length, skipped: rows.length - valid.length };
 }
 
+function formatIfIsoDate(value: string | undefined, dateFormat: string) {
+  const v = (value || "").trim();
+  if (!v) return "";
+  if (/^\d{4}-\d{2}-\d{2}/.test(v) || v.includes("T")) return formatSmsDate(v, dateFormat) || v;
+  return v;
+}
+
 function campaignVars(
   row: AudienceRow,
   extras: CommExtras,
-  ctx: { slug: string; company: string; support: string },
+  ctx: { slug: string; company: string; support: string; dateFormat: string },
 ): CommVars {
   return {
     customer_name: row.name,
     account_number: resolveAccountNumber(ctx.slug, row.customer_id, row.account_number),
     service_name: row.package_name || row.access_method,
     package_name: row.package_name,
-    service_expiry: row.period_end ? row.period_end.slice(0, 10) : "",
-    maintenance_date: extras.maintenance_date ?? "",
+    service_expiry: formatSmsDate(effectiveAccessIso(row), ctx.dateFormat),
+    maintenance_date: formatIfIsoDate(extras.maintenance_date, ctx.dateFormat),
     maintenance_start: extras.maintenance_start ?? "",
     maintenance_end: extras.maintenance_end ?? "",
     expected_duration: extras.expected_duration ?? "",
@@ -308,9 +325,10 @@ export async function createCampaign(
   const audience = await resolveAudience(sql, opts.tenantId, opts.filter);
   const summary = summarizeAudience(audience, channel);
   const settings = await getMessagingSettings(sql, opts.tenantId);
+  const dateFormat = await loadTenantDateFormat(sql, opts.tenantId);
   const sample = audience[0];
   const rendered = sample
-    ? renderCommTemplate(body, campaignVars(sample, opts.extras ?? {}, { slug: opts.slug, company: opts.company, support: opts.support }))
+    ? renderCommTemplate(body, campaignVars(sample, opts.extras ?? {}, { slug: opts.slug, company: opts.company, support: opts.support, dateFormat }))
     : body;
   const parts = channel === "email" ? 1 : smsSegments(rendered).parts || 1;
   const id = nid("cmp");
@@ -330,7 +348,7 @@ export async function createCampaign(
   if (opts.restoreOf) {
     await sql`update comm_campaigns set restore_of = ${opts.restoreOf} where id = ${id} and tenant_id = ${opts.tenantId}`;
   }
-  const ctx = { slug: opts.slug, company: opts.company, support: opts.support };
+  const ctx = { slug: opts.slug, company: opts.company, support: opts.support, dateFormat };
   for (const row of audience) {
     const rid = nid("crcp");
     const reason = skipReason(row, channel);

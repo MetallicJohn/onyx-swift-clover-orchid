@@ -17,6 +17,7 @@ import {
   listSaasPlans,
   reactivateSaasTenant,
   resetSaasOperatorPassword,
+  saveSaasRouterProvisioning,
   startSaasSupport,
   suspendSaasTenant,
   updateSaasTenant,
@@ -41,6 +42,12 @@ function TenantDetailPage() {
   const [nodeName, setNodeName] = useState("edge-1");
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
   const [acsPort, setAcsPort] = useState("");
+  const [prov, setProv] = useState({
+    enabled: true,
+    token_ttl_hours: 72,
+    require_https: true,
+    allow_pool_push: true,
+  });
 
   async function load() {
     const [d, p, s] = await Promise.all([
@@ -60,6 +67,14 @@ function TenantDetailPage() {
     setPlan(d.subscription.plan);
     setReset((r) => ({ ...r, email: d.operators[0]?.email || r.email }));
     setAcsPort(d.acs?.cwmp_port ? String(d.acs.cwmp_port) : "");
+    if (d.router_provisioning) {
+      setProv({
+        enabled: d.router_provisioning.enabled,
+        token_ttl_hours: d.router_provisioning.token_ttl_hours,
+        require_https: d.router_provisioning.require_https,
+        allow_pool_push: d.router_provisioning.allow_pool_push,
+      });
+    }
   }
 
   useEffect(() => {
@@ -201,6 +216,66 @@ function TenantDetailPage() {
             <Button type="submit" size="sm" disabled={busy}>
               {acsPort ? "Assign port" : "Allocate next port"}
             </Button>
+          </form>
+        </Panel>
+
+        <Panel className="lg:col-span-3">
+          <h2 className="mb-4 text-base font-medium">Router provisioning</h2>
+          <p className="mb-3 text-sm text-muted">
+            Controls MikroTik bootstrap tokens for this ISP. Tokens are hashed at rest, expire, and can be revoked.
+            Generated scripts always validate HTTPS certificates.
+          </p>
+          <form
+            className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run(
+                () =>
+                  saveSaasRouterProvisioning({
+                    data: { tenant_id: tenantId, ...prov },
+                  }),
+                "Router provisioning saved",
+              );
+            }}
+          >
+            <Field label="Provisioning">
+              <Select
+                value={prov.enabled ? "on" : "off"}
+                onChange={(e) => setProv({ ...prov, enabled: e.target.value === "on" })}
+              >
+                <option value="on">Enabled</option>
+                <option value="off">Disabled</option>
+              </Select>
+            </Field>
+            <Field label="Token lifetime (hours)">
+              <Input
+                value={String(prov.token_ttl_hours)}
+                onChange={(e) => setProv({ ...prov, token_ttl_hours: Number(e.target.value) || 72 })}
+              />
+            </Field>
+            <Field label="Require HTTPS">
+              <Select
+                value={prov.require_https ? "on" : "off"}
+                onChange={(e) => setProv({ ...prov, require_https: e.target.value === "on" })}
+              >
+                <option value="on">Yes</option>
+                <option value="off">Allow HTTP lab URL</option>
+              </Select>
+            </Field>
+            <Field label="Push IP pools">
+              <Select
+                value={prov.allow_pool_push ? "on" : "off"}
+                onChange={(e) => setProv({ ...prov, allow_pool_push: e.target.value === "on" })}
+              >
+                <option value="on">Allowed</option>
+                <option value="off">Blocked</option>
+              </Select>
+            </Field>
+            <div className="sm:col-span-2 lg:col-span-4">
+              <Button type="submit" size="sm" disabled={busy}>
+                Save provisioning
+              </Button>
+            </div>
           </form>
         </Panel>
 

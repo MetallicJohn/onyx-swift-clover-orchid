@@ -64,14 +64,18 @@ export type PortalIsp = {
   slug: string;
   support_phone: string;
   support_email: string;
+  date_format: string;
 };
 
 export type PortalService = {
   id: string;
   reference: string;
+  account_number: string;
   name: string;
   package_name: string;
   package_price_kes: number;
+  access_type: string;
+  location: string;
   billing_period: string;
   renewal_date: string | null;
   expiry_date: string | null;
@@ -91,6 +95,9 @@ export type PortalService = {
 export type PortalInvoice = {
   id: string;
   number: string;
+  service_id: string | null;
+  service_name: string;
+  account_number: string;
   issued_at: string;
   due_date: string;
   billing_period: string;
@@ -185,6 +192,9 @@ export type PortalStkStart = {
   amount_kes: number;
   phone: string;
   invoice_number: string;
+  account_number: string;
+  service_id: string;
+  service_name: string;
   status: "pending";
   note: string;
 };
