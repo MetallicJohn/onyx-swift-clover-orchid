@@ -12,7 +12,10 @@ Invoices: issued / due / overdue / partial / paid.
 - Optional Kenya VAT 16% is **exclusive** of package price. Toggle it on Billing. Off by default so listed prices stay as-is.
 - Partial payments credit `paid_kes` and set status to `partial` until the remainder is cleared.
 - Outstanding, statements, and aging use the remaining balance, not the original total.
-- Confirmed **full** payment of an invoice extends the paid-through date and restores service unless another invoice is still overdue. A partial does not restore.
+- Confirmed **full** payment of an invoice extends the paid-through date and restores service unless another invoice is still overdue.
+- **Partial payment** is off by default (Settings → Partial payments). When enabled for that customer or service, a qualifying percentage of **that service's** invoice can activate or restore **only that line**, with pro-rata validity rounded down. After-full-payment services still need the invoice paid in full. A below-minimum payment posts to the ledger and does not grant access. The remaining balance stays on the same invoice.
+- **Business credit** is off unless the package tier is Business or Enterprise, credit is enabled, and a maximum outstanding in KES is set. Max 0 is not unlimited. The service stays Active after expiry (`business_credit`) while that service's unpaid invoices plus ledger debits stay below the maximum. Invoices continue on the billing interval (daily, weekly, monthly, quarterly, yearly) and unpaid periods stack. At or above the maximum the service suspends (`credit_limit`) and RADIUS/MikroTik are disabled. Payment is allocated to the selected service account only. Residential lines on the same customer still expire normally.
+- **Continuing clients / migration** keep the expiry already paid in the previous system. That date is stored as `period_end` and `billing_anchor_date`. The first renewal invoice is not created on import; the billing cycle waits until that date, then uses it as the due date. After the first invoice, the package interval applies. Onboarding SMS is off unless staff opt in. Extra services on the same customer get their own account number and expiry.
 
 ## Platform subscription (Settings → Plan)
 
@@ -35,6 +38,8 @@ The access policy runs on the billing cron, on every console session (throttled 
 | `bundle_used_mb` ≥ package `bundle_mb` | Service → `suspended` (`bundle`) |
 | Hotspot voucher clock | Voucher expired, service terminated |
 | Confirmed **full** payment | Paid-through date extends by interval/validity, bundle resets. Restores unless another invoice is still overdue. |
+| Qualifying **partial** payment (policy on) | Pro-rata validity, rounded down, on the selected service only. Remaining balance stays on the same invoice. Below-minimum payments post and do not restore. |
+| Business credit (configured) | Service stays Active after expiry while outstanding < maximum. Invoices stack. Warning SMS at the threshold. At the maximum: suspend `credit_limit`, RADIUS disable. Payment restores only that service if outstanding falls below the maximum. Manual, fraud, security, bundle, and staff-expiry are never auto-restored. |
 
 Ledger credits are written on confirmed payment. Customer statements should sum `customer_ledger`, not a cached balance field.
 

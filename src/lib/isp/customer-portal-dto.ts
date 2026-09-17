@@ -90,6 +90,21 @@ export type PortalService = {
   can_request_grace: boolean;
   grace_reason: string | null;
   allowed_grace_days: number[];
+  partial_available?: boolean;
+  partial_min_pct?: number;
+  partial_min_kes?: number;
+  partial_full_kes?: number;
+  partial_paid_kes?: number;
+  partial_period_ms?: number;
+  partial_hourly?: boolean;
+  tier?: string;
+  credit_enabled?: boolean;
+  credit_max_kes?: number;
+  credit_available_kes?: number;
+  credit_outstanding_kes?: number;
+  credit_utilization_pct?: number;
+  credit_warning?: boolean;
+  credit_label?: string;
 };
 
 export type PortalInvoice = {

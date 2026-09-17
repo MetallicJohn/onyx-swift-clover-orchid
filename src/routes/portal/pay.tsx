@@ -7,6 +7,7 @@ import { Field, Input, Select } from "@/components/ui/input";
 import type { PortalStkPoll } from "@/lib/isp/customer-portal-dto";
 import { portalPay, portalPayStatus } from "@/lib/isp/server-portal";
 import { formatDate } from "@/lib/isp/display";
+import { expectedExpiryYmd, portalMinKes, previewPartial } from "@/lib/isp/partial-payment-format";
 import { kes } from "@/lib/utils";
 import { usePortal } from "@/lib/isp/portal-context";
 
@@ -27,6 +28,7 @@ function PortalPay() {
   const [serviceId, setServiceId] = useState(searchService || invoiceService || (payable.length === 1 ? payable[0]!.id : ""));
   const [phone, setPhone] = useState(home.customer.phone);
   const [confirmed, setConfirmed] = useState(false);
+  const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [poll, setPoll] = useState<PortalStkPoll | null>(null);
@@ -42,9 +44,43 @@ function PortalPay() {
     return home.invoices.find((i) => i.service_id === serviceId && i.balance_kes > 0);
   }, [home.invoices, searchInvoice, serviceId]);
 
+  const partial = useMemo(() => {
+    if (!service?.partial_available) return null;
+    const full = service.partial_full_kes || service.package_price_kes || invoice?.amount_kes || 0;
+    const paid = service.partial_paid_kes ?? Math.max(0, full - (invoice?.balance_kes || service.outstanding_kes));
+    const remaining = invoice?.balance_kes || service.outstanding_kes;
+    const entered = Math.round(Number(amount) || 0);
+    const preview = previewPartial({
+      fullKes: full,
+      paidBeforeKes: paid,
+      thisKes: entered || 0,
+      minPct: service.partial_min_pct || 50,
+      periodMs: service.partial_period_ms || 30 * 86_400_000,
+      hourly: Boolean(service.partial_hourly),
+    });
+    const minEnter = portalMinKes({ remaining_to_qualify_kes: preview.remaining_to_qualify_kes, remaining_kes: remaining });
+    return {
+      preview,
+      minEnter,
+      remaining,
+      expected: expectedExpiryYmd({
+        days: preview.grant_days,
+        hourly: Boolean(service.partial_hourly),
+        hours: preview.grant_hours,
+        currentEnd: service.expiry_date,
+        awaiting: service.status === "pending",
+      }),
+    };
+  }, [service, invoice, amount]);
+
   useEffect(() => {
     setConfirmed(false);
-  }, [serviceId]);
+    if (service?.partial_available && service.partial_min_kes) {
+      setAmount(String(Math.min(service.outstanding_kes, Math.max(service.partial_min_kes - (service.partial_paid_kes || 0), 1))));
+    } else {
+      setAmount("");
+    }
+  }, [serviceId, service?.partial_available, service?.partial_min_kes, service?.outstanding_kes, service?.partial_paid_kes]);
 
   useEffect(() => {
     if (!checkout || poll?.status === "confirmed" || poll?.status === "cancelled" || poll?.status === "failed") return;
@@ -130,6 +166,7 @@ function PortalPay() {
                     phone,
                     provider: stkMethods[0]?.kind || "mpesa",
                     confirm_account: service.account_number,
+                    amount_kes: partial ? Math.round(Number(amount) || 0) : undefined,
                   },
                 });
                 setCheckout(started.checkout_id);
@@ -183,11 +220,88 @@ function PortalPay() {
                     <dt className="text-muted">Amount due</dt>
                     <dd className="font-semibold tabular-nums">{kes(service.outstanding_kes)}</dd>
                   </div>
+                  {service.credit_enabled ? (
+                    <>
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-muted">Credit limit</dt>
+                        <dd className="tabular-nums">{kes(service.credit_max_kes || 0)}</dd>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-muted">Available credit</dt>
+                        <dd className="tabular-nums">{kes(service.credit_available_kes || 0)}</dd>
+                      </div>
+                    </>
+                  ) : null}
                 </dl>
               </div>
             ) : (
               <p className="text-sm text-muted">Select the service you want to pay for.</p>
             )}
+            {partial && service ? (
+              <div className="rounded-lg border border-border px-3 py-3 text-sm">
+                <p className="font-medium">Partial payment available</p>
+                <dl className="mt-2 grid gap-1">
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted">Full package</dt>
+                    <dd>{kes(partial.preview.full_kes)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted">Required minimum</dt>
+                    <dd>
+                      {partial.preview.min_pct}% · {kes(partial.preview.min_kes)}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted">Remaining to qualify</dt>
+                    <dd>{kes(partial.preview.remaining_to_qualify_kes)}</dd>
+                  </div>
+                </dl>
+                <div className="mt-3">
+                  <Field label="Amount to pay">
+                    <Input
+                      type="number"
+                      min={partial.minEnter}
+                      max={partial.remaining}
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      required
+                    />
+                  </Field>
+                </div>
+                {Number(amount) > 0 ? (
+                  <dl className="mt-2 grid gap-1">
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted">Payment percentage</dt>
+                      <dd>{partial.preview.this_pct}%</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted">Estimated validity</dt>
+                      <dd>
+                        {service.partial_hourly ? `${partial.preview.grant_hours} hours` : `${partial.preview.grant_days} days`}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted">Estimated expiry</dt>
+                      <dd>{formatDate(partial.expected)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <dt className="text-muted">Remaining after this payment</dt>
+                      <dd>{kes(Math.max(0, partial.remaining - Math.round(Number(amount) || 0)))}</dd>
+                    </div>
+                  </dl>
+                ) : null}
+                {Number(amount) > 0 && Number(amount) < partial.minEnter ? (
+                  <p className="mt-2 text-sm text-danger">
+                    This payment is below the minimum required amount and will not activate or restore the service.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-muted">
+                    Paying less than the minimum does not activate the service. Partial payment gives proportionate validity
+                    for this service account only. Full payment gives the full package period.
+                  </p>
+                )}
+              </div>
+            ) : null}
             {service?.account_number ? (
               <label className="flex items-start gap-2 text-sm">
                 <input

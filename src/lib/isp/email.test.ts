@@ -26,9 +26,17 @@ test("channelAllowed respects per-tenant email flags", () => {
     billing_email: false,
     payment_sms: true,
     billing_sms: true,
+    payment_whatsapp: true,
+    billing_whatsapp: false,
   } as never;
   assert.equal(channelAllowed("payment.received", "email", on), true);
+  assert.equal(channelAllowed("payment.received.awaiting", "sms", on), true);
+  assert.equal(channelAllowed("service.activated", "sms", on), true);
+  assert.equal(channelAllowed("payment.partial.below_minimum", "sms", on), true);
+  assert.equal(channelAllowed("payment.partial.activated", "sms", on), true);
   assert.equal(channelAllowed("invoice.created", "email", on), false);
+  const billingOff = { payment_sms: true, billing_sms: false } as never;
+  assert.equal(channelAllowed("customer.created", "sms", billingOff), false);
 });
 
 test("MIME builder includes subject and attachments", () => {

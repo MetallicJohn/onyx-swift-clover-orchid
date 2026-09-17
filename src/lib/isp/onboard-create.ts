@@ -8,21 +8,26 @@ import { last9Phone } from "./customer-portal-format.ts";
 import { likeNeedle } from "./customer-desk-format.ts";
 import { nairobiDate } from "./empty-tenant.ts";
 import { emit } from "./events.ts";
-import { notifyCustomerEvent } from "./notifications.ts";
+import { buildServiceNotifyVars, notifyQuietly } from "./notifications.ts";
 import {
   AWAITING_PAYMENT,
+  billingAnchorYmd,
+  defaultExpiryYmd,
   firstError,
+  isMigratingOnboard,
   sanitizePayload,
   scoreDuplicate,
   storedAccessFields,
   validatePayload,
   type DuplicateMatch,
   type OnboardPayload,
+  type OnboardServiceDraft,
 } from "./onboard.ts";
 import { usernameTaken } from "./pppoe-credentials.ts";
 import { startPppoeProvision } from "./pppoe-provision.ts";
 import { syncRadiusAccount } from "./radius.ts";
 import { parseExpiryYmd } from "./service-expiry-format.ts";
+import { parseFlexibleYmd } from "./onboard-import-format.ts";
 import { setCustomerTags } from "./tags.ts";
 import type { AccessMethod, PackageRow } from "./types.ts";
 
@@ -56,6 +61,13 @@ export type OnboardCatalog = {
     allow_manual: boolean;
     preview: string;
     scheme: "random" | "sequence";
+  };
+  partial: {
+    enabled_default: boolean;
+    allow_service_override: boolean;
+    min_pct: number;
+    can_activate_new: boolean;
+    can_offer: boolean;
   };
 };
 
@@ -132,6 +144,9 @@ export async function loadOnboardCatalog(sql: Sql, tenantId: string, slug = ""):
   const { getAccountNumberSettings, previewNextAccountNumber } = await import("./account-numbers.ts");
   const settings = await getAccountNumberSettings(sql, tenantId, slug);
   const preview = await previewNextAccountNumber(sql, tenantId, slug);
+  const { getPartialPolicy } = await import("./partial-payment.ts");
+  const partial = await getPartialPolicy(sql, tenantId);
+  const canOffer = Boolean(partial.enabled_default || partial.allow_service_override);
   return {
     packages,
     tags: tags.map((t) => ({ id: t.id, name: t.name, enabled: t.enabled })),
@@ -147,6 +162,13 @@ export async function loadOnboardCatalog(sql: Sql, tenantId: string, slug = ""):
       allow_manual: settings.allow_manual,
       preview: preview.preview,
       scheme: settings.scheme === "sequence" ? "sequence" : "random",
+    },
+    partial: {
+      enabled_default: partial.enabled_default,
+      allow_service_override: partial.allow_service_override,
+      min_pct: partial.default_min_pct,
+      can_activate_new: partial.can_activate_new,
+      can_offer: canOffer && partial.can_activate_new,
     },
   };
 }
@@ -279,7 +301,7 @@ async function issueServiceInvoice(
     ],
   });
   try {
-    await notifyCustomerEvent(sql, opts.tenantId, opts.tenantName, opts.customerId, "invoice.created", inv.id, {
+    await notifyQuietly(sql, opts.tenantId, opts.tenantName, opts.customerId, "invoice.created", inv.id, {
       customer_name: "",
       invoice_number: inv.number,
       amount: `KES ${inv.amount_kes}`,
@@ -291,6 +313,39 @@ async function issueServiceInvoice(
   return { ...inv, skipped: false as const };
 }
 
+function resolveOnboardExpiry(
+  service: OnboardServiceDraft,
+  pkg: { billing_interval: string; validity_hours: number },
+  canOverrideExpiry: boolean,
+) {
+  const migrating = isMigratingOnboard(service.onboarding_type);
+  let expiryYmd = "";
+  if (service.expiry_ymd) {
+    try {
+      expiryYmd = parseFlexibleYmd(service.expiry_ymd);
+    } catch {
+      expiryYmd = service.expiry_ymd;
+    }
+  }
+  if (migrating) {
+    if (!expiryYmd) throw new Error("Continuing clients need the existing subscription expiry date");
+    return {
+      expiryYmd,
+      expirySource: "billing" as const,
+      billingAnchor: billingAnchorYmd(expiryYmd) || expiryYmd,
+      migrating: true,
+    };
+  }
+  const staffPicked = Boolean(canOverrideExpiry && expiryYmd);
+  const ymd = staffPicked ? expiryYmd : defaultExpiryYmd(pkg, service.activation);
+  return {
+    expiryYmd: ymd,
+    expirySource: (staffPicked ? "staff" : "billing") as "staff" | "billing",
+    billingAnchor: null as string | null,
+    migrating: false,
+  };
+}
+
 export async function createOnboard(
   sql: Sql,
   opts: {
@@ -298,6 +353,8 @@ export async function createOnboard(
     tenantName: string;
     actorId: string;
     input: OnboardPayload;
+    canActivateNow?: boolean;
+    canOverrideExpiry?: boolean;
   },
 ): Promise<OnboardResult> {
   const payload = sanitizePayload(opts.input);
@@ -376,6 +433,16 @@ export async function createOnboard(
       payload: { customer_id: customerId, phone: draft.phone, name: draft.name },
     });
     await audit(sql, tid, opts.actorId, "customer.created", "customer", customerId);
+    const sendOnboard =
+      payload.service ? payload.service.send_onboarding_notification : true;
+    if (sendOnboard) {
+      try {
+        const customerVars = await buildServiceNotifyVars(sql, tid, opts.tenantName, { customerId });
+        await notifyQuietly(sql, tid, opts.tenantName, customerId, "customer.created", customerId, customerVars);
+      } catch {
+        /* SMS must not roll back a saved customer */
+      }
+    }
   }
 
   if (!payload.include_service || !payload.service || !pkg) {
@@ -412,29 +479,50 @@ export async function createOnboard(
       if (!pool) throw new Error("No IP pool configured. Enter a static IP, or add a pool first.");
     }
     const id = nid("svc");
-    let periodEnd: string;
-    let accessUntil: string | null = null;
-    let expirySource = "billing";
-    if (service.expiry_ymd) {
-      const parsed = parseExpiryYmd(service.expiry_ymd);
-      periodEnd = parsed.accessUntil.toISOString();
-      accessUntil = parsed.accessUntil.toISOString();
-      expirySource = "staff";
-    } else {
-      const { periodMs } = await import("./access-policy.ts");
-      periodEnd = new Date(Date.now() + periodMs(pkg.billing_interval, pkg.validity_hours)).toISOString();
+    const canOverrideExpiry = opts.canOverrideExpiry ?? true;
+    const canActivateNow = opts.canActivateNow ?? true;
+    const migrating = isMigratingOnboard(service.onboarding_type);
+    if (service.activation === "active" && pkg.price_kes > 0 && !canActivateNow && !migrating) {
+      throw new Error("Only authorised staff can start a paid service as Active");
     }
-    const afterPay = service.activation === "after_payment";
-    const insertStatus = afterPay || pkg.access_method === "pppoe" ? "pending" : "active";
+    const resolved = resolveOnboardExpiry(service, pkg, canOverrideExpiry);
+    const expiryYmd = resolved.expiryYmd;
+    const parsed = parseExpiryYmd(expiryYmd);
+    const periodEnd = parsed.accessUntil.toISOString();
+    const accessUntil = parsed.accessUntil.toISOString();
+    const expirySource = resolved.expirySource;
+    const afterPay = service.activation === "after_payment" || service.activation === "after_partial";
+    if (service.activation === "after_partial") {
+      const { getPartialPolicy } = await import("./partial-payment.ts");
+      const partial = await getPartialPolicy(sql, tid);
+      if (!partial.can_activate_new || (!partial.enabled_default && !partial.allow_service_override)) {
+        throw new Error("Partial payment is not available for new services on this network");
+      }
+    }
+    const preserveLive = migrating && Boolean(fields.username);
+    const insertStatus = afterPay || (pkg.access_method === "pppoe" && !preserveLive) ? "pending" : "active";
     const suspendReason = afterPay ? AWAITING_PAYMENT : "";
     const mac = fields.mac_address || "";
-    const serviceName = (pkg.name || "").trim().slice(0, 80);
+    const serviceName = (service.name || pkg.name || "").trim().slice(0, 80);
+    const enablePartial = service.activation === "after_partial";
+    let startYmd: string | null = null;
+    if (service.subscription_start_ymd) {
+      try {
+        startYmd = parseFlexibleYmd(service.subscription_start_ymd);
+      } catch {
+        startYmd = null;
+      }
+    }
+    const billingAnchor = resolved.billingAnchor;
     await sql`insert into services
-      (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end, access_until, expiry_source, expiry_change_reason, suspend_reason, notes, mac_address, name)
+      (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end, access_until, expiry_source, expiry_change_reason, suspend_reason, notes, mac_address, name, activation_mode, partial_enabled, onboarding_type, subscription_start_date, billing_anchor_date, send_onboarding_notification, import_source, import_batch_id)
       values (
         ${id}, ${tid}, ${customerId}, ${pkg.id}, ${pkg.access_method}, ${fields.username}, ${fields.static_ip},
         ${insertStatus}, ${periodEnd}, ${accessUntil}, ${expirySource},
-        ${expirySource === "staff" ? "set_on_create" : ""}, ${suspendReason}, ${service.notes}, ${mac}, ${serviceName}
+        ${expirySource === "staff" ? "set_on_create" : ""}, ${suspendReason}, ${service.notes}, ${mac}, ${serviceName},
+        ${service.activation}, ${enablePartial ? true : null},
+        ${service.onboarding_type}, ${startYmd}, ${billingAnchor}, ${Boolean(service.send_onboarding_notification)},
+        ${service.import_source || ""}, ${service.import_batch_id || null}
       )`;
     createdServiceId = id;
     const serviceAccountNumber = await ensureServiceAccountNumber(sql, tid, id);
@@ -456,50 +544,81 @@ export async function createOnboard(
     let provisionOverall: string | null = null;
 
     if (pkg.access_method === "pppoe") {
-      const provision = await startPppoeProvision(sql, tid, {
-        serviceId: id,
-        cpeId: fields.cpe_id,
-        manualUsername: fields.username || undefined,
-      });
-      username = provision.username;
-      password = provision.password || null;
-      provisionOverall = provision.overall;
-      if (afterPay) {
-        await sql`update services set status = 'pending', suspend_reason = ${AWAITING_PAYMENT}
+      if (preserveLive) {
+        username = fields.username;
+        await sql`update services set username = ${username},
+            status = ${afterPay ? "pending" : "active"},
+            suspend_reason = ${afterPay ? AWAITING_PAYMENT : ""}
           where id = ${id} and tenant_id = ${tid}`;
-        const [svc] = await sql<{
-          username: string | null;
-          static_ip: string | null;
-          download_mbps: number;
-          upload_mbps: number;
-        }>`select s.username, s.static_ip, p.download_mbps, p.upload_mbps
-           from services s join packages p on p.id = s.package_id
-           where s.id = ${id} and s.tenant_id = ${tid}`;
-        await syncRadiusAccount(sql, tid, {
+        const radius = await syncRadiusAccount(sql, tid, {
           id,
           access_method: "pppoe",
-          username: svc?.username || username,
-          static_ip: svc?.static_ip || null,
-          status: "pending",
+          username,
+          static_ip: fields.static_ip || null,
+          status: afterPay ? "pending" : "active",
           package_name: pkg.name,
-          download_mbps: svc?.download_mbps,
-          upload_mbps: svc?.upload_mbps,
-          suspend_reason: AWAITING_PAYMENT,
+          download_mbps: pkg.download_mbps,
+          upload_mbps: pkg.upload_mbps,
+          password: service.pppoe_password || undefined,
+          suspend_reason: afterPay ? AWAITING_PAYMENT : "",
         });
+        password = afterPay ? null : service.pppoe_password || radius.password || null;
+        provisionOverall = "pending";
+        await audit(
+          sql,
+          tid,
+          opts.actorId,
+          "service.pppoe.preserved",
+          "service",
+          id,
+          JSON.stringify({ username, import: true }),
+        );
       } else {
-        await sql`update services set status = 'active', suspend_reason = ''
-          where id = ${id} and tenant_id = ${tid} and status <> 'terminated'`;
-        await provisionServiceAccess(sql, tid, id);
+        const provision = await startPppoeProvision(sql, tid, {
+          serviceId: id,
+          cpeId: fields.cpe_id,
+          manualUsername: fields.username || undefined,
+        });
+        username = provision.username;
+        password = provision.password || null;
+        provisionOverall = provision.overall;
+        if (afterPay) {
+          await sql`update services set status = 'pending', suspend_reason = ${AWAITING_PAYMENT}
+            where id = ${id} and tenant_id = ${tid}`;
+          const [svc] = await sql<{
+            username: string | null;
+            static_ip: string | null;
+            download_mbps: number;
+            upload_mbps: number;
+          }>`select s.username, s.static_ip, p.download_mbps, p.upload_mbps
+             from services s join packages p on p.id = s.package_id
+             where s.id = ${id} and s.tenant_id = ${tid}`;
+          await syncRadiusAccount(sql, tid, {
+            id,
+            access_method: "pppoe",
+            username: svc?.username || username,
+            static_ip: svc?.static_ip || null,
+            status: "pending",
+            package_name: pkg.name,
+            download_mbps: svc?.download_mbps,
+            upload_mbps: svc?.upload_mbps,
+            suspend_reason: AWAITING_PAYMENT,
+          });
+        } else {
+          await sql`update services set status = 'active', suspend_reason = ''
+            where id = ${id} and tenant_id = ${tid} and status <> 'terminated'`;
+          await provisionServiceAccess(sql, tid, id);
+        }
+        await audit(
+          sql,
+          tid,
+          opts.actorId,
+          "service.pppoe.provision",
+          "service",
+          id,
+          JSON.stringify({ username, cpe_id: fields.cpe_id || "", overall: provisionOverall || "" }),
+        );
       }
-      await audit(
-        sql,
-        tid,
-        opts.actorId,
-        "service.pppoe.provision",
-        "service",
-        id,
-        JSON.stringify({ username, cpe_id: fields.cpe_id || "", overall: provisionOverall || "" }),
-      );
     } else {
       if (pkg.access_method === "hotspot") {
         const [cus] = await sql<{ name: string; phone: string; account_number: string }>`
@@ -529,44 +648,67 @@ export async function createOnboard(
             )`;
         }
       }
-      const radius = await provisionServiceAccess(sql, tid, id);
-      username = radius?.username || username;
-      password = radius && afterPay ? null : radius?.password || null;
-      if (afterPay) {
-        await sql`update services set status = 'pending', suspend_reason = ${AWAITING_PAYMENT}
-          where id = ${id} and tenant_id = ${tid}`;
+      if (migrating) {
         const [row] = await sql<{ username: string | null; static_ip: string | null }>`
           select username, static_ip from services where id = ${id} and tenant_id = ${tid}`;
-        await syncRadiusAccount(sql, tid, {
+        const radius = await syncRadiusAccount(sql, tid, {
           id,
           access_method: pkg.access_method,
           username: row?.username || username,
           static_ip: row?.static_ip || null,
-          status: "pending",
+          status: afterPay ? "pending" : "active",
           package_name: pkg.name,
           download_mbps: pkg.download_mbps,
           upload_mbps: pkg.upload_mbps,
-          suspend_reason: AWAITING_PAYMENT,
+          password: service.pppoe_password || undefined,
+          suspend_reason: afterPay ? AWAITING_PAYMENT : "",
         });
-      }
-      if (service.router_id && !afterPay) {
-        const [live] = await sql<{ static_ip: string | null; username: string | null }>`
-          select static_ip, username from services where id = ${id} and tenant_id = ${tid}`;
-        await enqueueAgentCommand(
-          sql,
-          tid,
-          `${pkg.access_method}.upsert`,
-          {
-            service_id: id,
-            username: live?.username || username,
-            static_ip: live?.static_ip,
-            status: afterPay ? "pending" : "active",
-            package: pkg.name,
+        username = radius.username || username;
+        password = afterPay ? null : radius.password || null;
+        if (afterPay) {
+          await sql`update services set status = 'pending', suspend_reason = ${AWAITING_PAYMENT}
+            where id = ${id} and tenant_id = ${tid}`;
+        }
+      } else {
+        const radius = await provisionServiceAccess(sql, tid, id);
+        username = radius?.username || username;
+        password = radius && afterPay ? null : radius?.password || null;
+        if (afterPay) {
+          await sql`update services set status = 'pending', suspend_reason = ${AWAITING_PAYMENT}
+            where id = ${id} and tenant_id = ${tid}`;
+          const [row] = await sql<{ username: string | null; static_ip: string | null }>`
+            select username, static_ip from services where id = ${id} and tenant_id = ${tid}`;
+          await syncRadiusAccount(sql, tid, {
+            id,
+            access_method: pkg.access_method,
+            username: row?.username || username,
+            static_ip: row?.static_ip || null,
+            status: "pending",
+            package_name: pkg.name,
             download_mbps: pkg.download_mbps,
             upload_mbps: pkg.upload_mbps,
-          },
-          service.router_id,
-        );
+            suspend_reason: AWAITING_PAYMENT,
+          });
+        }
+        if (service.router_id && !afterPay) {
+          const [liveRow] = await sql<{ static_ip: string | null; username: string | null }>`
+            select static_ip, username from services where id = ${id} and tenant_id = ${tid}`;
+          await enqueueAgentCommand(
+            sql,
+            tid,
+            `${pkg.access_method}.upsert`,
+            {
+              service_id: id,
+              username: liveRow?.username || username,
+              static_ip: liveRow?.static_ip,
+              status: afterPay ? "pending" : "active",
+              package: pkg.name,
+              download_mbps: pkg.download_mbps,
+              upload_mbps: pkg.upload_mbps,
+            },
+            service.router_id,
+          );
+        }
       }
     }
 
@@ -579,8 +721,8 @@ export async function createOnboard(
        from services where id = ${id} and tenant_id = ${tid}`;
 
     let invoiceId: string | null = null;
-    const invoiceDue = service.expiry_ymd || nairobiDate(periodEnd);
-    if (pkg.price_kes > 0 && afterPay) {
+    const invoiceDue = expiryYmd || nairobiDate(periodEnd);
+    if (!migrating && pkg.price_kes > 0 && afterPay) {
       const inv = await issueServiceInvoice(sql, {
         tenantId: tid,
         tenantName: opts.tenantName,
@@ -593,7 +735,7 @@ export async function createOnboard(
         dueDate: invoiceDue,
       });
       invoiceId = inv && !inv.skipped ? inv.id : inv?.id || null;
-    } else if (pkg.price_kes > 0 && !afterPay) {
+    } else if (!migrating && pkg.price_kes > 0 && !afterPay) {
       const inv = await issueServiceInvoice(sql, {
         tenantId: tid,
         tenantName: opts.tenantName,
@@ -618,10 +760,28 @@ export async function createOnboard(
       JSON.stringify({
         activation: service.activation,
         access_method: pkg.access_method,
-        expiry: service.expiry_ymd || nairobiDate(periodEnd),
+        expiry: expiryYmd,
+        onboarding_type: service.onboarding_type,
+        billing_anchor: billingAnchor || "",
         account_number: serviceAccountNumber,
       }),
     );
+
+    if (service.send_onboarding_notification) {
+      try {
+        const notifyVars = await buildServiceNotifyVars(sql, tid, opts.tenantName, {
+          customerId,
+          serviceId: id,
+          amountKes: pkg.price_kes,
+          invoiceNumber: invoiceId || "",
+          dueDate: expiryYmd,
+        });
+        const createdEvent = afterPay ? "service.created.awaiting_payment" : "service.created.active";
+        await notifyQuietly(sql, tid, opts.tenantName, customerId, createdEvent, id, notifyVars);
+      } catch {
+        /* SMS must not roll back a saved service */
+      }
+    }
 
     return {
       customer_id: customerId,

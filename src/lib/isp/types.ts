@@ -16,12 +16,30 @@ export type BillingEvent =
   | "invoice.due"
   | "invoice.overdue"
   | "payment.received"
+  | "payment.received.awaiting"
   | "grace.started"
   | "grace.granted"
   | "grace.ending"
   | "grace.expired"
+  | "customer.created"
+  | "service.created"
+  | "service.created.awaiting_payment"
+  | "service.created.active"
+  | "service.activated"
   | "service.suspended"
-  | "service.restored";
+  | "service.restored"
+  | "service.expired"
+  | "payment.partial.received"
+  | "payment.partial.below_minimum"
+  | "payment.partial.activated"
+  | "payment.partial.restored"
+  | "payment.partial.remaining"
+  | "invoice.created.business"
+  | "invoice.overdue.business"
+  | "credit.warning"
+  | "credit.limit_reached"
+  | "payment.received.business"
+  | "service.restored.business";
 
 export type ServiceStatus =
   | "pending"
@@ -60,6 +78,15 @@ export type PackageRow = {
   bundle_mb: number;
   validity_hours: number;
   active: boolean;
+  tier?: string;
+  business_credit_enabled?: boolean;
+  max_credit_kes?: number;
+  credit_warning_kes?: number;
+  disconnect_when_credit_reached?: boolean;
+  allow_service_continuity_after_expiry?: boolean;
+  send_credit_limit_warning?: boolean;
+  credit_days_limit?: number;
+  credit_terms_notes?: string;
 };
 
 export type CustomerRow = {
@@ -120,6 +147,13 @@ export type ServiceRow = {
   upload_mbps?: number;
   price_kes?: number;
   billing_interval?: string;
+  onboarding_type?: string;
+  subscription_start_date?: string | null;
+  billing_anchor_date?: string | null;
+  send_onboarding_notification?: boolean;
+  import_source?: string;
+  import_batch_id?: string | null;
+  first_renewal_invoiced_at?: string | null;
 };
 
 export type InvoiceRow = {

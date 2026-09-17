@@ -185,3 +185,58 @@ test("ACS credentials are for network staff, not finance or technicians", () => 
   assert.match(ops, /export const revealAcsCredentialsFn[\s\S]+?assertPermission\(role, "acs.credentials.reveal"\)/);
   assert.match(ops, /export const testAcsConnectionFn[\s\S]+?assertPermission\(role, "acs.connection.test"\)/);
 });
+
+test("only authorised staff can start a paid service as Active", () => {
+  assert.equal(hasPermission("isp_owner", "services.activate_now"), true);
+  assert.equal(hasPermission("isp_admin", "services.activate_now"), true);
+  assert.equal(hasPermission("network_engineer", "services.activate_now"), true);
+  assert.equal(hasPermission("customer_care", "services.activate_now"), false);
+  assert.equal(hasPermission("finance", "services.activate_now"), false);
+  assert.equal(hasPermission("technician", "services.activate_now"), false);
+  assert.equal(hasPermission("support", "services.activate_now"), false);
+  assert.throws(() => assertPermission("finance", "services.activate_now"), /Forbidden/);
+  assert.throws(() => assertPermission("customer_care", "services.activate_now"), /Forbidden/);
+});
+
+test("only authorised staff can manage or approve partial payments", () => {
+  assert.equal(hasPermission("isp_owner", "billing.partial.manage"), true);
+  assert.equal(hasPermission("isp_admin", "billing.partial.approve"), true);
+  assert.equal(hasPermission("finance", "billing.partial.manage"), true);
+  assert.equal(hasPermission("finance", "billing.partial.approve"), true);
+  assert.equal(hasPermission("customer_care", "billing.partial.manage"), true);
+  assert.equal(hasPermission("customer_care", "billing.partial.approve"), false);
+  assert.equal(hasPermission("technician", "billing.partial.manage"), false);
+  assert.equal(hasPermission("technician", "billing.partial.approve"), false);
+  assert.equal(hasPermission("support", "billing.partial.manage"), false);
+  assert.throws(() => assertPermission("technician", "billing.partial.manage"), /Forbidden/);
+  assert.throws(() => assertPermission("customer_care", "billing.partial.approve"), /Forbidden/);
+  const server = readFileSync(new URL("./server-partial.ts", import.meta.url), "utf8");
+  assert.match(server, /assertPermission\(role, "billing.partial.manage"\)/);
+  assert.match(server, /assertPermission\(role, "billing.partial.approve"\)/);
+  assert.match(server, /assertPermission\(role, "settings.manage"\)/);
+});
+
+test("only authorised staff can view or change business credit", () => {
+  assert.equal(hasPermission("isp_owner", "billing.business_credit.view"), true);
+  assert.equal(hasPermission("isp_admin", "billing.business_credit.manage"), true);
+  assert.equal(hasPermission("finance", "billing.business_credit.view"), true);
+  assert.equal(hasPermission("finance", "billing.business_credit.manage"), true);
+  assert.equal(hasPermission("finance", "billing.business_credit.approve"), true);
+  assert.equal(hasPermission("finance", "billing.business_credit.restore"), true);
+  assert.equal(hasPermission("customer_care", "billing.business_credit.view"), true);
+  assert.equal(hasPermission("customer_care", "billing.business_credit.manage"), true);
+  assert.equal(hasPermission("customer_care", "billing.business_credit.approve"), false);
+  assert.equal(hasPermission("customer_care", "billing.business_credit.restore"), false);
+  assert.equal(hasPermission("customer_care", "billing.business_credit.suspend"), true);
+  assert.equal(hasPermission("support", "billing.business_credit.view"), true);
+  assert.equal(hasPermission("support", "billing.business_credit.manage"), false);
+  assert.equal(hasPermission("technician", "billing.business_credit.view"), false);
+  assert.equal(hasPermission("technician", "billing.business_credit.manage"), false);
+  assert.throws(() => assertPermission("technician", "billing.business_credit.manage"), /Forbidden/);
+  assert.throws(() => assertPermission("customer_care", "billing.business_credit.restore"), /Forbidden/);
+  const server = readFileSync(new URL("./server-business.ts", import.meta.url), "utf8");
+  assert.match(server, /assertPermission\(role, "billing.business_credit.manage"\)/);
+  assert.match(server, /assertPermission\(role, "billing.business_credit.approve"\)/);
+  assert.match(server, /assertPermission\(role, "billing.business_credit.suspend"\)/);
+  assert.match(server, /assertPermission\(role, "billing.business_credit.restore"\)/);
+});

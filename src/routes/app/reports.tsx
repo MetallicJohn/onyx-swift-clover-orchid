@@ -13,7 +13,7 @@ import { formatDate, formatShortDateTime } from "@/lib/isp/display";
 
 export const Route = createFileRoute("/app/reports")({ component: ReportsPage });
 
-type Tab = "clv" | "retention" | "ops" | "paybill" | "audit";
+type Tab = "clv" | "retention" | "ops" | "partial" | "credit" | "paybill" | "audit";
 type IncomingDesk = Awaited<ReturnType<typeof getIncomingPayments>>;
 type IncomingRow = IncomingDesk["rows"][number];
 
@@ -149,6 +149,12 @@ function ReportsPage() {
         </Button>
         <Button size="sm" variant={tab === "ops" ? "default" : "secondary"} onClick={() => setTab("ops")}>
           Operations
+        </Button>
+        <Button size="sm" variant={tab === "partial" ? "default" : "secondary"} onClick={() => setTab("partial")}>
+          Partial payments
+        </Button>
+        <Button size="sm" variant={tab === "credit" ? "default" : "secondary"} onClick={() => setTab("credit")}>
+          Business credit
         </Button>
         <Button
           size="sm"
@@ -302,6 +308,156 @@ function ReportsPage() {
               </ul>
             ) : (
               <p className="mt-3 text-sm text-muted">No customers currently on a granted grace period.</p>
+            )}
+          </section>
+        </div>
+      ) : null}
+
+      {tab === "partial" && data ? (
+        <div className="grid gap-4">
+          <section className="grid gap-3 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Kpi label="Partial payments" value={String(data.partial?.counts.total ?? 0)} />
+            <Kpi label="Revenue" value={kes(data.partial?.counts.revenue_kes ?? 0)} />
+            <Kpi label="Below minimum" value={String(data.partial?.counts.below_minimum ?? 0)} />
+            <Kpi label="Qualifying" value={String(data.partial?.counts.qualifies ?? 0)} />
+            <Kpi label="Activated" value={String(data.partial?.counts.activated ?? 0)} />
+            <Kpi label="Restored" value={String(data.partial?.counts.restored ?? 0)} />
+            <Kpi label="Awaiting approval" value={String(data.partial?.counts.pending_approval ?? 0)} />
+            <Kpi label="Avg. validity (days)" value={String(data.partial?.average_validity_days ?? 0)} />
+          </section>
+          <section className="rounded-xl border border-border bg-surface p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-medium">Partial payment ledger</h2>
+              <Button
+                size="sm"
+                variant="secondary"
+                type="button"
+                onClick={() => {
+                  const rows = data.partial?.events || [];
+                  const header = "date,account,amount,full,pct,min_pct,qualifies,outcome,validity_days,remaining_ref";
+                  const csv = [
+                    header,
+                    ...rows.map((e) =>
+                      [
+                        e.created_at,
+                        e.service_account_number,
+                        e.amount_kes,
+                        e.full_amount_kes,
+                        e.actual_pct,
+                        e.required_pct,
+                        e.qualifies,
+                        e.outcome,
+                        e.validity_days,
+                        e.reference,
+                      ].join(","),
+                    ),
+                  ].join("\n");
+                  const blob = new Blob([csv], { type: "text/csv" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "partial-payments.csv";
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                Export CSV
+              </Button>
+            </div>
+            {(data.partial?.events || []).length === 0 ? (
+              <p className="text-sm text-muted">No partial payments recorded. The feature is off by default.</p>
+            ) : (
+              <ul className="divide-y divide-border text-sm">
+                {data.partial.events.map((e) => (
+                  <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                    <span>
+                      {kes(e.amount_kes)} of {kes(e.full_amount_kes)} · {e.actual_pct}%
+                      <span className="mt-0.5 block text-xs text-muted">
+                        {formatDate(e.created_at)} · {e.service_account_number || "service"} · {e.reference || "no ref"}
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Badge>{e.outcome.replace(/_/g, " ")}</Badge>
+                      <span className="font-mono text-xs">{e.validity_days}d</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      ) : null}
+
+      {tab === "credit" && data ? (
+        <div className="grid gap-4">
+          <section className="grid gap-3 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Kpi label="Business services" value={String(data.credit?.counts.services ?? 0)} />
+            <Kpi label="Active on credit" value={String(data.credit?.counts.on_credit ?? 0)} />
+            <Kpi label="Approaching limit" value={String(data.credit?.counts.approaching ?? 0)} />
+            <Kpi label="At credit limit" value={String(data.credit?.counts.at_limit ?? 0)} />
+            <Kpi label="Suspended at limit" value={String(data.credit?.counts.suspended ?? 0)} />
+            <Kpi label="Receivables" value={kes(data.credit?.counts.receivables ?? 0)} />
+            <Kpi label="Payments received" value={kes(data.credit?.counts.payments ?? 0)} />
+          </section>
+          <section className="rounded-xl border border-border bg-surface p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-medium">Business credit by service</h2>
+              <Button
+                size="sm"
+                variant="secondary"
+                type="button"
+                onClick={() => {
+                  const rows = data.credit?.rows || [];
+                  const header = "customer,account,service,package,status,outstanding,max,warning,tier";
+                  const csv = [
+                    header,
+                    ...rows.map((r) =>
+                      [
+                        r.customer_name,
+                        r.account_number,
+                        r.name,
+                        r.package_name,
+                        r.status,
+                        r.outstanding,
+                        r.max_kes,
+                        r.warning_kes,
+                        r.tier,
+                      ].join(","),
+                    ),
+                  ].join("\n");
+                  const blob = new Blob([csv], { type: "text/csv" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "business-credit.csv";
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                Export CSV
+              </Button>
+            </div>
+            {(data.credit?.rows || []).length === 0 ? (
+              <p className="text-sm text-muted">No business or enterprise services yet.</p>
+            ) : (
+              <ul className="divide-y divide-border text-sm">
+                {(data.credit?.rows || []).map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                    <span>
+                      {r.customer_name} · {r.name}
+                      <span className="mt-0.5 block text-xs text-muted">
+                        {r.account_number || "no account"} · {r.package_name} · due {formatDate(r.period_end)}
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <Badge>{r.suspend_reason === "credit_limit" ? "Limit exceeded" : r.status}</Badge>
+                      <span className="font-mono text-xs">
+                        {kes(r.outstanding)} / {kes(r.max_kes)}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
         </div>
@@ -877,6 +1033,15 @@ function Stat({
       </div>
       <div className={`mt-1 text-xl font-semibold tabular-nums ${tone === "danger" ? "text-danger" : ""}`}>{value}</div>
       <div className="mt-1 text-xs text-subtle">{sub}</div>
+    </div>
+  );
+}
+
+function Kpi({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-muted">{label}</p>
+      <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
     </div>
   );
 }

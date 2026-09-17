@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { InvoicePreview } from "@/components/isp/document-preview";
 import { PdfActions } from "@/components/isp/pdf-actions";
@@ -53,6 +53,7 @@ function BillingPage() {
   const [aging, setAging] = useState<Record<string, { count: number; amount: number }>>({});
   const [tab, setTab] = useState<"invoices" | "payments">("invoices");
   const [filter, setFilter] = useState("open");
+  const [query, setQuery] = useState("");
   const [form, setForm] = useState({ customer_id: "", due_date: "", notes: "" });
   const [lines, setLines] = useState<Line[]>([]);
   const [pay, setPay] = useState({ invoice_id: "", provider: "mpesa", reference: "", amount_kes: 0 });
@@ -145,11 +146,22 @@ function BillingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const customerById = useMemo(() => new Map(customers.map((c) => [c.id, c])), [customers]);
+  const invoiceById = useMemo(() => new Map(invoices.map((i) => [i.id, i])), [invoices]);
+
   const visible = invoices.filter((i) => {
-    if (filter === "all") return true;
-    if (filter === "open") return i.remaining_kes > 0;
-    return i.status === filter;
+    if (filter === "all") {
+      /* keep */
+    } else if (filter === "open") {
+      if (!(i.remaining_kes > 0)) return false;
+    } else if (i.status !== filter) {
+      return false;
+    }
+    return matchSearch(invoiceSearchText(i, customerById.get(i.customer_id), dateFormat), query);
   });
+  const visiblePayments = payments.filter((p) =>
+    matchSearch(paymentSearchText(p, customerById.get(p.customer_id), p.invoice_id ? invoiceById.get(p.invoice_id) : undefined, dateFormat), query),
+  );
   const canInvoice = hasPermission(role, "invoices.manage");
   const canPay = hasPermission(role, "payments.manage");
 
@@ -546,16 +558,16 @@ function BillingPage() {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-2 print:hidden">
-        <Button variant={tab === "invoices" ? "default" : "secondary"} size="sm" onClick={() => setTab("invoices")}>
-          Invoices
-        </Button>
-        <Button variant={tab === "payments" ? "default" : "secondary"} size="sm" onClick={() => setTab("payments")}>
-          Payments
-        </Button>
-        {tab === "invoices"
-          ? (
-            <Select value={filter} onChange={(e) => setFilter(e.target.value)} className="h-9 w-auto min-w-36">
+      <div className="flex flex-col gap-3 print:hidden sm:flex-row sm:items-center">
+        <div className="flex flex-wrap gap-2">
+          <Button variant={tab === "invoices" ? "default" : "secondary"} size="sm" onClick={() => setTab("invoices")}>
+            Invoices
+          </Button>
+          <Button variant={tab === "payments" ? "default" : "secondary"} size="sm" onClick={() => setTab("payments")}>
+            Payments
+          </Button>
+          {tab === "invoices" ? (
+            <Select value={filter} onChange={(e) => setFilter(e.target.value)} className="h-11 w-auto min-w-36">
               <option value="open">Open</option>
               <option value="all">All</option>
               <option value="issued">Issued</option>
@@ -564,8 +576,34 @@ function BillingPage() {
               <option value="partial">Partial</option>
               <option value="paid">Paid</option>
             </Select>
-          )
-          : null}
+          ) : null}
+        </div>
+        <div className="relative min-w-0 flex-1 sm:max-w-md sm:ml-auto">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" strokeWidth={1.75} />
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={
+              tab === "invoices"
+                ? "Number, customer, service account, phone, or amount"
+                : "Receipt, customer, provider, or amount"
+            }
+            aria-label={tab === "invoices" ? "Search invoices" : "Search payments"}
+            autoComplete="off"
+            className="pl-10 pr-12"
+          />
+          {query ? (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+              className="absolute right-1 top-1/2 inline-flex size-9 -translate-y-1/2 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
+            >
+              <X className="size-4" strokeWidth={1.75} />
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {tab === "invoices" ? (
@@ -573,7 +611,9 @@ function BillingPage() {
           empty={
             invoices.length === 0
               ? "No invoices yet. Issue an invoice for a customer service."
-              : "Nothing in this view."
+              : query.trim()
+                ? `No invoices match “${query.trim()}”.`
+                : "Nothing in this view."
           }
           headers={["Number", "Customer", "Service", "Total", "Remaining", "Due", "Status"]}
           rows={visible.map((i) => [
@@ -592,9 +632,15 @@ function BillingPage() {
         />
       ) : (
         <Table
-          empty={payments.length === 0 ? "No payments recorded yet." : "Nothing in this view."}
+          empty={
+            payments.length === 0
+              ? "No payments recorded yet."
+              : query.trim()
+                ? `No payments match “${query.trim()}”.`
+                : "Nothing in this view."
+          }
           headers={["Reference", "Customer", "Provider", "Amount", "Paid", "Status"]}
-          rows={payments.map((p) => [
+          rows={visiblePayments.map((p) => [
             p.reference,
             p.customer_name,
             p.provider,
@@ -610,6 +656,68 @@ function BillingPage() {
       {detail ? <InvoicePanel doc={detail} onClose={() => setDetail(null)} /> : null}
     </div>
   );
+}
+
+function matchSearch(haystack: string, query: string) {
+  const tokens = query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!tokens.length) return true;
+  return tokens.every((t) => haystack.includes(t));
+}
+
+function moneyText(n: number) {
+  return `${n} ${kes(n)} ${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+}
+
+function invoiceSearchText(
+  i: InvoiceRow,
+  customer: CustomerHit | undefined,
+  dateFormat: string,
+) {
+  return [
+    i.number,
+    i.customer_name,
+    i.service_account,
+    i.service_name,
+    i.notes,
+    i.status,
+    invoiceStatusLabel(i.status),
+    moneyText(i.amount_kes),
+    moneyText(i.remaining_kes),
+    formatDate(i.due_date, dateFormat),
+    i.due_date,
+    customer?.phone,
+    customer?.account_number,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function paymentSearchText(
+  p: PaymentRow,
+  customer: CustomerHit | undefined,
+  invoice: InvoiceRow | undefined,
+  dateFormat: string,
+) {
+  return [
+    p.reference,
+    p.customer_name,
+    p.provider,
+    p.status,
+    moneyText(p.amount_kes),
+    formatDate(p.paid_at, dateFormat),
+    invoice?.number,
+    customer?.phone,
+    customer?.account_number,
+    customer?.name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 }
 
 function quotesForCustomer(quotes: Quote[], customerId: string): Line[] {

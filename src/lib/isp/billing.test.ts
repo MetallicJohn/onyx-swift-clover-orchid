@@ -16,6 +16,8 @@ test("billing intervals", () => {
   assert.equal(intervalDays("daily"), 1);
   assert.equal(intervalDays("weekly"), 7);
   assert.equal(intervalDays("monthly"), 30);
+  assert.equal(intervalDays("quarterly"), 90);
+  assert.equal(intervalDays("yearly"), 365);
 });
 
 test("does not stack invoices while one is unpaid", () => {
@@ -25,8 +27,64 @@ test("does not stack invoices while one is unpaid", () => {
   );
 });
 
+test("business credit may stack invoices while unpaid", () => {
+  assert.equal(
+    needsRecurringInvoice({ hasUnpaid: true, lastIssuedAt: "2026-01-01", interval: "monthly", stackWhileUnpaid: true, today: new Date("2026-02-05") }),
+    true,
+  );
+  assert.equal(
+    needsRecurringInvoice({ hasUnpaid: true, lastIssuedAt: "2026-02-01", interval: "monthly", stackWhileUnpaid: true, today: new Date("2026-02-05") }),
+    false,
+  );
+});
+
 test("issues first invoice when none exist", () => {
   assert.equal(needsRecurringInvoice({ hasUnpaid: false, lastIssuedAt: null, interval: "monthly" }), true);
+});
+
+test("continuing clients wait for the selected expiry before the first renewal invoice", () => {
+  const before = new Date("2026-09-17T10:00:00+03:00");
+  const onDay = new Date("2026-09-30T10:00:00+03:00");
+  assert.equal(
+    needsRecurringInvoice({
+      hasUnpaid: false,
+      lastIssuedAt: null,
+      interval: "monthly",
+      firstRenewalYmd: "2026-09-30",
+      today: before,
+    }),
+    false,
+  );
+  assert.equal(
+    needsRecurringInvoice({
+      hasUnpaid: false,
+      lastIssuedAt: null,
+      interval: "monthly",
+      firstRenewalYmd: "2026-09-30",
+      today: onDay,
+    }),
+    true,
+  );
+  assert.equal(
+    needsRecurringInvoice({
+      hasUnpaid: false,
+      lastIssuedAt: "2026-09-30T07:00:00.000Z",
+      interval: "monthly",
+      firstRenewalYmd: "2026-09-30",
+      today: new Date("2026-10-05T10:00:00+03:00"),
+    }),
+    false,
+  );
+  assert.equal(
+    needsRecurringInvoice({
+      hasUnpaid: false,
+      lastIssuedAt: "2026-09-30T07:00:00.000Z",
+      interval: "monthly",
+      firstRenewalYmd: "2026-09-30",
+      today: new Date("2026-10-30T10:00:00+03:00"),
+    }),
+    true,
+  );
 });
 
 test("renews after the package interval", () => {

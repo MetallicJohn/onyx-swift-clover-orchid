@@ -5,6 +5,8 @@ import { TagList, TagPicker } from "@/components/isp/tag-picker";
 import { TrafficDrawer } from "@/components/isp/traffic-drawer";
 import { ExpiryEditor, type ExpiryForm } from "@/components/isp/service-expiry-editor";
 import { OnboardWizard } from "@/components/isp/onboard-wizard";
+import { PartialPaymentPanel } from "@/components/isp/partial-payment-panel";
+import { BusinessCreditPanel } from "@/components/isp/business-credit-panel";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -671,6 +673,12 @@ function Overview({ data }: { data: RecordData }) {
           <Row label="Invoices" value={String(data.invoices.length)} />
         </dl>
       </section>
+      <div className="lg:col-span-2">
+        <PartialPaymentPanel role={data.workspace.role} customerId={data.customer.id} />
+      </div>
+      <div className="lg:col-span-2">
+        <BusinessCreditPanel role={data.workspace.role} customerId={data.customer.id} />
+      </div>
       <section className="rounded-xl border border-border bg-surface p-4 lg:col-span-2">
         <h2 className="text-sm font-medium">Services</h2>
         {data.services.length === 0 ? (

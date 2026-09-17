@@ -14,6 +14,8 @@ export const TENANT_BUSINESS_TABLES = [
   "invoice_items",
   "payments",
   "invoices",
+  "partial_payment_events",
+  "business_credit_events",
   "radius_auth_events",
   "radius_sessions",
   "interface_metrics",

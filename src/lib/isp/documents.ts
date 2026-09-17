@@ -11,7 +11,7 @@ import {
   type StatementDocument,
 } from "./document-format.ts";
 import { normalizeDateFormat } from "./display.ts";
-import { customerBalance } from "./ledger.ts";
+import { customerBalance, serviceBalance } from "./ledger.ts";
 import { DEFAULT_APPEARANCE, DEFAULT_PRESET, isAppearance, isPresetId } from "../theme/presets.ts";
 import { resolvePalette } from "../theme/resolve.ts";
 
@@ -232,11 +232,32 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
     order by paid_at`;
 
   const remaining = remainingKes(inv.amount_kes, inv.paid_kes, inv.status);
-  const ledger = await customerBalance(sql, tenantId, customer.id);
-  const previousBalance = ledger - remaining;
-  const payable = invoicePayable(previousBalance, remaining);
   const headerServiceId = inv.service_id || (svcIds.length === 1 ? svcIds[0] : "") || "";
   const billed = headerServiceId ? svcBy.get(headerServiceId) : undefined;
+  let previousBalance = 0;
+  let creditLimit = 0;
+  let outstandingCredit = 0;
+  let availableCredit = 0;
+  if (headerServiceId) {
+    outstandingCredit = await serviceBalance(sql, tenantId, headerServiceId);
+    previousBalance = outstandingCredit - remaining;
+    try {
+      const { describeServiceCredit } = await import("./business-credit.ts");
+      const desc = await describeServiceCredit(sql, tenantId, headerServiceId);
+      if (desc?.effective.configured) {
+        creditLimit = desc.effective.max_kes;
+        outstandingCredit = desc.snapshot.outstanding_kes;
+        availableCredit = desc.snapshot.available_kes;
+        previousBalance = Math.max(0, outstandingCredit - remaining);
+      }
+    } catch {
+      /* credit lines are optional on the invoice */
+    }
+  } else {
+    const ledger = await customerBalance(sql, tenantId, customer.id);
+    previousBalance = ledger - remaining;
+  }
+  const payable = invoicePayable(previousBalance, remaining);
   const accountNo = billed?.account_number
     ? billed.account_number
     : resolveAccountNumber(brand.slug, customer.id, customer.account_number);
@@ -274,6 +295,9 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
       amountDue: remaining,
       totalPayable: payable.totalPayable,
       creditBalance: payable.creditBalance,
+      creditLimit,
+      outstandingCredit,
+      availableCredit,
     },
     payments: payments.map((p) => ({
       provider: p.provider,
@@ -292,6 +316,8 @@ function billingPeriod(endIso: string, interval: string, brand: Pick<BrandProfil
   const start = new Date(end);
   if (interval === "daily") start.setUTCDate(start.getUTCDate() - 1);
   else if (interval === "weekly") start.setUTCDate(start.getUTCDate() - 7);
+  else if (interval === "quarterly") start.setUTCDate(start.getUTCDate() - 90);
+  else if (interval === "yearly") start.setUTCDate(start.getUTCDate() - 365);
   else start.setUTCDate(start.getUTCDate() - 30);
   return `${formatDay(start.toISOString(), tz, fmt)} – ${formatDay(end.toISOString(), tz, fmt)}`;
 }

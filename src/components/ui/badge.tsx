@@ -55,10 +55,31 @@ export function statusTone(status: string) {
       "awaiting_bootstrap",
       "bootstrapping",
       "stale",
+      "business_credit",
+      "active_on_credit",
+      "overdue_within_limit",
     ].includes(s)
   )
     return "warn";
-  if (["suspended", "overdue", "offline", "urgent", "terminated", "error", "expired", "cancelled", "critical", "failed", "revoked", "unreachable"].includes(s))
+  if (
+    [
+      "suspended",
+      "overdue",
+      "offline",
+      "urgent",
+      "terminated",
+      "error",
+      "expired",
+      "cancelled",
+      "critical",
+      "failed",
+      "revoked",
+      "unreachable",
+      "credit_limit",
+      "limit_reached",
+      "suspended_limit",
+    ].includes(s)
+  )
     return "danger";
   return "muted";
 }

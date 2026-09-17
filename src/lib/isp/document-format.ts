@@ -68,6 +68,9 @@ export type InvoiceDocument = {
     amountDue: number;
     totalPayable: number;
     creditBalance: number;
+    creditLimit?: number;
+    outstandingCredit?: number;
+    availableCredit?: number;
   };
   payments: Array<{ provider: string; reference: string; amount: number; paidAt: string }>;
 };

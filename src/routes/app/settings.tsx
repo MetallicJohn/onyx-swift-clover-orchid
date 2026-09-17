@@ -17,6 +17,9 @@ import { getPlan, listTicketStaff, recordPlanPayment, sendPlanStk, setPlan, crea
 import { checkSmsAccount, confirmStk, getMessaging, listProviders, saveMessaging, testMessaging, toggleProvider, workspaceSlug } from "@/lib/isp/server-ops";
 import { getGracePolicyFn, saveGracePolicyFn } from "@/lib/isp/server-grace";
 import type { GracePolicy } from "@/lib/isp/grace";
+import { getPartialPolicyFn, savePartialPolicyFn } from "@/lib/isp/server-partial";
+import type { PartialPolicySnapshot } from "@/lib/isp/partial-payment-format";
+import { PartialPaymentSettingsForm } from "@/components/isp/partial-payment-panel";
 import { downloadWireGuardServer, getVpsPublishGuide, getWireGuardHub, rotateWireGuardHub, saveWireGuardHub } from "@/lib/isp/server-wg";
 import { vpsInstallCommand, vpsUpdateCommand } from "@/lib/isp/vps-publish";
 import { cn, kes } from "@/lib/utils";
@@ -29,7 +32,7 @@ export const Route = createFileRoute("/app/settings")({
   component: SettingsPage,
 });
 
-type TabId = "company" | "appearance" | "network" | "sms" | "notifications" | "payment" | "plan" | "staff" | "grace" | "tags" | "accounts";
+type TabId = "company" | "appearance" | "network" | "sms" | "notifications" | "payment" | "plan" | "staff" | "grace" | "partial" | "tags" | "accounts";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "company", label: "Company info" },
@@ -41,6 +44,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "plan", label: "Plan" },
   { id: "staff", label: "Staff" },
   { id: "grace", label: "Grace period" },
+  { id: "partial", label: "Partial payments" },
   { id: "tags", label: "Customer tags" },
   { id: "accounts", label: "Account numbers" },
 ];
@@ -228,9 +232,11 @@ function SettingsPage() {
   const [vpsCopied, setVpsCopied] = useState<"install" | "update" | null>(null);
   const [gracePolicy, setGracePolicy] = useState<GracePolicy | null>(null);
   const [graceBusy, setGraceBusy] = useState(false);
+  const [partialPolicy, setPartialPolicy] = useState<PartialPolicySnapshot | null>(null);
+  const [partialBusy, setPartialBusy] = useState(false);
 
   async function load() {
-    const [d, s, p, m, k, daraja, sub, st, branding, gp] = await Promise.all([
+    const [d, s, p, m, k, daraja, sub, st, branding, gp, pp] = await Promise.all([
       getDashboard(),
       workspaceSlug(),
       listProviders(),
@@ -241,9 +247,11 @@ function SettingsPage() {
       listTicketStaff(),
       getDocumentBranding(),
       getGracePolicyFn(),
+      getPartialPolicyFn(),
     ]);
     setWs(d.workspace);
     setGracePolicy(gp);
+    setPartialPolicy(pp);
     setSlug(s.slug);
     setProviders(p.providers);
     setForm({
@@ -1850,6 +1858,27 @@ function SettingsPage() {
             </Button>
           </div>
         </form>
+      ) : null}
+
+      {tab === "partial" && partialPolicy ? (
+        <PartialPaymentSettingsForm
+          policy={partialPolicy}
+          busy={partialBusy}
+          onChange={setPartialPolicy}
+          onSave={async () => {
+            setPartialBusy(true);
+            setSaved(null);
+            try {
+              const next = await savePartialPolicyFn({ data: partialPolicy });
+              setPartialPolicy(next);
+              setSaved("Partial payment policy saved.");
+            } catch (err) {
+              setSaved(err instanceof Error ? err.message : "Could not save");
+            } finally {
+              setPartialBusy(false);
+            }
+          }}
+        />
       ) : null}
 
       {tab === "tags" ? <CustomerTagsSettings /> : null}

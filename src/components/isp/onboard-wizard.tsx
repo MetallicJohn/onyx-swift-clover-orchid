@@ -7,20 +7,29 @@ import { accessMethodLabel, formatDate } from "@/lib/isp/display";
 import {
   EMPTY_CUSTOMER,
   EMPTY_SERVICE,
+  activationLabel,
   billingPeriodLabel,
   defaultActivation,
   defaultExpiryYmd,
+  defaultServiceName,
   displayDraftAccount,
   displayPhone,
+  expiryAfterActivationChange,
+  expiryHelperText,
   firstError,
+  isMigratingOnboard,
+  onboardingTypeLabel,
   provisionStatusLabel,
   sanitizeCustomer,
   sanitizeService,
   stripIncompatibleFields,
   validateCustomerDraft,
   validateServiceDraft,
+  billingAnchorYmd,
+  type ActivationMode,
   type OnboardCustomerDraft,
   type OnboardServiceDraft,
+  type OnboardingType,
 } from "@/lib/isp/onboard";
 import {
   createOnboardFn,
@@ -29,6 +38,7 @@ import {
   searchOnboardCustomersFn,
 } from "@/lib/isp/server-onboard";
 import type { DuplicateMatch } from "@/lib/isp/onboard";
+import { kesPercent, previewPartial, validityLabel } from "@/lib/isp/partial-payment-format";
 import type { AccessMethod, PackageRow } from "@/lib/isp/types";
 import { cn, kes } from "@/lib/utils";
 
@@ -162,6 +172,8 @@ export function OnboardWizard({
   const [customer, setCustomer] = useState<OnboardCustomerDraft>(EMPTY_CUSTOMER);
   const [selected, setSelected] = useState<OnboardLockedCustomer | null>(lockedCustomer ?? null);
   const [service, setService] = useState<OnboardServiceDraft>(EMPTY_SERVICE);
+  const [expiryDirty, setExpiryDirty] = useState(false);
+  const [nameDirty, setNameDirty] = useState(false);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<CustomerHit[]>([]);
   const [searching, setSearching] = useState(false);
@@ -178,6 +190,8 @@ export function OnboardWizard({
 
   const canCustomer = catalog?.canCreateCustomer ?? mode === "customer";
   const canService = catalog?.canCreateService ?? true;
+  const canActivateNow = catalog?.canActivateNow ?? true;
+  const canOverrideExpiry = catalog?.canOverrideExpiry ?? true;
 
   useEffect(() => {
     if (!open) return;
@@ -193,6 +207,8 @@ export function OnboardWizard({
     });
     setSelected(lockedCustomer ?? null);
     setService(EMPTY_SERVICE);
+    setExpiryDirty(false);
+    setNameDirty(false);
     setQuery("");
     setHits([]);
     setDupes([]);
@@ -213,12 +229,14 @@ export function OnboardWizard({
           const first =
             res.packages.find((p) => p.access_method === s.access_method) || res.packages[0];
           if (!first) return s;
+          const activation = defaultActivation(first.price_kes);
           return stripIncompatibleFields({
             ...s,
             access_method: first.access_method,
             package_id: first.id,
-            activation: defaultActivation(first.price_kes),
-            expiry_ymd: s.expiry_ymd || defaultExpiryYmd(first),
+            name: defaultServiceName(first.name, s.name, false),
+            activation,
+            expiry_ymd: s.expiry_ymd || defaultExpiryYmd(first, activation),
             pool_id: s.pool_id || res.pools[0]?.id || "",
           });
         });
@@ -256,25 +274,84 @@ export function OnboardWizard({
 
   function chooseMethod(method: AccessMethod) {
     const first = packages.find((p) => p.access_method === method);
-    const activation = first ? defaultActivation(first.price_kes) : "after_payment";
-    patchService({
-      access_method: method,
-      package_id: first?.id || "",
-      activation,
-      expiry_ymd: first ? defaultExpiryYmd(first) : "",
-      username: "",
-      auto_username: true,
-      static_ip: "",
-      pool_id: catalog?.pools[0]?.id || "",
-    });
+    const migrating = isMigratingOnboard(service.onboarding_type);
+    const activation = migrating ? "active" : first ? defaultActivation(first.price_kes) : "after_payment";
+    setService((prev) =>
+      stripIncompatibleFields({
+        ...prev,
+        access_method: method,
+        package_id: first?.id || "",
+        name: defaultServiceName(first?.name || "", prev.name, nameDirty),
+        activation,
+        expiry_ymd: expiryDirty || migrating
+          ? prev.expiry_ymd
+          : first
+            ? defaultExpiryYmd(first, activation)
+            : "",
+        username: "",
+        auto_username: true,
+        static_ip: "",
+        pool_id: catalog?.pools[0]?.id || "",
+      }),
+    );
   }
 
   function choosePackage(pkg: PackageRow) {
-    patchService({
-      package_id: pkg.id,
-      access_method: pkg.access_method,
-      activation: defaultActivation(pkg.price_kes),
-      expiry_ymd: defaultExpiryYmd(pkg),
+    const migrating = isMigratingOnboard(service.onboarding_type);
+    const activation = migrating ? "active" : defaultActivation(pkg.price_kes);
+    setService((prev) =>
+      stripIncompatibleFields({
+        ...prev,
+        package_id: pkg.id,
+        access_method: pkg.access_method,
+        name: defaultServiceName(pkg.name, prev.name, nameDirty),
+        activation,
+        expiry_ymd: expiryDirty || migrating ? prev.expiry_ymd : defaultExpiryYmd(pkg, activation),
+      }),
+    );
+  }
+
+  function chooseOnboarding(type: OnboardingType) {
+    const migrating = isMigratingOnboard(type);
+    setService((prev) => {
+      const pkg = packages.find((p) => p.id === prev.package_id) || selectedPkg;
+      const activation = migrating ? "active" : defaultActivation(pkg?.price_kes || 0);
+      return stripIncompatibleFields({
+        ...prev,
+        onboarding_type: type,
+        send_onboarding_notification: migrating ? false : true,
+        activation,
+        expiry_ymd: migrating
+          ? expiryDirty
+            ? prev.expiry_ymd
+            : ""
+          : expiryDirty
+            ? prev.expiry_ymd
+            : pkg
+              ? defaultExpiryYmd(pkg, activation)
+              : prev.expiry_ymd,
+      });
+    });
+    if (migrating) setExpiryDirty(false);
+  }
+
+  function chooseActivation(next: ActivationMode) {
+    if (next === "active" && !canActivateNow && !isMigratingOnboard(service.onboarding_type)) return;
+    if (next === "after_partial" && !catalog?.partial?.can_offer) return;
+    setService((prev) => {
+      const pkg = packages.find((p) => p.id === prev.package_id) || selectedPkg;
+      return stripIncompatibleFields({
+        ...prev,
+        activation: next,
+        expiry_ymd: expiryAfterActivationChange({
+          currentYmd: prev.expiry_ymd,
+          previousActivation: prev.activation,
+          nextActivation: next,
+          pkg,
+          dirty: expiryDirty,
+          onboardingType: prev.onboarding_type,
+        }),
+      });
     });
   }
 
@@ -341,7 +418,9 @@ export function OnboardWizard({
         setError("Choose a package for this service type");
         return;
       }
-      if (!service.expiry_ymd) patchService({ expiry_ymd: defaultExpiryYmd(selectedPkg) });
+      if (!service.expiry_ymd && selectedPkg && !isMigratingOnboard(service.onboarding_type)) {
+        patchService({ expiry_ymd: defaultExpiryYmd(selectedPkg, service.activation) });
+      }
       if (!service.activation) patchService({ activation: defaultActivation(selectedPkg.price_kes) });
       setStep("details");
       return;
@@ -692,6 +771,21 @@ export function OnboardWizard({
                 {accessMethodLabel(selectedPkg.access_method)} · {selectedPkg.name} · {kes(selectedPkg.price_kes)} /{" "}
                 {billingPeriodLabel(selectedPkg.billing_interval, selectedPkg.validity_hours)}
               </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Service name">
+                  <Input
+                    value={service.name}
+                    onChange={(e) => {
+                      setNameDirty(true);
+                      patchService({ name: e.target.value });
+                    }}
+                    placeholder={selectedPkg.name}
+                  />
+                </Field>
+                <Field label="Service account number">
+                  <Input value="Assigned on save" readOnly className="text-muted" />
+                </Field>
+              </div>
               {service.access_method === "pppoe" ? (
                 <div className="grid gap-3">
                   <label className="flex min-h-11 items-center gap-2 text-sm">
@@ -843,29 +937,118 @@ export function OnboardWizard({
                 </div>
               ) : null}
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Expiry date">
-                  <Input type="date" value={service.expiry_ymd} onChange={(e) => patchService({ expiry_ymd: e.target.value })} />
-                </Field>
-                <p className="self-end text-xs text-muted">Africa/Nairobi. Access lasts through the end of this day.</p>
+              <div>
+                <p className="mb-2 text-xs font-medium tracking-wide text-muted">Subscription and billing setup</p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <ChoiceCard
+                    selected={service.onboarding_type === "new"}
+                    title="New customer"
+                    description="Billing starts from activation or payment, as today."
+                    onClick={() => chooseOnboarding("new")}
+                  />
+                  <ChoiceCard
+                    selected={service.onboarding_type === "continuing"}
+                    title="Continuing client / migration"
+                    description="Keep the existing expiry. First renewal uses that date, not today."
+                    onClick={() => chooseOnboarding("continuing")}
+                  />
+                  <ChoiceCard
+                    selected={service.onboarding_type === "reactivation"}
+                    title="Reactivation"
+                    description="Bring a previous line back using the expiry they already have."
+                    onClick={() => chooseOnboarding("reactivation")}
+                  />
+                </div>
               </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Subscription start date">
+                  <Input
+                    type="date"
+                    lang="en-GB"
+                    value={service.subscription_start_ymd}
+                    onChange={(e) => patchService({ subscription_start_ymd: e.target.value })}
+                  />
+                </Field>
+                <Field label={isMigratingOnboard(service.onboarding_type) ? "Existing subscription expiry" : "Expiry date"}>
+                  <Input
+                    type="date"
+                    lang="en-GB"
+                    value={service.expiry_ymd}
+                    disabled={!canOverrideExpiry && !isMigratingOnboard(service.onboarding_type)}
+                    required={isMigratingOnboard(service.onboarding_type)}
+                    onChange={(e) => {
+                      setExpiryDirty(true);
+                      patchService({ expiry_ymd: e.target.value });
+                    }}
+                  />
+                </Field>
+              </div>
+              <p className="text-sm text-fg">
+                Selected expiry: {service.expiry_ymd ? formatDate(service.expiry_ymd) : "Choose a date"}
+              </p>
+              <p className="text-xs text-muted">{expiryHelperText(service.activation, service.onboarding_type)}</p>
+              {isMigratingOnboard(service.onboarding_type) ? (
+                <p className="text-sm">
+                  First renewal:{" "}
+                  <span className="font-medium">
+                    {service.expiry_ymd ? formatDate(billingAnchorYmd(service.expiry_ymd) || service.expiry_ymd) : "Same as the expiry date"}
+                  </span>
+                </p>
+              ) : null}
+              {!canOverrideExpiry && !isMigratingOnboard(service.onboarding_type) ? (
+                <p className="text-xs text-muted">Expiry is set from the activation mode. Ask an owner to override it.</p>
+              ) : null}
+
+              <label className="flex min-h-11 items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="size-4"
+                  checked={service.send_onboarding_notification}
+                  onChange={(e) => patchService({ send_onboarding_notification: e.target.checked })}
+                />
+                Send onboarding notification
+              </label>
+              <p className="text-xs text-muted">
+                {isMigratingOnboard(service.onboarding_type)
+                  ? "Off by default for migration. Invoice, renewal, and expiry SMS still follow network settings."
+                  : "Welcome and service-created SMS. Billing SMS still follow network settings."}
+              </p>
 
               <div>
                 <p className="mb-2 text-xs font-medium tracking-wide text-muted">Activation</p>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className={cn("grid gap-2", catalog?.partial?.can_offer ? "sm:grid-cols-3" : "sm:grid-cols-2")}>
+                  <ChoiceCard
+                    selected={service.activation === "after_payment"}
+                    title="Activate after full payment"
+                    description="Default expiry is today. Access starts only after the invoice is paid in full."
+                    onClick={() => chooseActivation("after_payment")}
+                  />
+                  {catalog?.partial?.can_offer ? (
+                    <ChoiceCard
+                      selected={service.activation === "after_partial"}
+                      title="Activate after qualifying partial payment"
+                      description={partialCardDescription(selectedPkg, catalog.partial.min_pct)}
+                      onClick={() => chooseActivation("after_partial")}
+                    />
+                  ) : null}
                   <ChoiceCard
                     selected={service.activation === "active"}
                     title="Start service as Active"
-                    description="RADIUS and access go live now. An invoice is still raised if the package has a price."
-                    onClick={() => patchService({ activation: "active" })}
-                  />
-                  <ChoiceCard
-                    selected={service.activation === "after_payment"}
-                    title="Activate after payment"
-                    description="Service stays pending. Access starts only after a confirmed payment."
-                    onClick={() => patchService({ activation: "after_payment" })}
+                    description={
+                      isMigratingOnboard(service.onboarding_type)
+                        ? "Already paid through the selected expiry. Access starts now without a new invoice."
+                        : canActivateNow
+                          ? "Default expiry is 30 days from today, or the package validity. Access starts now."
+                          : "Only authorised staff can start a paid service as Active."
+                    }
+                    onClick={() => chooseActivation("active")}
+                    disabled={!canActivateNow && !isMigratingOnboard(service.onboarding_type)}
                   />
                 </div>
+                {service.activation === "after_partial" && selectedPkg ? (
+                  <PartialPreviewCard pkg={selectedPkg} minPct={catalog?.partial.min_pct ?? 50} />
+                ) : null}
               </div>
               <Field label="Service notes">
                 <Textarea rows={2} value={service.notes} onChange={(e) => patchService({ notes: e.target.value })} />
@@ -883,6 +1066,7 @@ export function OnboardWizard({
               </ReviewBlock>
               {includeService && canService && selectedPkg ? (
                 <ReviewBlock title="Service" onEdit={() => setStep("plan")}>
+                  <Row label="Name" value={service.name || selectedPkg.name} />
                   <Row label="Account" value="New unique number on save" />
                   <Row label="Type" value={accessMethodLabel(service.access_method)} />
                   <Row label="Package" value={selectedPkg.name} />
@@ -907,11 +1091,16 @@ export function OnboardWizard({
                   ) : service.access_method !== "hotspot" ? (
                     <Row label="CPE" value="Not attached" />
                   ) : null}
-                  <Row label="Expiry" value={service.expiry_ymd ? formatDate(`${service.expiry_ymd}T12:00:00+03:00`) : "Package default"} />
-                  <Row
-                    label="Activation"
-                    value={service.activation === "active" ? "Start as Active" : "Activate after payment"}
-                  />
+                  <Row label="Expiry" value={service.expiry_ymd ? formatDate(service.expiry_ymd) : "Package default"} />
+                  {isMigratingOnboard(service.onboarding_type) ? (
+                    <Row
+                      label="First renewal"
+                      value={service.expiry_ymd ? formatDate(billingAnchorYmd(service.expiry_ymd) || service.expiry_ymd) : "—"}
+                    />
+                  ) : null}
+                  <Row label="Onboarding" value={onboardingTypeLabel(service.onboarding_type || "new")} />
+                  <Row label="Onboarding SMS" value={service.send_onboarding_notification ? "Yes" : "No"} />
+                  <Row label="Activation" value={activationLabel(service.activation)} />
                 </ReviewBlock>
               ) : (
                 <p className="text-sm text-muted">No service will be created. You can add one from the customer profile.</p>
@@ -988,15 +1177,15 @@ function SuccessPanel({
         {result.customer_account_number && result.customer_account_number !== result.account_number ? (
           <Row label="Customer" value={result.customer_account_number} />
         ) : null}
-        {result.service_id && pkg ? <Row label="Package" value={pkg.name} /> : null}
+        {result.service_id && pkg ? <Row label="Package" value={service.name || pkg.name} /> : null}
         {result.status ? (
           <Row
             label="Status"
             value={
-              result.activation === "after_payment"
-                ? "Pending payment"
+              result.activation === "after_payment" || result.activation === "after_partial"
+                ? "Awaiting payment"
                 : result.status === "active"
-                  ? "Active"
+                  ? `Active until ${service.expiry_ymd ? formatDate(service.expiry_ymd) : "the billed period"}`
                   : result.status
             }
           />
@@ -1020,5 +1209,60 @@ function SuccessPanel({
     </div>
   );
 }
+
+function packagePeriodMs(pkg: PackageRow) {
+  if (pkg.validity_hours > 0) return pkg.validity_hours * 3_600_000;
+  if (pkg.billing_interval === "daily") return 86_400_000;
+  if (pkg.billing_interval === "weekly") return 7 * 86_400_000;
+  if (pkg.billing_interval === "yearly") return 365 * 86_400_000;
+  return 30 * 86_400_000;
+}
+
+function partialCardDescription(pkg: PackageRow | null | undefined, minPct: number) {
+  if (!pkg) return "Access starts after a qualifying percentage of the package price is paid.";
+  const min = kesPercent(pkg.price_kes, minPct);
+  return `Minimum ${minPct}% (${kes(min)}). Access starts after that payment, with pro-rata days.`;
+}
+
+function PartialPreviewCard({ pkg, minPct }: { pkg: PackageRow; minPct: number }) {
+  const hourly = pkg.validity_hours > 0;
+  const preview = previewPartial({
+    fullKes: pkg.price_kes,
+    thisKes: kesPercent(pkg.price_kes, minPct),
+    minPct,
+    periodMs: packagePeriodMs(pkg),
+    hourly,
+  });
+  return (
+    <div className="mt-3 rounded-lg border border-border bg-elevated/50 px-3 py-3 text-sm">
+      <p className="font-medium">Qualifying partial payment</p>
+      <dl className="mt-2 grid gap-1">
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">Package price</dt>
+          <dd>{kes(pkg.price_kes)}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">Required minimum</dt>
+          <dd>
+            {minPct}% · {kes(preview.min_kes)}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">Package validity</dt>
+          <dd>{billingPeriodLabel(pkg.billing_interval, pkg.validity_hours)}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">Minimum payment validity</dt>
+          <dd>{validityLabel(preview.grant_ms, hourly)}</dd>
+        </div>
+      </dl>
+      <p className="mt-2 text-xs text-muted">
+        Paying less than {kes(preview.min_kes)} will be posted but will not activate this service. Full payment grants the
+        full package period.
+      </p>
+    </div>
+  );
+}
+
 
 

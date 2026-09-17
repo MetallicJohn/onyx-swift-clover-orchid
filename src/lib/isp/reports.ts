@@ -1,5 +1,7 @@
 import { emptyClv, loadClv } from "./clv";
 import { listGraceReport } from "./grace";
+import { listPartialReport } from "./partial-payment";
+import { listBusinessCreditReport } from "./business-credit";
 import { emptyRetention, loadRetentionKpis } from "./retention";
 import { tallyAging } from "./aging";
 
@@ -43,9 +45,11 @@ export async function loadReports(sql: Sql, tenantId: string) {
   const routers = await sql<{ wg_status: string; n: number }>`
     select wg_status, count(*)::int as n from routers where tenant_id = ${tenantId} group by wg_status`;
   const grace = await listGraceReport(sql, tenantId);
+  const partial = await listPartialReport(sql, tenantId);
+  const credit = await listBusinessCreditReport(sql, tenantId).catch(() => null);
   const retention = await loadRetentionKpis(sql, tenantId).catch(() => emptyRetention());
   const clv = await loadClv(sql, tenantId, { churnRate: retention.churn.rate }).catch(() => emptyClv());
-  return { aging, daily, methods: [...methods.values()], tickets, routers, grace, retention, clv };
+  return { aging, daily, methods: [...methods.values()], tickets, routers, grace, partial, credit, retention, clv };
 }
 
 export async function loadAudit(sql: Sql, tenantId: string) {

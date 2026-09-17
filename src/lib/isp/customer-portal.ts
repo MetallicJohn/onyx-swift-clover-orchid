@@ -1,4 +1,7 @@
 import { remainingKes, invoiceBelongsToService } from "./billing.ts";
+import { periodMs } from "./access-policy.ts";
+import { getPartialPolicy } from "./partial-payment.ts";
+import { kesPercent, resolveEffectivePartial } from "./partial-payment-format.ts";
 import { nairobiDate } from "./empty-tenant.ts";
 import { DEFAULT_DATE_FORMAT, normalizeDateFormat } from "./display.ts";
 import {
@@ -130,12 +133,20 @@ export async function loadPortalServices(sql: Sql, ctx: PortalCtx): Promise<Port
     period_end: string | null;
     access_until: string | null;
     grace_expires_at: string | null;
+    validity_hours: number;
+    partial_enabled: boolean | null;
+    partial_min_pct: number | null;
+    customer_partial_enabled: boolean | null;
+    customer_partial_min_pct: number | null;
   }>`
     select s.id, coalesce(nullif(s.name,''), p.name) as name, coalesce(s.account_number,'') as account_number,
            p.name as package_name, p.price_kes, p.billing_interval, s.access_method,
            coalesce(c.address,'') as location, s.status,
            s.period_end::text as period_end, s.access_until::text as access_until,
-           g.expires_at::text as grace_expires_at
+           g.expires_at::text as grace_expires_at,
+           p.validity_hours,
+           s.partial_enabled, s.partial_min_pct,
+           c.partial_enabled as customer_partial_enabled, c.partial_min_pct as customer_partial_min_pct
     from services s
     join packages p on p.id = s.package_id
     join customers c on c.id = s.customer_id
@@ -171,6 +182,7 @@ export async function loadPortalServices(sql: Sql, ctx: PortalCtx): Promise<Port
     byService.set(b.service_id, cur);
   }
 
+  const policy = await getPartialPolicy(sql, ctx.tenantId);
   const out: PortalService[] = [];
   for (const row of rows) {
     const status = deriveServiceStatus({
@@ -188,6 +200,16 @@ export async function loadPortalServices(sql: Sql, ctx: PortalCtx): Promise<Port
     } catch {
       elig = { ok: false, allowed_days: [] };
     }
+    const period = periodMs(row.billing_interval, row.validity_hours);
+    const effective = resolveEffectivePartial({
+      policy,
+      customerEnabled: row.customer_partial_enabled,
+      customerMinPct: row.customer_partial_min_pct,
+      serviceEnabled: row.partial_enabled,
+      serviceMinPct: row.partial_min_pct,
+    });
+    const full = row.price_kes > 0 ? row.price_kes : outstanding;
+    const paidOnOpen = Math.max(0, full - outstanding);
     out.push({
       id: row.id,
       reference: row.account_number || portalServiceRef(row.id),
@@ -211,7 +233,34 @@ export async function loadPortalServices(sql: Sql, ctx: PortalCtx): Promise<Port
       can_request_grace: Boolean(elig.ok),
       grace_reason: elig.ok ? null : elig.reason || null,
       allowed_grace_days: elig.ok ? elig.allowed_days : [],
+      partial_available: effective.enabled && outstanding > 0,
+      partial_min_pct: effective.min_pct,
+      partial_min_kes: kesPercent(full, effective.min_pct),
+      partial_full_kes: full,
+      partial_paid_kes: paidOnOpen,
+      partial_period_ms: period,
+      partial_hourly: (row.validity_hours || 0) > 0,
     });
+    try {
+      const { describeServiceCredit, accessLabel } = await import("./business-credit.ts");
+      const desc = await describeServiceCredit(sql, ctx.tenantId, row.id);
+      if (desc?.effective.enabled) {
+        const last = out[out.length - 1];
+        if (last) {
+          last.tier = desc.effective.tier;
+          last.credit_enabled = desc.effective.configured;
+          last.credit_max_kes = desc.effective.max_kes;
+          last.credit_available_kes = desc.snapshot.available_kes;
+          last.credit_outstanding_kes = desc.snapshot.outstanding_kes;
+          last.credit_utilization_pct = desc.snapshot.utilization_pct;
+          last.credit_warning = desc.snapshot.warning || desc.snapshot.at_limit;
+          last.credit_label = accessLabel(desc.row.status, desc.row.suspend_reason, desc.snapshot);
+          if (desc.effective.configured) last.status_label = last.credit_label;
+        }
+      }
+    } catch {
+      /* credit display is optional */
+    }
   }
   return out;
 }
@@ -616,7 +665,7 @@ export async function makePortalStatementFile(sql: Sql, ctx: PortalCtx, serviceI
 export async function startPortalPayment(
   sql: Sql,
   ctx: PortalCtx,
-  opts: { invoice_id?: string; service_id?: string; phone?: string; provider?: string; confirm_account?: string },
+  opts: { invoice_id?: string; service_id?: string; phone?: string; provider?: string; confirm_account?: string; amount_kes?: number },
 ): Promise<PortalStkStart> {
   let invoiceId = (opts.invoice_id || "").trim();
   let serviceId = (opts.service_id || "").trim();
@@ -661,6 +710,28 @@ export async function startPortalPayment(
   const inv = await assertOwnInvoice(sql, ctx, invoiceId);
   const remaining = remainingKes(inv.amount_kes, inv.paid_kes, inv.status);
   if (remaining <= 0) throw new Error("Invoice already paid");
+
+  let amountKes: number | undefined;
+  if (opts.amount_kes != null) {
+    const { assertPortalAmount, previewPortalPartial } = await import("./partial-payment.ts");
+    const preview = serviceId
+      ? await previewPortalPartial(sql, ctx.tenantId, {
+          serviceId,
+          customerId: ctx.customer.id,
+          amountKes: opts.amount_kes,
+        }).catch(() => null)
+      : null;
+    if (preview?.available) {
+      amountKes = assertPortalAmount({
+        available: true,
+        amountKes: opts.amount_kes,
+        remainingKes: remaining,
+        minEnterKes: preview.min_enter_kes,
+      });
+    } else {
+      amountKes = Math.min(remaining, Math.max(1, Math.round(opts.amount_kes)));
+    }
+  }
 
   const methods = await loadPortalPaymentMethods(sql, ctx);
   const provider = opts.provider || (methods.find((m) => m.stk_available)?.kind ?? "mpesa");
@@ -711,6 +782,7 @@ export async function startPortalPayment(
     invoiceId: inv.id,
     provider,
     phone,
+    amountKes,
   });
   return {
     intent_id: intent.id,

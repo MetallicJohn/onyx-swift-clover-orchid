@@ -7,6 +7,7 @@ import { createPackage, listPackages, updatePackage } from "@/lib/isp/server";
 import { hasPermission } from "@/lib/isp/rbac";
 import type { AccessMethod, PackageRow } from "@/lib/isp/types";
 import { kes } from "@/lib/utils";
+import { tierLabel } from "@/lib/isp/business-credit-format";
 
 export const Route = createFileRoute("/app/packages")({ component: PackagesPage });
 
@@ -22,6 +23,15 @@ const EMPTY = {
   bundle_mb: 0,
   validity_hours: 0,
   active: true,
+  tier: "residential",
+  business_credit_enabled: false,
+  max_credit_kes: 0,
+  credit_warning_kes: 0,
+  disconnect_when_credit_reached: true,
+  allow_service_continuity_after_expiry: true,
+  send_credit_limit_warning: true,
+  credit_days_limit: 0,
+  credit_terms_notes: "",
 };
 
 type FormState = typeof EMPTY;
@@ -127,6 +137,15 @@ function PackagesPage() {
       bundle_mb: p.bundle_mb,
       validity_hours: p.validity_hours,
       active: p.active,
+      tier: p.tier || "residential",
+      business_credit_enabled: Boolean(p.business_credit_enabled),
+      max_credit_kes: p.max_credit_kes ?? 0,
+      credit_warning_kes: p.credit_warning_kes ?? 0,
+      disconnect_when_credit_reached: p.disconnect_when_credit_reached !== false,
+      allow_service_continuity_after_expiry: p.allow_service_continuity_after_expiry !== false,
+      send_credit_limit_warning: p.send_credit_limit_warning !== false,
+      credit_days_limit: p.credit_days_limit ?? 0,
+      credit_terms_notes: p.credit_terms_notes || "",
     });
     setValidityUnit(validityUnitOf(p.validity_hours));
     setCapUnit(capUnitOf(p.bundle_mb));
@@ -177,6 +196,15 @@ function PackagesPage() {
         bundle_mb: p.bundle_mb,
         validity_hours: p.validity_hours,
         active: !p.active,
+        tier: p.tier || "residential",
+        business_credit_enabled: Boolean(p.business_credit_enabled),
+        max_credit_kes: p.max_credit_kes ?? 0,
+        credit_warning_kes: p.credit_warning_kes ?? 0,
+        disconnect_when_credit_reached: p.disconnect_when_credit_reached !== false,
+        allow_service_continuity_after_expiry: p.allow_service_continuity_after_expiry !== false,
+        send_credit_limit_warning: p.send_credit_limit_warning !== false,
+        credit_days_limit: p.credit_days_limit ?? 0,
+        credit_terms_notes: p.credit_terms_notes || "",
       },
     });
     await load();
@@ -237,6 +265,8 @@ function PackagesPage() {
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
               <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly</option>
+              <option value="yearly">Yearly</option>
             </Select>
           </Field>
           <Field label="Download Mbps">
@@ -326,6 +356,86 @@ function PackagesPage() {
               </Select>
             </Field>
           ) : null}
+          <Field label="Customer tier">
+            <Select value={form.tier} onChange={(e) => setForm({ ...form, tier: e.target.value })}>
+              <option value="residential">Residential</option>
+              <option value="business">Business</option>
+              <option value="enterprise">Enterprise</option>
+            </Select>
+          </Field>
+          {form.tier === "business" || form.tier === "enterprise" ? (
+            <>
+              <Field label="Business credit">
+                <Select
+                  value={form.business_credit_enabled ? "on" : "off"}
+                  onChange={(e) => setForm({ ...form, business_credit_enabled: e.target.value === "on" })}
+                >
+                  <option value="off">Off — expire like residential</option>
+                  <option value="on">On — stay online until the credit limit</option>
+                </Select>
+              </Field>
+              <Field label="Maximum credit (KES)">
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.max_credit_kes}
+                  onChange={(e) => setForm({ ...form, max_credit_kes: Number(e.target.value) })}
+                />
+                {form.business_credit_enabled && form.max_credit_kes <= 0 ? (
+                  <p className="text-xs text-warn">Set a maximum credit. Unlimited credit is never granted.</p>
+                ) : null}
+              </Field>
+              <Field label="Warning threshold (KES)">
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.credit_warning_kes}
+                  onChange={(e) => setForm({ ...form, credit_warning_kes: Number(e.target.value) })}
+                />
+              </Field>
+              <Field label="Disconnect at limit">
+                <Select
+                  value={form.disconnect_when_credit_reached ? "yes" : "no"}
+                  onChange={(e) => setForm({ ...form, disconnect_when_credit_reached: e.target.value === "yes" })}
+                >
+                  <option value="yes">Yes — suspend when the limit is reached</option>
+                  <option value="no">No — stop new credit but keep access</option>
+                </Select>
+              </Field>
+              <Field label="Continue after expiry">
+                <Select
+                  value={form.allow_service_continuity_after_expiry ? "yes" : "no"}
+                  onChange={(e) => setForm({ ...form, allow_service_continuity_after_expiry: e.target.value === "yes" })}
+                >
+                  <option value="yes">Yes — stay online while below the limit</option>
+                  <option value="no">No — expire on the billed period</option>
+                </Select>
+              </Field>
+              <Field label="Credit warning SMS">
+                <Select
+                  value={form.send_credit_limit_warning ? "yes" : "no"}
+                  onChange={(e) => setForm({ ...form, send_credit_limit_warning: e.target.value === "yes" })}
+                >
+                  <option value="yes">Send a warning before the limit</option>
+                  <option value="no">Do not warn</option>
+                </Select>
+              </Field>
+              <Field label="Credit days limit (0 = none)">
+                <Input
+                  type="number"
+                  min={0}
+                  value={form.credit_days_limit}
+                  onChange={(e) => setForm({ ...form, credit_days_limit: Number(e.target.value) })}
+                />
+              </Field>
+              <Field label="Credit terms notes">
+                <Input
+                  value={form.credit_terms_notes}
+                  onChange={(e) => setForm({ ...form, credit_terms_notes: e.target.value })}
+                />
+              </Field>
+            </>
+          ) : null}
           {error ? <p className="text-sm text-danger md:col-span-2">{error}</p> : null}
           <div className="flex gap-2 md:col-span-2">
             <Button type="submit" disabled={busy}>
@@ -354,6 +464,12 @@ function PackagesPage() {
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <Badge tone="accent">{methodLabel(p.access_method)}</Badge>
                   <Badge tone={statusTone(p.active ? "active" : "pending")}>{p.active ? "active" : "inactive"}</Badge>
+                  {p.tier && p.tier !== "residential" ? <Badge tone="ok">{tierLabel(p.tier)}</Badge> : null}
+                  {p.business_credit_enabled ? (
+                    <Badge tone={p.max_credit_kes && p.max_credit_kes > 0 ? "warn" : "danger"}>
+                      {p.max_credit_kes && p.max_credit_kes > 0 ? `Credit ${kes(p.max_credit_kes)}` : "Credit not set"}
+                    </Badge>
+                  ) : null}
                 </div>
               </div>
               <div className="font-mono text-sm tabular-nums">{kes(p.price_kes)}</div>

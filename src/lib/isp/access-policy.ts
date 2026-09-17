@@ -10,6 +10,7 @@ import {
 } from "./grace.ts";
 import { expireDueVouchers } from "./hotspot.ts";
 import { nid } from "../utils.ts";
+import { isCreditBlockedReason } from "./business-credit-format.ts";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -58,11 +59,24 @@ export async function serviceHasOverdue(
   customerId: string,
   today = nairobiDate(),
 ) {
+  return serviceHasOverdueEx(sql, tenantId, serviceId, customerId, { today });
+}
+
+export async function serviceHasOverdueEx(
+  sql: Sql,
+  tenantId: string,
+  serviceId: string,
+  customerId: string,
+  opts: { today?: string; ignoreInvoiceId?: string } = {},
+) {
+  const today = opts.today ?? nairobiDate();
+  const ignore = opts.ignoreInvoiceId || "";
   const rows = await sql<{ id: string }>`
     select i.id from invoices i
     where i.tenant_id = ${tenantId} and i.customer_id = ${customerId}
       and i.status in ('issued','due','overdue','partial')
       and i.due_date::text < ${today}
+      and (${ignore} = '' or i.id <> ${ignore})
       and (
         i.service_id = ${serviceId}
         or exists (
@@ -103,12 +117,21 @@ async function invoiceServiceIds(
   return [];
 }
 
+async function creditCovers(sql: Sql, tenantId: string, serviceId: string) {
+  try {
+    const { creditCoversService } = await import("./business-credit.ts");
+    return await creditCoversService(sql, tenantId, serviceId);
+  } catch {
+    return false;
+  }
+}
+
 async function notify(
   sql: Sql,
   tenantId: string,
   ispName: string,
   customerId: string,
-  event: "invoice.due" | "invoice.overdue" | "grace.started" | "grace.expired" | "service.suspended",
+  event: "invoice.due" | "invoice.overdue" | "grace.started" | "grace.expired" | "service.suspended" | "service.expired",
   entityId: string,
   vars: { invoice_number?: string; amount?: string; due_date?: string; service_name?: string },
 ) {
@@ -138,6 +161,7 @@ export async function grantPaidPeriod(
   customerId: string,
   now = new Date(),
   serviceId?: string,
+  durationMs?: number,
 ) {
   const svcs = serviceId
     ? await sql<{
@@ -145,7 +169,9 @@ export async function grantPaidPeriod(
         period_end: string | null;
         billing_interval: string;
         validity_hours: number;
-      }>`select s.id, s.period_end::text as period_end, p.billing_interval, p.validity_hours
+        suspend_reason: string;
+      }>`select s.id, s.period_end::text as period_end, p.billing_interval, p.validity_hours,
+               coalesce(s.suspend_reason,'') as suspend_reason
          from services s join packages p on p.id = s.package_id
          where s.tenant_id = ${tenantId} and s.id = ${serviceId} and s.customer_id = ${customerId}
            and s.deleted_at is null and s.status <> 'terminated'`
@@ -154,12 +180,17 @@ export async function grantPaidPeriod(
         period_end: string | null;
         billing_interval: string;
         validity_hours: number;
-      }>`select s.id, s.period_end::text as period_end, p.billing_interval, p.validity_hours
+        suspend_reason: string;
+      }>`select s.id, s.period_end::text as period_end, p.billing_interval, p.validity_hours,
+               coalesce(s.suspend_reason,'') as suspend_reason
          from services s join packages p on p.id = s.package_id
          where s.tenant_id = ${tenantId} and s.customer_id = ${customerId}
            and s.deleted_at is null and s.status <> 'terminated'`;
   for (const s of svcs) {
-    const next = extendPeriodEnd(s.period_end, now, periodMs(s.billing_interval, s.validity_hours));
+    const addMs = durationMs != null ? Math.max(0, Math.trunc(durationMs)) : periodMs(s.billing_interval, s.validity_hours);
+    if (addMs <= 0) continue;
+    const awaiting = s.suspend_reason === "awaiting_payment";
+    const next = extendPeriodEnd(awaiting ? null : s.period_end, now, addMs);
     await sql`update services
       set period_end = ${next.toISOString()}, bundle_used_mb = 0, suspend_reason = '',
           access_until = null, expiry_source = ${"billing"}
@@ -168,20 +199,40 @@ export async function grantPaidPeriod(
   return svcs.length;
 }
 
-export async function restorePaidAccess(sql: Sql, tenantId: string, customerId: string, serviceId?: string) {
+export async function restorePaidAccess(
+  sql: Sql,
+  tenantId: string,
+  customerId: string,
+  serviceId?: string,
+  opts?: { durationMs?: number; ignoreInvoiceId?: string; now?: Date; skipGrant?: boolean },
+) {
   const targetId = serviceId || "";
   if (!targetId) {
     const live = await sql<{ id: string }>`
       select id from services
       where tenant_id = ${tenantId} and customer_id = ${customerId}
         and deleted_at is null and status <> 'terminated'`;
-    if (live.length === 1) return restorePaidAccess(sql, tenantId, customerId, live[0]!.id);
+    if (live.length === 1) return restorePaidAccess(sql, tenantId, customerId, live[0]!.id, opts);
     if (live.length !== 1) return { restored: 0, held: false };
   }
 
-  await grantPaidPeriod(sql, tenantId, customerId, new Date(), targetId);
-  if (await serviceHasOverdue(sql, tenantId, targetId, customerId)) {
-    return { restored: 0, held: true };
+  const [prior] = targetId
+    ? await sql<{ suspend_reason: string }>`
+        select coalesce(suspend_reason,'') as suspend_reason from services
+        where id = ${targetId} and tenant_id = ${tenantId} and deleted_at is null`
+    : [];
+  if (!opts?.skipGrant) {
+    await grantPaidPeriod(sql, tenantId, customerId, opts?.now ?? new Date(), targetId, opts?.durationMs);
+  }
+  if (await serviceHasOverdueEx(sql, tenantId, targetId, customerId, { ignoreInvoiceId: opts?.ignoreInvoiceId })) {
+    if (isCreditBlockedReason(prior?.suspend_reason || "")) {
+      return { restored: 0, held: true };
+    }
+    if (await creditCovers(sql, tenantId, targetId)) {
+      /* business credit may restore while older invoices remain unpaid */
+    } else {
+      return { restored: 0, held: true };
+    }
   }
   await consumeActiveGrantsForService(sql, tenantId, targetId);
   const svcs = await sql<{ id: string }>`
@@ -330,15 +381,39 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
       notices += await notify(sql, tenantId, ispName, inv.customer_id, "invoice.due", inv.id, vars);
       due += 1;
     }
+    const targetIds = await invoiceServiceIds(sql, tenantId, inv.id, inv.customer_id, inv.service_id);
     if (inv.due_date < today && inv.status !== "overdue" && inv.status !== "partial") {
       await sql`update invoices set status = 'overdue' where id = ${inv.id} and tenant_id = ${tenantId}`;
-      notices += await notify(sql, tenantId, ispName, inv.customer_id, "invoice.overdue", inv.id, vars);
+      let business = false;
+      for (const sid of targetIds) {
+        try {
+          const { notifyBusinessOverdue } = await import("./business-credit.ts");
+          if (
+            await notifyBusinessOverdue(sql, {
+              tenantId,
+              ispName,
+              customerId: inv.customer_id,
+              serviceId: sid,
+              invoiceId: inv.id,
+              invoiceNumber: inv.number,
+              amountKes: inv.amount_kes,
+              dueDate: inv.due_date,
+            })
+          ) {
+            business = true;
+            notices += 1;
+            break;
+          }
+        } catch {
+          /* fall through to residential overdue */
+        }
+      }
+      if (!business) notices += await notify(sql, tenantId, ispName, inv.customer_id, "invoice.overdue", inv.id, vars);
       overdue += 1;
     }
     if (inv.due_date >= today) continue;
 
     const daysPast = Math.floor((Date.parse(today) - Date.parse(inv.due_date)) / 86400000);
-    const targetIds = await invoiceServiceIds(sql, tenantId, inv.id, inv.customer_id, inv.service_id);
     if (!targetIds.length) continue;
     const wanted = new Set(targetIds);
     const live = await sql<{
@@ -353,6 +428,7 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
     const services = live.filter((s) => wanted.has(s.id));
 
     for (const svc of services) {
+      if (await creditCovers(sql, tenantId, svc.id)) continue;
       const svcVars = { ...vars, service_name: svc.name };
       const grant = await activeGrant(sql, tenantId, svc.id);
       const inGranted = Boolean(grant && Date.parse(grant.expires_at) > Date.now());
@@ -407,11 +483,15 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
     if (svc.expiry_source === "staff") {
       if (Number.isFinite(end) && Date.now() > end) {
         await setServiceState(sql, tenantId, svc.id, "suspended", "expired_by_staff_date_change");
+        notices += await notify(sql, tenantId, ispName, svc.customer_id, "service.expired", svc.id, {
+          service_name: svc.name,
+        });
         suspended += 1;
         time += 1;
       }
       continue;
     }
+    if (await creditCovers(sql, tenantId, svc.id)) continue;
     const graceMs = Math.max(0, svc.grace_days) * 86400_000;
     const grant = await activeGrant(sql, tenantId, svc.id);
     const inGranted = Boolean(grant && Date.parse(grant.expires_at) > Date.now());
@@ -435,7 +515,7 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
       time += 1;
     } else if (pastGrace) {
       await setServiceState(sql, tenantId, svc.id, "suspended", "time");
-      notices += await notify(sql, tenantId, ispName, svc.customer_id, "service.suspended", svc.id, {
+      notices += await notify(sql, tenantId, ispName, svc.customer_id, "service.expired", svc.id, {
         service_name: svc.name,
       });
       suspended += 1;
@@ -461,6 +541,13 @@ export async function applyAccessPolicy(sql: Sql, tenantId: string, ispName: str
   }
 
   notices += await notifyNearingGrants(sql, tenantId, ispName);
+
+  try {
+    const { evaluateTenantBusinessCredit } = await import("./business-credit.ts");
+    await evaluateTenantBusinessCredit(sql, tenantId, ispName);
+  } catch {
+    /* credit evaluation must not fail the residential access cycle */
+  }
 
   return {
     due,

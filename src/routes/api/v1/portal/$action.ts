@@ -148,6 +148,7 @@ async function handlePortalApi(action: string, request: Request, method: string)
           phone: body.phone ? String(body.phone) : undefined,
           provider: body.provider ? String(body.provider) : undefined,
           confirm_account: body.confirm_account ? String(body.confirm_account) : undefined,
+          amount_kes: body.amount_kes != null ? Number(body.amount_kes) : undefined,
         }),
       );
     }

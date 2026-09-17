@@ -75,6 +75,11 @@ function drawInvoice(ctx: PdfCtx, inv: InvoiceDocument) {
       warn: t.totalPayable > 0,
     });
   }
+  if (t.creditLimit && t.creditLimit > 0) {
+    rows.push({ label: "Credit limit", value: money(t.creditLimit) });
+    rows.push({ label: "Outstanding credit", value: money(t.outstandingCredit || 0) });
+    rows.push({ label: "Available credit", value: money(t.availableCredit || 0) });
+  }
   ctx.totalsBox(rows);
 
   if (t.creditBalance > 0) {

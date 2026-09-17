@@ -125,6 +125,13 @@ export function InvoicePreview({ doc }: { doc: InvoiceDocument }) {
           ) : (
             <Row strong due={t.totalPayable > 0} label="Total payable" value={<Money n={t.totalPayable} currency={ccy} />} />
           )}
+          {t.creditLimit && t.creditLimit > 0 ? (
+            <>
+              <Row label="Credit limit" value={<Money n={t.creditLimit} currency={ccy} />} />
+              <Row label="Outstanding credit" value={<Money n={t.outstandingCredit || 0} currency={ccy} />} />
+              <Row label="Available credit" value={<Money n={t.availableCredit || 0} currency={ccy} />} />
+            </>
+          ) : null}
         </dl>
 
         {doc.payments.length ? (

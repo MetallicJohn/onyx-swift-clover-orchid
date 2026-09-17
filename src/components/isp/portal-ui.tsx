@@ -175,7 +175,36 @@ export function ServiceCard({
             ) : null}
           </dd>
         </div>
+        {service.tier && service.tier !== "residential" ? (
+          <>
+            <div>
+              <dt className="text-xs text-muted">Tier</dt>
+              <dd>{service.tier === "enterprise" ? "Enterprise" : "Business"}</dd>
+            </div>
+            {service.credit_enabled ? (
+              <>
+                <div>
+                  <dt className="text-xs text-muted">Credit limit</dt>
+                  <dd className="tabular-nums">{kes(service.credit_max_kes || 0)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted">Available credit</dt>
+                  <dd className="tabular-nums">{kes(service.credit_available_kes || 0)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted">Credit used</dt>
+                  <dd className="tabular-nums">{service.credit_utilization_pct || 0}%</dd>
+                </div>
+              </>
+            ) : null}
+          </>
+        ) : null}
       </dl>
+      {service.credit_warning ? (
+        <p className="mt-3 text-xs text-warn">
+          This line is approaching its credit limit. Pay {kes(service.outstanding_kes)} to stay online.
+        </p>
+      ) : null}
       {service.outstanding_kes > 0 ? (
         <div className="mt-3 flex items-center justify-between gap-2">
           <p className="text-sm">

@@ -48,6 +48,32 @@ import type {
 
 type Sql = Awaited<ReturnType<typeof getSql>>;
 
+function normalizePackageCredit(data: {
+  tier?: string;
+  business_credit_enabled?: boolean;
+  max_credit_kes?: number;
+  credit_warning_kes?: number;
+  disconnect_when_credit_reached?: boolean;
+  allow_service_continuity_after_expiry?: boolean;
+  send_credit_limit_warning?: boolean;
+  credit_days_limit?: number;
+  credit_terms_notes?: string;
+}) {
+  const tier = data.tier === "business" || data.tier === "enterprise" ? data.tier : "residential";
+  const enabled = Boolean(data.business_credit_enabled) && tier !== "residential";
+  return {
+    tier,
+    enabled,
+    maxKes: Math.max(0, Math.round(data.max_credit_kes ?? 0)),
+    warningKes: Math.max(0, Math.round(data.credit_warning_kes ?? 0)),
+    disconnect: data.disconnect_when_credit_reached !== false,
+    continuity: data.allow_service_continuity_after_expiry !== false,
+    sendWarning: data.send_credit_limit_warning !== false,
+    daysLimit: Math.max(0, Math.round(data.credit_days_limit ?? 0)),
+    notes: String(data.credit_terms_notes || "").slice(0, 500),
+  };
+}
+
 async function audit(
   sql: Sql,
   tenantId: string,
@@ -339,7 +365,11 @@ export const listPackages = createServerFn({ method: "GET" })
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "packages.read");
     const packages = await sql<PackageRow>`
-      select id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active
+      select id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active,
+             coalesce(tier,'residential') as tier, business_credit_enabled, coalesce(max_credit_kes,0)::int as max_credit_kes,
+             coalesce(credit_warning_kes,0)::int as credit_warning_kes, disconnect_when_credit_reached,
+             allow_service_continuity_after_expiry, send_credit_limit_warning, coalesce(credit_days_limit,0)::int as credit_days_limit,
+             coalesce(credit_terms_notes,'') as credit_terms_notes
       from packages where tenant_id = ${workspace.tenantId} order by price_kes`;
     return { workspace, packages };
   });
@@ -357,6 +387,15 @@ export const createPackage = createServerFn({ method: "POST" })
     grace_days: number;
     bundle_mb?: number;
     validity_hours?: number;
+    tier?: string;
+    business_credit_enabled?: boolean;
+    max_credit_kes?: number;
+    credit_warning_kes?: number;
+    disconnect_when_credit_reached?: boolean;
+    allow_service_continuity_after_expiry?: boolean;
+    send_credit_limit_warning?: boolean;
+    credit_days_limit?: number;
+    credit_terms_notes?: string;
   }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
@@ -368,8 +407,11 @@ export const createPackage = createServerFn({ method: "POST" })
     await assertTenantOperable(sql, workspace.tenantId);
     await assertFeature(sql, workspace.tenantId, featureForAccess(data.access_method));
     const id = nid("pkg");
-    await sql`insert into packages (id, tenant_id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active)
-      values (${id}, ${workspace.tenantId}, ${data.name.trim()}, ${data.description}, ${data.access_method}, ${data.download_mbps}, ${data.upload_mbps}, ${data.price_kes}, ${data.billing_interval}, ${data.grace_days}, ${Math.max(0, data.bundle_mb ?? 0)}, ${Math.max(0, data.validity_hours ?? 0)}, true)`;
+    const credit = normalizePackageCredit(data);
+    await sql`insert into packages (id, tenant_id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active,
+        tier, business_credit_enabled, max_credit_kes, credit_warning_kes, disconnect_when_credit_reached, allow_service_continuity_after_expiry, send_credit_limit_warning, credit_days_limit, credit_terms_notes)
+      values (${id}, ${workspace.tenantId}, ${data.name.trim()}, ${data.description}, ${data.access_method}, ${data.download_mbps}, ${data.upload_mbps}, ${data.price_kes}, ${data.billing_interval}, ${data.grace_days}, ${Math.max(0, data.bundle_mb ?? 0)}, ${Math.max(0, data.validity_hours ?? 0)}, true,
+        ${credit.tier}, ${credit.enabled}, ${credit.maxKes}, ${credit.warningKes}, ${credit.disconnect}, ${credit.continuity}, ${credit.sendWarning}, ${credit.daysLimit}, ${credit.notes})`;
     await enqueuePackageProfiles(sql, workspace.tenantId, {
       name: data.name.trim(),
       download_mbps: data.download_mbps,
@@ -395,6 +437,15 @@ export const updatePackage = createServerFn({ method: "POST" })
     bundle_mb?: number;
     validity_hours?: number;
     active: boolean;
+    tier?: string;
+    business_credit_enabled?: boolean;
+    max_credit_kes?: number;
+    credit_warning_kes?: number;
+    disconnect_when_credit_reached?: boolean;
+    allow_service_continuity_after_expiry?: boolean;
+    send_credit_limit_warning?: boolean;
+    credit_days_limit?: number;
+    credit_terms_notes?: string;
   }) => d)
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
@@ -403,6 +454,7 @@ export const updatePackage = createServerFn({ method: "POST" })
     if (!["pppoe", "static", "hotspot"].includes(data.access_method)) {
       throw new Error("Access method must be PPPoE, static, or hotspot");
     }
+    const credit = normalizePackageCredit(data);
     const rows = await sql<{ id: string }>`
       update packages
       set name = ${data.name.trim()},
@@ -415,7 +467,16 @@ export const updatePackage = createServerFn({ method: "POST" })
           grace_days = ${data.grace_days},
           bundle_mb = ${Math.max(0, data.bundle_mb ?? 0)},
           validity_hours = ${Math.max(0, data.validity_hours ?? 0)},
-          active = ${data.active}
+          active = ${data.active},
+          tier = ${credit.tier},
+          business_credit_enabled = ${credit.enabled},
+          max_credit_kes = ${credit.maxKes},
+          credit_warning_kes = ${credit.warningKes},
+          disconnect_when_credit_reached = ${credit.disconnect},
+          allow_service_continuity_after_expiry = ${credit.continuity},
+          send_credit_limit_warning = ${credit.sendWarning},
+          credit_days_limit = ${credit.daysLimit},
+          credit_terms_notes = ${credit.notes}
       where id = ${data.id} and tenant_id = ${workspace.tenantId}
       returning id`;
     if (!rows[0]) throw new Error("Package not found");
@@ -1057,62 +1118,24 @@ export const importCustomers = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "customers.manage");
-    const tid = workspace.tenantId;
-    const pkgs = await sql<{ id: string; name: string; access_method: AccessMethod }>`
-      select id, name, access_method from packages where tenant_id = ${tid}`;
-    let created = 0;
-    const errors: string[] = [];
-    for (let i = 0; i < data.rows.length; i++) {
-      const row = data.rows[i];
-      const line = i + 2;
-      if (!row.name?.trim()) {
-        errors.push(`Row ${line}: name required`);
-        continue;
-      }
-      const method = (row.access_method || "pppoe").toLowerCase() as AccessMethod;
-      if (!["pppoe", "static", "hotspot"].includes(method)) {
-        errors.push(`Row ${line}: invalid access method`);
-        continue;
-      }
-      const pkg =
-        pkgs.find((p) => p.name.toLowerCase() === row.package_name.trim().toLowerCase()) ||
-        pkgs.find((p) => p.access_method === method);
-      if (!pkg) {
-        errors.push(`Row ${line}: no matching package`);
-        continue;
-      }
-      if (method === "pppoe" && !row.username?.trim()) {
-        errors.push(`Row ${line}: PPPoE username required`);
-        continue;
-      }
-      if (method === "static" && !row.static_ip?.trim()) {
-        errors.push(`Row ${line}: static IP required`);
-        continue;
-      }
-      const cid = nid("cus");
-      const accountNumber = await allocateAccountNumber(sql, tid, undefined);
-      try {
-        const { assertUniqueCustomerPhone, ensureInitialPortalPassword } = await import("./portal");
-        if ((row.phone || "").replace(/\D/g, "").length >= 9) {
-          await assertUniqueCustomerPhone(sql, tid, row.phone);
-        }
-        await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status, account_number)
-          values (${cid}, ${tid}, 'individual', ${row.name.trim()}, ${row.phone || ""}, ${row.email || ""}, ${row.address || ""}, 'active', ${accountNumber})`;
-        if (row.phone) await ensureInitialPortalPassword(sql, tid, cid, row.phone);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        errors.push(`Row ${line}: ${msg}`);
-        continue;
-      }
-      const sid = nid("svc");
-      const periodEnd = new Date(Date.now() + 30 * 86400_000).toISOString();
-      await sql`insert into services (id, tenant_id, customer_id, package_id, access_method, username, static_ip, status, period_end)
-        values (${sid}, ${tid}, ${cid}, ${pkg.id}, ${method}, ${row.username || null}, ${row.static_ip || null}, 'pending', ${periodEnd})`;
-      await provisionServiceAccess(sql, tid, sid);
-      created += 1;
-    }
-    await audit(sql, tid, context.userId, "customers.imported", "customer", String(created));
-    return { created, errors };
+    await assertCustomerQuota(sql, workspace.tenantId);
+    const { confirmCustomerImport } = await import("./onboard-import");
+    const header = "name,phone,email,address,access_method,username,static_ip,package_name";
+    const csv = [
+      header,
+      ...data.rows.map((row) =>
+        [row.name, row.phone, row.email, row.address, row.access_method, row.username, row.static_ip, row.package_name]
+          .map((v) => `"${String(v || "").replaceAll('"', '""')}"`)
+          .join(","),
+      ),
+    ].join("\n");
+    const result = await confirmCustomerImport(sql, {
+      tenantId: workspace.tenantId,
+      tenantName: workspace.tenantName,
+      actorId: context.userId,
+      input: { text: csv, mode: "new" },
+    });
+    return { created: result.created + result.attached, errors: result.errors };
   });
 
 export const exportCustomersCsv = createServerFn({ method: "GET" })
@@ -1131,17 +1154,20 @@ export const exportCustomersCsv = createServerFn({ method: "GET" })
       static_ip: string | null;
       package_name: string | null;
       service_status: string | null;
+      onboarding_type: string | null;
+      period_end: string | null;
     }>`
-      select c.name, c.phone, c.email, c.address, coalesce(c.account_number,'') as account_number, s.access_method, s.username, s.static_ip, p.name as package_name, s.status as service_status
+      select c.name, c.phone, c.email, c.address, coalesce(c.account_number,'') as account_number, s.access_method, s.username, s.static_ip, p.name as package_name, s.status as service_status,
+             coalesce(s.onboarding_type,'new') as onboarding_type, s.period_end::text as period_end
       from customers c
       left join services s on s.customer_id = c.id and s.deleted_at is null
       left join packages p on p.id = s.package_id
       where c.tenant_id = ${workspace.tenantId} and c.deleted_at is null
       order by c.name`;
-    const header = "name,phone,email,address,account_number,access_method,username,static_ip,package_name,service_status";
+    const header = "name,phone,email,address,account_number,access_method,username,static_ip,package_name,service_status,onboarding_type,subscription_expiry_date";
     const body = rows
       .map((r) =>
-        [r.name, r.phone, r.email, r.address, r.account_number ?? "", r.access_method ?? "", r.username ?? "", r.static_ip ?? "", r.package_name ?? "", r.service_status ?? ""]
+        [r.name, r.phone, r.email, r.address, r.account_number ?? "", r.access_method ?? "", r.username ?? "", r.static_ip ?? "", r.package_name ?? "", r.service_status ?? "", r.onboarding_type ?? "", (r.period_end || "").slice(0, 10)]
           .map((v) => `"${String(v).replaceAll('"', '""')}"`)
           .join(","),
       )

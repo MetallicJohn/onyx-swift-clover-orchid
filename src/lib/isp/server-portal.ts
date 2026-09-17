@@ -145,7 +145,7 @@ export const getPortalTickets = createServerFn({ method: "POST" })
   });
 
 export const portalPay = createServerFn({ method: "POST" })
-  .validator((d: { token: string; invoice_id?: string; service_id?: string; phone?: string; provider?: string; confirm_account?: string }) => d)
+  .validator((d: { token: string; invoice_id?: string; service_id?: string; phone?: string; provider?: string; confirm_account?: string; amount_kes?: number }) => d)
   .handler(async ({ data }) => {
     const sql = await getSql();
     const ctx = await portalContext(sql, data.token);
@@ -156,6 +156,7 @@ export const portalPay = createServerFn({ method: "POST" })
         phone: data.phone,
         provider: data.provider,
         confirm_account: data.confirm_account,
+        amount_kes: data.amount_kes,
       }),
     );
   });

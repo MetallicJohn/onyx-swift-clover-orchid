@@ -5,7 +5,10 @@ import {
   defaultActivation,
   defaultExpiryYmd,
   displayDraftAccount,
+  expiryAfterActivationChange,
+  expiryHelperText,
   sanitizePayload,
+  sanitizeService,
   scoreDuplicate,
   storedAccessFields,
   validatePayload,
@@ -119,7 +122,7 @@ test("validation requires customer, matching package, and activation", () => {
       router_id: "",
       mac_address: "",
       cpe_id: "",
-      expiry_ymd: "13/09/2026",
+      expiry_ymd: "not-a-date",
       activation: "after_payment",
       notes: "",
       hotspot_mode: "account",
@@ -135,9 +138,14 @@ test("validation requires customer, matching package, and activation", () => {
 test("default activation is after payment when the package has a price", () => {
   assert.equal(defaultActivation(2500), "after_payment");
   assert.equal(defaultActivation(0), "active");
-  const ymd = defaultExpiryYmd({ billing_interval: "daily", validity_hours: 24 });
-  assert.match(ymd, /^\d{4}-\d{2}-\d{2}$/);
-  assert.ok(ymd >= nairobiDate());
+  const today = nairobiDate();
+  assert.equal(defaultExpiryYmd({ billing_interval: "monthly", validity_hours: 0 }, "after_payment"), today);
+  assert.equal(defaultExpiryYmd({ billing_interval: "monthly", validity_hours: 0 }, "after_partial"), today);
+  const active = defaultExpiryYmd({ billing_interval: "monthly", validity_hours: 0 }, "active");
+  assert.match(active, /^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(active > today);
+  const daily = defaultExpiryYmd({ billing_interval: "daily", validity_hours: 24 }, "active");
+  assert.ok(daily >= today);
   assert.equal(displayDraftAccount(""), "Assigned on save");
   assert.equal(displayDraftAccount("W8CWV"), "W8CWV");
   assert.equal(displayDraftAccount("", "existing"), "No account number");
@@ -531,4 +539,90 @@ test("duplicate phone is blocked; catalog and search stay on the current ISP", a
   } finally {
     await close();
   }
+});
+
+test("switching activation recalculates the default date unless staff edited it", () => {
+  const now = new Date("2026-09-16T10:00:00+03:00");
+  const monthly = { billing_interval: "monthly", validity_hours: 0 };
+  assert.equal(defaultExpiryYmd(monthly, "after_payment", now), "2026-09-16");
+  assert.equal(defaultExpiryYmd(monthly, "active", now), "2026-10-16");
+  assert.equal(
+    expiryAfterActivationChange({
+      currentYmd: "2026-09-16",
+      previousActivation: "after_payment",
+      nextActivation: "active",
+      pkg: monthly,
+      dirty: false,
+      now,
+    }),
+    "2026-10-16",
+  );
+  assert.equal(
+    expiryAfterActivationChange({
+      currentYmd: "2026-11-01",
+      previousActivation: "after_payment",
+      nextActivation: "active",
+      pkg: monthly,
+      dirty: true,
+      now,
+    }),
+    "2026-11-01",
+  );
+  assert.match(expiryHelperText("after_payment"), /today/);
+  assert.match(expiryHelperText("active"), /30 days/);
+});
+
+test("continuing clients require expiry, default notify off, and keep the picked date", () => {
+  const missing = validatePayload({
+    customer_mode: "existing",
+    customer_id: "cus_a1",
+    include_service: true,
+    service: {
+      access_method: "pppoe",
+      package_id: "pkg_pppoe",
+      username: "acme.pppoe",
+      auto_username: false,
+      static_ip: "",
+      pool_id: "",
+      router_id: "",
+      mac_address: "",
+      cpe_id: "",
+      expiry_ymd: "",
+      activation: "active",
+      notes: "",
+      hotspot_mode: "account",
+      onboarding_type: "continuing",
+      subscription_start_ymd: "",
+      send_onboarding_notification: false,
+    },
+  }, { id: "pkg_pppoe", access_method: "pppoe", active: true });
+  assert.match(missing.expiry_ymd || "", /expiry/);
+
+  const ok = sanitizeService({
+    access_method: "pppoe",
+    package_id: "pkg_pppoe",
+    username: "acme.pppoe",
+    auto_username: false,
+    expiry_ymd: "30/09/26",
+    activation: "active",
+    onboarding_type: "continuing",
+  });
+  assert.equal(ok.expiry_ymd, "2026-09-30");
+  assert.equal(ok.send_onboarding_notification, false);
+  assert.equal(ok.onboarding_type, "continuing");
+  const fresh = sanitizeService({ onboarding_type: "new" });
+  assert.equal(fresh.send_onboarding_notification, true);
+  assert.equal(
+    expiryAfterActivationChange({
+      currentYmd: "2026-09-30",
+      previousActivation: "active",
+      nextActivation: "after_payment",
+      pkg: { billing_interval: "monthly", validity_hours: 0 },
+      dirty: false,
+      onboardingType: "continuing",
+      now: new Date("2026-09-17T10:00:00+03:00"),
+    }),
+    "2026-09-30",
+  );
+  assert.match(expiryHelperText("active", "continuing"), /first renewal/i);
 });

@@ -396,6 +396,13 @@ const SERVICE_SELECT = `s.id, s.customer_id, c.name as customer_name, c.phone as
              s.expiry_change_reason, s.bundle_used_mb, p.bundle_mb, s.suspend_reason,
              coalesce(s.notes,'') as notes,
              p.download_mbps, p.upload_mbps, p.billing_interval, p.price_kes,
+             coalesce(s.onboarding_type, 'new') as onboarding_type,
+             s.subscription_start_date::text as subscription_start_date,
+             s.billing_anchor_date::text as billing_anchor_date,
+             coalesce(s.send_onboarding_notification, false) as send_onboarding_notification,
+             coalesce(s.import_source, '') as import_source,
+             s.import_batch_id,
+             s.first_renewal_invoiced_at::text as first_renewal_invoiced_at,
              (g.id is not null) as grace_active, g.days_granted as grace_days_granted,
              g.starts_at::text as grace_starts_at, g.expires_at::text as grace_expires_at,
              g.granted_by_label as grace_granted_by, g.reason as grace_reason, p.grace_days as package_grace_days`;

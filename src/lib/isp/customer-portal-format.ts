@@ -10,6 +10,7 @@ export function portalServiceRef(id: string) {
 export function billingPeriodLabel(interval: string) {
   if (interval === "daily") return "Daily";
   if (interval === "weekly") return "Weekly";
+  if (interval === "quarterly") return "Quarterly";
   if (interval === "yearly") return "Yearly";
   return "Monthly";
 }
@@ -98,7 +99,7 @@ export function nextPeriodLabel(endIso: string | null, interval: string, dateFor
   if (!endIso) return null;
   const end = Date.parse(endIso);
   if (!Number.isFinite(end)) return null;
-  const days = interval === "daily" ? 1 : interval === "weekly" ? 7 : interval === "yearly" ? 365 : 30;
+  const days = interval === "daily" ? 1 : interval === "weekly" ? 7 : interval === "quarterly" ? 90 : interval === "yearly" ? 365 : 30;
   const start = new Date(end);
   const stop = new Date(end + days * 86400_000);
   return `${formatDate(start.toISOString(), dateFormat)} – ${formatDate(stop.toISOString(), dateFormat)}`;

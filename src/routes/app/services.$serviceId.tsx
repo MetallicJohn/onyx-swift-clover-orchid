@@ -2,6 +2,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ExpiryEditor, type ExpiryForm } from "@/components/isp/service-expiry-editor";
+import { PartialPaymentPanel } from "@/components/isp/partial-payment-panel";
+import { BusinessCreditPanel } from "@/components/isp/business-credit-panel";
 import { TrafficDrawer } from "@/components/isp/traffic-drawer";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +17,7 @@ import { disconnectService, rotateServiceSecret, setServiceStatus } from "@/lib/
 import { changeServiceAccountNumberFn, getAccountNumberSettingsFn } from "@/lib/isp/server-account-numbers";
 import { deleteServiceFn, getServiceFn, reassignServiceFn, updateServiceFn } from "@/lib/isp/server-lifecycle";
 import { effectiveAccessIso, expirySourceLabel, openExpiryForm } from "@/lib/isp/service-expiry-format";
+import { onboardingTypeLabel } from "@/lib/isp/onboard-import-format";
 import type { ServiceStatus } from "@/lib/isp/types";
 import { kes } from "@/lib/utils";
 
@@ -204,6 +207,23 @@ function ServiceRecordPage() {
         </section>
 
         <section className="rounded-xl border border-border bg-surface p-4">
+          <h2 className="text-sm font-medium">Onboarding</h2>
+          <dl className="mt-3 grid gap-2 text-sm">
+            <Fact label="Type" value={onboardingTypeLabel(s.onboarding_type || "new")} />
+            <Fact label="Subscription start" value={s.subscription_start_date ? formatDate(s.subscription_start_date) : "—"} />
+            <Fact label="Billing expiry" value={formatDate(s.period_end)} />
+            <Fact label="First renewal" value={s.billing_anchor_date ? formatDate(s.billing_anchor_date) : "Package cycle"} />
+            <Fact
+              label="First renewal invoice"
+              value={s.first_renewal_invoiced_at ? formatDateTime(s.first_renewal_invoiced_at) : "Not issued"}
+            />
+            <Fact label="Onboarding SMS" value={s.send_onboarding_notification ? "Sent / opted in" : "Not sent"} />
+            {s.import_source ? <Fact label="Import source" value={s.import_source} /> : null}
+            {s.import_batch_id ? <Fact label="Import batch" value={s.import_batch_id} mono /> : null}
+          </dl>
+        </section>
+
+        <section className="rounded-xl border border-border bg-surface p-4">
           <h2 className="text-sm font-medium">Provisioning</h2>
           {data.provision ? (
             <dl className="mt-3 grid gap-2 text-sm">
@@ -272,6 +292,9 @@ function ServiceRecordPage() {
           </div>
         </section>
       </div>
+
+      <PartialPaymentPanel role={data.workspace.role} customerId={s.customer_id} serviceId={s.id} />
+      <BusinessCreditPanel role={data.workspace.role} customerId={s.customer_id} serviceId={s.id} />
 
       {canManage ? (
         <div className="flex flex-wrap gap-2">

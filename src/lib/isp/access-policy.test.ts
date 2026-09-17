@@ -13,6 +13,8 @@ import { openTestDb } from "./test-db.ts";
 test("period length prefers validity hours over billing interval", () => {
   assert.equal(periodMs("monthly", 0), 30 * 86400_000);
   assert.equal(periodMs("daily", 0), 86400_000);
+  assert.equal(periodMs("quarterly", 0), 90 * 86400_000);
+  assert.equal(periodMs("yearly", 0), 365 * 86400_000);
   assert.equal(periodMs("monthly", 24), 24 * 3600_000);
 });
 

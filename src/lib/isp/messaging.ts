@@ -1,4 +1,5 @@
 import type { BillingEvent, NotifyChannel } from "./types";
+import { PAYMENT_NOTIFY_EVENTS } from "./notification-catalog.ts";
 import { open, seal } from "./secrets";
 import { sendSmtp } from "./smtp";
 
@@ -159,7 +160,7 @@ export function toPublic(s: MessagingSettings): MessagingPublic {
 
 export function channelAllowed(event: BillingEvent, channel: NotifyChannel, s: MessagingSettings) {
   if (channel === "in_app") return true;
-  const payment = event === "payment.received" || event === "service.restored";
+  const payment = PAYMENT_NOTIFY_EVENTS.has(event);
   if (channel === "sms") return payment ? s.payment_sms : s.billing_sms;
   if (channel === "whatsapp") return payment ? s.payment_whatsapp : s.billing_whatsapp;
   if (channel === "email") return payment ? s.payment_email : s.billing_email;

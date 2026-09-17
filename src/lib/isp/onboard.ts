@@ -1,21 +1,21 @@
-import { nairobiDate } from "./empty-tenant.ts";
+import { addNairobiDays, nairobiDate } from "./empty-tenant.ts";
 import { last9Phone } from "./customer-portal-format.ts";
 import { normalizePhone } from "./phone.ts";
 import { parseExpiryYmd } from "./service-expiry-format.ts";
 import type { AccessMethod } from "./types.ts";
-
-function periodMs(billingInterval: string, validityHours = 0) {
-  if (validityHours > 0) return validityHours * 3600_000;
-  if (billingInterval === "daily") return 86400_000;
-  if (billingInterval === "weekly") return 7 * 86400_000;
-  if (billingInterval === "yearly") return 365 * 86400_000;
-  return 30 * 86400_000;
-}
+import {
+  isMigratingOnboard,
+  isOnboardingType,
+  parseFlexibleYmd,
+  type OnboardingType,
+} from "./onboard-import-format.ts";
 
 export const ACCESS_METHODS: AccessMethod[] = ["pppoe", "static", "hotspot"];
-export const ACTIVATION_MODES = ["active", "after_payment"] as const;
+export const ACTIVATION_MODES = ["active", "after_payment", "after_partial"] as const;
 export type ActivationMode = (typeof ACTIVATION_MODES)[number];
 export const AWAITING_PAYMENT = "awaiting_payment";
+export type { OnboardingType };
+export { isMigratingOnboard, isOnboardingType, onboardingTypeLabel } from "./onboard-import-format.ts";
 
 export type OnboardCustomerDraft = {
   name: string;
@@ -30,6 +30,7 @@ export type OnboardCustomerDraft = {
 };
 
 export type OnboardServiceDraft = {
+  name?: string;
   access_method: AccessMethod;
   package_id: string;
   username: string;
@@ -43,6 +44,12 @@ export type OnboardServiceDraft = {
   activation: ActivationMode;
   notes: string;
   hotspot_mode: "account" | "voucher";
+  onboarding_type?: OnboardingType;
+  subscription_start_ymd?: string;
+  send_onboarding_notification?: boolean;
+  import_source?: string;
+  import_batch_id?: string;
+  pppoe_password?: string;
 };
 
 export type OnboardPayload = {
@@ -77,6 +84,7 @@ export const EMPTY_CUSTOMER: OnboardCustomerDraft = {
 };
 
 export const EMPTY_SERVICE: OnboardServiceDraft = {
+  name: "",
   access_method: "pppoe",
   package_id: "",
   username: "",
@@ -90,6 +98,10 @@ export const EMPTY_SERVICE: OnboardServiceDraft = {
   activation: "after_payment",
   notes: "",
   hotspot_mode: "account",
+  onboarding_type: "new",
+  subscription_start_ymd: "",
+  send_onboarding_notification: true,
+  pppoe_password: "",
 };
 
 export function isAccessMethod(v: string): v is AccessMethod {
@@ -112,6 +124,7 @@ export function billingPeriodLabel(interval: string, hours = 0) {
   if (hours > 0) return hours === 1 ? "1 hour" : `${hours} hours`;
   if (interval === "daily") return "Daily";
   if (interval === "weekly") return "Weekly";
+  if (interval === "quarterly") return "Quarterly";
   if (interval === "yearly") return "Yearly";
   return "Monthly";
 }
@@ -120,12 +133,65 @@ export function defaultActivation(priceKes: number): ActivationMode {
   return priceKes > 0 ? "after_payment" : "active";
 }
 
+export type ExpiryPackage = { billing_interval: string; validity_hours: number };
+
+/** Default calendar expiry for a new service. Stored as YYYY-MM-DD (Africa/Nairobi). */
 export function defaultExpiryYmd(
-  pkg: { billing_interval: string; validity_hours: number },
+  pkg: ExpiryPackage | null | undefined,
+  activation: ActivationMode = "after_payment",
   now = new Date(),
 ) {
-  const end = new Date(now.getTime() + periodMs(pkg.billing_interval, pkg.validity_hours));
-  return nairobiDate(end);
+  if (activation === "after_payment" || activation === "after_partial") return nairobiDate(now);
+  const hours = pkg?.validity_hours || 0;
+  if (hours > 0) return nairobiDate(new Date(now.getTime() + hours * 3600_000));
+  const interval = pkg?.billing_interval || "monthly";
+  if (interval === "daily") return addNairobiDays(1, now);
+  if (interval === "weekly") return addNairobiDays(7, now);
+  if (interval === "yearly") return addNairobiDays(365, now);
+  return addNairobiDays(30, now);
+}
+
+/**
+ * Recalculate the default expiry only when activation changes and the staff
+ * date has not been edited. A manually chosen date is never overwritten.
+ */
+export function expiryAfterActivationChange(opts: {
+  currentYmd: string;
+  previousActivation: ActivationMode;
+  nextActivation: ActivationMode;
+  pkg?: ExpiryPackage | null;
+  dirty: boolean;
+  now?: Date;
+  onboardingType?: OnboardingType;
+}) {
+  if (opts.dirty) return opts.currentYmd;
+  if (isMigratingOnboard(opts.onboardingType)) return opts.currentYmd;
+  if (opts.previousActivation === opts.nextActivation && opts.currentYmd) return opts.currentYmd;
+  return defaultExpiryYmd(opts.pkg, opts.nextActivation, opts.now);
+}
+
+export function expiryHelperText(activation: ActivationMode, onboardingType: OnboardingType = "new") {
+  if (isMigratingOnboard(onboardingType)) {
+    return "Pick the expiry this customer already has. The first renewal invoice uses that date — not today.";
+  }
+  if (activation === "active") {
+    return "Default expiry date: 30 days from today. The service will be active immediately.";
+  }
+  if (activation === "after_partial") {
+    return "Default expiry date: today. The service stays awaiting payment until a qualifying partial payment is received.";
+  }
+  return "Default expiry date: today. The service will activate after the required full payment is received.";
+}
+
+export function activationLabel(activation: ActivationMode) {
+  if (activation === "active") return "Start as Active";
+  if (activation === "after_partial") return "Activate after qualifying partial payment";
+  return "Activate after full payment";
+}
+
+export function defaultServiceName(pkgName: string, current?: string, dirty = false) {
+  if (dirty && (current || "").trim()) return (current || "").trim().slice(0, 80);
+  return (pkgName || current || "").trim().slice(0, 80);
 }
 
 export function sanitizeCustomer(raw: Partial<OnboardCustomerDraft> | null | undefined): OnboardCustomerDraft {
@@ -173,7 +239,30 @@ export function sanitizeService(raw: Partial<OnboardServiceDraft> | null | undef
     ? (d.activation as ActivationMode)
     : "after_payment";
   const hotspot_mode = d.hotspot_mode === "voucher" ? "voucher" : "account";
+  const onboarding_type: OnboardingType = isOnboardingType(String(d.onboarding_type || ""))
+    ? (d.onboarding_type as OnboardingType)
+    : "new";
+  const migrating = isMigratingOnboard(onboarding_type);
+  const send =
+    d.send_onboarding_notification == null ? !migrating : Boolean(d.send_onboarding_notification);
+  let expiry_ymd = String(d.expiry_ymd || "").trim();
+  if (expiry_ymd && !/^\d{4}-\d{2}-\d{2}$/.test(expiry_ymd)) {
+    try {
+      expiry_ymd = parseFlexibleYmd(expiry_ymd);
+    } catch {
+      /* leave raw so validateServiceDraft can report it */
+    }
+  }
+  let subscription_start_ymd = String(d.subscription_start_ymd || "").trim();
+  if (subscription_start_ymd && !/^\d{4}-\d{2}-\d{2}$/.test(subscription_start_ymd)) {
+    try {
+      subscription_start_ymd = parseFlexibleYmd(subscription_start_ymd);
+    } catch {
+      /* leave raw so validateServiceDraft can report it */
+    }
+  }
   return stripIncompatibleFields({
+    name: String(d.name || "").trim().slice(0, 80),
     access_method: method,
     package_id: String(d.package_id || "").trim(),
     username: String(d.username || "").trim().slice(0, 24),
@@ -183,10 +272,16 @@ export function sanitizeService(raw: Partial<OnboardServiceDraft> | null | undef
     router_id: String(d.router_id || "").trim(),
     mac_address: sanitizeMac(String(d.mac_address || "")),
     cpe_id: String(d.cpe_id || "").trim(),
-    expiry_ymd: String(d.expiry_ymd || "").trim(),
-    activation,
+    expiry_ymd,
+    activation: migrating && !isActivationMode(String(d.activation || "")) ? "active" : activation,
     notes: String(d.notes || "").trim().slice(0, 4000),
     hotspot_mode,
+    onboarding_type,
+    subscription_start_ymd,
+    send_onboarding_notification: send,
+    import_source: String(d.import_source || "").trim().slice(0, 80),
+    import_batch_id: String(d.import_batch_id || "").trim().slice(0, 64) || undefined,
+    pppoe_password: String(d.pppoe_password || "").trim().slice(0, 64),
   });
 }
 
@@ -238,11 +333,22 @@ export function validateServiceDraft(
   if (s.mac_address && s.mac_address.length !== 12) errors.mac_address = "MAC must be 12 hex characters";
   if (s.expiry_ymd) {
     try {
-      parseExpiryYmd(s.expiry_ymd);
+      parseExpiryYmd(s.expiry_ymd.includes("-") && s.expiry_ymd.length === 10 ? s.expiry_ymd : parseFlexibleYmd(s.expiry_ymd));
     } catch (err) {
       errors.expiry_ymd = err instanceof Error ? err.message : "Choose a valid calendar date";
     }
   }
+  if (s.subscription_start_ymd) {
+    try {
+      parseFlexibleYmd(s.subscription_start_ymd);
+    } catch (err) {
+      errors.subscription_start_ymd = err instanceof Error ? err.message : "Choose a valid start date";
+    }
+  }
+  if (isMigratingOnboard(s.onboarding_type) && !s.expiry_ymd) {
+    errors.expiry_ymd = "Continuing clients need the existing subscription expiry date";
+  }
+  if (!isOnboardingType(s.onboarding_type || "new")) errors.onboarding_type = "Choose how this service is being added";
   if (!isActivationMode(s.activation)) errors.activation = "Choose how this service should start";
   return errors;
 }
@@ -366,4 +472,13 @@ export function provisionStatusLabel(overall: string) {
   if (overall === "failed") return "Failed";
   if (overall === "retry_required") return "Retry required";
   return overall || "Pending";
+}
+
+export function billingAnchorYmd(expiryYmd: string) {
+  if (!expiryYmd) return "";
+  try {
+    return parseFlexibleYmd(expiryYmd);
+  } catch {
+    return expiryYmd;
+  }
 }

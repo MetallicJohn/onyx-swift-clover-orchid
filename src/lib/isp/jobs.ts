@@ -186,6 +186,22 @@ export async function executeJob(sql: Sql, job: JobRow) {
     return runBillingCycle(sql, tenantId, t?.name || "");
   }
 
+  if (job.kind === "customers.import") {
+    if (!tenantId) throw new Error("customers.import requires tenantId");
+    const { confirmCustomerImport } = await import("./onboard-import.ts");
+    const [t] = await sql<{ name: string }>`select name from tenants where id = ${tenantId}`;
+    return confirmCustomerImport(sql, {
+      tenantId,
+      tenantName: t?.name || "",
+      actorId: String(payload.actorId || job.locked_by || ""),
+      input: {
+        text: String(payload.text || ""),
+        mode: (payload.mode as "new" | "continuing" | "reactivation" | "mixed") || "continuing",
+        map: (payload.map as Record<string, string> | undefined) as never,
+      },
+    });
+  }
+
   if (job.kind === "traffic.collect") {
     await applyRls(sql, { bypass: true });
     const { collectTrafficSnapshot } = await import("./traffic-collector.ts");

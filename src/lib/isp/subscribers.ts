@@ -1,14 +1,24 @@
-import { restorePaidAccess } from "./access-policy";
+import { applyPaymentAccess } from "./partial-payment";
 import { enqueueServiceCommand } from "./agent";
 import { on, type DomainEvent, type Sql } from "./events";
 import { awardLoyalty } from "./loyalty";
-import { notifyCustomerEvent } from "./notifications";
+import { buildServiceNotifyVars, notifyQuietly } from "./notifications";
+import { nid } from "../utils.ts";
 import { syncRadiusAccount } from "./radius";
 import { creditReseller } from "./resellers";
 import { convertReferral } from "./referrals";
 import { writeInbox } from "./inbox";
 
 let wired = false;
+
+async function auditSystem(sql: Sql, tenantId: string, action: string, entityType: string, entityId: string, details = "") {
+  try {
+    await sql`insert into audit_logs (id, tenant_id, user_id, action, entity_type, entity_id, details)
+      values (${nid("aud")}, ${tenantId}, ${"system"}, ${action}, ${entityType}, ${entityId}, ${details})`;
+  } catch {
+    /* audit is best-effort on payment callbacks */
+  }
+}
 
 export function wireModules() {
   if (wired) return;
@@ -21,8 +31,68 @@ export function wireModules() {
     const ispName = String(p.isp_name || "");
     const payId = String(p.payment_id || "");
     const amount = Number(p.amount_kes || 0);
-    if (p.invoice_paid !== false) {
-      await restorePaidAccess(sql, tenantId, customerId, String(p.service_id || "") || undefined);
+    const serviceId = String(p.service_id || "");
+    const invoicePaid = p.invoice_paid !== false;
+
+    let prior: { status: string; suspend_reason: string } | null = null;
+    if (serviceId) {
+      const [row] = await sql<{ status: string; suspend_reason: string }>`
+        select status, coalesce(suspend_reason,'') as suspend_reason
+        from services where id = ${serviceId} and tenant_id = ${tenantId} and deleted_at is null`;
+      prior = row ?? null;
+    }
+    const wasAwaiting = Boolean(prior && prior.suspend_reason === "awaiting_payment");
+    const wasActive = prior?.status === "active";
+    const wasDown = Boolean(prior && ["grace", "suspended", "pending"].includes(prior.status));
+
+    await applyPaymentAccess(sql, {
+      tenantId,
+      ispName,
+      customerId,
+      serviceId: serviceId || undefined,
+      invoiceId: String(p.invoice_id || "") || undefined,
+      paymentId: payId,
+      amountKes: amount,
+      paidKes: amount,
+      invoicePaid,
+      reference: String(p.reference || ""),
+      provider: String(p.provider || ""),
+      invoiceNumber: String(p.invoice_number || ""),
+    });
+    let businessHandled = false;
+    let creditRestored = false;
+    if (serviceId) {
+      try {
+        const { evaluateBusinessCredit, notifyBusinessPayment } = await import("./business-credit.ts");
+        const ev = await evaluateBusinessCredit(sql, {
+          tenantId,
+          serviceId,
+          ispName,
+          paymentId: payId,
+        });
+        const [live] = await sql<{ status: string; enabled: boolean | null }>`
+          select s.status, ra.enabled
+          from services s
+          left join radius_accounts ra on ra.service_id = s.id and ra.tenant_id = s.tenant_id
+          where s.id = ${serviceId} and s.tenant_id = ${tenantId}`;
+        const provisioned = live?.status === "active" && live?.enabled !== false;
+        creditRestored = Boolean(ev?.restored) || Boolean(!wasActive && wasDown && live?.status === "active");
+        if (invoicePaid && !wasAwaiting) {
+          businessHandled = await notifyBusinessPayment(sql, {
+            tenantId,
+            ispName,
+            customerId,
+            serviceId,
+            paymentId: payId,
+            amountKes: amount,
+            reference: String(p.reference || ""),
+            restored: creditRestored,
+            provisioned,
+          });
+        }
+      } catch {
+        businessHandled = false;
+      }
     }
     await awardLoyalty(sql, tenantId, customerId, amount, "payment", payId);
     try {
@@ -30,18 +100,46 @@ export function wireModules() {
     } catch {
       /* reseller wallet is optional */
     }
+
     try {
-      await notifyCustomerEvent(sql, tenantId, ispName, customerId, "payment.received", payId, {
-        customer_name: "",
-        invoice_number: String(p.invoice_number || ""),
-        amount: `KES ${amount}`,
-        payment_reference: String(p.reference || ""),
+      const vars = await buildServiceNotifyVars(sql, tenantId, ispName, {
+        customerId,
+        serviceId: serviceId || null,
+        amountKes: amount,
+        invoiceNumber: String(p.invoice_number || ""),
+        paymentReference: String(p.reference || ""),
       });
-      await notifyCustomerEvent(sql, tenantId, ispName, customerId, "service.restored", `${payId}-restore`, {
-        customer_name: "",
-        payment_reference: String(p.reference || ""),
-        service_name: "Internet",
-      });
+      await auditSystem(sql, tenantId, "payment.received", "payment", payId, JSON.stringify({ service_id: serviceId, invoice_paid: invoicePaid }));
+
+      if (!invoicePaid) {
+        /* partial payment SMS is sent from applyPaymentAccess */
+      } else if (wasAwaiting) {
+        await notifyQuietly(sql, tenantId, ispName, customerId, "payment.received.awaiting", payId, vars);
+        const [live] = await sql<{ status: string; enabled: boolean | null }>`
+          select s.status, ra.enabled
+          from services s
+          left join radius_accounts ra on ra.service_id = s.id and ra.tenant_id = s.tenant_id
+          where s.id = ${serviceId} and s.tenant_id = ${tenantId}`;
+        const provisioned = live?.status === "active" && live?.enabled !== false;
+        if (provisioned) {
+          const activatedVars = await buildServiceNotifyVars(sql, tenantId, ispName, {
+            customerId,
+            serviceId,
+            amountKes: amount,
+            invoiceNumber: String(p.invoice_number || ""),
+            paymentReference: String(p.reference || ""),
+          });
+          await notifyQuietly(sql, tenantId, ispName, customerId, "service.activated", `${serviceId}:${payId}`, activatedVars);
+          await auditSystem(sql, tenantId, "service.activated", "service", serviceId, JSON.stringify({ payment_id: payId }));
+        }
+      } else if (businessHandled) {
+        /* business payment / restore SMS already sent */
+      } else {
+        await notifyQuietly(sql, tenantId, ispName, customerId, "payment.received", payId, vars);
+        if (!wasActive && wasDown && invoicePaid) {
+          await notifyQuietly(sql, tenantId, ispName, customerId, "service.restored", `${payId}-restore`, vars);
+        }
+      }
     } catch {
       /* notifications must not roll back a confirmed payment */
     }

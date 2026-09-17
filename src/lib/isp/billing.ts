@@ -1,5 +1,5 @@
 import { nid } from "../utils.ts";
-import { addNairobiDays } from "./empty-tenant.ts";
+import { addNairobiDays, nairobiDate } from "./empty-tenant.ts";
 import { recordLedger } from "./ledger";
 
 type Sql = {
@@ -20,6 +20,8 @@ export type InvoiceItemInput = {
 export function intervalDays(billingInterval: string) {
   if (billingInterval === "daily") return 1;
   if (billingInterval === "weekly") return 7;
+  if (billingInterval === "quarterly") return 90;
+  if (billingInterval === "yearly") return 365;
   return 30;
 }
 
@@ -28,9 +30,15 @@ export function needsRecurringInvoice(opts: {
   lastIssuedAt: string | null;
   interval: string;
   today?: Date;
+  stackWhileUnpaid?: boolean;
+  firstRenewalYmd?: string | null;
 }) {
-  if (opts.hasUnpaid) return false;
-  if (!opts.lastIssuedAt) return true;
+  if (opts.hasUnpaid && !opts.stackWhileUnpaid) return false;
+  if (!opts.lastIssuedAt) {
+    const anchor = (opts.firstRenewalYmd || "").trim();
+    if (anchor) return nairobiDate(opts.today ?? new Date()) >= anchor;
+    return true;
+  }
   const last = new Date(opts.lastIssuedAt);
   if (Number.isNaN(last.getTime())) return true;
   const today = opts.today ?? new Date();
@@ -174,7 +182,7 @@ export async function invoiceBelongsToService(
   return Boolean(row);
 }
 
-export async function generateRecurringInvoices(sql: Sql, tenantId: string) {
+export async function generateRecurringInvoices(sql: Sql, tenantId: string, now = new Date()) {
   const services = await sql<{
     id: string;
     customer_id: string;
@@ -182,8 +190,12 @@ export async function generateRecurringInvoices(sql: Sql, tenantId: string) {
     name: string;
     price_kes: number;
     billing_interval: string;
+    billing_anchor_date: string | null;
+    first_renewal_invoiced_at: string | null;
   }>`
-    select s.id, s.customer_id, p.id as package_id, p.name, p.price_kes, p.billing_interval
+    select s.id, s.customer_id, p.id as package_id, p.name, p.price_kes, p.billing_interval,
+           s.billing_anchor_date::text as billing_anchor_date,
+           s.first_renewal_invoiced_at::text as first_renewal_invoiced_at
     from services s
     join packages p on p.id = s.package_id
     join customers c on c.id = s.customer_id
@@ -232,10 +244,18 @@ export async function generateRecurringInvoices(sql: Sql, tenantId: string) {
           )
         )
       order by i.issued_at desc limit 1`;
-    if (!needsRecurringInvoice({ hasUnpaid: Boolean(unpaid[0]), lastIssuedAt: last?.issued_at ?? null, interval: svc.billing_interval })) {
+    const firstRenewalYmd = !last?.issued_at && svc.billing_anchor_date ? String(svc.billing_anchor_date).slice(0, 10) : null;
+    if (!needsRecurringInvoice({
+      hasUnpaid: Boolean(unpaid[0]),
+      lastIssuedAt: last?.issued_at ?? null,
+      interval: svc.billing_interval,
+      today: now,
+      stackWhileUnpaid: await creditAllowsStack(sql, tenantId, svc.id),
+      firstRenewalYmd,
+    })) {
       continue;
     }
-    const dueDate = addNairobiDays(Math.min(intervalDays(svc.billing_interval), 14));
+    const dueDate = firstRenewalYmd || addNairobiDays(Math.min(intervalDays(svc.billing_interval), 14), now);
     const inv = await issueInvoice(sql, {
       tenantId,
       customerId: svc.customer_id,
@@ -251,6 +271,10 @@ export async function generateRecurringInvoices(sql: Sql, tenantId: string) {
         },
       ],
     });
+    if (!svc.first_renewal_invoiced_at && svc.billing_anchor_date) {
+      await sql`update services set first_renewal_invoiced_at = ${now.toISOString()}
+        where id = ${svc.id} and tenant_id = ${tenantId} and first_renewal_invoiced_at is null`;
+    }
     created.push({
       customerId: svc.customer_id,
       serviceId: svc.id,
@@ -261,4 +285,13 @@ export async function generateRecurringInvoices(sql: Sql, tenantId: string) {
     });
   }
   return created;
+}
+
+async function creditAllowsStack(sql: Sql, tenantId: string, serviceId: string) {
+  try {
+    const { creditAllowsInvoiceStack } = await import("./business-credit.ts");
+    return creditAllowsInvoiceStack(sql, tenantId, serviceId);
+  } catch {
+    return false;
+  }
 }

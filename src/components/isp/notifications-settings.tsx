@@ -1,7 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/input";
+import {
+  eventLabel,
+  NOTIFICATION_CATALOG,
+  NOTIFY_PLACEHOLDERS,
+  placeholderToken,
+} from "@/lib/isp/notification-catalog";
 import {
   listNotifications,
   runAutomatedBilling,
@@ -20,6 +26,41 @@ export function NotificationsSettings() {
   const [cycle, setCycle] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState<NotificationTemplateRow | null>(null);
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const grouped = useMemo(() => {
+    const used = new Set<string>();
+    const groups = NOTIFICATION_CATALOG.map((group) => ({
+      category: group.category,
+      templates: group.events.flatMap((event) => {
+        const rows = templates.filter((t) => t.event_code === event.code);
+        if (rows.length) used.add(event.code);
+        return rows;
+      }),
+    })).filter((g) => g.templates.length);
+    const leftover = templates.filter((t) => !used.has(t.event_code));
+    if (leftover.length) groups.push({ category: "Other", templates: leftover });
+    return groups;
+  }, [templates]);
+
+  function insertPlaceholder(key: string) {
+    if (!edit) return;
+    const token = placeholderToken(key);
+    const el = bodyRef.current;
+    if (!el) {
+      setEdit({ ...edit, body: `${edit.body}${token}` });
+      return;
+    }
+    const start = el.selectionStart ?? edit.body.length;
+    const end = el.selectionEnd ?? start;
+    const next = `${edit.body.slice(0, start)}${token}${edit.body.slice(end)}`;
+    setEdit({ ...edit, body: next });
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + token.length;
+      el.setSelectionRange(pos, pos);
+    });
+  }
 
   async function load() {
     const res = await listNotifications();
@@ -95,64 +136,87 @@ export function NotificationsSettings() {
           ))}
         </ul>
       ) : tab === "templates" ? (
-        <div className="space-y-3">
+        <div className="space-y-6">
           <p className="text-xs text-subtle">
-            Variables: {"{customer_name}"} {"{invoice_number}"} {"{amount}"} {"{due_date}"} {"{service_name}"}{" "}
-            {"{payment_reference}"} {"{isp_name}"}
+            Click a placeholder to insert it at the cursor. Dates render as the network date format (default dd/mm/yy).
+            Paybill and support contact come from this network’s payment and company settings.
           </p>
-          {templates.map((t) => (
-            <article key={t.id} className="rounded-xl border border-border bg-surface p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <div className="font-medium">{t.event_code}</div>
-                  <div className="text-xs text-muted uppercase">{t.channel}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge tone={t.enabled ? "ok" : "muted"}>{t.enabled ? "on" : "off"}</Badge>
-                  <Button size="sm" variant="secondary" onClick={() => setEdit(t)}>
-                    Edit
-                  </Button>
-                </div>
-              </div>
-              {edit?.id === t.id ? (
-                <form
-                  className="mt-4 grid gap-3"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    await updateNotificationTemplate({
-                      data: { id: t.id, subject: edit.subject, body: edit.body, enabled: edit.enabled },
-                    });
-                    setEdit(null);
-                    await load();
-                  }}
-                >
-                  <Field label="Subject">
-                    <Input value={edit.subject} onChange={(e) => setEdit({ ...edit, subject: e.target.value })} />
-                  </Field>
-                  <Field label="Body">
-                    <Textarea value={edit.body} onChange={(e) => setEdit({ ...edit, body: e.target.value })} />
-                  </Field>
-                  <label className="flex items-center gap-2 text-sm text-muted">
-                    <input
-                      type="checkbox"
-                      checked={edit.enabled}
-                      onChange={(e) => setEdit({ ...edit, enabled: e.target.checked })}
-                    />
-                    Enabled
-                  </label>
-                  <div className="flex gap-2">
-                    <Button type="submit" size="sm">
-                      Save
-                    </Button>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setEdit(null)}>
-                      Cancel
-                    </Button>
+          {grouped.map((group) => (
+            <section key={group.category} className="space-y-3">
+              <h3 className="text-sm font-medium">{group.category}</h3>
+              {group.templates.map((t) => (
+                <article key={t.id} className="rounded-xl border border-border bg-surface p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="font-medium">{eventLabel(t.event_code)}</div>
+                      <div className="text-xs text-muted">
+                        {t.event_code} · <span className="uppercase">{t.channel}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge tone={t.enabled ? "ok" : "muted"}>{t.enabled ? "on" : "off"}</Badge>
+                      <Button size="sm" variant="secondary" onClick={() => setEdit(t)}>
+                        Edit
+                      </Button>
+                    </div>
                   </div>
-                </form>
-              ) : (
-                <p className="mt-2 text-sm text-muted">{t.body}</p>
-              )}
-            </article>
+                  {edit?.id === t.id ? (
+                    <form
+                      className="mt-4 grid gap-3"
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        await updateNotificationTemplate({
+                          data: { id: t.id, subject: edit.subject, body: edit.body, enabled: edit.enabled },
+                        });
+                        setEdit(null);
+                        await load();
+                      }}
+                    >
+                      <div className="flex flex-wrap gap-1.5">
+                        {NOTIFY_PLACEHOLDERS.map((p) => (
+                          <button
+                            key={p.key}
+                            type="button"
+                            className="h-8 rounded-full border border-border bg-bg px-2.5 text-xs text-muted hover:border-accent hover:text-fg"
+                            onClick={() => insertPlaceholder(p.key)}
+                          >
+                            {`{{${p.key}}}`}
+                          </button>
+                        ))}
+                      </div>
+                      <Field label="Subject">
+                        <Input value={edit.subject} onChange={(e) => setEdit({ ...edit, subject: e.target.value })} />
+                      </Field>
+                      <Field label="Body">
+                        <Textarea
+                          ref={bodyRef}
+                          value={edit.body}
+                          onChange={(e) => setEdit({ ...edit, body: e.target.value })}
+                        />
+                      </Field>
+                      <label className="flex items-center gap-2 text-sm text-muted">
+                        <input
+                          type="checkbox"
+                          checked={edit.enabled}
+                          onChange={(e) => setEdit({ ...edit, enabled: e.target.checked })}
+                        />
+                        Enabled
+                      </label>
+                      <div className="flex gap-2">
+                        <Button type="submit" size="sm">
+                          Save
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" onClick={() => setEdit(null)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </form>
+                  ) : (
+                    <p className="mt-2 text-sm text-muted">{t.body}</p>
+                  )}
+                </article>
+              ))}
+            </section>
           ))}
         </div>
       ) : (
