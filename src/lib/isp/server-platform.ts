@@ -371,6 +371,9 @@ export const saveSaasSettings = createServerFn({ method: "POST" })
       traffic_hourly_days?: number;
       traffic_daily_days?: number;
       traffic_source_priority?: string;
+      app_public_url?: string;
+      tenant_subdomain_base?: string;
+      central_domain_only?: boolean;
     }) => d,
   )
   .handler(async ({ context, data }) => {

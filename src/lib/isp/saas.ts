@@ -436,7 +436,8 @@ export async function createSaasStkIntent(
     select name, slug, public_base_url, support_phone from tenants where id = ${opts.tenantId}`;
   const phone = ten?.support_phone ?? "";
   if (!phone.replace(/\D/g, "")) throw new Error("Set a company phone in Settings → Company to receive the STK prompt");
-  const origin = (ten?.public_base_url || "").replace(/\/$/, "");
+  const { tenantPublicOriginOrEmpty } = await import("./domain-resolve.ts");
+  const origin = (await tenantPublicOriginOrEmpty(sql, opts.tenantId, "payment_links")).replace(/\/$/, "");
   const callbackUrl = origin && ten?.slug ? `${origin}/api/webhooks/${opts.provider}/${ten.slug}` : "";
   let checkout = `ws_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
   let note = "queued";

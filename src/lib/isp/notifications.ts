@@ -35,6 +35,9 @@ export type NotifyVars = {
   days?: string;
   payment_reference?: string;
   isp_name?: string;
+  portal_url?: string;
+  pay_url?: string;
+  login_url?: string;
   amount_received?: string;
   full_package_amount?: string;
   payment_percentage?: string;
@@ -365,12 +368,30 @@ export async function loadNetworkNotifyContext(sql: Sql, tenantId: string, ispNa
   const mode = pay?.stk_type === "till" ? "Till" : "Paybill";
   const company = (ten?.name || ispName || "").trim();
   const support = (ten?.support_phone || ten?.support_email || "").trim();
+  let portal_url = "";
+  let pay_url = "";
+  let login_url = "";
+  try {
+    const { tenantPublicOriginOrEmpty } = await import("./domain-resolve.ts");
+    const { defaultPathForPurpose, joinPublicUrl } = await import("./domain-format.ts");
+    const origin = await tenantPublicOriginOrEmpty(sql, tenantId, "email_links");
+    if (origin) {
+      login_url = origin;
+      portal_url = joinPublicUrl(origin, defaultPathForPurpose("customer_portal"));
+      pay_url = joinPublicUrl(origin, defaultPathForPurpose("payment_links"));
+    }
+  } catch {
+    portal_url = "";
+  }
   return {
     company_name: company,
     isp_name: company,
     support_contact: support,
     paybill_number: paybill,
     account_instructions: paybill ? `${mode} ${paybill}` : "the payment details issued by this network",
+    portal_url,
+    pay_url,
+    login_url,
   };
 }
 

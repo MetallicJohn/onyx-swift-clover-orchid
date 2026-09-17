@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { PageHead, Panel } from "@/components/platform/ui";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,9 @@ function SettingsPage() {
     traffic_hourly_days: 90,
     traffic_daily_days: 730,
     traffic_source_priority: "radius,routeros,snmp,netflow",
+    app_public_url: "",
+    tenant_subdomain_base: "",
+    central_domain_only: false,
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +100,35 @@ function SettingsPage() {
           <p className="text-xs text-muted">
             Off by default. When on, a Superadmin can open a read-mostly, audited session in an ISP console. They never become the owner account.
           </p>
+          <p className="mt-2 text-xs font-medium tracking-wide text-muted uppercase">Public domain</p>
+          <p className="text-xs text-muted">
+            Router bootstrap and customer links use this central origin unless an ISP has a verified subdomain or custom domain.{" "}
+            <Link to="/platform/domains" className="text-accent hover:underline">
+              Open Domains
+            </Link>
+          </p>
+          <Field label="Public application URL">
+            <Input
+              placeholder="https://isp.example.com"
+              value={form.app_public_url}
+              onChange={(e) => setForm({ ...form, app_public_url: e.target.value })}
+            />
+          </Field>
+          <Field label="Tenant subdomain base">
+            <Input
+              placeholder="isp.example.com"
+              value={form.tenant_subdomain_base}
+              onChange={(e) => setForm({ ...form, tenant_subdomain_base: e.target.value })}
+            />
+          </Field>
+          <label className="flex h-11 items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.central_domain_only}
+              onChange={(e) => setForm({ ...form, central_domain_only: e.target.checked })}
+            />
+            Central-domain-only mode
+          </label>
           <p className="mt-2 text-xs font-medium tracking-wide text-muted uppercase">Public site</p>
           <Field label="Sales email">
             <Input

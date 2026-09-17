@@ -242,3 +242,34 @@ test("only authorised staff can view or change business credit", () => {
   assert.match(server, /assertPermission\(role, "billing.business_credit.suspend"\)/);
   assert.match(server, /assertPermission\(role, "billing.business_credit.restore"\)/);
 });
+
+test("ACS device management is for network and care staff, not finance", () => {
+  assert.equal(canAccessAppPath("customer_care", "/app/acs"), true);
+  assert.equal(canAccessAppPath("technician", "/app/acs"), true);
+  assert.equal(canAccessAppPath("network_engineer", "/app/acs"), true);
+  assert.equal(canAccessAppPath("support", "/app/acs"), true);
+  assert.equal(canAccessAppPath("finance", "/app/acs"), false);
+  assert.equal(hasPermission("technician", "acs.devices.view"), true);
+  assert.equal(hasPermission("technician", "acs.devices.reboot"), false);
+  assert.equal(hasPermission("technician", "acs.devices.wifi.manage"), false);
+  assert.equal(hasPermission("customer_care", "acs.devices.assign"), true);
+  assert.equal(hasPermission("customer_care", "acs.devices.reassign"), true);
+  assert.equal(hasPermission("customer_care", "acs.devices.reboot"), false);
+  assert.equal(hasPermission("customer_care", "acs.devices.factory_reset"), false);
+  assert.equal(hasPermission("finance", "acs.devices.view"), false);
+  assert.throws(() => assertPermission("finance", "acs.devices.view"), /Forbidden/);
+  assert.throws(() => assertPermission("technician", "acs.devices.reboot"), /Forbidden/);
+  const acs = readFileSync(new URL("./server-acs-devices.ts", import.meta.url), "utf8");
+  assert.match(acs, /assertPermission\(role, "acs.devices.view"\)/);
+  assert.match(acs, /assertPermission\(role, "acs.devices.assign"\)/);
+  assert.match(acs, /assertPermission\(role, "acs.devices.reassign"\)/);
+  assert.match(acs, /assertPermission\(role, "acs.devices.reboot"\)/);
+  assert.match(acs, /assertPermission\(role, "acs.devices.factory_reset"\)/);
+  assert.match(acs, /assertPermission\(role, "acs.devices.wifi.manage"\)/);
+  assert.match(acs, /assertPermission\(role, "acs.tasks.retry"\)/);
+  assert.match(acs, /trigger_billing: false/);
+  assert.match(acs, /send_customer_notifications: false/);
+  assert.doesNotMatch(acs, /sendSms|queueSms|createInvoice/);
+  const ops = readFileSync(new URL("./server-ops.ts", import.meta.url), "utf8");
+  assert.match(ops, /export const listAcs[\s\S]+?assertPermission\(role, "acs.devices.view"\)/);
+});

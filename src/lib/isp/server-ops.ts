@@ -101,16 +101,18 @@ export const listRadius = createServerFn({ method: "GET" })
       })),
     );
     const apiKey = open(tenant?.radius_api_key || "") || key.key;
+    const { tenantPublicOriginOrEmpty } = await import("./domain-resolve");
+    const publicOrigin = await tenantPublicOriginOrEmpty(sql, tenantId, "public_api");
     let radiusHost = "10.200.0.1";
     try {
-      const raw = tenant?.public_base_url || "";
+      const raw = publicOrigin || "";
       radiusHost = new URL(raw.startsWith("http") ? raw : `https://${raw || "x"}`).hostname || radiusHost;
       if (radiusHost === "x") radiusHost = "10.200.0.1";
     } catch {
       radiusHost = "10.200.0.1";
     }
     const config = radiusConfigBundle({
-      baseUrl: tenant?.public_base_url || "",
+      baseUrl: publicOrigin,
       slug: tenant?.slug || "",
       apiKey: apiKey || "frk_replace_me",
       nas,
@@ -126,7 +128,7 @@ export const listRadius = createServerFn({ method: "GET" })
       api_key_hint: key.hint,
       api_key: key.key,
       nas_secret: nasSecret,
-      internal_url: internalRadiusBaseUrl(tenant?.public_base_url || ""),
+      internal_url: internalRadiusBaseUrl(publicOrigin),
       vps_env: radiusVpsEnv({ slug: tenant?.slug || "", apiKey: apiKey || key.key, nasSecret }),
       config,
     };
@@ -277,7 +279,8 @@ export const simulateAgentPull = createServerFn({ method: "POST" })
     if (!r.enroll_token) {
       await sql`update routers set wg_status = 'connected', last_seen = now(), cpu_pct = 12, agent_version = '0.2.0' where id = ${r.id}`;
     }
-    const [t] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${tenantId}`;
+    const { tenantPublicOriginOrEmpty } = await import("./domain-resolve");
+    const base = await tenantPublicOriginOrEmpty(sql, tenantId, "public_api");
     return {
       pulled: pulled.commands.length,
       commands: pulled.commands,
@@ -290,7 +293,7 @@ export const simulateAgentPull = createServerFn({ method: "POST" })
           wg_public: r.wg_public,
           wg_private_ref: r.wg_private_ref,
           wg_address: r.wg_address || "10.200.0.2/32",
-          pullUrl: agentPullUrl(t?.public_base_url || "", r.enroll_token),
+          pullUrl: agentPullUrl(base, r.enroll_token),
         }),
       ),
     };
@@ -394,7 +397,7 @@ export const listAcs = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
-    assertPermission(role, "routers.manage");
+    assertPermission(role, "acs.devices.view");
     const devices = await sql<{
       id: string;
       serial: string;
@@ -428,7 +431,7 @@ export const syncAcsFromNbi = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
-    assertPermission(role, "routers.manage");
+    assertPermission(role, "acs.devices.view");
     return syncAcsDevices(sql, tenantId);
   });
 
@@ -437,7 +440,7 @@ export const addCpe = createServerFn({ method: "POST" })
   .validator((d: { serial: string; product_class: string; ssid: string; customer_id?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
-    assertPermission(role, "routers.manage");
+    assertPermission(role, "acs.devices.add");
     if (!data.serial.trim()) throw new Error("Serial is required");
     const cfg = await loadAcsConfig(sql, tenantId);
     const acsId = genieDeviceId(cfg.oui, data.product_class || "Router", data.serial.trim());
@@ -451,7 +454,7 @@ export const informCpe = createServerFn({ method: "POST" })
   .validator((d: { id: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
-    assertPermission(role, "routers.manage");
+    assertPermission(role, "acs.devices.view");
     return refreshCpeInform(sql, tenantId, data.id);
   });
 
@@ -474,8 +477,9 @@ export const getAcsCredentialsFn = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { sql, tenantId, workspace, role } = await requireWs(context.userId);
     assertPermission(role, "acs.credentials.view");
-    const [ten] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${tenantId}`;
-    const row = await loadAcsCredentials(sql, tenantId, { publicBase: ten?.public_base_url || "" });
+    const { tenantPublicOriginOrEmpty } = await import("./domain-resolve");
+    const publicBase = await tenantPublicOriginOrEmpty(sql, tenantId, "acs_endpoint");
+    const row = await loadAcsCredentials(sql, tenantId, { publicBase });
     const nbi = await loadAcsConfig(sql, tenantId);
     const plat = await loadAcsPlatformSettings(sql);
     return {
@@ -499,11 +503,12 @@ export const generateAcsCredentialsFn = createServerFn({ method: "POST" })
     const { sql, tenantId, workspace, role } = await requireWs(context.userId);
     if (data?.rotate) assertPermission(role, "acs.credentials.rotate");
     else assertPermission(role, "acs.credentials.manage");
-    const [ten] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${tenantId}`;
+    const { tenantPublicOriginOrEmpty } = await import("./domain-resolve");
+    const publicBase = await tenantPublicOriginOrEmpty(sql, tenantId, "acs_endpoint");
     const row = await generateAcsCredentials(sql, {
       tenantId,
       slug: workspace.slug,
-      publicBase: ten?.public_base_url || "",
+      publicBase,
       userId: context.userId,
       rotate: Boolean(data?.rotate),
     });

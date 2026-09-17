@@ -30,6 +30,7 @@ import {
   revokeRouterTokenFn,
   updateRouter,
 } from "@/lib/isp/server-routers";
+import { previewWorkspaceDomainFn } from "@/lib/isp/server-domains";
 import { getWireGuardHub } from "@/lib/isp/server-wg";
 import { cn } from "@/lib/utils";
 import type { RouterRow } from "@/lib/isp/types";
@@ -37,6 +38,7 @@ import type { RouterRow } from "@/lib/isp/types";
 export const Route = createFileRoute("/app/routers")({ component: RoutersPage });
 
 type Detail = Awaited<ReturnType<typeof getRouterDetailFn>>;
+type DomainPreview = Awaited<ReturnType<typeof previewWorkspaceDomainFn>>;
 type Pool = { id: string; name: string; cidr: string };
 type Notice = { tone: "ok" | "err"; text: string } | null;
 
@@ -102,9 +104,22 @@ function RoutersPage() {
   const [advanced, setAdvanced] = useState(false);
   const [provisioningOn, setProvisioningOn] = useState(true);
   const [allowPoolPush, setAllowPoolPush] = useState(true);
+  const [domainPreview, setDomainPreview] = useState<DomainPreview | null>(null);
+  const [issuedMeta, setIssuedMeta] = useState<{
+    source: string;
+    origin: string;
+    fetch_url: string;
+    warning: string;
+    fallback_reason: string;
+  } | null>(null);
 
   async function load(selectId?: string) {
-    const [res, q, hub] = await Promise.all([listRouters(), listAgentQueue(), getWireGuardHub().catch(() => null)]);
+    const [res, q, hub, domain] = await Promise.all([
+      listRouters(),
+      listAgentQueue(),
+      getWireGuardHub().catch(() => null),
+      previewWorkspaceDomainFn().catch(() => null),
+    ]);
     setRows(res.routers);
     setPools(res.pools || []);
     setProvisioningOn(res.provisioning?.enabled !== false);
@@ -114,6 +129,7 @@ function RoutersPage() {
     setHubReady(Boolean(hub?.ready));
     setRole(res.workspace.role);
     setDateFormat(res.workspace.dateFormat || "dd/mm/yy");
+    if (domain) setDomainPreview(domain);
     const keep = selectId || detail?.router.id;
     if (keep && res.routers.some((r) => r.id === keep)) {
       await openDetail(keep);
@@ -190,8 +206,23 @@ function RoutersPage() {
       const created = await addRouter({ data: { ...form, location: form.site_pop } });
       setForm(EMPTY);
       setAddOpen(false);
-      setNotice({ tone: "ok", text: `${created.router.name} added. Paste the bootstrap script on the MikroTik.` });
-      await showScript(created.bootstrap, `Bootstrap · paste on ${form.name || created.router.name}`);
+      const addedName = created.router?.name || form.name;
+      if (created.bootstrap) {
+        setIssuedMeta({
+          source: created.domain_source || domainPreview?.source_label || "",
+          origin: created.public_url || domainPreview?.origin || "",
+          fetch_url: created.fetch_url || "",
+          warning: domainPreview?.warning || "",
+          fallback_reason: domainPreview?.fallback_reason || "",
+        });
+        setNotice({ tone: "ok", text: `${addedName} added. Paste the bootstrap script on the MikroTik.` });
+        await showScript(created.bootstrap, `Bootstrap · paste on ${addedName}`);
+      } else {
+        setNotice({
+          tone: "err",
+          text: created.domain_error || "Router saved. Configure a public domain before generating a bootstrap script.",
+        });
+      }
       await load(created.id);
     } catch (err) {
       setNotice({ tone: "err", text: err instanceof Error ? err.message : "Could not save router" });
@@ -285,7 +316,26 @@ function RoutersPage() {
           <Link to="/app/settings" className="text-accent hover:underline">
             Settings → Network
           </Link>{" "}
-          and the public site URL so bootstrap can fetch over HTTPS. Until then the WireGuard handshake cannot start.
+          so the WireGuard handshake can start.
+        </div>
+      ) : null}
+
+      {domainPreview ? (
+        <div className="rounded-xl border border-border bg-surface p-4 text-sm">
+          <div className="font-medium">Bootstrap domain</div>
+          {domainPreview.ok ? (
+            <>
+              <p className="mt-1 text-muted">
+                Domain source: {domainPreview.source_label}. Certificate validation is required.
+              </p>
+              <p className="mt-1 font-mono text-xs">{domainPreview.origin}</p>
+              <p className="mt-1 font-mono text-xs text-muted">{domainPreview.bootstrap_url_example}</p>
+              {domainPreview.warning ? <p className="mt-2 text-warn">{domainPreview.warning}</p> : null}
+              {domainPreview.fallback_reason ? <p className="mt-1 text-warn">{domainPreview.fallback_reason}</p> : null}
+            </>
+          ) : (
+            <p className="mt-1 text-danger">{domainPreview.error}</p>
+          )}
         </div>
       ) : null}
 
@@ -562,14 +612,32 @@ function RoutersPage() {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
+                    disabled={!domainPreview?.ok}
                     onClick={async () => {
-                      const out = await issueRouterTokenFn({ data: { id: selected.id } });
-                      await showScript(out.bootstrap, `Bootstrap · ${selected.name}`);
-                      await load(selected.id);
+                      try {
+                        const out = await issueRouterTokenFn({ data: { id: selected.id } });
+                        setIssuedMeta({
+                          source: out.domain_source_label || domainPreview?.source_label || "",
+                          origin: out.public_url || domainPreview?.origin || "",
+                          fetch_url: out.fetch_url || "",
+                          warning: out.warning || domainPreview?.warning || "",
+                          fallback_reason: out.fallback_reason || domainPreview?.fallback_reason || "",
+                        });
+                        await showScript(out.bootstrap, `Bootstrap · ${selected.name}`);
+                        await load(selected.id);
+                      } catch (err) {
+                        setNotice({
+                          tone: "err",
+                          text: err instanceof Error ? err.message : "Could not generate bootstrap",
+                        });
+                      }
                     }}
                   >
                     Generate bootstrap
                   </Button>
+                  {!domainPreview?.ok && domainPreview?.error ? (
+                    <p className="basis-full text-xs text-danger">{domainPreview.error}</p>
+                  ) : null}
                   <Button
                     size="sm"
                     variant="secondary"
@@ -649,13 +717,44 @@ function RoutersPage() {
       <Dialog
         open={Boolean(script)}
         onOpenChange={(open) => {
-          if (!open) setScript(null);
+          if (!open) {
+            setScript(null);
+            setIssuedMeta(null);
+          }
         }}
         title={scriptLabel || "RouterOS v7 script"}
         description="Paste in New Terminal. Certificate validation stays on."
         className="sm:max-w-2xl"
       >
         <div className="space-y-3">
+          {issuedMeta || domainPreview?.ok ? (
+            <dl className="grid gap-1 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted">Domain source</dt>
+                <dd>{issuedMeta?.source || domainPreview?.source_label}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted">Public URL</dt>
+                <dd className="font-mono text-xs">{issuedMeta?.origin || domainPreview?.origin}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted">Bootstrap URL</dt>
+                <dd className="break-all font-mono text-xs">
+                  {issuedMeta?.fetch_url || domainPreview?.bootstrap_url_example}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted">Certificate validation</dt>
+                <dd>Required</dd>
+              </div>
+            </dl>
+          ) : domainPreview?.error ? (
+            <p className="text-sm text-danger">{domainPreview.error}</p>
+          ) : null}
+          {issuedMeta?.warning || domainPreview?.warning ? (
+            <p className="text-sm text-warn">{issuedMeta?.warning || domainPreview?.warning}</p>
+          ) : null}
+          {issuedMeta?.fallback_reason ? <p className="text-sm text-warn">{issuedMeta.fallback_reason}</p> : null}
           <div className="flex justify-end">
             <Button
               size="sm"

@@ -211,12 +211,26 @@ export async function handleKopokopoCallback(slug: string, body: Record<string, 
 }
 
 export async function tenantPayUrls(sql: Sql, tenantId: string, originFallback = "") {
-  const [t] = await sql<{ slug: string; public_base_url: string }>`
-    select slug, public_base_url from tenants where id = ${tenantId}`;
-  const base = (t?.public_base_url || originFallback).replace(/\/$/, "");
+  const [t] = await sql<{ slug: string }>`
+    select slug from tenants where id = ${tenantId}`;
+  const { tenantPublicOriginOrEmpty, productionDomainContext } = await import("./domain-resolve.ts");
+  const { assertUsableHttpsOrigin } = await import("./domain-format.ts");
+  let base = ((await tenantPublicOriginOrEmpty(sql, tenantId, "payment_links")) || "").replace(/\/$/, "");
+  if (!base && originFallback) {
+    try {
+      const production = productionDomainContext();
+      assertUsableHttpsOrigin(originFallback, {
+        allowLoopback: !production,
+        requireHttps: production,
+      });
+      base = originFallback.replace(/\/$/, "");
+    } catch {
+      base = "";
+    }
+  }
   return {
     slug: t?.slug ?? "",
-    public_base_url: t?.public_base_url ?? "",
+    public_base_url: base,
     ...callbackUrls(base, t?.slug ?? ""),
   };
 }

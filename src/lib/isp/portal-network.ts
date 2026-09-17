@@ -1,22 +1,10 @@
 import { hostnameOf } from "./auth-origins.ts";
-
-const RESERVED_SUBDOMAINS = new Set([
-  "www",
-  "app",
-  "api",
-  "portal",
-  "login",
-  "admin",
-  "mail",
-  "ftp",
-  "staging",
-  "dev",
-  "console",
-]);
+import { RESERVED_SUBDOMAIN_LABELS, normalizeHostname } from "./domain-format.ts";
 
 export type PortalNetworkHint = {
   slug: string;
   public_base_url?: string | null;
+  hostnames?: string[];
 };
 
 /** Map a portal hostname to an ISP slug. Host / custom domain wins over a slug subdomain. */
@@ -24,14 +12,18 @@ export function slugFromPortalHost(host: string, tenants: PortalNetworkHint[]): 
   const h = hostnameOf(host);
   if (!h) return null;
   for (const t of tenants) {
-    const th = hostnameOf(t.public_base_url || "");
-    if (!th) continue;
-    if (th === h || `www.${th}` === h || th === `www.${h}`) return t.slug;
+    const names = [
+      hostnameOf(t.public_base_url || "") || "",
+      ...(t.hostnames || []).map((n) => normalizeHostname(n)),
+    ].filter(Boolean);
+    for (const th of names) {
+      if (th === h || `www.${th}` === h || th === `www.${h}`) return t.slug;
+    }
   }
   const labels = h.split(".");
   if (labels.length < 3) return null;
   const first = labels[0];
-  if (!first || RESERVED_SUBDOMAINS.has(first)) return null;
+  if (!first || RESERVED_SUBDOMAIN_LABELS.has(first)) return null;
   const hit = tenants.find((t) => t.slug.toLowerCase() === first);
   return hit?.slug ?? null;
 }

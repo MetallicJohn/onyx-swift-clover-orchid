@@ -47,7 +47,8 @@ async function scriptFor(
   tenantId: string,
   r: RouterEnroll,
 ) {
-  const [t] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${tenantId}`;
+  const { tenantPublicOriginOrEmpty } = await import("./domain-resolve");
+  const base = await tenantPublicOriginOrEmpty(sql, tenantId, "public_api");
   const ctx = await wgEnrollContext(sql, tenantId, {
     id: r.id,
     name: r.name,
@@ -56,7 +57,7 @@ async function scriptFor(
     wg_public: r.wg_public,
     wg_private_ref: r.wg_private_ref,
     wg_address: r.wg_address || "10.200.0.2/32",
-    pullUrl: agentPullUrl(t?.public_base_url || "", r.enroll_token),
+    pullUrl: agentPullUrl(base, r.enroll_token),
   });
   return agentScript(ctx);
 }

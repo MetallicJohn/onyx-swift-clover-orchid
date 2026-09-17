@@ -79,6 +79,9 @@ export async function getPlatformSettings(sql: Sql) {
     traffic_hourly_days: Number(map.traffic_hourly_days || 90),
     traffic_daily_days: Number(map.traffic_daily_days || 730),
     traffic_source_priority: (map.traffic_source_priority || "radius,routeros,snmp,netflow").trim(),
+    app_public_url: (map.app_public_url || "").trim(),
+    tenant_subdomain_base: (map.tenant_subdomain_base || "").trim(),
+    central_domain_only: map.central_domain_only === "true",
   };
 }
 
@@ -108,6 +111,9 @@ export async function savePlatformSettings(
     traffic_hourly_days: number;
     traffic_daily_days: number;
     traffic_source_priority: string;
+    app_public_url: string;
+    tenant_subdomain_base: string;
+    central_domain_only: boolean;
   }>,
 ) {
   await requirePlatformActor(sql, actorUserId);
@@ -172,6 +178,14 @@ export async function savePlatformSettings(
   if (patch.traffic_source_priority != null) {
     const { parseSourcePriority } = await import("./traffic-settings");
     entries.push(["traffic_source_priority", parseSourcePriority(patch.traffic_source_priority).join(",")]);
+  }
+  if (patch.app_public_url != null || patch.tenant_subdomain_base != null || patch.central_domain_only != null) {
+    const { saveCentralDomainSettings } = await import("./domain-manage");
+    await saveCentralDomainSettings(sql, actorUserId, {
+      app_public_url: patch.app_public_url,
+      tenant_subdomain_base: patch.tenant_subdomain_base,
+      central_domain_only: patch.central_domain_only,
+    });
   }
   for (const [key, value] of entries) {
     await sql`insert into platform_settings (key, value, updated_at) values (${key}, ${value}, now())

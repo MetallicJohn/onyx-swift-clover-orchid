@@ -43,6 +43,7 @@ import { Route as AppStatementsRouteImport } from './routes/app/statements'
 import { Route as AppTicketsRouteImport } from './routes/app/tickets'
 import { Route as PlatformIndexRouteImport } from './routes/platform/index'
 import { Route as PlatformActivityRouteImport } from './routes/platform/activity'
+import { Route as PlatformDomainsRouteImport } from './routes/platform/domains'
 import { Route as PlatformInfrastructureRouteImport } from './routes/platform/infrastructure'
 import { Route as PlatformPlansRouteImport } from './routes/platform/plans'
 import { Route as PlatformReportsRouteImport } from './routes/platform/reports'
@@ -255,6 +256,11 @@ const PlatformIndexRoute = PlatformIndexRouteImport.update({
 const PlatformActivityRoute = PlatformActivityRouteImport.update({
   id: '/activity',
   path: '/activity',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformDomainsRoute = PlatformDomainsRouteImport.update({
+  id: '/domains',
+  path: '/domains',
   getParentRoute: () => PlatformRoute,
 } as any)
 const PlatformInfrastructureRoute = PlatformInfrastructureRouteImport.update({
@@ -509,6 +515,7 @@ export interface FileRoutesByFullPath {
   '/app/statements': typeof AppStatementsRoute
   '/app/tickets': typeof AppTicketsRoute
   '/platform/activity': typeof PlatformActivityRoute
+  '/platform/domains': typeof PlatformDomainsRoute
   '/platform/infrastructure': typeof PlatformInfrastructureRoute
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/reports': typeof PlatformReportsRoute
@@ -584,6 +591,7 @@ export interface FileRoutesByTo {
   '/app/statements': typeof AppStatementsRoute
   '/app/tickets': typeof AppTicketsRoute
   '/platform/activity': typeof PlatformActivityRoute
+  '/platform/domains': typeof PlatformDomainsRoute
   '/platform/infrastructure': typeof PlatformInfrastructureRoute
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/reports': typeof PlatformReportsRoute
@@ -664,6 +672,7 @@ export interface FileRoutesById {
   '/app/statements': typeof AppStatementsRoute
   '/app/tickets': typeof AppTicketsRoute
   '/platform/activity': typeof PlatformActivityRoute
+  '/platform/domains': typeof PlatformDomainsRoute
   '/platform/infrastructure': typeof PlatformInfrastructureRoute
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/reports': typeof PlatformReportsRoute
@@ -745,6 +754,7 @@ export interface FileRouteTypes {
     | '/app/statements'
     | '/app/tickets'
     | '/platform/activity'
+    | '/platform/domains'
     | '/platform/infrastructure'
     | '/platform/plans'
     | '/platform/reports'
@@ -820,6 +830,7 @@ export interface FileRouteTypes {
     | '/app/statements'
     | '/app/tickets'
     | '/platform/activity'
+    | '/platform/domains'
     | '/platform/infrastructure'
     | '/platform/plans'
     | '/platform/reports'
@@ -899,6 +910,7 @@ export interface FileRouteTypes {
     | '/app/statements'
     | '/app/tickets'
     | '/platform/activity'
+    | '/platform/domains'
     | '/platform/infrastructure'
     | '/platform/plans'
     | '/platform/reports'
@@ -1224,6 +1236,13 @@ declare module '@tanstack/react-router' {
       path: '/activity'
       fullPath: '/platform/activity'
       preLoaderRoute: typeof PlatformActivityRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/domains': {
+      id: '/platform/domains'
+      path: '/domains'
+      fullPath: '/platform/domains'
+      preLoaderRoute: typeof PlatformDomainsRouteImport
       parentRoute: typeof PlatformRoute
     }
     '/platform/infrastructure': {
@@ -1616,6 +1635,7 @@ const PlatformTenantsRouteWithChildren = PlatformTenantsRoute._addFileChildren(
 
 interface PlatformRouteChildren {
   PlatformActivityRoute: typeof PlatformActivityRoute
+  PlatformDomainsRoute: typeof PlatformDomainsRoute
   PlatformInfrastructureRoute: typeof PlatformInfrastructureRoute
   PlatformPlansRoute: typeof PlatformPlansRoute
   PlatformReportsRoute: typeof PlatformReportsRoute
@@ -1628,6 +1648,7 @@ interface PlatformRouteChildren {
 
 const PlatformRouteChildren: PlatformRouteChildren = {
   PlatformActivityRoute: PlatformActivityRoute,
+  PlatformDomainsRoute: PlatformDomainsRoute,
   PlatformInfrastructureRoute: PlatformInfrastructureRoute,
   PlatformPlansRoute: PlatformPlansRoute,
   PlatformReportsRoute: PlatformReportsRoute,

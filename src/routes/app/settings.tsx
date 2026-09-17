@@ -1218,8 +1218,8 @@ function SettingsPage() {
           >
             <h2 className="font-medium">Public URL</h2>
             <p className="text-sm text-muted">
-              HTTPS origin of this console. Daraja and Kopo Kopo POST here after STK, and operator
-              sign-in on this custom domain is allowed.
+              Request a custom hostname for this ISP. It is used for bootstrap, portal, and payment callbacks only after
+              platform DNS and HTTPS verification. Until then the central application domain is used.
             </p>
             <Field label="Public site URL">
               <Input

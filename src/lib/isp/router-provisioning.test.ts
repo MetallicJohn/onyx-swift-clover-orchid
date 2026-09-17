@@ -129,6 +129,9 @@ test("issue, fetch bootstrap over token, revoke, and isolate tenants", async () 
     assert.match(issued.token, /^prv_/);
     assert.match(issued.bootstrap, /check-certificate=yes/);
     assert.doesNotMatch(issued.bootstrap, /check-certificate=no/);
+    assert.doesNotMatch(issued.bootstrap, /YOUR-PUBLIC-URL/);
+    assert.doesNotMatch(issued.bootstrap, /\{\{BOOTSTRAP_URL\}\}/);
+    assert.match(issued.bootstrap, /https:\/\/ops\.imani\.ke\/api\/vpn\/routers\//);
     const [stored] = await sql<{ provision_token_hash: string; provisioning_status: string }>`
       select provision_token_hash, provisioning_status from routers where id = ${"rtr_ten_pv"}`;
     assert.equal(stored?.provision_token_hash, hashProvisionToken(issued.token));

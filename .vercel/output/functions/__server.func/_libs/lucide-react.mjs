@@ -522,6 +522,28 @@ var Funnel = createLucideIcon("funnel", [["path", {
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var Globe = createLucideIcon("globe", [
+	["circle", {
+		cx: "12",
+		cy: "12",
+		r: "10",
+		key: "1mglay"
+	}],
+	["path", {
+		d: "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20",
+		key: "13o1zl"
+	}],
+	["path", {
+		d: "M2 12h20",
+		key: "9i4pu4"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var Handshake = createLucideIcon("handshake", [
 	["path", {
 		d: "m11 17 2 2a1 1 0 1 0 3-3",
@@ -936,6 +958,30 @@ var Receipt = createLucideIcon("receipt", [
 	["path", {
 		d: "M12 17.5v-11",
 		key: "1jc1ny"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var RefreshCw = createLucideIcon("refresh-cw", [
+	["path", {
+		d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8",
+		key: "v9h5vc"
+	}],
+	["path", {
+		d: "M21 3v5h-5",
+		key: "1q7to0"
+	}],
+	["path", {
+		d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16",
+		key: "3uifl3"
+	}],
+	["path", {
+		d: "M8 16H3v5",
+		key: "1cv678"
 	}]
 ]);
 /**
@@ -1421,4 +1467,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { ArrowRight as $, Mail as A, Eye as B, Printer as C, Monitor as D, Moon as E, Import as F, ChevronLeft as G, Download as H, Headset as I, Cable as J, Check as K, Handshake as L, List as M, LayoutGrid as N, Menu as O, LayoutDashboard as P, ArrowUpRight as Q, Funnel as R, Radio as S, Network as T, CreditCard as U, Ellipsis as V, ChevronRight as W, Boxes as X, Building2 as Y, Bell as Z, Settings as _, Users as a, Activity as at, Router as b, Upload as c, Ticket as d, ArrowLeft as et, Sun as f, Share2 as g, Shield as h, Wallet as i, ArchiveRestore as it, LogOut as j, MapPinned as k, TriangleAlert as l, Smartphone as m, Wrench as n, ArrowDownRight as nt, User as o, Sparkles as p, ChartColumn as q, Wifi as r, Archive as rt, UserPlus as s, X as t, ArrowDown as tt, Trash2 as u, Server as v, Plus as w, Receipt as x, Search as y, FileText as z };
+export { Bell as $, MapPinned as A, Funnel as B, Radio as C, Moon as D, Network as E, LayoutDashboard as F, CreditCard as G, Eye as H, Import as I, Check as J, ChevronRight as K, Headset as L, LogOut as M, List as N, Monitor as O, LayoutGrid as P, Boxes as Q, Handshake as R, Receipt as S, Plus as T, Ellipsis as U, FileText as V, Download as W, Cable as X, ChartColumn as Y, Building2 as Z, Settings as _, Users as a, Archive as at, Router as b, Upload as c, Ticket as d, ArrowUpRight as et, Sun as f, Share2 as g, Shield as h, Wallet as i, ArrowDownRight as it, Mail as j, Menu as k, TriangleAlert as l, Smartphone as m, Wrench as n, ArrowLeft as nt, User as o, ArchiveRestore as ot, Sparkles as p, ChevronLeft as q, Wifi as r, ArrowDown as rt, UserPlus as s, Activity as st, X as t, ArrowRight as tt, Trash2 as u, Server as v, Printer as w, RefreshCw as x, Search as y, Globe as z };

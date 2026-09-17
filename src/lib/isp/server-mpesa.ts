@@ -115,7 +115,24 @@ export const savePublicBase = createServerFn({ method: "POST" })
     assertPermission(role, "settings.manage");
     const url = data.public_base_url.trim().replace(/\/$/, "");
     if (url && !/^https:\/\//i.test(url)) throw new Error("Public site URL must start with https://");
-    await sql`update tenants set public_base_url = ${url} where id = ${tenantId}`;
+    if (url) {
+      const { assertUsableHttpsOrigin } = await import("./domain-format");
+      const { productionDomainContext } = await import("./domain-resolve");
+      assertUsableHttpsOrigin(url, {
+        allowLoopback: !productionDomainContext(),
+        requireHttps: true,
+      });
+      const { setTenantCustomDomain } = await import("./domain-manage");
+      await setTenantCustomDomain(sql, { tenantId, hostname: url, actorUserId: context.userId });
+    }
+    const { loadPlatformDomainConfig, centralOriginFromConfig, invalidateDomainCache } = await import("./domain-resolve");
+    const cfg = await loadPlatformDomainConfig(sql);
+    const central = centralOriginFromConfig(cfg);
+    if (!central && url) {
+      await sql`update tenants set public_base_url = ${url} where id = ${tenantId}`;
+    }
+    invalidateDomainCache(tenantId);
     clearTenantOriginCache();
-    return tenantPayUrls(sql, tenantId);
+    const urls = await tenantPayUrls(sql, tenantId);
+    return { ...urls, pending_verification: Boolean(url && central) };
   });

@@ -15,10 +15,34 @@ export function genieDeviceId(oui: string, productClass: string, serial: string)
   return `${o}-${pc}-${sn}`;
 }
 
-export function nbiTaskBody(kind: string, payload: { ssid?: string } = {}) {
+export function nbiTaskBody(
+  kind: string,
+  payload: {
+    ssid?: string;
+    objectName?: string;
+    parameterValues?: Array<[string, string, string]>;
+    parameterNames?: string[];
+    file?: string;
+    fileType?: string;
+  } = {},
+) {
   if (kind === "reboot") return { name: "reboot" };
-  if (kind === "refresh") {
-    return { name: "refreshObject", objectName: "InternetGatewayDevice.DeviceInfo." };
+  if (kind === "factoryReset") return { name: "factoryReset" };
+  if (kind === "requestInform" || kind === "refresh") {
+    return { name: "refreshObject", objectName: payload.objectName || "InternetGatewayDevice.DeviceInfo." };
+  }
+  if (kind === "getParameters" || kind === "getOptical") {
+    const names = payload.parameterNames || [];
+    if (!names.length) throw new Error("Parameter names are required");
+    return { name: "getParameterValues", parameterNames: names };
+  }
+  if (kind === "setWifi") {
+    const values = payload.parameterValues || [];
+    if (!values.length) throw new Error("Wi-Fi parameters are required");
+    return { name: "setParameterValues", parameterValues: values };
+  }
+  if (kind === "firmwareUpgrade") {
+    throw new Error("Firmware file server is not configured");
   }
   if (kind === "setSsid") {
     const ssid = (payload.ssid || "").trim();
@@ -65,7 +89,7 @@ export function lastInformFromGenieDevice(doc: Record<string, unknown>) {
   return "";
 }
 
-function nestedParam(doc: Record<string, unknown>, path: string) {
+export function nestedParam(doc: Record<string, unknown>, path: string) {
   const parts = path.split(".");
   let cur: unknown = doc;
   for (const part of parts) {
@@ -177,4 +201,114 @@ export async function nbiPostTask(
   const doc = r.json && typeof r.json === "object" ? (r.json as Record<string, unknown>) : {};
   const taskId = String(doc._id || doc.id || "");
   return { ok: r.ok, status: r.status, taskId, json: doc, text: r.text };
+}
+
+export function manufacturerFromGenieDevice(doc: Record<string, unknown>) {
+  const did = doc._deviceId as Record<string, unknown> | undefined;
+  if (did?._Manufacturer) return String(did._Manufacturer);
+  return (
+    nestedParam(doc, "InternetGatewayDevice.DeviceInfo.Manufacturer") ||
+    nestedParam(doc, "Device.DeviceInfo.Manufacturer") ||
+    ""
+  );
+}
+
+export function modelFromGenieDevice(doc: Record<string, unknown>) {
+  return (
+    nestedParam(doc, "InternetGatewayDevice.DeviceInfo.ModelName") ||
+    nestedParam(doc, "Device.DeviceInfo.ModelName") ||
+    productClassFromGenieDevice(doc)
+  );
+}
+
+export function macFromGenieDevice(doc: Record<string, unknown>) {
+  return (
+    nestedParam(doc, "InternetGatewayDevice.LANDevice.1.LANEthernetInterfaceConfig.1.MACAddress") ||
+    nestedParam(doc, "Device.Ethernet.Interface.1.MACAddress") ||
+    nestedParam(doc, "Device.WiFi.SSID.1.MACAddress") ||
+    ""
+  );
+}
+
+export function ipFromGenieDevice(doc: Record<string, unknown>) {
+  return (
+    nestedParam(doc, "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.ExternalIPAddress") ||
+    nestedParam(doc, "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress") ||
+    nestedParam(doc, "Device.IP.Interface.1.IPv4Address.1.IPAddress") ||
+    nestedParam(doc, "Device.PPP.Interface.1.IPCP.LocalIPAddress") ||
+    ""
+  );
+}
+
+export function softwareFromGenieDevice(doc: Record<string, unknown>) {
+  return (
+    nestedParam(doc, "InternetGatewayDevice.DeviceInfo.SoftwareVersion") ||
+    nestedParam(doc, "Device.DeviceInfo.SoftwareVersion") ||
+    ""
+  );
+}
+
+export function hardwareFromGenieDevice(doc: Record<string, unknown>) {
+  return (
+    nestedParam(doc, "InternetGatewayDevice.DeviceInfo.HardwareVersion") ||
+    nestedParam(doc, "Device.DeviceInfo.HardwareVersion") ||
+    ""
+  );
+}
+
+export function uptimeFromGenieDevice(doc: Record<string, unknown>) {
+  return (
+    nestedParam(doc, "InternetGatewayDevice.DeviceInfo.UpTime") ||
+    nestedParam(doc, "Device.DeviceInfo.UpTime") ||
+    ""
+  );
+}
+
+export function treeFromGenieDevice(doc: Record<string, unknown>): "InternetGatewayDevice" | "Device" {
+  if (doc.InternetGatewayDevice) return "InternetGatewayDevice";
+  if (doc.Device) return "Device";
+  const id = String(doc._id || "");
+  if (id.includes("Device")) return "Device";
+  return "InternetGatewayDevice";
+}
+
+export function factsFromGenieDevice(doc: Record<string, unknown>) {
+  const serial = serialFromGenieDevice(doc).trim();
+  const product = productClassFromGenieDevice(doc);
+  const oui = ouiFromGenieDevice(doc);
+  const manufacturer = manufacturerFromGenieDevice(doc);
+  const model = modelFromGenieDevice(doc);
+  const last = lastInformFromGenieDevice(doc);
+  return {
+    serial,
+    product_class: product,
+    manufacturer_oui: oui,
+    manufacturer,
+    model,
+    mac_address: macFromGenieDevice(doc),
+    ip_address: ipFromGenieDevice(doc),
+    hardware_version: hardwareFromGenieDevice(doc),
+    software_version: softwareFromGenieDevice(doc),
+    uptime: uptimeFromGenieDevice(doc),
+    acs_device_id: String(doc._id || ""),
+    last_inform: last,
+    status: informStatus(last),
+    tree: treeFromGenieDevice(doc),
+    acs_username: acsUsernameFromGenieDevice(doc),
+  };
+}
+
+export async function nbiGetDevice(cfg: AcsNbiConfig, deviceId: string, fetchImpl: NbiFetch = fetch) {
+  const query = encodeURIComponent(JSON.stringify({ _id: deviceId }));
+  const r = await nbiRequest(cfg, `/devices/?query=${query}`, { method: "GET" }, fetchImpl);
+  if (!r.ok) throw new Error(`GenieACS NBI get failed (${r.status})`);
+  const rows = Array.isArray(r.json) ? (r.json as Record<string, unknown>[]) : [];
+  return rows[0] ?? null;
+}
+
+export async function nbiListDeviceTasks(cfg: AcsNbiConfig, deviceId: string, fetchImpl: NbiFetch = fetch) {
+  const query = encodeURIComponent(JSON.stringify({ device: deviceId }));
+  const r = await nbiRequest(cfg, `/tasks/?query=${query}`, { method: "GET" }, fetchImpl);
+  if (!r.ok) return [];
+  return Array.isArray(r.json) ? (r.json as Record<string, unknown>[]) : [];
 }

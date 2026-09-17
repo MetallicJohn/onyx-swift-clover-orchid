@@ -22,3 +22,7 @@ GenieACS is a **separate process** (CWMP :7547, NBI :7557, FS :7567, UI on `acs.
 - STUN / XMPP connection request for CGNAT
 
 Set NBI URL in **GenieACS** (default `http://genieacs:7557` on the VPS compose network, or `GENIEACS_NBI_URL` on a remote NBI). Then **Sync from ACS**. Moving GenieACS+Mongo later is an env change: [distributed.md](distributed.md).
+
+## Device management
+
+The **GenieACS Devices** tab lists CPE/ONU inventory from `cpe_devices` (synced from NBI when configured). Staff can add a device from GenieACS, enter one manually as unconfirmed, or wait for the next Inform. Assignment is one device to one billed service. Writes go through `acs_tasks` and are not marked successful until the device reports the change. Optical values come from the vendor parameter profile; missing paths are shown as not exposed. Firmware upgrade is not offered until a file server is configured.

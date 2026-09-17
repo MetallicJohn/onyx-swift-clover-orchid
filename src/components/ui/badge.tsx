@@ -58,6 +58,11 @@ export function statusTone(status: string) {
       "business_credit",
       "active_on_credit",
       "overdue_within_limit",
+      "dns_verified",
+      "https_verified",
+      "https_required",
+      "dns_required",
+      "verified",
     ].includes(s)
   )
     return "warn";
@@ -78,6 +83,12 @@ export function statusTone(status: string) {
       "credit_limit",
       "limit_reached",
       "suspended_limit",
+      "dns_failed",
+      "https_failed",
+      "cert_expired",
+      "conflict",
+      "disabled",
+      "missing",
     ].includes(s)
   )
     return "danger";

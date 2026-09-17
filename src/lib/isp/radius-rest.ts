@@ -374,7 +374,7 @@ export async function handleRadiusHttp(
     const pack = await bootstrapRadius(sql, tenantId, {
       slug: resolved.tenant.slug,
       apiKey: presented,
-      publicBase: resolved.tenant.public_base_url,
+      publicBase: await (await import("./domain-resolve.ts")).tenantPublicOriginOrEmpty(sql, tenantId, "public_api"),
     });
     return { status: 200, json: pack };
   }

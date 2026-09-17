@@ -42,7 +42,18 @@ export async function resolvePortalNetwork(
     if (!host) return null;
     const rows = await sql<{ slug: string; name: string; public_base_url: string }>`
       select slug, name, coalesce(public_base_url, '') as public_base_url from tenants`;
-    const slug = slugFromPortalHost(host, rows);
+    const extras = await sql<{ slug: string; hostname: string }>`
+      select t.slug, d.hostname from tenant_domains d
+      join tenants t on t.id = d.tenant_id
+      where d.is_active = true and d.is_verified = true and d.domain_status = 'active'`;
+    const bySlug = new Map<string, string[]>();
+    for (const e of extras) {
+      const list = bySlug.get(e.slug) || [];
+      list.push(e.hostname);
+      bySlug.set(e.slug, list);
+    }
+    const hinted = rows.map((r) => ({ ...r, hostnames: bySlug.get(r.slug) || [] }));
+    const slug = slugFromPortalHost(host, hinted);
     if (!slug) return null;
     const ten = rows.find((r) => r.slug === slug);
     return ten ? { slug: ten.slug, name: ten.name, source: "host" } : null;

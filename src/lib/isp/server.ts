@@ -1015,12 +1015,18 @@ export const addRouter = createServerFn({ method: "POST" })
       actorUserId: context.userId,
       detail: { name },
     });
-    const issued = await issueProvisioningToken(sql, {
-      tenantId: workspace.tenantId,
-      routerId: id,
-      actorUserId: context.userId,
-    });
-    const [ten] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${workspace.tenantId}`;
+    const { tenantPublicOriginOrEmpty, previewTenantDomain } = await import("./domain-resolve");
+    const preview = await previewTenantDomain(sql, workspace.tenantId, "router_bootstrap");
+    let issued: Awaited<ReturnType<typeof issueProvisioningToken>> | null = null;
+    let domainError = preview.ok ? "" : preview.error;
+    if (preview.ok) {
+      issued = await issueProvisioningToken(sql, {
+        tenantId: workspace.tenantId,
+        routerId: id,
+        actorUserId: context.userId,
+      });
+    }
+    const base = preview.origin || (await tenantPublicOriginOrEmpty(sql, workspace.tenantId, "public_api"));
     const script = agentScript(
       await wgEnrollContext(sql, workspace.tenantId, {
         id,
@@ -1030,17 +1036,21 @@ export const addRouter = createServerFn({ method: "POST" })
         wg_public: enroll.wg_public,
         wg_private_ref: enroll.wg_private_sealed,
         wg_address: wgAddress,
-        pullUrl: agentPullUrl(ten?.public_base_url || "", enroll.token),
+        pullUrl: agentPullUrl(base, enroll.token),
       }),
     );
     return {
       id,
       script,
       token: enroll.token,
-      bootstrap: issued.bootstrap,
-      provision_token: issued.token,
-      provision_expires_at: issued.expires_at,
-      router: issued.router,
+      bootstrap: issued?.bootstrap || "",
+      provision_token: issued?.token || "",
+      provision_expires_at: issued?.expires_at || "",
+      domain_error: domainError,
+      domain_source: issued?.domain_source_label || preview.source_label,
+      public_url: issued?.public_url || preview.origin,
+      fetch_url: issued?.fetch_url || "",
+      router: issued?.router,
     };
   });
 

@@ -1,5 +1,6 @@
 import { nid } from "../utils.ts";
 import {
+  factsFromGenieDevice,
   genieDeviceId,
   informStatus,
   lastInformFromGenieDevice,
@@ -15,6 +16,7 @@ import {
   type AcsNbiConfig,
   type NbiFetch,
 } from "./acs-nbi.ts";
+import { inferDeviceType } from "./acs-device-format.ts";
 import { hint, open, seal } from "./secrets.ts";
 
 type Sql = {
@@ -179,21 +181,37 @@ export async function syncAcsDevices(sql: Sql, tenantId: string, fetchImpl: NbiF
         continue;
       }
     }
-    const product = productClassFromGenieDevice(doc);
-    const oui = ouiFromGenieDevice(doc);
-    const acsId = String(doc._id || genieDeviceId(oui, product, serial));
-    const last = lastInformFromGenieDevice(doc);
-    const status = informStatus(last);
-    const raw = JSON.stringify({ _id: acsId, _lastInform: last, acs_username: reportedUser });
+    const facts = factsFromGenieDevice(doc);
+    const product = facts.product_class || productClassFromGenieDevice(doc);
+    const oui = facts.manufacturer_oui || ouiFromGenieDevice(doc);
+    const acsId = facts.acs_device_id || String(doc._id || genieDeviceId(oui, product, serial));
+    const last = facts.last_inform || lastInformFromGenieDevice(doc);
+    const status = facts.status || informStatus(last);
+    const raw = JSON.stringify({
+      _id: acsId,
+      _lastInform: last,
+      acs_username: reportedUser,
+      manufacturer: facts.manufacturer,
+      model: facts.model,
+      mac: facts.mac_address,
+      ip: facts.ip_address,
+    });
+    const dtype = inferDeviceType(product, facts.manufacturer);
     if (mine) {
       await sql`update cpe_devices set product_class = ${product}, manufacturer_oui = ${oui},
         acs_device_id = ${acsId}, status = ${status}, last_inform = ${last || null}::timestamptz,
-        last_inform_raw = ${raw} where id = ${mine.id}`;
+        last_inform_raw = ${raw}, manufacturer = ${facts.manufacturer}, model = ${facts.model},
+        mac_address = ${facts.mac_address}, ip_address = ${facts.ip_address},
+        hardware_version = ${facts.hardware_version}, software_version = ${facts.software_version},
+        device_type = ${dtype}, source = 'nbi', vendor_profile = ${facts.tree}, last_scan_at = now()
+        where id = ${mine.id}`;
     } else {
       await sql`insert into cpe_devices
-        (id, tenant_id, serial, product_class, manufacturer_oui, acs_device_id, status, last_inform, last_inform_raw)
+        (id, tenant_id, serial, product_class, manufacturer_oui, acs_device_id, status, last_inform, last_inform_raw,
+         manufacturer, model, mac_address, ip_address, hardware_version, software_version, device_type, source, vendor_profile, last_scan_at)
         values (${nid("cpe")}, ${tenantId}, ${serial}, ${product}, ${oui}, ${acsId}, ${status},
-          ${last || null}::timestamptz, ${raw})`;
+          ${last || null}::timestamptz, ${raw}, ${facts.manufacturer}, ${facts.model}, ${facts.mac_address},
+          ${facts.ip_address}, ${facts.hardware_version}, ${facts.software_version}, ${dtype}, 'nbi', ${facts.tree}, now())`;
     }
     upserted += 1;
   }

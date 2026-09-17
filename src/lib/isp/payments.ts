@@ -109,7 +109,8 @@ export async function createStkIntent(
     : [];
   const [ten] = await sql<{ slug: string; public_base_url: string }>`
     select slug, public_base_url from tenants where id = ${opts.tenantId}`;
-  const origin = (ten?.public_base_url || "").replace(/\/$/, "");
+  const { tenantPublicOriginOrEmpty } = await import("./domain-resolve.ts");
+  const origin = (await tenantPublicOriginOrEmpty(sql, opts.tenantId, "payment_links")).replace(/\/$/, "");
   const callbackUrl = origin && ten?.slug ? `${origin}/api/webhooks/${opts.provider}/${ten.slug}` : "";
   let checkout = `ws_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
   let note = "queued";

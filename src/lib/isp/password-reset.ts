@@ -50,7 +50,13 @@ export async function requestOperatorReset(
     (id, audience, email, user_id, tenant_id, token_hash, expires_at)
     values (${nid("rst")}, 'operator', ${trimmed}, ${user.id}, ${mem?.tenant_id ?? null}, ${hashResetToken(raw)}, now() + interval '30 minutes')`;
 
-  const link = `${origin.replace(/\/$/, "")}/reset-password?token=${raw}`;
+  let publicOrigin = origin.replace(/\/$/, "");
+  if (mem?.tenant_id) {
+    const { tenantPublicOriginOrEmpty } = await import("./domain-resolve.ts");
+    const resolved = await tenantPublicOriginOrEmpty(sql, mem.tenant_id, "email_links");
+    if (resolved) publicOrigin = resolved;
+  }
+  const link = `${publicOrigin}/reset-password?token=${raw}`;
   let mailed = false;
   if (mem?.tenant_id) {
     const q = await queueEmail(

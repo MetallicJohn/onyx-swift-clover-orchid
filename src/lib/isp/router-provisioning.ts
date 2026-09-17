@@ -2,6 +2,14 @@ import { createHash, randomBytes } from "node:crypto";
 import { APP_NAME, ROS_BOOTSTRAP_FILE } from "../brand.ts";
 import { nid } from "../utils.ts";
 import { agentPullUrl, enqueueAgentCommand } from "./agent.ts";
+import {
+  MISSING_PUBLIC_DOMAIN,
+  assertUsableHttpsOrigin,
+  bootstrapScriptForbiddenReason,
+  bootstrapUrl,
+  containsPlaceholder,
+} from "./domain-format.ts";
+import { productionDomainContext, resolveTenantPublicDomain } from "./domain-resolve.ts";
 import { parseV4Cidr } from "./ipam.ts";
 import { routerReachability, validateRosScript } from "./mikrotik-ops.ts";
 import { applyRls } from "./rls.ts";
@@ -141,8 +149,14 @@ export function httpsPublicBase(base: string, requireHttps = true) {
 }
 
 export function bootstrapFetchUrl(base: string, token: string, requireHttps = true) {
-  const root = httpsPublicBase(base, requireHttps) || "https://YOUR-PUBLIC-URL";
-  return `${root}/api/vpn/routers/${encodeURIComponent(token)}/bootstrap.rsc`;
+  const root = httpsPublicBase(base, requireHttps);
+  if (!root || containsPlaceholder(root)) throw new Error(MISSING_PUBLIC_DOMAIN);
+  const production = productionDomainContext();
+  assertUsableHttpsOrigin(root, {
+    allowLoopback: !production && !requireHttps,
+    requireHttps,
+  });
+  return bootstrapUrl(root, token);
 }
 
 export function bootstrapPasteScript(opts: { url: string; identity?: string }) {
@@ -188,6 +202,10 @@ export function assertReleaseableScript(script: string) {
   if (/check-certificate\s*=\s*no/i.test(script)) {
     throw new Error("Generated script must not disable certificate validation");
   }
+  const forbidden = bootstrapScriptForbiddenReason(script, {
+    allowLoopback: !productionDomainContext(),
+  });
+  if (forbidden) throw new Error(forbidden);
   return issues;
 }
 
@@ -397,9 +415,8 @@ export async function deleteIpPool(sql: Sql, opts: { tenantId: string; poolId: s
 }
 
 async function publicBaseUrl(sql: Sql, tenantId: string) {
-  const [t] = await sql<{ public_base_url: string }>`
-    select public_base_url from tenants where id = ${tenantId}`;
-  return t?.public_base_url || "";
+  const { tenantPublicOriginOrEmpty } = await import("./domain-resolve.ts");
+  return tenantPublicOriginOrEmpty(sql, tenantId, "public_api");
 }
 
 export async function generateRouterConfig(
@@ -448,6 +465,9 @@ export async function issueProvisioningToken(
 ) {
   const settings = await ensureTenantProvisioning(sql, opts.tenantId);
   if (!settings.enabled) throw new Error("Router provisioning is disabled for this ISP");
+  const domain = await resolveTenantPublicDomain(sql, opts.tenantId, "router_bootstrap", {
+    requireHttps: settings.require_https,
+  });
   const router = await loadRouter(sql, opts.tenantId, opts.routerId);
   let token = generateProvisionToken();
   let hash = hashProvisionToken(token);
@@ -471,11 +491,15 @@ export async function issueProvisioningToken(
     routerId: router.id,
     event: "token_issued",
     actorUserId: opts.actorUserId,
-    detail: { hint: provisionTokenHint(token), expires_at: expires },
+    detail: {
+      hint: provisionTokenHint(token),
+      expires_at: expires,
+      domain_source: domain.source,
+      public_url: domain.origin,
+    },
   });
   const next = await loadRouter(sql, opts.tenantId, router.id);
-  const base = await publicBaseUrl(sql, opts.tenantId);
-  const url = bootstrapFetchUrl(base, token, settings.require_https);
+  const url = bootstrapFetchUrl(domain.origin, token, settings.require_https);
   const bootstrap = bootstrapPasteScript({ url, identity: next.identity || next.name });
   assertReleaseableScript(bootstrap);
   await generateRouterConfig(sql, opts.tenantId, next, "bootstrap", opts.actorUserId || "");
@@ -486,6 +510,12 @@ export async function issueProvisioningToken(
     ttl_hours: settings.token_ttl_hours,
     bootstrap,
     fetch_url: url,
+    domain_source: domain.source,
+    domain_source_label: domain.source_label,
+    public_url: domain.origin,
+    fallback_reason: domain.fallback_reason,
+    warning: domain.warning,
+    certificate_validation: true,
     router: toPublicRouter(await loadRouter(sql, opts.tenantId, router.id)),
   };
 }

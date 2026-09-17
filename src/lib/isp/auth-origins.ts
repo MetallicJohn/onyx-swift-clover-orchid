@@ -147,6 +147,13 @@ export function clearTenantOriginCache() {
 async function loadTenantPublicUrls(): Promise<string[]> {
   const { getSql } = await import("../db");
   const sql = await getSql();
+  try {
+    const { listActiveDomainOrigins } = await import("./domain-resolve");
+    const fromDomains = await listActiveDomainOrigins(sql);
+    if (fromDomains.length) return fromDomains;
+  } catch {
+    /* fall through to tenant public_base_url */
+  }
   const rows = await sql<{ public_base_url: string }>`
     select public_base_url from tenants where coalesce(public_base_url, '') <> ''`;
   return rows.map((r) => r.public_base_url);

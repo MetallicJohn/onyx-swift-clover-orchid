@@ -29,8 +29,8 @@ export const getRouterApi = createServerFn({ method: "GET" })
     }>`select id, name, identity, enroll_token, api_user, api_password, api_port, api_host, wg_address
        from routers where id = ${data.router_id} and tenant_id = ${tenantId}`;
     if (!r) throw new Error("Router not found");
-    const [t] = await sql<{ public_base_url: string }>`select public_base_url from tenants where id = ${tenantId}`;
-    const base = (t?.public_base_url || "").replace(/\/$/, "");
+    const { tenantPublicOriginOrEmpty } = await import("./domain-resolve");
+    const base = (await tenantPublicOriginOrEmpty(sql, tenantId, "public_api")).replace(/\/$/, "");
     return {
       id: r.id,
       name: r.name,

@@ -52,12 +52,14 @@ export const getVpsPublishGuide = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { sql, tenantId, role, tenantName } = await requireWs(context.userId);
     assertPermission(role, "settings.manage");
-    const [ten] = await sql<{ public_base_url: string; support_email: string; wg_endpoint_host: string }>`
-      select public_base_url, support_email, wg_endpoint_host from tenants where id = ${tenantId}`;
+    const [ten] = await sql<{ support_email: string; wg_endpoint_host: string }>`
+      select support_email, wg_endpoint_host from tenants where id = ${tenantId}`;
+    const { tenantPublicOriginOrEmpty } = await import("./domain-resolve");
+    const origin = await tenantPublicOriginOrEmpty(sql, tenantId, "public_api");
     return {
       tenantName,
       ...vpsPublishSteps({
-        domain: ten?.public_base_url || ten?.wg_endpoint_host || "",
+        domain: origin || ten?.wg_endpoint_host || "",
         email: ten?.support_email || "",
       }),
     };
