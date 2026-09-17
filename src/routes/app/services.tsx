@@ -17,6 +17,7 @@ import {
 } from "@/components/isp/service-desk-ui";
 import { TrafficDrawer } from "@/components/isp/traffic-drawer";
 import { OnboardWizard } from "@/components/isp/onboard-wizard";
+import { ReassignServiceDialog } from "@/components/isp/reassign-service-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
@@ -34,6 +35,7 @@ import {
 } from "@/lib/isp/server";
 import { deleteServiceFn, getServiceFn, reassignServiceFn, updateServiceFn } from "@/lib/isp/server-lifecycle";
 import { broadcastCustomersFn } from "@/lib/isp/server-tags";
+import { reassignInfoFromRow } from "@/lib/isp/reassign-format";
 import {
   EMPTY_SERVICE_FILTERS,
   selectedServicesCsv,
@@ -176,7 +178,7 @@ function ServicesPage() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [traffic, setTraffic] = useState<ServiceDeskRow | null>(null);
-  const [reassign, setReassign] = useState<{ id: string; to: string } | null>(null);
+  const [reassign, setReassign] = useState<ServiceDeskRow | null>(null);
   const [drop, setDrop] = useState<{ id: string; label: string; reason: string } | null>(null);
   const [pkgFor, setPkgFor] = useState<ServiceDeskRow | null>(null);
   const [pkgId, setPkgId] = useState("");
@@ -369,7 +371,7 @@ function ServicesPage() {
         void loadDesk(filters);
       });
     },
-    onReassign: (s) => setReassign({ id: s.id, to: customers.find((c) => c.id !== s.customer_id)?.id || "" }),
+    onReassign: (s) => setReassign(s),
     onDelete: (s) => setDrop({ id: s.id, label: `${s.customer_name} · ${s.package_name}`, reason: "" }),
   };
 
@@ -1022,57 +1024,29 @@ function ServicesPage() {
         serviceId={traffic?.id}
       />
 
-      <Dialog
+      <ReassignServiceDialog
         open={Boolean(reassign)}
         onOpenChange={(next) => {
           if (!next) setReassign(null);
         }}
-        title="Reassign service"
-        description="The line keeps its package, credentials, expiry, and history. Invoices and payments stay on the current customer."
-      >
-        {reassign ? (
-          <form
-            className="grid gap-3"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!reassign.to) return;
-              setBusy(true);
-              setActionError(null);
-              try {
-                await reassignServiceFn({ data: { id: reassign.id, customer_id: reassign.to, confirm: true } });
-                setReassign(null);
-                await loadDesk(filters);
-              } catch (err) {
-                setActionError(err instanceof Error ? err.message : "Could not reassign");
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            <Field label="Destination customer">
-              <Select value={reassign.to} onChange={(e) => setReassign({ ...reassign, to: e.target.value })} required>
-                <option value="">Select customer</option>
-                {customers
-                  .filter((c) => c.id !== rows.find((row) => row.id === reassign.id)?.customer_id)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-              </Select>
-            </Field>
-            {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={busy || !reassign.to}>
-                Confirm reassignment
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => setReassign(null)}>
-                Cancel
-              </Button>
-            </div>
-          </form>
-        ) : null}
-      </Dialog>
+        service={reassign ? reassignInfoFromRow(reassign) : null}
+        busy={busy}
+        error={actionError}
+        onSubmit={async (customerId, reason) => {
+          setBusy(true);
+          setActionError(null);
+          try {
+            await reassignServiceFn({ data: { id: reassign!.id, customer_id: customerId, confirm: true, reason } });
+            setReassign(null);
+            await loadDesk(filters);
+          } catch (err) {
+            setActionError(err instanceof Error ? err.message : "Could not reassign");
+            throw err;
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
 
       <Dialog
         open={Boolean(drop)}

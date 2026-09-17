@@ -5,6 +5,7 @@ import { ExpiryEditor, type ExpiryForm } from "@/components/isp/service-expiry-e
 import { PartialPaymentPanel } from "@/components/isp/partial-payment-panel";
 import { BusinessCreditPanel } from "@/components/isp/business-credit-panel";
 import { TrafficDrawer } from "@/components/isp/traffic-drawer";
+import { ReassignServiceDialog } from "@/components/isp/reassign-service-dialog";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -16,6 +17,7 @@ import { setServiceExpiryFn } from "@/lib/isp/server-expiry";
 import { disconnectService, rotateServiceSecret, setServiceStatus } from "@/lib/isp/server";
 import { changeServiceAccountNumberFn, getAccountNumberSettingsFn } from "@/lib/isp/server-account-numbers";
 import { deleteServiceFn, getServiceFn, reassignServiceFn, updateServiceFn } from "@/lib/isp/server-lifecycle";
+import { reassignInfoFromRow } from "@/lib/isp/reassign-format";
 import { effectiveAccessIso, expirySourceLabel, openExpiryForm } from "@/lib/isp/service-expiry-format";
 import { onboardingTypeLabel } from "@/lib/isp/onboard-import-format";
 import type { ServiceStatus } from "@/lib/isp/types";
@@ -36,7 +38,7 @@ function ServiceRecordPage() {
   const [trafficOpen, setTrafficOpen] = useState(false);
   const [expiry, setExpiry] = useState<ExpiryForm | null>(null);
   const [grace, setGrace] = useState<"grant" | "extend" | "revoke" | null>(null);
-  const [reassignTo, setReassignTo] = useState<string | null>(null);
+  const [reassignOpen, setReassignOpen] = useState(false);
   const [dropReason, setDropReason] = useState<string | null>(null);
   const [form, setForm] = useState({
     package_id: "",
@@ -155,7 +157,7 @@ function ServiceRecordPage() {
             </Button>
           ) : null}
           {canReassign ? (
-            <Button variant="secondary" onClick={() => setReassignTo(data.others[0]?.id || "")}>
+            <Button variant="secondary" onClick={() => setReassignOpen(true)}>
               Reassign
             </Button>
           ) : null}
@@ -488,47 +490,19 @@ function ServiceRecordPage() {
         ) : null}
       </Dialog>
 
-      <Dialog
-        open={reassignTo !== null}
-        onOpenChange={(next) => {
-          if (!next) setReassignTo(null);
-        }}
-        title="Reassign service"
-        description="The line keeps its package, credentials, expiry, and history. Invoices and payments stay on the current customer."
-      >
-        {reassignTo !== null ? (
-          <form
-            className="grid gap-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void run(async () => {
-                await reassignServiceFn({ data: { id: s.id, customer_id: reassignTo, confirm: true } });
-                setReassignTo(null);
-              }, "Service reassigned");
-            }}
-          >
-            <Field label="Destination customer">
-              <Select value={reassignTo} onChange={(e) => setReassignTo(e.target.value)} required>
-                <option value="">Select customer</option>
-                {data.others.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                    {o.account_number ? ` · ${o.account_number}` : ""}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={busy || !reassignTo}>
-                Confirm reassignment
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => setReassignTo(null)}>
-                Cancel
-              </Button>
-            </div>
-          </form>
-        ) : null}
-      </Dialog>
+      <ReassignServiceDialog
+        open={reassignOpen}
+        onOpenChange={setReassignOpen}
+        service={reassignInfoFromRow(s)}
+        busy={busy}
+        error={error}
+        onSubmit={(customerId, reason) =>
+          run(async () => {
+            await reassignServiceFn({ data: { id: s.id, customer_id: customerId, confirm: true, reason } });
+            setReassignOpen(false);
+          }, "Service reassigned")
+        }
+      />
 
       <Dialog
         open={dropReason !== null}

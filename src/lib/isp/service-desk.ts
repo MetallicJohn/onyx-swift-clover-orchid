@@ -276,6 +276,7 @@ type CoreRow = {
   customer_phone: string;
   customer_email: string;
   account_number: string;
+  customer_account_number?: string;
   location: string;
   package_id: string;
   package_name: string;

@@ -91,6 +91,8 @@ test("customer care and network staff can delete or reassign services; finance c
   assert.equal(hasPermission("finance", "services.delete"), false);
   assert.equal(hasPermission("finance", "services.reassign"), false);
   assert.equal(hasPermission("technician", "services.delete"), false);
+  assert.equal(hasPermission("technician", "services.reassign"), false);
+  assert.equal(hasPermission("support", "services.reassign"), false);
   assert.equal(hasPermission("finance", "traffic.view"), true);
   assert.throws(() => assertPermission("finance", "services.delete"), /Forbidden/);
   const life = readFileSync(new URL("./server-lifecycle.ts", import.meta.url), "utf8");

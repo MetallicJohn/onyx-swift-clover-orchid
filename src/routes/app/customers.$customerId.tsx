@@ -3,6 +3,7 @@ import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 import { TagList, TagPicker } from "@/components/isp/tag-picker";
 import { TrafficDrawer } from "@/components/isp/traffic-drawer";
+import { ReassignServiceDialog } from "@/components/isp/reassign-service-dialog";
 import { ExpiryEditor, type ExpiryForm } from "@/components/isp/service-expiry-editor";
 import { OnboardWizard } from "@/components/isp/onboard-wizard";
 import { PartialPaymentPanel } from "@/components/isp/partial-payment-panel";
@@ -38,6 +39,7 @@ import {
   getCustomerFn,
   reassignServiceFn,
 } from "@/lib/isp/server-lifecycle";
+import { reassignInfoFromRow } from "@/lib/isp/reassign-format";
 import { effectiveAccessIso, expirySourceLabel, openExpiryForm } from "@/lib/isp/service-expiry-format";
 import type { ServiceRow, ServiceStatus } from "@/lib/isp/types";
 import { cn, kes } from "@/lib/utils";
@@ -86,7 +88,18 @@ function CustomerRecordPage() {
   const [provisionOpen, setProvisionOpen] = useState(search.action === "add-service");
   const [expiry, setExpiry] = useState<ExpiryForm | null>(null);
   const [grace, setGrace] = useState<{ id: string; mode: GraceMode } | null>(null);
-  const [reassign, setReassign] = useState<{ id: string; to: string } | null>(null);
+  const [reassign, setReassign] = useState<{
+    id: string;
+    customer_id: string;
+    customer_name: string;
+    customer_phone?: string;
+    customer_account_number?: string;
+    account_number?: string;
+    package_name: string;
+    access_method: string;
+    status: string;
+    period_end?: string | null;
+  } | null>(null);
   const [drop, setDrop] = useState<{ id: string; label: string; reason: string } | null>(null);
   const [portalPass, setPortalPass] = useState("");
   const [allowManual, setAllowManual] = useState(false);
@@ -438,7 +451,22 @@ function CustomerRecordPage() {
                 setExpiry(openExpiryForm(s));
               }}
               onGrace={(id, mode) => setGrace({ id, mode })}
-              onReassign={(id) => setReassign({ id, to: data.others[0]?.id || "" })}
+              onReassign={(id) => {
+                const row = data.services.find((s) => s.id === id);
+                if (!row) return;
+                setReassign({
+                  id: row.id,
+                  customer_id: row.customer_id,
+                  customer_name: c.name,
+                  customer_phone: c.phone,
+                  customer_account_number: c.account_number,
+                  account_number: row.account_number,
+                  package_name: row.package_name,
+                  access_method: row.access_method,
+                  status: row.status,
+                  period_end: row.period_end,
+                });
+              }}
               onDelete={(s) =>
                 setDrop({
                   id: s.id,
@@ -553,49 +581,21 @@ function CustomerRecordPage() {
         ) : null}
       </Dialog>
 
-      <Dialog
+      <ReassignServiceDialog
         open={Boolean(reassign)}
         onOpenChange={(next) => {
           if (!next) setReassign(null);
         }}
-        title="Reassign service"
-        description="The line keeps its package, credentials, expiry, and history. Invoices and payments stay on this customer."
-      >
-        {reassign ? (
-          <form
-            className="grid gap-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!reassign.to) return;
-              void run(async () => {
-                await reassignServiceFn({ data: { id: reassign.id, customer_id: reassign.to, confirm: true } });
-                setReassign(null);
-              }, "Service reassigned");
-            }}
-          >
-            <Field label="Destination customer">
-              <Select value={reassign.to} onChange={(e) => setReassign({ ...reassign, to: e.target.value })} required>
-                <option value="">Select customer</option>
-                {data.others.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                    {o.account_number ? ` · ${o.account_number}` : ""}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <p className="text-sm text-muted">Only customers in this ISP are listed. Cross-tenant moves are blocked.</p>
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={busy || !reassign.to}>
-                Confirm reassignment
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => setReassign(null)}>
-                Cancel
-              </Button>
-            </div>
-          </form>
-        ) : null}
-      </Dialog>
+        service={reassign ? reassignInfoFromRow(reassign) : null}
+        busy={busy}
+        error={error}
+        onSubmit={(customerId, reason) =>
+          run(async () => {
+            await reassignServiceFn({ data: { id: reassign!.id, customer_id: customerId, confirm: true, reason } });
+            setReassign(null);
+          }, "Service reassigned")
+        }
+      />
 
       <Dialog
         open={Boolean(drop)}

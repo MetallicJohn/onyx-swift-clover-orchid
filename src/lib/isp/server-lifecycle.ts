@@ -10,6 +10,7 @@ import {
   loadCustomerRecord,
   loadServiceRecord,
   reassignService,
+  searchReassignCustomers,
   updateService,
 } from "./customer-lifecycle";
 import { assertPermission, hasPermission } from "./rbac";
@@ -68,16 +69,31 @@ export const deleteServiceFn = createServerFn({ method: "POST" })
     return { ...out, reason };
   });
 
+export const searchReassignCustomersFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .validator((d: { q: string; excludeCustomerId?: string; limit?: number }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWorkspace(context.userId);
+    if (!hasPermission(role, "services.reassign") && !hasPermission(role, "services.manage") && !hasPermission(role, "customers.read")) {
+      throw new Error("Forbidden");
+    }
+    const customers = await searchReassignCustomers(sql, tenantId, data.q || "", {
+      excludeCustomerId: data.excludeCustomerId,
+      limit: data.limit,
+    });
+    return { customers };
+  });
+
 export const reassignServiceFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { id: string; customer_id: string; confirm?: boolean }) => d)
+  .validator((d: { id: string; customer_id: string; confirm?: boolean; reason?: string }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWorkspace(context.userId);
     if (!hasPermission(role, "services.reassign") && !hasPermission(role, "services.manage")) {
       throw new Error("Forbidden");
     }
     if (!data.confirm) throw new Error("Confirm moving this service");
-    const out = await reassignService(sql, tenantId, data.id, data.customer_id);
+    const out = await reassignService(sql, tenantId, data.id, data.customer_id, { reason: data.reason });
     await writeAudit(
       sql,
       tenantId,
@@ -86,8 +102,13 @@ export const reassignServiceFn = createServerFn({ method: "POST" })
       "service",
       data.id,
       JSON.stringify({
+        service_id: out.id,
+        service_account_number: out.service_account,
         from: out.from,
+        from_name: out.from_name,
         to: out.to,
+        to_name: out.to_name,
+        reason: out.reason,
         trigger_billing: false,
         send_customer_notifications: false,
       }),

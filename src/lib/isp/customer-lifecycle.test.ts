@@ -7,6 +7,7 @@ import {
   listAssignedServices,
   loadCustomerRecord,
   reassignService,
+  searchReassignCustomers,
   updateService,
 } from "./customer-lifecycle.ts";
 import { hasPermission } from "./rbac.ts";
@@ -200,6 +201,7 @@ test("RBAC maps view/delete/reassign/traffic onto existing roles", () => {
   assert.equal(hasPermission("finance", "services.delete"), false);
   assert.equal(hasPermission("finance", "traffic.view"), true);
   assert.equal(hasPermission("technician", "customers.manage"), false);
+  assert.equal(hasPermission("technician", "services.reassign"), false);
   assert.equal(hasPermission("technician", "traffic.view"), true);
   assert.equal(hasPermission("support", "customers.manage"), false);
 });
@@ -222,6 +224,107 @@ test("confirmed customer delete with leftover services tears them down", async (
     await bypass();
     const [stillOther] = await sql<{ n: number }>`select count(*)::int as n from services where id = 'svc_b'`;
     assert.equal(stillOther?.n, 1);
+  } finally {
+    await close();
+  }
+});
+
+test("destination search is case-insensitive, tenant-scoped, and skips the current customer", async () => {
+  const { sql, bypass, asRole, close } = await openTestDb();
+  try {
+    await bypass();
+    await seed(sql);
+    await sql`update customers set account_number = 'CUST-A1', email = 'amina@example.com', address = 'Kasarani' where id = 'cus_a1'`;
+    await sql`update customers set account_number = 'CUST-A2', email = 'brian@example.com' where id = 'cus_a2'`;
+    await sql`update customers set account_number = 'CUST-B1' where id = 'cus_b1'`;
+    await sql`update services set account_number = 'SVC-KEEP' where id = 'svc_keep'`;
+    await asRole("ten_a");
+    const byName = await searchReassignCustomers(sql, "ten_a", "AMINA", { excludeCustomerId: "cus_a2" });
+    assert.equal(byName.length, 1);
+    assert.equal(byName[0]?.id, "cus_a1");
+    const byAccount = await searchReassignCustomers(sql, "ten_a", "cust-a2");
+    assert.ok(byAccount.some((c) => c.id === "cus_a2"));
+    const byPhone = await searchReassignCustomers(sql, "ten_a", "0712001002");
+    assert.ok(byPhone.some((c) => c.id === "cus_a2"));
+    const byLast9 = await searchReassignCustomers(sql, "ten_a", "254712001002");
+    assert.ok(byLast9.some((c) => c.id === "cus_a2"));
+    const byEmail = await searchReassignCustomers(sql, "ten_a", "amina@example.com");
+    assert.ok(byEmail.some((c) => c.id === "cus_a1"));
+    const byService = await searchReassignCustomers(sql, "ten_a", "SVC-KEEP");
+    assert.ok(byService.some((c) => c.id === "cus_a1"));
+    assert.equal(byName[0]?.active_services, 2);
+    const excluded = await searchReassignCustomers(sql, "ten_a", "amina", { excludeCustomerId: "cus_a1" });
+    assert.ok(excluded.every((c) => c.id !== "cus_a1"));
+    assert.equal(await searchReassignCustomers(sql, "ten_a", "a").then((r) => r.length), 0);
+    await sql`update customers set status = 'inactive' where id = 'cus_a2'`;
+    const inactive = await searchReassignCustomers(sql, "ten_a", "brian");
+    assert.ok(inactive.every((c) => c.id !== "cus_a2"));
+    await sql`update customers set status = 'active', deleted_at = now() where id = 'cus_a2'`;
+    const live = await searchReassignCustomers(sql, "ten_a", "brian");
+    assert.ok(live.every((c) => c.id !== "cus_a2"));
+    await asRole("ten_b");
+    const other = await searchReassignCustomers(sql, "ten_b", "amina");
+    assert.equal(other.length, 0);
+  } finally {
+    await close();
+  }
+});
+
+test("reassignment preserves credentials, expiry, status, and billing history", async () => {
+  const { sql, bypass, asRole, close } = await openTestDb();
+  try {
+    await bypass();
+    await seed(sql);
+    await sql`update services set period_end = '2026-10-30T20:59:59.999+03:00', account_number = 'SVC-KEEP', status = 'active'
+      where id = 'svc_keep'`;
+    await sql`insert into invoices (id, tenant_id, customer_id, service_id, number, amount_kes, status, due_date)
+      values ('inv_keep', 'ten_a', 'cus_a1', 'svc_keep', 'INV-KEEP', 2500, 'issued', '2026-10-01')`;
+    await sql`insert into payments (id, tenant_id, customer_id, invoice_id, provider, amount_kes, reference, status)
+      values ('pay_keep', 'ten_a', 'cus_a1', 'inv_keep', 'mpesa', 2500, 'TX-KEEP', 'confirmed')`;
+    await sql`insert into notification_logs (id, tenant_id, customer_id, event_code, channel, entity_id, subject, body, destination, status)
+      values ('ntf_keep', 'ten_a', 'cus_a1', 'service.created.active', 'sms', 'svc_keep', 'Hi', 'Hi', '0712001001', 'sent')`;
+    await asRole("ten_a");
+    const first = await reassignService(sql, "ten_a", "svc_keep", "cus_a2", { reason: "Moved site" });
+    assert.equal(first.from, "cus_a1");
+    assert.equal(first.to, "cus_a2");
+    assert.equal(first.moved, true);
+    assert.equal(first.username, "amina");
+    assert.equal(first.service_account, "SVC-KEEP");
+    assert.equal(first.reason, "Moved site");
+    const again = await reassignService(sql, "ten_a", "svc_keep", "cus_a2");
+    assert.equal(again.moved, false);
+    const [svc] = await sql<{
+      customer_id: string;
+      username: string | null;
+      status: string;
+      account_number: string;
+      period_end: string | null;
+      package_id: string;
+    }>`select customer_id, username, status, coalesce(account_number,'') as account_number,
+              period_end::text as period_end, package_id
+       from services where id = 'svc_keep'`;
+    assert.equal(svc?.customer_id, "cus_a2");
+    assert.equal(svc?.username, "amina");
+    assert.equal(svc?.status, "active");
+    assert.equal(svc?.account_number, "SVC-KEEP");
+    assert.equal(svc?.package_id, "pkg_a");
+    assert.ok(svc?.period_end?.startsWith("2026-10-30"));
+    const [otherLine] = await sql<{ customer_id: string }>`select customer_id from services where id = 'svc_drop'`;
+    assert.equal(otherLine?.customer_id, "cus_a1");
+    const [inv] = await sql<{ customer_id: string; service_id: string | null }>`
+      select customer_id, service_id from invoices where id = 'inv_keep'`;
+    const [pay] = await sql<{ customer_id: string }>`select customer_id from payments where id = 'pay_keep'`;
+    assert.equal(inv?.customer_id, "cus_a1");
+    assert.equal(inv?.service_id, "svc_keep");
+    assert.equal(pay?.customer_id, "cus_a1");
+    const sms = await sql<{ n: number }>`select count(*)::int as n from notification_logs where tenant_id = 'ten_a' and id = 'ntf_keep'`;
+    assert.equal(sms[0]?.n, 1);
+    const extra = await sql<{ n: number }>`
+      select count(*)::int as n from notification_logs where tenant_id = 'ten_a' and created_at > now() - interval '1 minute' and id <> 'ntf_keep'`;
+    assert.equal(extra[0]?.n, 0);
+    await assert.rejects(() => reassignService(sql, "ten_a", "svc_keep", ""), /destination customer/i);
+    await sql`update customers set status = 'inactive' where id = 'cus_a1'`;
+    await assert.rejects(() => reassignService(sql, "ten_a", "svc_keep", "cus_a1"), /not available/);
   } finally {
     await close();
   }

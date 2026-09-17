@@ -1,6 +1,14 @@
 import { enqueueAgentCommand, enqueueServiceCommand } from "./agent.ts";
+import { likeNeedle } from "./customer-desk-format.ts";
+import { last9Phone } from "./customer-portal-format.ts";
 import { serviceBalance } from "./ledger.ts";
 import { archiveCustomer, archiveService, listAssignedLiveServices } from "./recycle-bin.ts";
+import {
+  customerUnavailable,
+  REASSIGN_SEARCH_LIMIT,
+  REASSIGN_SEARCH_MIN,
+  type ReassignCustomerHit,
+} from "./reassign-format.ts";
 import type { InvoiceRow, PackageRow, PaymentRow, ServiceRow, TicketRow } from "./types.ts";
 import { listTags } from "./tags.ts";
 
@@ -124,27 +132,149 @@ export async function deleteService(
   });
 }
 
-export async function reassignService(sql: Sql, tenantId: string, serviceId: string, newCustomerId: string) {
-  const svc = await loadService(sql, tenantId, serviceId);
+
+export async function searchReassignCustomers(
+  sql: Sql,
+  tenantId: string,
+  q: string,
+  opts: { excludeCustomerId?: string; limit?: number } = {},
+): Promise<ReassignCustomerHit[]> {
+  const needle = q.trim();
+  if (needle.length < REASSIGN_SEARCH_MIN) return [];
+  const like = likeNeedle(needle);
+  const last9 = last9Phone(needle);
+  const exclude = String(opts.excludeCustomerId || "");
+  const limit = Math.min(REASSIGN_SEARCH_LIMIT, Math.max(1, opts.limit || REASSIGN_SEARCH_LIMIT));
+  return sql<ReassignCustomerHit>`
+    select c.id, c.name, c.phone, c.email, coalesce(c.account_number,'') as account_number,
+           c.address, coalesce(c.status,'active') as status,
+           (select count(*)::int from services s
+             where s.tenant_id = c.tenant_id and s.customer_id = c.id
+               and s.deleted_at is null and s.status in ('active','grace')) as active_services
+    from customers c
+    where c.tenant_id = ${tenantId}
+      and c.deleted_at is null
+      and lower(coalesce(c.status,'')) not in ('deleted','inactive','archived')
+      and (${exclude} = '' or c.id <> ${exclude})
+      and (
+        c.name ilike ${like} escape '#'
+        or c.phone ilike ${like} escape '#'
+        or c.email ilike ${like} escape '#'
+        or coalesce(c.account_number,'') ilike ${like} escape '#'
+        or (${last9.length >= 9} and right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 9) = ${last9})
+        or exists (
+          select 1 from services s
+          where s.tenant_id = c.tenant_id and s.customer_id = c.id and s.deleted_at is null
+            and coalesce(s.account_number,'') ilike ${like} escape '#'
+        )
+      )
+    order by c.name
+    limit ${limit}`;
+}
+
+export type ReassignResult = {
+  id: string;
+  from: string;
+  to: string;
+  from_name: string;
+  to_name: string;
+  from_account: string;
+  to_account: string;
+  service_account: string;
+  package_name: string;
+  access_method: string;
+  status: string;
+  period_end: string | null;
+  username: string | null;
+  static_ip: string | null;
+  reason: string;
+  moved: boolean;
+};
+
+export async function reassignService(
+  sql: Sql,
+  tenantId: string,
+  serviceId: string,
+  newCustomerId: string,
+  opts?: { reason?: string },
+): Promise<ReassignResult> {
+  const destId = String(newCustomerId || "").trim();
+  if (!destId) throw new Error("Choose a destination customer");
+  const [svc] = await sql<{
+    id: string;
+    customer_id: string;
+    access_method: string;
+    username: string | null;
+    static_ip: string | null;
+    status: string;
+    period_end: string | null;
+    account_number: string;
+    package_name: string;
+  }>`select s.id, s.customer_id, s.access_method, s.username, s.static_ip, s.status,
+            s.period_end::text as period_end, coalesce(s.account_number,'') as account_number,
+            p.name as package_name
+     from services s join packages p on p.id = s.package_id
+     where s.id = ${serviceId} and s.tenant_id = ${tenantId} and s.deleted_at is null`;
   if (!svc) throw new Error("Service not found");
-  const [cus] = await sql<{ id: string; deleted_at: string | null }>`
-    select id, deleted_at::text as deleted_at from customers
-    where id = ${newCustomerId} and tenant_id = ${tenantId}`;
-  if (!cus || cus.deleted_at) throw new Error("Customer not found");
-  if (svc.customer_id === newCustomerId) {
-    return { id: serviceId, from: svc.customer_id, to: newCustomerId };
+  const [from] = await sql<{ id: string; name: string; account_number: string }>`
+    select id, name, coalesce(account_number,'') as account_number
+    from customers where id = ${svc.customer_id} and tenant_id = ${tenantId}`;
+  const [to] = await sql<{
+    id: string;
+    name: string;
+    account_number: string;
+    status: string;
+    deleted_at: string | null;
+  }>`select id, name, coalesce(account_number,'') as account_number, coalesce(status,'active') as status,
+            deleted_at::text as deleted_at
+     from customers where id = ${destId} and tenant_id = ${tenantId}`;
+  if (!to || to.deleted_at) throw new Error("Customer not found");
+  if (customerUnavailable(to.status, to.deleted_at)) {
+    throw new Error("Destination customer is not available");
   }
-  await sql`update services set customer_id = ${newCustomerId}
-    where id = ${serviceId} and tenant_id = ${tenantId}`;
-  await sql`update service_provisioning set customer_id = ${newCustomerId}
-    where service_id = ${serviceId} and tenant_id = ${tenantId}`;
-  await sql`update cpe_devices set customer_id = ${newCustomerId}
-    where service_id = ${serviceId} and tenant_id = ${tenantId}`;
-  await sql`update ip_addresses set customer_id = ${newCustomerId}
-    where service_id = ${serviceId} and tenant_id = ${tenantId}`;
-  await sql`update service_grace_periods set customer_id = ${newCustomerId}
-    where service_id = ${serviceId} and tenant_id = ${tenantId}`;
-  return { id: serviceId, from: svc.customer_id, to: newCustomerId };
+  const result: ReassignResult = {
+    id: svc.id,
+    from: svc.customer_id,
+    to: destId,
+    from_name: from?.name || "",
+    to_name: to.name,
+    from_account: from?.account_number || "",
+    to_account: to.account_number,
+    service_account: svc.account_number,
+    package_name: svc.package_name,
+    access_method: svc.access_method,
+    status: svc.status,
+    period_end: svc.period_end,
+    username: svc.username,
+    static_ip: svc.static_ip,
+    reason: String(opts?.reason || "").trim().slice(0, 400),
+    moved: svc.customer_id !== destId,
+  };
+  if (!result.moved) return result;
+  await sql.query("begin");
+  try {
+    await sql`update services set customer_id = ${destId}
+      where id = ${serviceId} and tenant_id = ${tenantId} and deleted_at is null`;
+    await sql`update service_provisioning set customer_id = ${destId}
+      where service_id = ${serviceId} and tenant_id = ${tenantId}`;
+    await sql`update cpe_devices set customer_id = ${destId}
+      where service_id = ${serviceId} and tenant_id = ${tenantId}`;
+    await sql`update ip_addresses set customer_id = ${destId}
+      where service_id = ${serviceId} and tenant_id = ${tenantId}`;
+    await sql`update service_grace_periods set customer_id = ${destId}
+      where service_id = ${serviceId} and tenant_id = ${tenantId}`;
+    await sql`update hotspot_vouchers set customer_id = ${destId}
+      where service_id = ${serviceId} and tenant_id = ${tenantId}`;
+    await sql.query("commit");
+  } catch (err) {
+    try {
+      await sql.query("rollback");
+    } catch {
+      /* session may already be idle */
+    }
+    throw err;
+  }
+  return result;
 }
 
 export async function updateService(
