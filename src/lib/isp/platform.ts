@@ -214,14 +214,164 @@ export async function savePlatformSettings(
 
 const HEARTBEAT_MS = 10 * 60_000;
 
-function nodeHealth(lastSeen: string | null, cpu: number | null, ram: number | null, disk: number | null) {
+function nodeHealth(
+  lastSeen: string | null,
+  cpu: number | null,
+  ram: number | null,
+  disk: number | null,
+  now = Date.now(),
+) {
   if (!lastSeen) return "offline" as const;
   const t = Date.parse(lastSeen);
-  if (Number.isNaN(t) || Date.now() - t > HEARTBEAT_MS) return "offline" as const;
+  if (Number.isNaN(t) || now - t > HEARTBEAT_MS) return "offline" as const;
   const hot = [cpu, ram, disk].filter((n): n is number => n != null);
   if (hot.some((n) => n >= 90)) return "critical" as const;
   if (hot.some((n) => n >= 75)) return "warning" as const;
   return "healthy" as const;
+}
+
+function avgPct(values: number[]) {
+  if (!values.length) return null;
+  return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+}
+
+function isStaleHeartbeat(lastSeen: string | null, now = Date.now()) {
+  if (!lastSeen) return false;
+  const t = Date.parse(lastSeen);
+  if (Number.isNaN(t)) return false;
+  return now - t > HEARTBEAT_MS;
+}
+
+type InfraNodeTelemetry = {
+  name: string;
+  last_seen: string | null;
+  cpu_pct: number | null;
+  ram_pct: number | null;
+  disk_pct: number | null;
+  postgres_ok: boolean | null;
+  redis_ok: boolean | null;
+  genieacs_ok: boolean | null;
+};
+
+export type OverviewInfrastructure = {
+  health: "healthy" | "warning" | "critical" | "offline" | "unknown";
+  available: boolean;
+  stale: boolean;
+  error: boolean;
+  total: number;
+  online: number;
+  offline: number;
+  warning: number;
+  critical: number;
+  vps_count: number;
+  vps_name: string;
+  last_seen: string | null;
+  last_checked_at: string;
+  cpu: number | null;
+  ram: number | null;
+  disk: number | null;
+  cpu_cores: number | null;
+  ram_used: number | null;
+  ram_total: number | null;
+  disk_used: number | null;
+  disk_total: number | null;
+  bandwidth: number | null;
+  services: { healthy: number; warning: number; failed: number } | null;
+};
+
+function emptyInfrastructure(nowIso: string, extra: Partial<OverviewInfrastructure> = {}): OverviewInfrastructure {
+  return {
+    health: "unknown",
+    available: false,
+    stale: false,
+    error: false,
+    total: 0,
+    online: 0,
+    offline: 0,
+    warning: 0,
+    critical: 0,
+    vps_count: 0,
+    vps_name: "",
+    last_seen: null,
+    last_checked_at: nowIso,
+    cpu: null,
+    ram: null,
+    disk: null,
+    cpu_cores: null,
+    ram_used: null,
+    ram_total: null,
+    disk_used: null,
+    disk_total: null,
+    bandwidth: null,
+    services: null,
+    ...extra,
+  };
+}
+
+function serviceFlagsOf(node: InfraNodeTelemetry) {
+  return [node.postgres_ok, node.redis_ok, node.genieacs_ok];
+}
+
+export function summarizeNodeServices(nodes: InfraNodeTelemetry[]) {
+  let healthy = 0;
+  let failed = 0;
+  for (const node of nodes) {
+    for (const flag of serviceFlagsOf(node)) {
+      if (flag === true) healthy += 1;
+      else if (flag === false) failed += 1;
+    }
+  }
+  if (healthy + failed === 0) return null;
+  return { healthy, warning: 0, failed };
+}
+
+export function overviewFromInfraNodes(nodes: InfraNodeTelemetry[], now = Date.now()): OverviewInfrastructure {
+  const nowIso = new Date(now).toISOString();
+  if (!nodes.length) return emptyInfrastructure(nowIso);
+  const healths = nodes.map((n) => nodeHealth(n.last_seen, n.cpu_pct, n.ram_pct, n.disk_pct, now));
+  const onlineNodes = nodes.filter((_, i) => healths[i] !== "offline");
+  const reported = nodes.filter((n) => n.last_seen);
+  const metricSource = onlineNodes.length ? onlineNodes : reported;
+  const online = healths.filter((h) => h === "healthy" || h === "warning" || h === "critical").length;
+  const offline = healths.filter((h) => h === "offline").length;
+  const warning = healths.filter((h) => h === "warning").length;
+  const critical = healths.filter((h) => h === "critical").length;
+  const lastSeen = nodes.reduce<string | null>((best, n) => {
+    if (!n.last_seen) return best;
+    if (!best) return n.last_seen;
+    return Date.parse(n.last_seen) > Date.parse(best) ? n.last_seen : best;
+  }, null);
+  const stale = nodes.some((n) => isStaleHeartbeat(n.last_seen, now));
+  const system =
+    online === 0
+      ? lastSeen
+        ? "offline"
+        : "unknown"
+      : healths.some((h) => h === "critical")
+        ? "critical"
+        : healths.some((h) => h === "warning") || stale
+          ? "warning"
+          : "healthy";
+  const named = (onlineNodes[0] || reported[0] || nodes[0]);
+  return {
+    ...emptyInfrastructure(nowIso),
+    health: system,
+    available: reported.length > 0,
+    stale,
+    total: nodes.length,
+    vps_count: nodes.length,
+    online,
+    offline,
+    warning,
+    critical,
+    vps_name: nodes.length === 1 ? named?.name || "" : "",
+    last_seen: lastSeen,
+    last_checked_at: nowIso,
+    cpu: avgPct(metricSource.map((n) => n.cpu_pct).filter((n): n is number => n != null)),
+    ram: avgPct(metricSource.map((n) => n.ram_pct).filter((n): n is number => n != null)),
+    disk: avgPct(metricSource.map((n) => n.disk_pct).filter((n): n is number => n != null)),
+    services: summarizeNodeServices(metricSource.length ? metricSource : nodes),
+  };
 }
 
 export type TenantListRow = {
@@ -743,27 +893,18 @@ export async function loadPlatformOverview(sql: Sql, actorUserId: string) {
   const [churn] = await sql<{ n: number }>`
     select count(*)::int as n from tenant_subscriptions
     where (status = 'cancelled' or status = 'expired') and coalesce(cancelled_at, period_end) >= ${monthIso}`;
-  const routers = await sql<{ last_seen: string | null; cpu_pct: number; wg_status: string }>`
-    select last_seen::text as last_seen, cpu_pct, wg_status from routers`;
-  const nodes = await sql<{
-    last_seen: string | null;
-    cpu_pct: number | null;
-    ram_pct: number | null;
-    disk_pct: number | null;
-  }>`select last_seen::text as last_seen, cpu_pct, ram_pct, disk_pct from infra_nodes`;
-  const routerHealth = routers.map((r) => nodeHealth(r.last_seen, r.cpu_pct, null, null));
-  const nodeHealths = nodes.map((n) => nodeHealth(n.last_seen, n.cpu_pct, n.ram_pct, n.disk_pct));
-  const allNodes = [...routerHealth, ...nodeHealths];
-  const liveCpu = [
-    ...routers.filter((r) => nodeHealth(r.last_seen, r.cpu_pct, null, null) !== "offline").map((r) => r.cpu_pct),
-    ...nodes.filter((n) => n.cpu_pct != null && nodeHealth(n.last_seen, n.cpu_pct, n.ram_pct, n.disk_pct) !== "offline").map((n) => n.cpu_pct as number),
-  ];
-  const liveRam = nodes
-    .filter((n) => n.ram_pct != null && nodeHealth(n.last_seen, n.cpu_pct, n.ram_pct, n.disk_pct) !== "offline")
-    .map((n) => n.ram_pct as number);
-  const liveDisk = nodes
-    .filter((n) => n.disk_pct != null && nodeHealth(n.last_seen, n.cpu_pct, n.ram_pct, n.disk_pct) !== "offline")
-    .map((n) => n.disk_pct as number);
+  const checkedAt = new Date().toISOString();
+  let infrastructure = emptyInfrastructure(checkedAt);
+  try {
+    const nodes = await sql<InfraNodeTelemetry>`
+      select name, last_seen::text as last_seen, cpu_pct, ram_pct, disk_pct,
+             postgres_ok, redis_ok, genieacs_ok
+      from infra_nodes
+      order by last_seen desc, name`;
+    infrastructure = overviewFromInfraNodes(nodes);
+  } catch {
+    infrastructure = emptyInfrastructure(checkedAt, { error: true });
+  }
   const growth = await sql<{ day: string; n: number }>`
     select created_at::date::text as day, count(*)::int as n
     from tenants
@@ -778,18 +919,6 @@ export async function loadPlatformOverview(sql: Sql, actorUserId: string) {
     order by day`;
   const changeMap = Object.fromEntries(changes.map((c) => [c.action, c.n]));
   const mrrKes = mrr?.mrr ?? 0;
-  const online = allNodes.filter((h) => h === "healthy" || h === "warning" || h === "critical").length;
-  const offline = allNodes.filter((h) => h === "offline").length;
-  const system =
-    allNodes.length === 0
-      ? "unknown"
-      : offline === allNodes.length
-        ? "offline"
-        : allNodes.some((h) => h === "critical")
-          ? "critical"
-          : allNodes.some((h) => h === "warning")
-            ? "warning"
-            : "healthy";
   return {
     tenants: {
       total: tenants?.total ?? 0,
@@ -807,16 +936,7 @@ export async function loadPlatformOverview(sql: Sql, actorUserId: string) {
       failed: rev?.failed ?? 0,
       upcoming_renewals: renew?.n ?? 0,
     },
-    infrastructure: {
-      total: routers.length + nodes.length,
-      online,
-      offline,
-      cpu: liveCpu.length ? Math.round(liveCpu.reduce((a, b) => a + b, 0) / liveCpu.length) : null,
-      ram: liveRam.length ? Math.round(liveRam.reduce((a, b) => a + b, 0) / liveRam.length) : null,
-      disk: liveDisk.length ? Math.round(liveDisk.reduce((a, b) => a + b, 0) / liveDisk.length) : null,
-      bandwidth: null as number | null,
-      health: system,
-    },
+    infrastructure,
     subscriptions: {
       by_plan: byPlan,
       trial: tenants?.trial ?? 0,

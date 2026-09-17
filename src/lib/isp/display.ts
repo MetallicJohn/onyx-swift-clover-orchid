@@ -217,6 +217,21 @@ export function formatBytes(n: number) {
   return `${(v / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+export function formatRelativeTime(iso: string | null | undefined, now = Date.now()) {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const sec = Math.max(0, Math.round((now - t) / 1000));
+  if (sec < 5) return "just now";
+  if (sec < 45) return `${sec} second${sec === 1 ? "" : "s"} ago`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} minute${min === 1 ? "" : "s"} ago`;
+  const hours = Math.round(min / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
 export function accessMethodLabel(method: string) {
   if (method === "pppoe") return "PPPoE";
   if (method === "static") return "Static IP";

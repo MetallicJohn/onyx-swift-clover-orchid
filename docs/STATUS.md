@@ -18,6 +18,7 @@
 | Custom domain login | Same-origin Origin/Host match plus verified tenant domains and `public_base_url`. CSRF stays on. Proven in `auth-origins.test.ts`. |
 | Invoice / statement PDFs | pdfkit A4 from live billing + ledger. Tenant-branded. View/download/print/email. |
 | VPS publish | Docker Compose + Caddy + Postgres. Deploy only after green CI on `main`: backup, pull, migrate, health, rollback. Timer fetches GitHub but does not rebuild unless `ISPSOLUTIONS_AUTO_DEPLOY=1`. Platform deploy remains Vercel. |
+| Superadmin infrastructure card | CPU, RAM, and disk on the SaaS overview come from `infra_nodes` heartbeats. vCPU count and used/total bytes are not stored, so the card shows **Not available** rather than guessed capacity. Stale heartbeats keep last metrics and are labelled stale. Proof: `platform.test.ts`. |
 | Secrets | No published development secret. Production or any `DATABASE_URL` requires `APP_SECRET`. |
 | ACS TR-069 security | Per-ISP digest auth, sealed secrets, URL lock provision/preset, optional HTTPS URLs. NBI unpublished. Proven in `acs-security.test.ts`. Live CPE session is not run in CI. |
 | Split-ready deploy | Env-validated adapters, Postgres job queue, optional Redis, compose roles, `/api/v1/ready`. Proven in `runtime-config.test.ts`, `jobs.test.ts`, `distributed.test.ts`. Live multi-VPS cutover is not run in CI. |

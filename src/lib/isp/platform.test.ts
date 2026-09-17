@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   createCredentialAccount,
@@ -14,6 +15,7 @@ import {
   listPlatformTenantsPage,
   loadPlatformOverview,
   loadTenantDetail,
+  overviewFromInfraNodes,
   reactivateTenant,
   registerInfraNode,
   requirePlatformActor,
@@ -227,18 +229,137 @@ test("infra telemetry rejects unknown tokens and does not invent metrics", async
       cpu_pct: 22,
       ram_pct: 41,
       disk_pct: 18,
+      postgres_ok: true,
+      redis_ok: true,
+      genieacs_ok: false,
       reported_at: new Date().toISOString(),
     });
     assert.equal(ok.ok, true);
     const overview = await loadPlatformOverview(sql, admin.id);
     assert.equal(typeof overview.revenue.mrr, "number");
+    assert.equal(overview.infrastructure.cpu, 22);
+    assert.equal(overview.infrastructure.ram, 41);
+    assert.equal(overview.infrastructure.disk, 18);
+    assert.equal(overview.infrastructure.vps_name, "nbo-edge-1");
+    assert.equal(overview.infrastructure.online, 1);
+    assert.equal(overview.infrastructure.health, "healthy");
+    assert.equal(overview.infrastructure.stale, false);
+    assert.ok(overview.infrastructure.last_seen);
+    assert.ok(overview.infrastructure.last_checked_at);
+    assert.equal(overview.infrastructure.cpu_cores, null);
+    assert.equal(overview.infrastructure.ram_used, null);
+    assert.equal(overview.infrastructure.ram_total, null);
+    assert.equal(overview.infrastructure.disk_used, null);
+    assert.equal(overview.infrastructure.disk_total, null);
+    assert.equal(overview.infrastructure.services?.healthy, 2);
+    assert.equal(overview.infrastructure.services?.failed, 1);
     assert.ok(["healthy", "warning", "critical", "offline", "unknown"].includes(overview.infrastructure.health));
     const detail = await loadTenantDetail(sql, admin.id, other.tenant_id);
     assert.equal(detail.infrastructure.ram, null);
     assert.ok(detail.nodes.some((n) => n.name === "nbo-edge-1" && n.cpu_pct === 22));
+    await assert.rejects(() => loadPlatformOverview(sql, other.owner_id), /Forbidden/);
   } finally {
     await close();
   }
+});
+
+test("overview infrastructure uses live telemetry and never invents capacity", async () => {
+  const empty = overviewFromInfraNodes([]);
+  assert.equal(empty.available, false);
+  assert.equal(empty.cpu, null);
+  assert.equal(empty.ram, null);
+  assert.equal(empty.disk, null);
+  assert.notEqual(empty.cpu, 0);
+  assert.notEqual(empty.ram, 0);
+  assert.notEqual(empty.disk, 0);
+  assert.equal(empty.cpu_cores, null);
+  assert.equal(empty.services, null);
+  assert.equal(empty.health, "unknown");
+
+  const now = Date.parse("2026-09-17T12:00:00.000Z");
+  const live = overviewFromInfraNodes(
+    [
+      {
+        name: "Application VPS",
+        last_seen: new Date(now - 15_000).toISOString(),
+        cpu_pct: 34,
+        ram_pct: 61,
+        disk_pct: 48,
+        postgres_ok: true,
+        redis_ok: true,
+        genieacs_ok: true,
+      },
+    ],
+    now,
+  );
+  assert.equal(live.cpu, 34);
+  assert.equal(live.ram, 61);
+  assert.equal(live.disk, 48);
+  assert.equal(live.vps_name, "Application VPS");
+  assert.equal(live.health, "healthy");
+  assert.equal(live.stale, false);
+  assert.equal(live.cpu_cores, null);
+
+  const stale = overviewFromInfraNodes(
+    [
+      {
+        name: "Application VPS",
+        last_seen: new Date(now - 20 * 60_000).toISOString(),
+        cpu_pct: 34,
+        ram_pct: 61,
+        disk_pct: 48,
+        postgres_ok: true,
+        redis_ok: null,
+        genieacs_ok: false,
+      },
+    ],
+    now,
+  );
+  assert.equal(stale.stale, true);
+  assert.equal(stale.health, "offline");
+  assert.equal(stale.available, true);
+  assert.equal(stale.cpu, 34);
+  assert.equal(stale.services?.healthy, 1);
+  assert.equal(stale.services?.failed, 1);
+
+  const fleet = overviewFromInfraNodes(
+    [
+      {
+        name: "app-1",
+        last_seen: new Date(now - 5_000).toISOString(),
+        cpu_pct: 20,
+        ram_pct: 40,
+        disk_pct: 10,
+        postgres_ok: true,
+        redis_ok: true,
+        genieacs_ok: true,
+      },
+      {
+        name: "app-2",
+        last_seen: new Date(now - 20 * 60_000).toISOString(),
+        cpu_pct: 90,
+        ram_pct: 90,
+        disk_pct: 90,
+        postgres_ok: false,
+        redis_ok: false,
+        genieacs_ok: false,
+      },
+    ],
+    now,
+  );
+  assert.equal(fleet.vps_count, 2);
+  assert.equal(fleet.online, 1);
+  assert.equal(fleet.offline, 1);
+  assert.equal(fleet.vps_name, "");
+  assert.equal(fleet.cpu, 20);
+  assert.equal(fleet.stale, true);
+  assert.equal(fleet.health, "warning");
+
+  const dash = readFileSync(new URL("../../routes/platform/index.tsx", import.meta.url), "utf8");
+  assert.match(dash, /Not available/);
+  assert.match(dash, /Infrastructure data unavailable/);
+  assert.doesNotMatch(dash, /CPU:\s*34%/);
+  assert.doesNotMatch(dash, /Math\.random/);
 });
 
 test("overview and tenant list stay authorized and paginated", async () => {

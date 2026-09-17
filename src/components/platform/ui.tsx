@@ -75,6 +75,43 @@ export function Meter({ value, max, label }: { value: number; max: number; label
   );
 }
 
+export function PctBar({
+  label,
+  pct,
+  hint,
+}: {
+  label: string;
+  pct: number | null | undefined;
+  hint?: string;
+}) {
+  if (pct == null || !Number.isFinite(pct)) {
+    return (
+      <div>
+        <div className="mb-1.5 flex justify-between text-xs">
+          <span className="text-muted">{label}</span>
+          <span className="text-muted">Not available</span>
+        </div>
+        <div className="h-1.5 rounded-full bg-elevated" />
+        {hint ? <div className="mt-1 text-xs text-muted">{hint}</div> : null}
+      </div>
+    );
+  }
+  const value = Math.min(100, Math.max(0, Math.round(pct)));
+  const tone = value >= 90 ? "bg-danger" : value >= 75 ? "bg-warn" : "bg-accent";
+  return (
+    <div>
+      <div className="mb-1.5 flex justify-between text-xs">
+        <span className="text-muted">{label}</span>
+        <span className="font-mono">{value}%</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-elevated">
+        <div className={cn("h-full rounded-full", tone)} style={{ width: `${value}%` }} />
+      </div>
+      {hint ? <div className="mt-1 text-xs text-muted">{hint}</div> : null}
+    </div>
+  );
+}
+
 export function HealthDot({ health }: { health: string }) {
   const tone =
     health === "healthy"

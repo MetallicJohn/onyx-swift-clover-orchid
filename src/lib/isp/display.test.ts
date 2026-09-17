@@ -5,6 +5,7 @@ import {
   dateFormatExample,
   formatDate,
   formatDateTime,
+  formatRelativeTime,
   formatShortDateTime,
   formatSmsDate,
   normalizeDateFormat,
@@ -50,4 +51,13 @@ test("date-time uses the same date format", () => {
   } finally {
     setActiveDateFormat(DEFAULT_DATE_FORMAT);
   }
+});
+
+test("relative time uses seconds and minutes without inventing a clock", () => {
+  const now = Date.parse("2026-09-17T12:00:00.000Z");
+  assert.equal(formatRelativeTime("2026-09-17T11:59:45.000Z", now), "15 seconds ago");
+  assert.equal(formatRelativeTime("2026-09-17T12:00:00.000Z", now), "just now");
+  assert.equal(formatRelativeTime("2026-09-17T11:58:00.000Z", now), "2 minutes ago");
+  assert.equal(formatRelativeTime(null, now), "");
+  assert.equal(formatRelativeTime("not-a-date", now), "");
 });

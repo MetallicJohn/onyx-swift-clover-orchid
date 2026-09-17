@@ -1,13 +1,121 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { HealthDot, Kpi, PageHead, Panel, Spark } from "@/components/platform/ui";
+import { HealthDot, Kpi, PageHead, Panel, PctBar, Spark } from "@/components/platform/ui";
+import { formatRelativeTime } from "@/lib/isp/display";
 import { getPlatformOverview } from "@/lib/isp/server-platform";
 import { kes } from "@/lib/utils";
 
 export const Route = createFileRoute("/platform/")({ component: PlatformHome });
 
+type Overview = Awaited<ReturnType<typeof getPlatformOverview>>;
+type Infra = Overview["infrastructure"];
+
+function serviceLine(services: Infra["services"]) {
+  if (!services) return "Not available";
+  const parts: string[] = [];
+  if (services.healthy) parts.push(`${services.healthy} healthy`);
+  if (services.warning) parts.push(`${services.warning} warning`);
+  if (services.failed) parts.push(`${services.failed} failed`);
+  return parts.length ? parts.join(" · ") : "Not available";
+}
+
+function vpsLine(infra: Infra) {
+  if (infra.vps_count > 1) {
+    const bits = [`${infra.online} online`];
+    if (infra.warning) bits.push(`${infra.warning} warning`);
+    if (infra.critical) bits.push(`${infra.critical} critical`);
+    if (infra.offline) bits.push(`${infra.offline} offline`);
+    return `${infra.vps_count} VPS monitored · ${bits.join(" · ")}`;
+  }
+  if (infra.vps_name) return infra.vps_name;
+  return "Not available";
+}
+
+function InfrastructureCard({ infra }: { infra: Infra }) {
+  const updated = formatRelativeTime(infra.last_checked_at) || "Not available";
+  const heartbeat = infra.last_seen ? formatRelativeTime(infra.last_seen) : "";
+  const missing = !infra.available && !infra.error;
+  const failed = infra.error;
+
+  return (
+    <Panel>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-base font-medium">Infrastructure</h2>
+        <HealthDot health={failed || missing ? "unknown" : infra.health} />
+      </div>
+      {failed ? (
+        <p className="text-sm text-muted">Infrastructure data unavailable</p>
+      ) : missing ? (
+        <p className="text-sm text-muted">Infrastructure data unavailable</p>
+      ) : null}
+      <dl className="grid gap-3 text-sm">
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">VPS</dt>
+          <dd className="text-right">{vpsLine(infra)}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">Last heartbeat</dt>
+          <dd className="text-right font-mono text-xs">
+            {heartbeat ? (
+              <>
+                {heartbeat}
+                {infra.stale ? <span className="ml-2 text-warn">Stale</span> : null}
+              </>
+            ) : (
+              "Not available"
+            )}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted">Last updated</dt>
+          <dd className="text-right font-mono text-xs">{updated}</dd>
+        </div>
+      </dl>
+      <div className="mt-4 grid grid-cols-2 gap-4">
+        <PctBar
+          label="CPU"
+          pct={infra.cpu}
+          hint={
+            infra.cpu_cores != null
+              ? `${infra.cpu_cores} vCPU`
+              : infra.cpu != null
+                ? "vCPU count  Not available"
+                : undefined
+          }
+        />
+        <PctBar
+          label="RAM"
+          pct={infra.ram}
+          hint={
+            infra.ram_used != null && infra.ram_total != null
+              ? undefined
+              : infra.ram != null
+                ? "Used / total  Not available"
+                : undefined
+          }
+        />
+        <PctBar
+          label="Disk"
+          pct={infra.disk}
+          hint={
+            infra.disk_used != null && infra.disk_total != null
+              ? undefined
+              : infra.disk != null
+                ? "Used / total  Not available"
+                : undefined
+          }
+        />
+        <div>
+          <div className="mb-1.5 text-xs text-muted">Services</div>
+          <div className="text-sm">{serviceLine(infra.services)}</div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function PlatformHome() {
-  const [data, setData] = useState<Awaited<ReturnType<typeof getPlatformOverview>> | null>(null);
+  const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -18,11 +126,6 @@ function PlatformHome() {
 
   if (error) return <p className="text-sm text-danger">{error}</p>;
   if (!data) return <div className="h-40 animate-pulse rounded-xl bg-surface" />;
-
-  const infraHint =
-    data.infrastructure.health === "unknown"
-      ? "No agent telemetry yet"
-      : `${data.infrastructure.online} online · ${data.infrastructure.offline} offline`;
 
   return (
     <div>
@@ -74,39 +177,7 @@ function PlatformHome() {
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <Panel>
-          <h2 className="mb-4 text-base font-medium">Infrastructure</h2>
-          <div className="mb-4 flex items-center gap-2">
-            <HealthDot health={data.infrastructure.health} />
-            <span className="text-sm text-muted">{infraHint}</span>
-          </div>
-          <dl className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <dt className="text-muted">Nodes</dt>
-              <dd className="font-mono">{data.infrastructure.total}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">Online</dt>
-              <dd className="font-mono">{data.infrastructure.online}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">CPU</dt>
-              <dd>{data.infrastructure.cpu == null ? "Telemetry unavailable" : `${data.infrastructure.cpu}%`}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">RAM</dt>
-              <dd>{data.infrastructure.ram == null ? "Telemetry unavailable" : `${data.infrastructure.ram}%`}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">Disk</dt>
-              <dd>{data.infrastructure.disk == null ? "Telemetry unavailable" : `${data.infrastructure.disk}%`}</dd>
-            </div>
-            <div>
-              <dt className="text-muted">Bandwidth</dt>
-              <dd>Telemetry unavailable</dd>
-            </div>
-          </dl>
-        </Panel>
+        <InfrastructureCard infra={data.infrastructure} />
         <Panel>
           <h2 className="mb-4 text-base font-medium">Tenants by plan</h2>
           <ul className="space-y-3">
