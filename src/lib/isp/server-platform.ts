@@ -364,6 +364,7 @@ export const saveSaasSettings = createServerFn({ method: "POST" })
       acs_tls?: "http" | "https";
       acs_require_cpe_auth?: boolean;
       acs_lock_url?: boolean;
+      acs_provision_service?: boolean;
       traffic_enabled?: boolean;
       traffic_interval_sec?: number;
       traffic_router_interval_sec?: number;

@@ -72,6 +72,7 @@ export async function getPlatformSettings(sql: Sql) {
     acs_tls: (map.acs_tls === "https" ? "https" : "http") as "http" | "https",
     acs_require_cpe_auth: map.acs_require_cpe_auth !== "false",
     acs_lock_url: map.acs_lock_url !== "false",
+    acs_provision_service: map.acs_provision_service !== "false",
     traffic_enabled: map.traffic_enabled !== "false",
     traffic_interval_sec: Number(map.traffic_interval_sec || 30),
     traffic_router_interval_sec: Number(map.traffic_router_interval_sec || 60),
@@ -104,6 +105,7 @@ export async function savePlatformSettings(
     acs_tls: "http" | "https";
     acs_require_cpe_auth: boolean;
     acs_lock_url: boolean;
+    acs_provision_service: boolean;
     traffic_enabled: boolean;
     traffic_interval_sec: number;
     traffic_router_interval_sec: number;
@@ -156,6 +158,9 @@ export async function savePlatformSettings(
   if (patch.acs_lock_url != null) {
     entries.push(["acs_lock_url", patch.acs_lock_url ? "true" : "false"]);
   }
+  if (patch.acs_provision_service != null) {
+    entries.push(["acs_provision_service", patch.acs_provision_service ? "true" : "false"]);
+  }
   if (patch.traffic_enabled != null) entries.push(["traffic_enabled", patch.traffic_enabled ? "true" : "false"]);
   if (patch.traffic_interval_sec != null) {
     entries.push(["traffic_interval_sec", String(Math.min(300, Math.max(5, Math.round(patch.traffic_interval_sec))))]);
@@ -201,7 +206,7 @@ export async function savePlatformSettings(
     const { rewriteAcsUrls } = await import("./acs-security");
     await rewriteAcsUrls(sql);
   }
-  if (patch.acs_tls != null || patch.acs_require_cpe_auth != null || patch.acs_lock_url != null) {
+  if (patch.acs_tls != null || patch.acs_require_cpe_auth != null || patch.acs_lock_url != null || patch.acs_provision_service != null) {
     try {
       const { applyGenieAcsSecurity } = await import("./acs-security");
       await applyGenieAcsSecurity(sql);

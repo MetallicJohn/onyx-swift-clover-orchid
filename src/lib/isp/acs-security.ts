@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { nbiOrigin, nbiRequest, type AcsNbiConfig, type NbiFetch } from "./acs-nbi.ts";
 import { buildAcsUrl, loadAcsPlatformSettings, type AcsPlatformSettings } from "./acs-ports.ts";
+import { SERVICE_PRESET, SERVICE_PROVISION, SERVICE_PROVISION_SCRIPT, lookupAcsServiceProfile } from "./acs-service-provision.ts";
 import { open, seal } from "./secrets.ts";
 import { rateLimit } from "./rate-limit.ts";
 
@@ -75,7 +76,7 @@ if (crUser && crPass) {
 }
 `;
 
-export type AcsAuthKind = "password" | "profile";
+export type AcsAuthKind = "password" | "profile" | "service";
 
 export type AcsAuthResult =
   | { ok: true; password: string; url?: string; connreq_user?: string; connreq_password?: string }
@@ -127,18 +128,32 @@ export async function handleAcsAuthRequest(sql: Sql, request: Request): Promise<
   if (!authorizedAcsEdge(request)) {
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
-  let body: { username?: string; kind?: string } = {};
+  let body: { username?: string; kind?: string; serial?: string } = {};
   try {
-    body = (await request.json()) as { username?: string; kind?: string };
+    body = (await request.json()) as { username?: string; kind?: string; serial?: string };
   } catch {
     return Response.json({ ok: false, error: "invalid json" }, { status: 400 });
   }
   const username = (body.username || "").trim();
-  const kind: AcsAuthKind = body.kind === "profile" ? "profile" : "password";
+  const kind: AcsAuthKind =
+    body.kind === "profile" ? "profile" : body.kind === "service" ? "service" : "password";
+  const serial = (body.serial || "").trim();
   const global = rateLimit("acs-auth:*", 2000, 60_000);
-  const perUser = rateLimit(`acs-auth:${username || "none"}`, 180, 60_000);
+  const perUser = rateLimit(`acs-auth:${username || "none"}:${kind}:${serial || "-"}`, 180, 60_000);
   if (!global.ok || !perUser.ok) {
     return Response.json({ ok: false, error: "rate_limited" }, { status: 429 });
+  }
+  if (kind === "service") {
+    const found = await lookupAcsServiceProfile(sql, username, serial);
+    if (!found.ok) return Response.json({ ok: false });
+    return Response.json({
+      ok: true,
+      assigned: found.assigned,
+      wan_username: found.wan_username,
+      wan_password: found.wan_password,
+      ssid: found.ssid,
+      wifi_password: found.wifi_password,
+    });
   }
   const plat = await loadAcsPlatformSettings(sql);
   if (!plat.acs_require_cpe_auth && kind === "password") {
@@ -169,9 +184,16 @@ export function acsSecurityChecklist(opts: {
   scheme: "http" | "https";
   require_cpe_auth: boolean;
   lock_url: boolean;
+  provision_service: boolean;
   connreq_distinct: boolean;
   has_credentials: boolean;
-}): { items: AcsSecurityChecklistItem[]; scheme: "http" | "https"; require_cpe_auth: boolean; lock_url: boolean } {
+}): {
+  items: AcsSecurityChecklistItem[];
+  scheme: "http" | "https";
+  require_cpe_auth: boolean;
+  lock_url: boolean;
+  provision_service: boolean;
+} {
   const items: AcsSecurityChecklistItem[] = [
     {
       id: "digest",
@@ -199,6 +221,14 @@ export function acsSecurityChecklist(opts: {
         : "URL lock is off. An ONU whose ACS URL is changed will stay on the new ACS.",
     },
     {
+      id: "service",
+      ok: opts.provision_service,
+      label: "Service WAN and Wi-Fi",
+      detail: opts.provision_service
+        ? "On inform, assigned ONUs receive this service's PPPoE WAN, SSID, and Wi-Fi password. Unassigned devices are left unchanged."
+        : "Service auto-provision is off. WAN and Wi-Fi are only written when staff apply them from the device desk.",
+    },
+    {
       id: "connreq",
       ok: opts.connreq_distinct,
       label: "Connection-request login",
@@ -218,11 +248,12 @@ export function acsSecurityChecklist(opts: {
     scheme: opts.scheme,
     require_cpe_auth: opts.require_cpe_auth,
     lock_url: opts.lock_url,
+    provision_service: opts.provision_service,
   };
 }
 
 export function acsSecurityFromPlatform(
-  plat: Pick<AcsPlatformSettings, "acs_tls" | "acs_require_cpe_auth" | "acs_lock_url">,
+  plat: Pick<AcsPlatformSettings, "acs_tls" | "acs_require_cpe_auth" | "acs_lock_url" | "acs_provision_service">,
   creds: { username?: string; connreq_user?: string } | null,
 ) {
   const username = (creds?.username || "").trim();
@@ -231,6 +262,7 @@ export function acsSecurityFromPlatform(
     scheme: plat.acs_tls,
     require_cpe_auth: plat.acs_require_cpe_auth,
     lock_url: plat.acs_lock_url,
+    provision_service: plat.acs_provision_service,
     connreq_distinct: Boolean(username && connreq && connreq !== username),
     has_credentials: Boolean(username),
   });
@@ -286,6 +318,13 @@ export async function applyGenieAcsSecurity(
     fetchImpl,
   );
   if (provision.ok) steps.push("provision");
+  const serviceProvision = await nbiRequest(
+    cfg,
+    `/provisions/${SERVICE_PROVISION}`,
+    { method: "PUT", headers: { "content-type": "application/javascript" }, body: SERVICE_PROVISION_SCRIPT },
+    fetchImpl,
+  );
+  if (serviceProvision.ok) steps.push("service-provision");
   if (plat.acs_lock_url) {
     const preset = await nbiRequest(
       cfg,
@@ -305,11 +344,34 @@ export async function applyGenieAcsSecurity(
     const dropped = await nbiRequest(cfg, `/presets/${LOCK_URL_PRESET}`, { method: "DELETE" }, fetchImpl);
     if (dropped.ok || dropped.status === 404) steps.push("preset-off");
   }
+  if (plat.acs_provision_service) {
+    const servicePreset = await nbiRequest(
+      cfg,
+      `/presets/${SERVICE_PRESET}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          weight: 0,
+          precondition: "true",
+          configurations: [{ type: "provision", name: SERVICE_PROVISION }],
+        }),
+      },
+      fetchImpl,
+    );
+    if (servicePreset.ok) steps.push("service-preset");
+  } else {
+    const droppedService = await nbiRequest(cfg, `/presets/${SERVICE_PRESET}`, { method: "DELETE" }, fetchImpl);
+    if (droppedService.ok || droppedService.status === 404) steps.push("service-preset-off");
+  }
   const auth = await putCwmpConfig(cfg, "cwmp.auth", cwmpAuthExpression(plat.acs_require_cpe_auth), fetchImpl);
   if (auth.ok) steps.push("cwmp.auth");
   const cr = await putCwmpConfig(cfg, "cwmp.connectionRequestAuth", CWMP_CONNECTION_REQUEST_AUTH, fetchImpl);
   if (cr.ok) steps.push("cwmp.connectionRequestAuth");
-  const ok = steps.includes("provision") && (plat.acs_lock_url ? steps.includes("preset") : true);
+  const ok =
+    steps.includes("provision") &&
+    steps.includes("service-provision") &&
+    (plat.acs_lock_url ? steps.includes("preset") : true) &&
+    (plat.acs_provision_service ? steps.includes("service-preset") : true);
   return {
     ok,
     steps,

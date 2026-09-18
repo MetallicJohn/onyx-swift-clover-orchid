@@ -20,6 +20,7 @@ export type AcsPlatformSettings = {
   acs_tls: "http" | "https";
   acs_require_cpe_auth: boolean;
   acs_lock_url: boolean;
+  acs_provision_service: boolean;
 };
 
 export function normalizeAcsHost(raw: string) {
@@ -76,7 +77,7 @@ export async function loadAcsPlatformSettings(sql: Sql): Promise<AcsPlatformSett
     select key, value from platform_settings
     where key in (
       'acs_public_host', 'acs_dns_host', 'acs_port_start', 'acs_port_end',
-      'acs_tls', 'acs_require_cpe_auth', 'acs_lock_url'
+      'acs_tls', 'acs_require_cpe_auth', 'acs_lock_url', 'acs_provision_service'
     )`;
   const map: Record<string, string> = {};
   for (const r of rows) map[r.key] = r.value;
@@ -89,6 +90,7 @@ export async function loadAcsPlatformSettings(sql: Sql): Promise<AcsPlatformSett
     acs_tls: normalizeAcsScheme(map.acs_tls),
     acs_require_cpe_auth: parseBoolSetting(map.acs_require_cpe_auth, true),
     acs_lock_url: parseBoolSetting(map.acs_lock_url, true),
+    acs_provision_service: parseBoolSetting(map.acs_provision_service, true),
   };
 }
 

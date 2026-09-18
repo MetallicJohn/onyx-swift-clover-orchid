@@ -67,6 +67,7 @@ function mapRow(row: Record<string, unknown>): AcsDeviceRow {
     access_method: String(row.access_method || ""),
     package_name: String(row.package_name || ""),
     service_status: String(row.service_status || ""),
+    service_wifi_ssid: String(row.service_wifi_ssid || ""),
     assigned_at: (row.assigned_at as string | null) || null,
     assigned_by_label: String(row.assigned_by_label || ""),
     last_task_status: String(row.last_task_status || ""),
@@ -178,6 +179,7 @@ const SELECT_SQL = `select d.id, d.serial, coalesce(d.acs_device_id,'') as acs_d
   coalesce(c.phone,'') as customer_phone, d.service_id,
   coalesce(s.account_number,'') as service_account, coalesce(s.access_method,'') as access_method,
   coalesce(p.name,'') as package_name, coalesce(s.status,'') as service_status,
+  coalesce(s.wifi_ssid,'') as service_wifi_ssid,
   d.assigned_at::text as assigned_at, coalesce(d.assigned_by_label,'') as assigned_by_label,
   coalesce(d.last_task_status,'') as last_task_status, coalesce(d.last_task_error,'') as last_task_error,
   d.last_optical_at::text as last_optical_at, coalesce(d.optical_snapshot,'{}') as optical_snapshot,
@@ -447,6 +449,15 @@ export async function assignAcsDevice(
     const msg = err instanceof Error ? err.message : String(err);
     if (/cpe_devices_service_uniq|unique/i.test(msg)) throw new Error("Service already has a device");
     throw err;
+  }
+  try {
+    const { ensureServiceWifi } = await import("./acs-service-provision.ts");
+    await ensureServiceWifi(sql, tenantId, destService, {
+      customerName: customer.name,
+      accountNumber: service.account_number,
+    });
+  } catch {
+    /* assignment is already saved; Wi-Fi defaults must not roll it back */
   }
   return {
     id: device.id,

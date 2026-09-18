@@ -50,6 +50,8 @@ export type OnboardServiceDraft = {
   import_source?: string;
   import_batch_id?: string;
   pppoe_password?: string;
+  wifi_ssid?: string;
+  wifi_password?: string;
 };
 
 export type OnboardPayload = {
@@ -102,6 +104,8 @@ export const EMPTY_SERVICE: OnboardServiceDraft = {
   subscription_start_ymd: "",
   send_onboarding_notification: true,
   pppoe_password: "",
+  wifi_ssid: "",
+  wifi_password: "",
 };
 
 export function isAccessMethod(v: string): v is AccessMethod {
@@ -282,6 +286,8 @@ export function sanitizeService(raw: Partial<OnboardServiceDraft> | null | undef
     import_source: String(d.import_source || "").trim().slice(0, 80),
     import_batch_id: String(d.import_batch_id || "").trim().slice(0, 64) || undefined,
     pppoe_password: String(d.pppoe_password || "").trim().slice(0, 64),
+    wifi_ssid: String(d.wifi_ssid || "").trim().slice(0, 32),
+    wifi_password: String(d.wifi_password || "").trim().slice(0, 64),
   });
 }
 
@@ -350,6 +356,9 @@ export function validateServiceDraft(
   }
   if (!isOnboardingType(s.onboarding_type || "new")) errors.onboarding_type = "Choose how this service is being added";
   if (!isActivationMode(s.activation)) errors.activation = "Choose how this service should start";
+  if (s.wifi_password && (s.wifi_password.length < 8 || s.wifi_password.length > 63)) {
+    errors.wifi_password = "Wi-Fi password must be 8–63 characters";
+  }
   return errors;
 }
 

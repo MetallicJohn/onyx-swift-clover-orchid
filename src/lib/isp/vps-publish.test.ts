@@ -75,6 +75,7 @@ test("publish pack names docker compose, health, and WireGuard", () => {
   assert.match(edge, /tls\.createServer/);
   const ext = readFileSync(new URL("../../../deploy/vps/genieacs/ext/ispsolutions.js", import.meta.url), "utf8");
   assert.match(ext, /passwordFor/);
+  assert.match(ext, /serviceFor/);
   assert.match(ext, /acs-auth/);
   const init = readFileSync(new URL("../../../deploy/vps/genieacs/init-config.js", import.meta.url), "utf8");
   assert.match(init, /cwmp\.auth/);

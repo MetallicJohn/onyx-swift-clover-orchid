@@ -113,6 +113,7 @@ test("HTTPS scheme rewrites issued ACS URLs; checklist reflects platform flags",
     assert.equal(list.items.find((i) => i.id === "digest")?.ok, true);
     assert.equal(list.items.find((i) => i.id === "scheme")?.ok, false);
     assert.equal(list.items.find((i) => i.id === "lock")?.ok, true);
+    assert.equal(list.items.find((i) => i.id === "service")?.ok, true);
     assert.equal(list.items.find((i) => i.id === "nbi")?.ok, true);
     await bypass();
     await sql`insert into platform_settings (key, value) values ('acs_tls', 'https')
@@ -143,8 +144,11 @@ test("applyGenieAcsSecurity puts URL-lock provision/preset and digest auth expre
     assert.equal(on.ok, true);
     assert.ok(on.steps.includes("provision"));
     assert.ok(on.steps.includes("preset"));
+    assert.ok(on.steps.includes("service-provision"));
+    assert.ok(on.steps.includes("service-preset"));
     assert.match(calls.find((c) => c.url.includes("/provisions/ispsolutions-lock-url"))?.body || "", /ManagementServer\.URL/);
     assert.match(calls.find((c) => c.url.includes("/presets/ispsolutions-lock-url"))?.body || "", /ispsolutions-lock-url/);
+    assert.match(calls.find((c) => c.url.includes("/provisions/ispsolutions-service"))?.body || "", /WLANConfiguration/);
     assert.match(calls.find((c) => c.url.includes("cwmp.auth"))?.body || "", /passwordFor/);
     await sql`insert into platform_settings (key, value) values ('acs_lock_url', 'false')
       on conflict (key) do update set value = 'false'`;

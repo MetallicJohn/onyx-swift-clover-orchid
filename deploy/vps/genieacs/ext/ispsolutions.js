@@ -11,13 +11,13 @@ const { URL } = require("node:url");
 const INTERNAL = String(process.env.ISPSOLUTIONS_INTERNAL_URL || process.env.GRIDLINE_INTERNAL_URL || "http://web:3000").replace(/\/+$/, "");
 const TOKEN = String(process.env.ACS_EDGE_TOKEN || "");
 
-function postAuth(kind, username) {
+function postAuth(kind, username, serial) {
   return new Promise((resolve, reject) => {
     if (!TOKEN || !username) {
       resolve({ ok: false });
       return;
     }
-    const body = JSON.stringify({ username, kind });
+    const body = JSON.stringify({ username, kind, serial: serial || "" });
     let u;
     try {
       u = new URL(`${INTERNAL}/api/internal/acs-auth`);
@@ -104,5 +104,18 @@ exports.profileFor = asCallback(async (args) => {
     url: body.url || "",
     connreq_user: body.connreq_user || "",
     connreq_password: body.connreq_password || "",
+  });
+});
+
+exports.serviceFor = asCallback(async (args) => {
+  const username = String((args && args[0]) || "");
+  const serial = String((args && args[1]) || "");
+  const body = await postAuth("service", username, serial);
+  if (!body || !body.ok) return "{}";
+  return JSON.stringify({
+    wan_username: body.wan_username || "",
+    wan_password: body.wan_password || "",
+    ssid: body.ssid || "",
+    wifi_password: body.wifi_password || "",
   });
 });

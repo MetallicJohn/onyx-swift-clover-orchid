@@ -12,6 +12,7 @@ Authoritative migrations:
 | 0006_hardening.sql | active tenant, ledger, allocations, WG peers, sealed secret columns, command audit |
 
 | 0044_acs_tr069_security.sql | ACS URL scheme, CPE digest, URL lock |
+| 0057_acs_service_provision.sql | Service Wi-Fi SSID/password; Inform WAN+Wi-Fi auto-provision |
 | 0045_jobs_and_traffic.sql | `job_queue`, `traffic_samples`, `traffic_collectors` |
 | 0046_ispsolutions_role.sql | Rename RLS role and router API default to `ispsolutions` |
 | 0047_traffic_monitoring.sql | Minute/hourly/daily telemetry, router and interface metrics |

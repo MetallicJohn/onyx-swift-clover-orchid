@@ -71,6 +71,7 @@ export type AcsDeviceRow = {
   access_method: string;
   package_name: string;
   service_status: string;
+  service_wifi_ssid?: string;
   assigned_at: string | null;
   assigned_by_label: string;
   last_task_status: string;

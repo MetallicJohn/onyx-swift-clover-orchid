@@ -933,7 +933,32 @@ export function OnboardWizard({
                     ))}
                     {filteredDevices.length === 0 ? <p className="px-3 py-2 text-xs text-muted">No devices match.</p> : null}
                   </div>
-                  <p className="text-xs text-muted">Selecting a device does not mean it is provisioned. Offline units can still be attached.</p>
+                  <p className="text-xs text-muted">Selecting a device does not mean it is provisioned. Offline units can still be attached. WAN and Wi-Fi from this service are written on the next Inform.</p>
+                </div>
+              ) : null}
+
+              {service.access_method !== "hotspot" ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Wi-Fi name (SSID)">
+                    <Input
+                      value={service.wifi_ssid || ""}
+                      onChange={(e) => patchService({ wifi_ssid: e.target.value })}
+                      placeholder="Leave blank to generate"
+                      maxLength={32}
+                    />
+                  </Field>
+                  <Field label="Wi-Fi password">
+                    <Input
+                      type="password"
+                      value={service.wifi_password || ""}
+                      onChange={(e) => patchService({ wifi_password: e.target.value })}
+                      placeholder="Leave blank to generate"
+                      autoComplete="new-password"
+                    />
+                  </Field>
+                  <p className="text-xs text-muted sm:col-span-2">
+                    Written onto the ONU on Inform after this service is assigned. Leave blank to generate a name from the customer and a WPA2 password.
+                  </p>
                 </div>
               ) : null}
 
@@ -1090,6 +1115,9 @@ export function OnboardWizard({
                     <Row label="CPE" value={devices.find((d) => d.id === service.cpe_id)?.serial || service.cpe_id} />
                   ) : service.access_method !== "hotspot" ? (
                     <Row label="CPE" value="Not attached" />
+                  ) : null}
+                  {service.access_method !== "hotspot" ? (
+                    <Row label="Wi-Fi" value={service.wifi_ssid || "Generated on save"} />
                   ) : null}
                   <Row label="Expiry" value={service.expiry_ymd ? formatDate(service.expiry_ymd) : "Package default"} />
                   {isMigratingOnboard(service.onboarding_type) ? (

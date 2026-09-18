@@ -63,12 +63,14 @@ async function loadCpe(sql: Sql, tenantId: string, cpeId: string) {
     optical_snapshot: string;
     source: string;
     last_optical_at: string | null;
+    service_id: string | null;
   }>`select id, serial, product_class, coalesce(manufacturer,'') as manufacturer,
             coalesce(model, product_class) as model, acs_device_id, manufacturer_oui,
             coalesce(vendor_profile,'') as vendor_profile, status, ssid,
             last_inform::text as last_inform, coalesce(last_inform_raw,'') as last_inform_raw,
             coalesce(wifi_snapshot,'{}') as wifi_snapshot, coalesce(optical_snapshot,'{}') as optical_snapshot,
-            coalesce(source,'nbi') as source, last_optical_at::text as last_optical_at
+            coalesce(source,'nbi') as source, last_optical_at::text as last_optical_at,
+            service_id
      from cpe_devices where id = ${cpeId} and tenant_id = ${tenantId}`;
   if (!row) throw new Error("Device not found");
   return row;
@@ -528,6 +530,17 @@ export async function applyAcsWifi(
     await sql`update cpe_devices set ssid = ${input.ssid}, last_wifi_at = now(),
       wifi_snapshot = ${JSON.stringify({ ssid: input.ssid, band: input.band || "", security: input.security || "", password_set: Boolean(input.password) })}
       where id = ${cpeId} and tenant_id = ${tenantId}`;
+  }
+  if (cpe.service_id && (input.ssid || input.password)) {
+    try {
+      const { saveServiceWifi } = await import("./acs-service-provision.ts");
+      await saveServiceWifi(sql, tenantId, cpe.service_id, {
+        ssid: input.ssid,
+        password: input.password,
+      });
+    } catch {
+      /* device task already queued; service copy must not fail the write */
+    }
   }
   return { ...queued, ...verified };
 }

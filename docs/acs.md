@@ -10,6 +10,7 @@ GenieACS is a **separate process** (CWMP :7547, NBI :7557, FS :7567, UI on `acs.
 - ACS → CPE connection-request auth uses the device's stored connection-request username and password
 - Optional HTTPS ACS URLs (`acs_tls`). Default HTTP so existing OLT profiles keep working. Optional TLS on cwmp-edge
 - URL lock preset: on inform, rewrite `ManagementServer.URL` (TR-098 and TR-181) and connection-request credentials for this ISP
+- Service provision preset: on inform, write this assigned service's PPPoE WAN username/password and Wi-Fi SSID/password (both TR-098 and TR-181). Unassigned devices and empty fields are skipped. Default on (`acs_provision_service`)
 - ISP Solutions NBI adapter: list devices, post `reboot` / `setParameterValues` (SSID) / `refreshObject` with `connection_request`
 - Inventory sync from `GET /devices/` (filtered by this ISP's ACS username)
 - Tasks stay `queued` until NBI is configured, then `sent` or `error`
@@ -25,4 +26,4 @@ Set NBI URL in **GenieACS** (default `http://genieacs:7557` on the VPS compose n
 
 ## Device management
 
-The **GenieACS Devices** tab lists CPE/ONU inventory from `cpe_devices` (synced from NBI when configured). Staff can add a device from GenieACS, enter one manually as unconfirmed, or wait for the next Inform. Assignment is one device to one billed service. Writes go through `acs_tasks` and are not marked successful until the device reports the change. Optical values come from the vendor parameter profile; missing paths are shown as not exposed. Firmware upgrade is not offered until a file server is configured.
+The **GenieACS Devices** tab lists CPE/ONU inventory from `cpe_devices` (synced from NBI when configured). Staff can add a device from GenieACS, enter one manually as unconfirmed, or wait for the next Inform. Assignment is one device to one billed service. After assign, WAN PPPoE (PPPoE services) plus SSID and Wi-Fi password from that service are written on Inform. Writes go through `acs_tasks` and are not marked successful until the device reports the change. Optical values come from the vendor parameter profile; missing paths are shown as not exposed. Firmware upgrade is not offered until a file server is configured.

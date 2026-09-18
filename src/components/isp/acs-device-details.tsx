@@ -191,6 +191,7 @@ export function AcsDeviceDetails({
               <Row label="Source" value={d.source === "manual" ? "Manual (not confirmed online)" : "GenieACS"} />
               <Row label="Customer" value={d.customer_name || "Unassigned"} />
               <Row label="Service" value={d.service_account || "—"} />
+              <Row label="Service Wi-Fi" value={d.service_wifi_ssid || (d.service_id ? "Generated on assign" : "—")} />
             </dl>
           ) : null}
 
@@ -218,6 +219,13 @@ export function AcsDeviceDetails({
 
           {tab === "wifi" ? (
             <div className="grid gap-3">
+              {d.service_id ? (
+                <p className="text-xs text-muted">
+                  Assigned service SSID: {d.service_wifi_ssid || "will be generated"}. On Inform the ONU is rewritten to match the service. Saving Wi-Fi here updates that service.
+                </p>
+              ) : (
+                <p className="text-xs text-muted">Assign this device to a service to auto-provision WAN and Wi-Fi on Inform.</p>
+              )}
               {(params?.wifi || []).map((band) => (
                 <section key={band.id} className="rounded-xl border border-border bg-bg px-4 py-3 text-sm">
                   <p className="text-xs font-medium tracking-wide text-muted">{band.label}</p>

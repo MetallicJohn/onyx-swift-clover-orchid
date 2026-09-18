@@ -527,6 +527,17 @@ export async function createOnboard(
     createdServiceId = id;
     const serviceAccountNumber = await ensureServiceAccountNumber(sql, tid, id);
 
+    if (pkg.access_method !== "hotspot") {
+      const { ensureServiceWifi } = await import("./acs-service-provision.ts");
+      const [cusName] = await sql<{ name: string }>`select name from customers where id = ${customerId} and tenant_id = ${tid}`;
+      await ensureServiceWifi(sql, tid, id, {
+        ssid: service.wifi_ssid,
+        password: service.wifi_password,
+        customerName: cusName?.name || payload.customer?.name || "",
+        accountNumber: serviceAccountNumber,
+      });
+    }
+
     if (pkg.access_method === "static") {
       if (fields.static_ip) {
         await assignStaticIp(sql, tid, id, customerId, fields.static_ip, fields.pool_id);

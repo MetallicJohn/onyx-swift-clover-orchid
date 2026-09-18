@@ -25,6 +25,7 @@ function SettingsPage() {
     acs_tls: "http" as "http" | "https",
     acs_require_cpe_auth: true,
     acs_lock_url: true,
+    acs_provision_service: true,
     traffic_enabled: true,
     traffic_interval_sec: 30,
     traffic_router_interval_sec: 60,
@@ -232,6 +233,15 @@ function SettingsPage() {
               onChange={(e) => setForm({ ...form, acs_lock_url: e.target.checked })}
             />
             <span>Lock ACS URL on inform (rewrite the ONU if it is redirected)</span>
+          </label>
+          <label className="flex min-h-11 items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={form.acs_provision_service}
+              onChange={(e) => setForm({ ...form, acs_provision_service: e.target.checked })}
+            />
+            <span>Provision WAN, SSID, and Wi-Fi password from the assigned service on inform</span>
           </label>
           <p className="mt-4 text-xs font-medium tracking-wide text-muted uppercase">Traffic monitoring</p>
           <p className="text-xs text-muted">

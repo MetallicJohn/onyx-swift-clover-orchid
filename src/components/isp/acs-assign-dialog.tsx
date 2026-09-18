@@ -101,7 +101,7 @@ export function AcsAssignDialog({
         onOpenChange(next);
       }}
       title={assigned ? "Reassign device" : "Assign device"}
-      description="Search the destination customer, then pick the exact service. One device maps to one service."
+      description="Search the destination customer, then pick the exact service. One device maps to one service. WAN PPPoE, SSID, and Wi-Fi password from that service are written on the next Inform."
       className="sm:max-w-xl"
     >
       {device ? (

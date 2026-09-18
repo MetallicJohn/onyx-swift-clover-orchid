@@ -20,6 +20,7 @@ type Security = {
   scheme: "http" | "https";
   require_cpe_auth: boolean;
   lock_url: boolean;
+  provision_service?: boolean;
   items: { id: string; ok: boolean; label: string; detail: string }[];
 };
 
@@ -195,6 +196,7 @@ export function AcsCredentialsPanel({
             <li>Copy ACS URL, username, and password onto the OLT profile.</li>
             <li>Copy connection-request username and password if the vendor has those fields.</li>
             <li>Activate the ONU, then Devices → Sync from ACS.</li>
+            <li>Assign the ONU to a service. WAN, SSID, and Wi-Fi password are written on the next Inform.</li>
           </ol>
           {!nbiConfigured ? (
             <p className="mt-3 text-sm text-muted">NBI is not configured yet. Devices will inform but this console cannot query GenieACS until NBI is saved.</p>
