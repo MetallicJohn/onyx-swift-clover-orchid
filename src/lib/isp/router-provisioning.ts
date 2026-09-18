@@ -333,7 +333,7 @@ export async function listTenantRouters(sql: Sql, tenantId: string) {
       provision_token_revoked_at::text as provision_token_revoked_at,
       provisioned_at::text as provisioned_at,
       coalesce(config_version,0)::int as config_version
-    from routers where tenant_id = ${tenantId} order by name`;
+    from routers where tenant_id = ${tenantId} and archived_at is null order by name`;
   const counts = await sql<{ router_id: string; n: number }>`
     select router_id, count(*)::int as n
     from router_pool_assignments
@@ -383,7 +383,7 @@ export async function listAssignedPools(sql: Sql, tenantId: string, routerId: st
 
 export async function listAvailablePools(sql: Sql, tenantId: string) {
   return sql<{ id: string; name: string; cidr: string }>`
-    select id, name, cidr from ip_pools where tenant_id = ${tenantId} order by name`;
+    select id, name, cidr from ip_pools where tenant_id = ${tenantId} and archived_at is null order by name`;
 }
 
 export async function createIpPool(

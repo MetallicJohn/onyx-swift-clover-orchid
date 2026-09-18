@@ -6,12 +6,12 @@ import { formatBps, formatDuration, TRAFFIC_FRESHNESS_LABEL, TRAFFIC_SOURCE_LABE
 
 type Telemetry = Awaited<ReturnType<typeof routerTelemetryFn>>;
 
-export function RouterMonitor({ routerId }: { routerId: string }) {
+export function RouterMonitor({ routerId, active = true }: { routerId: string; active?: boolean }) {
   const [data, setData] = useState<Telemetry | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!routerId) {
+    if (!routerId || !active) {
       setData(null);
       return;
     }
@@ -34,9 +34,9 @@ export function RouterMonitor({ routerId }: { routerId: string }) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [routerId]);
+  }, [routerId, active]);
 
-  if (!routerId) return null;
+  if (!routerId || !active) return null;
 
   return (
     <section className="grid gap-3 rounded-xl border border-border bg-surface p-4">

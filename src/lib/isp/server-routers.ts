@@ -262,3 +262,212 @@ export const routerTelemetryFn = createServerFn({ method: "GET" })
     const { routerTelemetry } = await import("./traffic-router.ts");
     return routerTelemetry(sql, tenantId, data.router_id);
   });
+
+export const queryRoutersDeskFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .validator((d: Record<string, unknown> | undefined) => d ?? {})
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role, workspace } = await requireWs(context.userId);
+    assertPermission(role, "routers.read");
+    const { queryRoutersDesk } = await import("./router-desk");
+    const { normalizeRouterDeskQuery } = await import("./router-desk-format");
+    const { ensureTenantProvisioning } = await import("./router-provisioning");
+    const { previewTenantDomain } = await import("./domain-resolve");
+    const { ensureTenantHub } = await import("./wireguard");
+    const filters = normalizeRouterDeskQuery({
+      q: typeof data.q === "string" ? data.q : "",
+      status: data.status as never,
+      location: typeof data.location === "string" ? data.location : "",
+      vendor: typeof data.vendor === "string" ? data.vendor : "",
+      hasPools: data.hasPools === true || data.hasPools === "true",
+      hasServices: data.hasServices === true || data.hasServices === "true",
+      page: Number(data.page) || 1,
+    });
+    const [desk, provisioning, hub, domain] = await Promise.all([
+      queryRoutersDesk(sql, tenantId, filters),
+      ensureTenantProvisioning(sql, tenantId),
+      ensureTenantHub(sql, tenantId).catch(() => null),
+      previewTenantDomain(sql, tenantId, "router_bootstrap").catch(() => null),
+    ]);
+    return {
+      workspace,
+      provisioning,
+      hubReady: Boolean(hub?.ready),
+      domain,
+      ...desk,
+    };
+  });
+
+export const getRouterDeskFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role, workspace } = await requireWs(context.userId);
+    assertPermission(role, "routers.read");
+    const { listRouterPools } = await import("./router-desk");
+    const [status, events, history, pools] = await Promise.all([
+      routerStatus(sql, tenantId, data.id),
+      listProvisionEvents(sql, tenantId, data.id),
+      configurationHistory(sql, tenantId, data.id),
+      listRouterPools(sql, tenantId, data.id),
+    ]);
+    return {
+      workspace,
+      router: status,
+      events,
+      history,
+      pools,
+      service_count: pools.reduce((n, p) => n + p.assigned_services, 0),
+    };
+  });
+
+export const listRouterPoolsFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.read");
+    const { listRouterPools } = await import("./router-desk");
+    return { pools: await listRouterPools(sql, tenantId, data.id) };
+  });
+
+export const listRouterPoolAssignmentsFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { pool_id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.read");
+    const { listPoolAssignments } = await import("./router-desk");
+    return { assignments: await listPoolAssignments(sql, tenantId, data.pool_id) };
+  });
+
+export const createRouterPoolFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { router_id: string } & Record<string, unknown>) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
+    const { createRouterPool } = await import("./router-desk");
+    return createRouterPool(sql, {
+      tenantId,
+      routerId: data.router_id,
+      actorUserId: context.userId,
+      draft: {
+        name: String(data.name || ""),
+        code: String(data.code || ""),
+        cidr: String(data.cidr || ""),
+        gateway: String(data.gateway || ""),
+        first_ip: String(data.first_ip || ""),
+        last_ip: String(data.last_ip || ""),
+        access_type: String(data.access_type || ""),
+        vlan_id: data.vlan_id as string | number | null,
+        site_pop: String(data.site_pop || ""),
+        description: String(data.description || ""),
+        status: String(data.status || "active"),
+        dns_servers: String(data.dns_servers || ""),
+        package_id: String(data.package_id || ""),
+      },
+    });
+  });
+
+export const updateRouterPoolFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { router_id: string; pool_id: string; confirm_impact?: boolean } & Record<string, unknown>) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
+    const { updateRouterPool } = await import("./router-desk");
+    return updateRouterPool(sql, {
+      tenantId,
+      routerId: data.router_id,
+      poolId: data.pool_id,
+      actorUserId: context.userId,
+      confirmImpact: Boolean(data.confirm_impact),
+      draft: {
+        name: String(data.name || ""),
+        code: String(data.code || ""),
+        cidr: String(data.cidr || ""),
+        gateway: String(data.gateway || ""),
+        first_ip: String(data.first_ip || ""),
+        last_ip: String(data.last_ip || ""),
+        access_type: String(data.access_type || ""),
+        vlan_id: data.vlan_id as string | number | null,
+        site_pop: String(data.site_pop || ""),
+        description: String(data.description || ""),
+        status: String(data.status || "active"),
+        dns_servers: String(data.dns_servers || ""),
+        package_id: String(data.package_id || ""),
+      },
+    });
+  });
+
+export const archiveRouterPoolFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { router_id: string; pool_id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
+    const { archiveRouterPool } = await import("./router-desk");
+    return archiveRouterPool(sql, {
+      tenantId,
+      routerId: data.router_id,
+      poolId: data.pool_id,
+      actorUserId: context.userId,
+    });
+  });
+
+export const setPoolEnabledFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { router_id: string; pool_id: string; enabled: boolean }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
+    const { setPoolEnabled } = await import("./router-desk");
+    return setPoolEnabled(sql, {
+      tenantId,
+      routerId: data.router_id,
+      poolId: data.pool_id,
+      actorUserId: context.userId,
+      enabled: data.enabled,
+    });
+  });
+
+export const setRouterEnabledFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string; enabled: boolean }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
+    const { setRouterEnabled } = await import("./router-desk");
+    return setRouterEnabled(sql, {
+      tenantId,
+      routerId: data.id,
+      actorUserId: context.userId,
+      enabled: data.enabled,
+    });
+  });
+
+export const archiveRouterFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
+    const { archiveRouter } = await import("./router-desk");
+    return archiveRouter(sql, {
+      tenantId,
+      routerId: data.id,
+      actorUserId: context.userId,
+    });
+  });
+
+export const testRouterConnectionFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
+    const { testRouterConnection } = await import("./router-desk");
+    return testRouterConnection(sql, tenantId, data.id);
+  });
+

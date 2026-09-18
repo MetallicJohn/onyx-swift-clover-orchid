@@ -962,12 +962,16 @@ export const listRouters = createServerFn({ method: "GET" })
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "routers.read");
     const { listTenantRouters, listAvailablePools, ensureTenantProvisioning } = await import("./router-provisioning");
-    const [routers, pools, provisioning] = await Promise.all([
+    const { previewTenantDomain } = await import("./domain-resolve");
+    const { ensureTenantHub } = await import("./wireguard");
+    const [routers, pools, provisioning, hub, domain] = await Promise.all([
       listTenantRouters(sql, workspace.tenantId),
       listAvailablePools(sql, workspace.tenantId),
       ensureTenantProvisioning(sql, workspace.tenantId),
+      ensureTenantHub(sql, workspace.tenantId).catch(() => null),
+      previewTenantDomain(sql, workspace.tenantId, "router_bootstrap").catch(() => null),
     ]);
-    return { workspace, routers, pools, provisioning };
+    return { workspace, routers, pools, provisioning, hub, domain };
   });
 
 export const addRouter = createServerFn({ method: "POST" })

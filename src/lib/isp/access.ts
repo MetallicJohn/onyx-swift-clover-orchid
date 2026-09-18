@@ -72,16 +72,14 @@ export async function seedOpsForTenant(sql: Sql, tenantId: string) {
     { kind: "airtel", label: "Airtel Money" },
     { kind: "bank", label: "Bank transfer" },
   ];
+  const existing = await sql<{ kind: string }>`
+    select kind from payment_providers where tenant_id = ${tenantId}`;
+  const have = new Set(existing.map((row) => row.kind));
   for (const p of providers) {
-    const hit = await sql<{ id: string }>`select id from payment_providers where tenant_id = ${tenantId} and kind = ${p.kind}`;
-    if (!hit[0]) {
-      await sql`insert into payment_providers (id, tenant_id, kind, label, enabled, sandbox)
-        values (${nid("prv")}, ${tenantId}, ${p.kind}, ${p.label}, true, true)`;
-    }
+    if (have.has(p.kind)) continue;
+    await sql`insert into payment_providers (id, tenant_id, kind, label, enabled, sandbox)
+      values (${nid("prv")}, ${tenantId}, ${p.kind}, ${p.label}, true, true)`;
   }
-
-  const services = await sql<{ id: string }>`select id from services where tenant_id = ${tenantId} and deleted_at is null`;
-  for (const s of services) await provisionServiceAccess(sql, tenantId, s.id);
 
   const routers = await sql<{ id: string; name: string; enroll_token: string }>`
     select id, name, enroll_token from routers where tenant_id = ${tenantId}`;

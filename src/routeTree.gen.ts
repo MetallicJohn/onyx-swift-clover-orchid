@@ -73,6 +73,7 @@ import { Route as ApiRoutersIndexRouteImport } from './routes/api/routers/index'
 import { Route as ApiV1HealthRouteImport } from './routes/api/v1/health'
 import { Route as ApiV1ReadyRouteImport } from './routes/api/v1/ready'
 import { Route as AppCustomersCustomerIdRouteImport } from './routes/app/customers.$customerId'
+import { Route as AppRoutersRouterIdRouteImport } from './routes/app/routers.$routerId'
 import { Route as AppServicesServiceIdRouteImport } from './routes/app/services.$serviceId'
 import { Route as PlatformTenantsTenantIdRouteImport } from './routes/platform/tenants.$tenantId'
 import { Route as ApiRoutersIdIndexRouteImport } from './routes/api/routers/$id/index'
@@ -408,6 +409,11 @@ const AppCustomersCustomerIdRoute = AppCustomersCustomerIdRouteImport.update({
   path: '/$customerId',
   getParentRoute: () => AppCustomersRoute,
 } as any)
+const AppRoutersRouterIdRoute = AppRoutersRouterIdRouteImport.update({
+  id: '/$routerId',
+  path: '/$routerId',
+  getParentRoute: () => AppRoutersRoute,
+} as any)
 const AppServicesServiceIdRoute = AppServicesServiceIdRouteImport.update({
   id: '/$serviceId',
   path: '/$serviceId',
@@ -509,7 +515,7 @@ export interface FileRoutesByFullPath {
   '/app/radius': typeof AppRadiusRoute
   '/app/recycle-bin': typeof AppRecycleBinRoute
   '/app/reports': typeof AppReportsRoute
-  '/app/routers': typeof AppRoutersRoute
+  '/app/routers': typeof AppRoutersRouteWithChildren
   '/app/services': typeof AppServicesRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/statements': typeof AppStatementsRoute
@@ -546,6 +552,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/health': typeof ApiV1HealthRoute
   '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/app/routers/$routerId': typeof AppRoutersRouterIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/api/routers/': typeof ApiRoutersIndexRoute
@@ -585,7 +592,7 @@ export interface FileRoutesByTo {
   '/app/radius': typeof AppRadiusRoute
   '/app/recycle-bin': typeof AppRecycleBinRoute
   '/app/reports': typeof AppReportsRoute
-  '/app/routers': typeof AppRoutersRoute
+  '/app/routers': typeof AppRoutersRouteWithChildren
   '/app/services': typeof AppServicesRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/statements': typeof AppStatementsRoute
@@ -622,6 +629,7 @@ export interface FileRoutesByTo {
   '/api/v1/health': typeof ApiV1HealthRoute
   '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/app/routers/$routerId': typeof AppRoutersRouterIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/api/routers': typeof ApiRoutersIndexRoute
@@ -666,7 +674,7 @@ export interface FileRoutesById {
   '/app/radius': typeof AppRadiusRoute
   '/app/recycle-bin': typeof AppRecycleBinRoute
   '/app/reports': typeof AppReportsRoute
-  '/app/routers': typeof AppRoutersRoute
+  '/app/routers': typeof AppRoutersRouteWithChildren
   '/app/services': typeof AppServicesRouteWithChildren
   '/app/settings': typeof AppSettingsRoute
   '/app/statements': typeof AppStatementsRoute
@@ -703,6 +711,7 @@ export interface FileRoutesById {
   '/api/v1/health': typeof ApiV1HealthRoute
   '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/app/routers/$routerId': typeof AppRoutersRouterIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/api/routers/': typeof ApiRoutersIndexRoute
@@ -785,6 +794,7 @@ export interface FileRouteTypes {
     | '/api/v1/health'
     | '/api/v1/ready'
     | '/app/customers/$customerId'
+    | '/app/routers/$routerId'
     | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
     | '/api/routers/'
@@ -861,6 +871,7 @@ export interface FileRouteTypes {
     | '/api/v1/health'
     | '/api/v1/ready'
     | '/app/customers/$customerId'
+    | '/app/routers/$routerId'
     | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
     | '/api/routers'
@@ -941,6 +952,7 @@ export interface FileRouteTypes {
     | '/api/v1/health'
     | '/api/v1/ready'
     | '/app/customers/$customerId'
+    | '/app/routers/$routerId'
     | '/app/services/$serviceId'
     | '/platform/tenants/$tenantId'
     | '/api/routers/'
@@ -1448,6 +1460,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCustomersCustomerIdRouteImport
       parentRoute: typeof AppCustomersRoute
     }
+    '/app/routers/$routerId': {
+      id: '/app/routers/$routerId'
+      path: '/$routerId'
+      fullPath: '/app/routers/$routerId'
+      preLoaderRoute: typeof AppRoutersRouterIdRouteImport
+      parentRoute: typeof AppRoutersRoute
+    }
     '/app/services/$serviceId': {
       id: '/app/services/$serviceId'
       path: '/$serviceId'
@@ -1561,6 +1580,18 @@ const AppCustomersRouteWithChildren = AppCustomersRoute._addFileChildren(
   AppCustomersRouteChildren,
 )
 
+interface AppRoutersRouteChildren {
+  AppRoutersRouterIdRoute: typeof AppRoutersRouterIdRoute
+}
+
+const AppRoutersRouteChildren: AppRoutersRouteChildren = {
+  AppRoutersRouterIdRoute: AppRoutersRouterIdRoute,
+}
+
+const AppRoutersRouteWithChildren = AppRoutersRoute._addFileChildren(
+  AppRoutersRouteChildren,
+)
+
 interface AppServicesRouteChildren {
   AppServicesServiceIdRoute: typeof AppServicesServiceIdRoute
 }
@@ -1588,7 +1619,7 @@ interface AppRouteChildren {
   AppRadiusRoute: typeof AppRadiusRoute
   AppRecycleBinRoute: typeof AppRecycleBinRoute
   AppReportsRoute: typeof AppReportsRoute
-  AppRoutersRoute: typeof AppRoutersRoute
+  AppRoutersRoute: typeof AppRoutersRouteWithChildren
   AppServicesRoute: typeof AppServicesRouteWithChildren
   AppSettingsRoute: typeof AppSettingsRoute
   AppStatementsRoute: typeof AppStatementsRoute
@@ -1611,7 +1642,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppRadiusRoute: AppRadiusRoute,
   AppRecycleBinRoute: AppRecycleBinRoute,
   AppReportsRoute: AppReportsRoute,
-  AppRoutersRoute: AppRoutersRoute,
+  AppRoutersRoute: AppRoutersRouteWithChildren,
   AppServicesRoute: AppServicesRouteWithChildren,
   AppSettingsRoute: AppSettingsRoute,
   AppStatementsRoute: AppStatementsRoute,
