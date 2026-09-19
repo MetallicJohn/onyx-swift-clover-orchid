@@ -54,7 +54,6 @@ export type PortalCustomer = {
   phone: string;
   email: string;
   address: string;
-  account_number: string;
   account_status: PortalAccountStatus;
   using_initial_password: boolean;
 };

@@ -1,5 +1,6 @@
 import { nid } from "../utils.ts";
 import { grantPaidPeriod, periodMs, restorePaidAccess } from "./access-policy.ts";
+import { hotspotDurationMs, hotspotPackageDuration } from "./hotspot-duration.ts";
 import { remainingKes } from "./billing.ts";
 import { nairobiDate } from "./empty-tenant.ts";
 import { assertTenantMatch } from "./rbac.ts";
@@ -186,6 +187,9 @@ type ServicePartialRow = {
   last_partial_pct: number;
   billing_interval: string;
   validity_hours: number;
+  duration_value: number;
+  duration_unit: string;
+  access_method: string;
   price_kes: number;
 };
 
@@ -207,7 +211,8 @@ async function loadServicePartial(sql: Sql, tenantId: string, serviceId: string)
            s.partial_enabled, s.partial_min_pct, coalesce(s.partial_method,'pro_rata') as partial_method,
            s.last_partial_payment_id, coalesce(s.last_partial_validity_ms,0)::bigint as last_partial_validity_ms,
            coalesce(s.last_partial_pct,0)::int as last_partial_pct,
-           p.billing_interval, p.validity_hours, p.price_kes
+           p.billing_interval, p.validity_hours, p.price_kes, s.access_method,
+           coalesce(p.duration_value,0)::int as duration_value, coalesce(p.duration_unit,'hours') as duration_unit
     from services s join packages p on p.id = s.package_id
     where s.id = ${serviceId} and s.tenant_id = ${tenantId}`;
   return row ?? null;
@@ -629,6 +634,10 @@ export async function applyPaymentAccess(
   if (svc.customer_id !== opts.customerId) {
     return { ...empty, blocked_reason: "wrong_service", outcome: "blocked" };
   }
+  const hotspot = svc.access_method === "hotspot";
+  if (hotspot && !opts.invoicePaid) {
+    return { ...empty, blocked_reason: "hotspot_requires_full_payment", outcome: "blocked" };
+  }
   const [inv] = opts.invoiceId
     ? await sql<{
         id: string;
@@ -640,8 +649,11 @@ export async function applyPaymentAccess(
       }>`select id, amount_kes, paid_kes, status, coalesce(access_granted_ms,0)::bigint as access_granted_ms, number
          from invoices where id = ${opts.invoiceId} and tenant_id = ${opts.tenantId}`
     : [];
-  const period = periodMs(svc.billing_interval, svc.validity_hours);
-  const hourly = (svc.validity_hours || 0) > 0;
+  const dur = hotspotPackageDuration(svc);
+  const period = hotspot
+    ? hotspotDurationMs(dur.value, dur.unit) || periodMs(svc.billing_interval, svc.validity_hours)
+    : periodMs(svc.billing_interval, svc.validity_hours);
+  const hourly = hotspot ? dur.unit === "minutes" || dur.unit === "hours" : (svc.validity_hours || 0) > 0;
   const full = inv?.amount_kes || svc.price_kes;
   const paid = inv?.paid_kes ?? opts.paidKes;
   const already = Number(inv?.access_granted_ms || 0);
@@ -667,7 +679,9 @@ export async function applyPaymentAccess(
   const previousExpiry = svc.period_end;
 
   if (decision.action === "activate" || decision.action === "restore" || decision.action === "extend") {
-    if (decision.grant_ms > 0) {
+    if (hotspot) {
+      await grantPaidPeriod(sql, opts.tenantId, opts.customerId, now, serviceId);
+    } else if (decision.grant_ms > 0) {
       await grantPaidPeriod(sql, opts.tenantId, opts.customerId, now, serviceId, decision.grant_ms);
     }
     const restored = await restorePaidAccess(sql, opts.tenantId, opts.customerId, serviceId, {

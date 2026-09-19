@@ -34,16 +34,17 @@ export function wireModules() {
     const serviceId = String(p.service_id || "");
     const invoicePaid = p.invoice_paid !== false;
 
-    let prior: { status: string; suspend_reason: string } | null = null;
+    let prior: { status: string; suspend_reason: string; access_method: string } | null = null;
     if (serviceId) {
-      const [row] = await sql<{ status: string; suspend_reason: string }>`
-        select status, coalesce(suspend_reason,'') as suspend_reason
+      const [row] = await sql<{ status: string; suspend_reason: string; access_method: string }>`
+        select status, coalesce(suspend_reason,'') as suspend_reason, access_method
         from services where id = ${serviceId} and tenant_id = ${tenantId} and deleted_at is null`;
       prior = row ?? null;
     }
     const wasAwaiting = Boolean(prior && prior.suspend_reason === "awaiting_payment");
     const wasActive = prior?.status === "active";
     const wasDown = Boolean(prior && ["grace", "suspended", "pending"].includes(prior.status));
+    const hotspot = prior?.access_method === "hotspot";
 
     await applyPaymentAccess(sql, {
       tenantId,
@@ -59,6 +60,10 @@ export function wireModules() {
       provider: String(p.provider || ""),
       invoiceNumber: String(p.invoice_number || ""),
     });
+    if (hotspot && serviceId) {
+      const { fulfillHotspotPurchase } = await import("./hotspot-purchase.ts");
+      await fulfillHotspotPurchase(sql, tenantId, serviceId);
+    }
     let businessHandled = false;
     let creditRestored = false;
     if (serviceId) {
@@ -111,7 +116,9 @@ export function wireModules() {
       });
       await auditSystem(sql, tenantId, "payment.received", "payment", payId, JSON.stringify({ service_id: serviceId, invoice_paid: invoicePaid }));
 
-      if (!invoicePaid) {
+      if (hotspot) {
+        /* Captive hotspot buy does not send SMS/email/WhatsApp/push. */
+      } else if (!invoicePaid) {
         /* partial payment SMS is sent from applyPaymentAccess */
       } else if (wasAwaiting) {
         await notifyQuietly(sql, tenantId, ispName, customerId, "payment.received.awaiting", payId, vars);

@@ -191,7 +191,7 @@ function ServiceRecordPage() {
         <section className="rounded-xl border border-border bg-surface p-4">
           <h2 className="text-sm font-medium">Line</h2>
           <dl className="mt-3 grid gap-2 text-sm">
-            <Fact label="Account" value={s.account_number || "—"} mono />
+            <Fact label="Service Account Number" value={s.account_number || "—"} mono />
             <Fact label="Due" value={kes(s.outstanding_kes || 0)} />
             <Fact label="Username" value={s.username || "—"} mono />
             <Fact label="Static IP" value={s.static_ip || "—"} mono />
@@ -369,7 +369,7 @@ function ServiceRecordPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Account number">
+          <Field label="Service Account Number">
             <Input
               value={form.account_number}
               onChange={(e) => setForm({ ...form, account_number: e.target.value.toUpperCase() })}
@@ -378,7 +378,7 @@ function ServiceRecordPage() {
           </Field>
           {!allowManualAccount ? (
             <p className="text-xs text-muted md:col-span-2">
-              Manual account-number edits are off. Enable them in Settings → Account numbers.
+              Manual editing of service account numbers is turned off.
             </p>
           ) : null}
           <Field label="Username">

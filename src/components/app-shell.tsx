@@ -34,7 +34,6 @@ const NAV: SidebarNavItem[] = [
   { to: "/app/customers", label: "Customers", icon: Users },
   { to: "/app/packages", label: "Packages", icon: Boxes },
   { to: "/app/services", label: "Services", icon: Wifi },
-  { to: "/app/recycle-bin", label: "Recycle Bin", icon: Trash2 },
   { to: "/app/radius", label: "RADIUS", icon: Radio },
   { to: "/app/hotspot", label: "Hotspot", icon: Wifi },
   { to: "/app/billing", label: "Billing", icon: CreditCard },
@@ -49,6 +48,8 @@ const NAV: SidebarNavItem[] = [
   { to: "/app/import", label: "Import", icon: Import },
   { to: "/app/settings", label: "Settings", icon: Settings },
 ];
+
+const RECYCLE_BIN: SidebarNavItem = { to: "/app/recycle-bin", label: "Recycle Bin", icon: Trash2 };
 
 const subscribeToNothing = () => () => {};
 
@@ -101,6 +102,7 @@ export function AppShell({
     return canAccessAppPath(role, item.to);
   });
   const allowed = canAccessAppPath(role, pathname);
+  const showRecycleBin = canAccessAppPath(role, RECYCLE_BIN.to);
   const roleLabel = ROLE_GUIDE.find((row) => row.role === role)?.label || role?.replaceAll("_", " ");
   const gateSession = useSyncExternalStore(
     subscribeToNothing,
@@ -132,8 +134,11 @@ export function AppShell({
             ))}
           </select>
         ) : null}
-        <SidebarNav items={visible} pathname={pathname} root="/app" />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <SidebarNav items={visible} pathname={pathname} root="/app" />
+        </div>
         <div className="mt-auto space-y-2 border-t border-border pt-3">
+          {showRecycleBin ? <SidebarNav items={[RECYCLE_BIN]} pathname={pathname} root="/app" /> : null}
           {platformAdmin ? (
             <Link
               to="/platform"
@@ -161,12 +166,19 @@ export function AppShell({
                 <X className="size-5" />
               </button>
             </div>
-            <SidebarNav items={visible} pathname={pathname} root="/app" onNavigate={() => setOpen(false)} />
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <SidebarNav items={visible} pathname={pathname} root="/app" onNavigate={() => setOpen(false)} />
+            </div>
+            {showRecycleBin ? (
+              <div className="mt-auto border-t border-border pt-3">
+                <SidebarNav items={[RECYCLE_BIN]} pathname={pathname} root="/app" onNavigate={() => setOpen(false)} />
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
 
-      <div className="md:pl-60">
+      <div className="min-w-0 overflow-x-clip md:pl-60">
         {supportMode ? (
           <div className="flex flex-col gap-2 border-b border-warn/40 bg-warn/10 px-4 py-3 text-sm text-warn sm:flex-row sm:items-center sm:justify-between">
             <span>

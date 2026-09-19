@@ -1,6 +1,6 @@
 /** Client-safe continuing-client import helpers. No SQL, no Node APIs. */
 
-import { parseExpiryYmd } from "./service-expiry-format.ts";
+import { parseYmdInput } from "./display.ts";
 import type { AccessMethod } from "./types.ts";
 
 export const ONBOARDING_TYPES = ["new", "continuing", "reactivation"] as const;
@@ -18,7 +18,7 @@ export const IMPORT_COLUMNS = [
   { key: "phone", label: "Phone", required: true },
   { key: "email", label: "Email", required: false },
   { key: "address", label: "Address", required: false },
-  { key: "account_number", label: "Customer account", required: false },
+  { key: "account_number", label: "ID", required: false },
   { key: "access_method", label: "Service type", required: false },
   { key: "package_name", label: "Package", required: true },
   { key: "username", label: "Service username", required: false },
@@ -225,21 +225,7 @@ export function parseDelimitedText(text: string): { headers: string[]; rows: str
 }
 
 export function parseFlexibleYmd(raw: string): string {
-  const t = String(raw || "").trim();
-  if (!t) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) {
-    parseExpiryYmd(t);
-    return t;
-  }
-  const m = /^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})$/.exec(t);
-  if (!m) throw new Error("Use a calendar date (dd/mm/yy or YYYY-MM-DD)");
-  const day = m[1]!.padStart(2, "0");
-  const month = m[2]!.padStart(2, "0");
-  let year = m[3]!;
-  if (year.length === 2) year = Number(year) >= 70 ? `19${year}` : `20${year}`;
-  const ymd = `${year}-${month}-${day}`;
-  parseExpiryYmd(ymd);
-  return ymd;
+  return parseYmdInput(raw);
 }
 
 export function parseBool(raw: string, fallback = false) {

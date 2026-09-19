@@ -5,6 +5,7 @@ import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
+import { DateYmdInput } from "@/components/isp/date-ymd-input";
 import { accessMethodLabel, formatDateTime } from "@/lib/isp/display";
 import {
   listArchivedServicesFn,
@@ -288,10 +289,10 @@ function RecycleBinPage() {
           ))}
         </Select>
         <Field label="Deleted from">
-          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <DateYmdInput value={from} onChange={setFrom} aria-label="Deleted from" />
         </Field>
         <Field label="Deleted to">
-          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          <DateYmdInput value={to} onChange={setTo} aria-label="Deleted to" />
         </Field>
         <div className="flex items-end gap-2">
           <Button type="submit">Search bin</Button>

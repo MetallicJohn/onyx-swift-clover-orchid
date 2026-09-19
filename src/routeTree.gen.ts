@@ -59,6 +59,7 @@ import { Route as PortalProfileRouteImport } from './routes/portal/profile'
 import { Route as PortalServicesRouteImport } from './routes/portal/services'
 import { Route as PortalTicketsRouteImport } from './routes/portal/tickets'
 import { Route as ResellerIndexRouteImport } from './routes/reseller/index'
+import { Route as WifiSlugRouteImport } from './routes/wifi.$slug'
 import { Route as ApiAgentAckRouteImport } from './routes/api/agent/ack'
 import { Route as ApiAgentHeartbeatRouteImport } from './routes/api/agent/heartbeat'
 import { Route as ApiAgentPullRouteImport } from './routes/api/agent/pull'
@@ -83,9 +84,14 @@ import { Route as ApiRoutersIdProvisioningTokenRouteImport } from './routes/api/
 import { Route as ApiRoutersIdRevokeTokenRouteImport } from './routes/api/routers/$id/revoke-token'
 import { Route as ApiRoutersIdStatusRouteImport } from './routes/api/routers/$id/status'
 import { Route as ApiV1CronBillingRouteImport } from './routes/api/v1/cron/billing'
+import { Route as ApiV1HotspotCatalogRouteImport } from './routes/api/v1/hotspot/catalog'
+import { Route as ApiV1HotspotDeployVerifyRouteImport } from './routes/api/v1/hotspot/deploy-verify'
+import { Route as ApiV1HotspotPurchaseRouteImport } from './routes/api/v1/hotspot/purchase'
+import { Route as ApiV1HotspotPurchaseStatusRouteImport } from './routes/api/v1/hotspot/purchase-status'
 import { Route as ApiV1PortalActionRouteImport } from './routes/api/v1/portal/$action'
 import { Route as ApiWebhooksKopokopoSlugRouteImport } from './routes/api/webhooks/kopokopo/$slug'
 import { Route as ApiWebhooksMpesaSlugRouteImport } from './routes/api/webhooks/mpesa/$slug'
+import { Route as ApiV1HotspotHtmlFileRouteImport } from './routes/api/v1/hotspot/html.$file'
 import { Route as ApiV1RadiusActionSlugRouteImport } from './routes/api/v1/radius/$action.$slug'
 import { Route as ApiVpnRoutersTokenBootstrapDotrscRouteImport } from './routes/api/vpn/routers/$token/bootstrap[.]rsc'
 
@@ -339,6 +345,11 @@ const ResellerIndexRoute = ResellerIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ResellerRoute,
 } as any)
+const WifiSlugRoute = WifiSlugRouteImport.update({
+  id: '/wifi/$slug',
+  path: '/wifi/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAgentAckRoute = ApiAgentAckRouteImport.update({
   id: '/api/agent/ack',
   path: '/api/agent/ack',
@@ -461,6 +472,28 @@ const ApiV1CronBillingRoute = ApiV1CronBillingRouteImport.update({
   path: '/api/v1/cron/billing',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiV1HotspotCatalogRoute = ApiV1HotspotCatalogRouteImport.update({
+  id: '/api/v1/hotspot/catalog',
+  path: '/api/v1/hotspot/catalog',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1HotspotDeployVerifyRoute =
+  ApiV1HotspotDeployVerifyRouteImport.update({
+    id: '/api/v1/hotspot/deploy-verify',
+    path: '/api/v1/hotspot/deploy-verify',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiV1HotspotPurchaseRoute = ApiV1HotspotPurchaseRouteImport.update({
+  id: '/api/v1/hotspot/purchase',
+  path: '/api/v1/hotspot/purchase',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1HotspotPurchaseStatusRoute =
+  ApiV1HotspotPurchaseStatusRouteImport.update({
+    id: '/api/v1/hotspot/purchase-status',
+    path: '/api/v1/hotspot/purchase-status',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiV1PortalActionRoute = ApiV1PortalActionRouteImport.update({
   id: '/api/v1/portal/$action',
   path: '/api/v1/portal/$action',
@@ -474,6 +507,11 @@ const ApiWebhooksKopokopoSlugRoute = ApiWebhooksKopokopoSlugRouteImport.update({
 const ApiWebhooksMpesaSlugRoute = ApiWebhooksMpesaSlugRouteImport.update({
   id: '/api/webhooks/mpesa/$slug',
   path: '/api/webhooks/mpesa/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiV1HotspotHtmlFileRoute = ApiV1HotspotHtmlFileRouteImport.update({
+  id: '/api/v1/hotspot/html/$file',
+  path: '/api/v1/hotspot/html/$file',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiV1RadiusActionSlugRoute = ApiV1RadiusActionSlugRouteImport.update({
@@ -535,6 +573,7 @@ export interface FileRoutesByFullPath {
   '/portal/profile': typeof PortalProfileRoute
   '/portal/services': typeof PortalServicesRoute
   '/portal/tickets': typeof PortalTicketsRoute
+  '/wifi/$slug': typeof WifiSlugRoute
   '/app/': typeof AppIndexRoute
   '/platform/': typeof PlatformIndexRoute
   '/portal/': typeof PortalIndexRoute
@@ -562,10 +601,15 @@ export interface FileRoutesByFullPath {
   '/api/routers/$id/revoke-token': typeof ApiRoutersIdRevokeTokenRoute
   '/api/routers/$id/status': typeof ApiRoutersIdStatusRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
+  '/api/v1/hotspot/catalog': typeof ApiV1HotspotCatalogRoute
+  '/api/v1/hotspot/deploy-verify': typeof ApiV1HotspotDeployVerifyRoute
+  '/api/v1/hotspot/purchase': typeof ApiV1HotspotPurchaseRoute
+  '/api/v1/hotspot/purchase-status': typeof ApiV1HotspotPurchaseStatusRoute
   '/api/v1/portal/$action': typeof ApiV1PortalActionRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
   '/api/routers/$id/': typeof ApiRoutersIdIndexRoute
+  '/api/v1/hotspot/html/$file': typeof ApiV1HotspotHtmlFileRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
   '/api/vpn/routers/$token/bootstrap.rsc': typeof ApiVpnRoutersTokenBootstrapDotrscRoute
 }
@@ -612,6 +656,7 @@ export interface FileRoutesByTo {
   '/portal/profile': typeof PortalProfileRoute
   '/portal/services': typeof PortalServicesRoute
   '/portal/tickets': typeof PortalTicketsRoute
+  '/wifi/$slug': typeof WifiSlugRoute
   '/app': typeof AppIndexRoute
   '/platform': typeof PlatformIndexRoute
   '/portal': typeof PortalIndexRoute
@@ -639,10 +684,15 @@ export interface FileRoutesByTo {
   '/api/routers/$id/revoke-token': typeof ApiRoutersIdRevokeTokenRoute
   '/api/routers/$id/status': typeof ApiRoutersIdStatusRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
+  '/api/v1/hotspot/catalog': typeof ApiV1HotspotCatalogRoute
+  '/api/v1/hotspot/deploy-verify': typeof ApiV1HotspotDeployVerifyRoute
+  '/api/v1/hotspot/purchase': typeof ApiV1HotspotPurchaseRoute
+  '/api/v1/hotspot/purchase-status': typeof ApiV1HotspotPurchaseStatusRoute
   '/api/v1/portal/$action': typeof ApiV1PortalActionRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
   '/api/routers/$id': typeof ApiRoutersIdIndexRoute
+  '/api/v1/hotspot/html/$file': typeof ApiV1HotspotHtmlFileRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
   '/api/vpn/routers/$token/bootstrap.rsc': typeof ApiVpnRoutersTokenBootstrapDotrscRoute
 }
@@ -694,6 +744,7 @@ export interface FileRoutesById {
   '/portal/profile': typeof PortalProfileRoute
   '/portal/services': typeof PortalServicesRoute
   '/portal/tickets': typeof PortalTicketsRoute
+  '/wifi/$slug': typeof WifiSlugRoute
   '/app/': typeof AppIndexRoute
   '/platform/': typeof PlatformIndexRoute
   '/portal/': typeof PortalIndexRoute
@@ -721,10 +772,15 @@ export interface FileRoutesById {
   '/api/routers/$id/revoke-token': typeof ApiRoutersIdRevokeTokenRoute
   '/api/routers/$id/status': typeof ApiRoutersIdStatusRoute
   '/api/v1/cron/billing': typeof ApiV1CronBillingRoute
+  '/api/v1/hotspot/catalog': typeof ApiV1HotspotCatalogRoute
+  '/api/v1/hotspot/deploy-verify': typeof ApiV1HotspotDeployVerifyRoute
+  '/api/v1/hotspot/purchase': typeof ApiV1HotspotPurchaseRoute
+  '/api/v1/hotspot/purchase-status': typeof ApiV1HotspotPurchaseStatusRoute
   '/api/v1/portal/$action': typeof ApiV1PortalActionRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
   '/api/routers/$id/': typeof ApiRoutersIdIndexRoute
+  '/api/v1/hotspot/html/$file': typeof ApiV1HotspotHtmlFileRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
   '/api/vpn/routers/$token/bootstrap.rsc': typeof ApiVpnRoutersTokenBootstrapDotrscRoute
 }
@@ -777,6 +833,7 @@ export interface FileRouteTypes {
     | '/portal/profile'
     | '/portal/services'
     | '/portal/tickets'
+    | '/wifi/$slug'
     | '/app/'
     | '/platform/'
     | '/portal/'
@@ -804,10 +861,15 @@ export interface FileRouteTypes {
     | '/api/routers/$id/revoke-token'
     | '/api/routers/$id/status'
     | '/api/v1/cron/billing'
+    | '/api/v1/hotspot/catalog'
+    | '/api/v1/hotspot/deploy-verify'
+    | '/api/v1/hotspot/purchase'
+    | '/api/v1/hotspot/purchase-status'
     | '/api/v1/portal/$action'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
     | '/api/routers/$id/'
+    | '/api/v1/hotspot/html/$file'
     | '/api/v1/radius/$action/$slug'
     | '/api/vpn/routers/$token/bootstrap.rsc'
   fileRoutesByTo: FileRoutesByTo
@@ -854,6 +916,7 @@ export interface FileRouteTypes {
     | '/portal/profile'
     | '/portal/services'
     | '/portal/tickets'
+    | '/wifi/$slug'
     | '/app'
     | '/platform'
     | '/portal'
@@ -881,10 +944,15 @@ export interface FileRouteTypes {
     | '/api/routers/$id/revoke-token'
     | '/api/routers/$id/status'
     | '/api/v1/cron/billing'
+    | '/api/v1/hotspot/catalog'
+    | '/api/v1/hotspot/deploy-verify'
+    | '/api/v1/hotspot/purchase'
+    | '/api/v1/hotspot/purchase-status'
     | '/api/v1/portal/$action'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
     | '/api/routers/$id'
+    | '/api/v1/hotspot/html/$file'
     | '/api/v1/radius/$action/$slug'
     | '/api/vpn/routers/$token/bootstrap.rsc'
   id:
@@ -935,6 +1003,7 @@ export interface FileRouteTypes {
     | '/portal/profile'
     | '/portal/services'
     | '/portal/tickets'
+    | '/wifi/$slug'
     | '/app/'
     | '/platform/'
     | '/portal/'
@@ -962,10 +1031,15 @@ export interface FileRouteTypes {
     | '/api/routers/$id/revoke-token'
     | '/api/routers/$id/status'
     | '/api/v1/cron/billing'
+    | '/api/v1/hotspot/catalog'
+    | '/api/v1/hotspot/deploy-verify'
+    | '/api/v1/hotspot/purchase'
+    | '/api/v1/hotspot/purchase-status'
     | '/api/v1/portal/$action'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
     | '/api/routers/$id/'
+    | '/api/v1/hotspot/html/$file'
     | '/api/v1/radius/$action/$slug'
     | '/api/vpn/routers/$token/bootstrap.rsc'
   fileRoutesById: FileRoutesById
@@ -983,6 +1057,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SuperadminRoute: typeof SuperadminRoute
   TermsRoute: typeof TermsRoute
+  WifiSlugRoute: typeof WifiSlugRoute
   ApiAgentAckRoute: typeof ApiAgentAckRoute
   ApiAgentHeartbeatRoute: typeof ApiAgentHeartbeatRoute
   ApiAgentPullRoute: typeof ApiAgentPullRoute
@@ -1002,10 +1077,15 @@ export interface RootRouteChildren {
   ApiRoutersIdRevokeTokenRoute: typeof ApiRoutersIdRevokeTokenRoute
   ApiRoutersIdStatusRoute: typeof ApiRoutersIdStatusRoute
   ApiV1CronBillingRoute: typeof ApiV1CronBillingRoute
+  ApiV1HotspotCatalogRoute: typeof ApiV1HotspotCatalogRoute
+  ApiV1HotspotDeployVerifyRoute: typeof ApiV1HotspotDeployVerifyRoute
+  ApiV1HotspotPurchaseRoute: typeof ApiV1HotspotPurchaseRoute
+  ApiV1HotspotPurchaseStatusRoute: typeof ApiV1HotspotPurchaseStatusRoute
   ApiV1PortalActionRoute: typeof ApiV1PortalActionRoute
   ApiWebhooksKopokopoSlugRoute: typeof ApiWebhooksKopokopoSlugRoute
   ApiWebhooksMpesaSlugRoute: typeof ApiWebhooksMpesaSlugRoute
   ApiRoutersIdIndexRoute: typeof ApiRoutersIdIndexRoute
+  ApiV1HotspotHtmlFileRoute: typeof ApiV1HotspotHtmlFileRoute
   ApiV1RadiusActionSlugRoute: typeof ApiV1RadiusActionSlugRoute
   ApiVpnRoutersTokenBootstrapDotrscRoute: typeof ApiVpnRoutersTokenBootstrapDotrscRoute
 }
@@ -1362,6 +1442,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResellerIndexRouteImport
       parentRoute: typeof ResellerRoute
     }
+    '/wifi/$slug': {
+      id: '/wifi/$slug'
+      path: '/wifi/$slug'
+      fullPath: '/wifi/$slug'
+      preLoaderRoute: typeof WifiSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/agent/ack': {
       id: '/api/agent/ack'
       path: '/api/agent/ack'
@@ -1530,6 +1617,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1CronBillingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/v1/hotspot/catalog': {
+      id: '/api/v1/hotspot/catalog'
+      path: '/api/v1/hotspot/catalog'
+      fullPath: '/api/v1/hotspot/catalog'
+      preLoaderRoute: typeof ApiV1HotspotCatalogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/hotspot/deploy-verify': {
+      id: '/api/v1/hotspot/deploy-verify'
+      path: '/api/v1/hotspot/deploy-verify'
+      fullPath: '/api/v1/hotspot/deploy-verify'
+      preLoaderRoute: typeof ApiV1HotspotDeployVerifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/hotspot/purchase': {
+      id: '/api/v1/hotspot/purchase'
+      path: '/api/v1/hotspot/purchase'
+      fullPath: '/api/v1/hotspot/purchase'
+      preLoaderRoute: typeof ApiV1HotspotPurchaseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/hotspot/purchase-status': {
+      id: '/api/v1/hotspot/purchase-status'
+      path: '/api/v1/hotspot/purchase-status'
+      fullPath: '/api/v1/hotspot/purchase-status'
+      preLoaderRoute: typeof ApiV1HotspotPurchaseStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/portal/$action': {
       id: '/api/v1/portal/$action'
       path: '/api/v1/portal/$action'
@@ -1549,6 +1664,13 @@ declare module '@tanstack/react-router' {
       path: '/api/webhooks/mpesa/$slug'
       fullPath: '/api/webhooks/mpesa/$slug'
       preLoaderRoute: typeof ApiWebhooksMpesaSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/v1/hotspot/html/$file': {
+      id: '/api/v1/hotspot/html/$file'
+      path: '/api/v1/hotspot/html/$file'
+      fullPath: '/api/v1/hotspot/html/$file'
+      preLoaderRoute: typeof ApiV1HotspotHtmlFileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/v1/radius/$action/$slug': {
@@ -1742,6 +1864,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SuperadminRoute: SuperadminRoute,
   TermsRoute: TermsRoute,
+  WifiSlugRoute: WifiSlugRoute,
   ApiAgentAckRoute: ApiAgentAckRoute,
   ApiAgentHeartbeatRoute: ApiAgentHeartbeatRoute,
   ApiAgentPullRoute: ApiAgentPullRoute,
@@ -1761,10 +1884,15 @@ const rootRouteChildren: RootRouteChildren = {
   ApiRoutersIdRevokeTokenRoute: ApiRoutersIdRevokeTokenRoute,
   ApiRoutersIdStatusRoute: ApiRoutersIdStatusRoute,
   ApiV1CronBillingRoute: ApiV1CronBillingRoute,
+  ApiV1HotspotCatalogRoute: ApiV1HotspotCatalogRoute,
+  ApiV1HotspotDeployVerifyRoute: ApiV1HotspotDeployVerifyRoute,
+  ApiV1HotspotPurchaseRoute: ApiV1HotspotPurchaseRoute,
+  ApiV1HotspotPurchaseStatusRoute: ApiV1HotspotPurchaseStatusRoute,
   ApiV1PortalActionRoute: ApiV1PortalActionRoute,
   ApiWebhooksKopokopoSlugRoute: ApiWebhooksKopokopoSlugRoute,
   ApiWebhooksMpesaSlugRoute: ApiWebhooksMpesaSlugRoute,
   ApiRoutersIdIndexRoute: ApiRoutersIdIndexRoute,
+  ApiV1HotspotHtmlFileRoute: ApiV1HotspotHtmlFileRoute,
   ApiV1RadiusActionSlugRoute: ApiV1RadiusActionSlugRoute,
   ApiVpnRoutersTokenBootstrapDotrscRoute:
     ApiVpnRoutersTokenBootstrapDotrscRoute,

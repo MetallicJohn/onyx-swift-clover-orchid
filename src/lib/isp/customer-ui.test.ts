@@ -19,6 +19,9 @@ test("customer names on lists open the dedicated customer page", () => {
   assert.match(desk, /placement="drawer"/);
   assert.match(desk, /tab: "services"/);
   assert.match(desk, /action: "add-service"/);
+  assert.match(desk, />ID</);
+  assert.doesNotMatch(desk, /Customer ID/);
+  assert.match(serviceDesk, /Service Account Number/);
   assert.match(desk, /DeskOverflowMenu/);
   assert.match(page, /normalizeProfileSearch/);
   assert.match(page, /accountStateLabel/);

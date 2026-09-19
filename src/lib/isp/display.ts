@@ -189,6 +189,94 @@ export function dateFormatExample(format: string = activeDateFormat, sample = SA
   return formatDate(sample, format);
 }
 
+export function dateInputPlaceholder(format: string = activeDateFormat) {
+  return DATE_FORMATS.find((f) => f.id === normalizeDateFormat(format))?.label ?? DEFAULT_DATE_FORMAT;
+}
+
+/** Visible value for a stored YYYY-MM-DD date. Empty when there is no date. */
+export function formatYmdInput(ymd: string | null | undefined, format: string = activeDateFormat) {
+  const raw = String(ymd || "").trim();
+  if (!raw) return "";
+  const formatted = formatDate(raw, format);
+  return formatted === "—" ? "" : formatted;
+}
+
+function expandYear(year: string) {
+  if (year.length === 4) return year;
+  const n = Number(year);
+  if (!Number.isFinite(n) || n < 0 || n > 99) return year;
+  return `20${pad(n)}`;
+}
+
+function assertValidYmd(ymd: string) {
+  const m = DATE_ONLY.exec(ymd);
+  if (!m) throw new Error("Choose a valid calendar date");
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (y < 2000 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31) {
+    throw new Error("Choose a valid calendar date");
+  }
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) {
+    throw new Error("Choose a valid calendar date");
+  }
+}
+
+/**
+ * Operator-entered calendar dates. Day-month-year (dd/mm/yy) is the default.
+ * Storage is always YYYY-MM-DD. US month-first dates are not accepted.
+ */
+export function parseYmdInput(raw: string): string {
+  const t = String(raw || "").trim();
+  if (!t) return "";
+  if (DATE_ONLY.test(t)) {
+    assertValidYmd(t);
+    return t;
+  }
+  const compact6 = /^(\d{2})(\d{2})(\d{2})$/.exec(t);
+  const compact8 = /^(\d{2})(\d{2})(\d{4})$/.exec(t);
+  const numbered = /^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})$/.exec(t);
+  const named = /^(\d{1,2})\s+([A-Za-z]{3,9})\.?\s+(\d{2,4})$/.exec(t);
+  let day = "";
+  let month = "";
+  let year = "";
+  if (compact6) {
+    day = compact6[1]!;
+    month = compact6[2]!;
+    year = compact6[3]!;
+  } else if (compact8) {
+    day = compact8[1]!;
+    month = compact8[2]!;
+    year = compact8[3]!;
+  } else if (numbered) {
+    day = numbered[1]!;
+    month = numbered[2]!;
+    year = numbered[3]!;
+  } else if (named) {
+    const key = named[2]!.slice(0, 3).toLowerCase();
+    const mi = MONTHS.findIndex((label) => label.toLowerCase() === key);
+    if (mi < 0) throw new Error("Use a calendar date (dd/mm/yy or YYYY-MM-DD)");
+    day = named[1]!;
+    month = String(mi + 1);
+    year = named[3]!;
+  } else {
+    throw new Error("Use a calendar date (dd/mm/yy or YYYY-MM-DD)");
+  }
+  const ymd = `${expandYear(year)}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  assertValidYmd(ymd);
+  return ymd;
+}
+
+/** Empty string when blank; null when the text is not a real calendar date. */
+export function tryParseYmdInput(raw: string): string | null {
+  try {
+    return parseYmdInput(raw);
+  } catch {
+    return null;
+  }
+}
+
 export function formatMac(raw?: string | null) {
   const compact = String(raw || "")
     .replace(/[^0-9a-f]/gi, "")

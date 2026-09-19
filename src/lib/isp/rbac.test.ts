@@ -170,6 +170,9 @@ test("sensitive list and export endpoints assert a permission", () => {
   assert.match(mpesa, /export const getMpesa[\s\S]+?assertPermission\(role, "settings.manage"\)/);
   const mikrotik = readFileSync(new URL("./server-mikrotik.ts", import.meta.url), "utf8");
   assert.match(mikrotik, /export const getRouterApi[\s\S]+?assertPermission\(role, "routers.manage"\)/);
+  const hotspot = readFileSync(new URL("./server-hotspot.ts", import.meta.url), "utf8");
+  assert.match(hotspot, /export const getHotspotDashboardFn[\s\S]+?assertPermission\(role, "radius.manage"\)/);
+  assert.match(hotspot, /export const deployHotspotPortalFn[\s\S]+?assertPermission\(role, "routers.manage"\)/);
 });
 
 test("ACS credentials are for network staff, not finance or technicians", () => {

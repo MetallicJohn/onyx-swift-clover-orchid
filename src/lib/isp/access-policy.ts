@@ -9,6 +9,7 @@ import {
   notifyNearingGrants,
 } from "./grace.ts";
 import { expireDueVouchers } from "./hotspot.ts";
+import { addHotspotDuration, hotspotPackageDuration } from "./hotspot-duration.ts";
 import { nid } from "../utils.ts";
 import { isCreditBlockedReason } from "./business-credit-format.ts";
 
@@ -152,6 +153,16 @@ async function setServiceState(
   await sql`update services
     set status = ${status}, suspend_reason = ${reason}
     where id = ${serviceId} and tenant_id = ${tenantId}`;
+  const purchaseStatus =
+    status === "grace"
+      ? "active"
+      : /time|expir/i.test(reason)
+        ? "expired"
+        : "suspended";
+  await sql`update hotspot_purchases
+    set service_status = ${purchaseStatus}, updated_at = now()
+    where tenant_id = ${tenantId} and service_id = ${serviceId}
+      and payment_status = 'confirmed' and service_status = 'active'`;
   await provisionServiceAccess(sql, tenantId, serviceId);
 }
 
@@ -170,8 +181,12 @@ export async function grantPaidPeriod(
         billing_interval: string;
         validity_hours: number;
         suspend_reason: string;
+        access_method: string;
+        duration_value: number;
+        duration_unit: string;
       }>`select s.id, s.period_end::text as period_end, p.billing_interval, p.validity_hours,
-               coalesce(s.suspend_reason,'') as suspend_reason
+               coalesce(s.suspend_reason,'') as suspend_reason, s.access_method,
+               coalesce(p.duration_value,0)::int as duration_value, coalesce(p.duration_unit,'hours') as duration_unit
          from services s join packages p on p.id = s.package_id
          where s.tenant_id = ${tenantId} and s.id = ${serviceId} and s.customer_id = ${customerId}
            and s.deleted_at is null and s.status <> 'terminated'`
@@ -181,16 +196,30 @@ export async function grantPaidPeriod(
         billing_interval: string;
         validity_hours: number;
         suspend_reason: string;
+        access_method: string;
+        duration_value: number;
+        duration_unit: string;
       }>`select s.id, s.period_end::text as period_end, p.billing_interval, p.validity_hours,
-               coalesce(s.suspend_reason,'') as suspend_reason
+               coalesce(s.suspend_reason,'') as suspend_reason, s.access_method,
+               coalesce(p.duration_value,0)::int as duration_value, coalesce(p.duration_unit,'hours') as duration_unit
          from services s join packages p on p.id = s.package_id
          where s.tenant_id = ${tenantId} and s.customer_id = ${customerId}
            and s.deleted_at is null and s.status <> 'terminated'`;
   for (const s of svcs) {
-    const addMs = durationMs != null ? Math.max(0, Math.trunc(durationMs)) : periodMs(s.billing_interval, s.validity_hours);
-    if (addMs <= 0) continue;
     const awaiting = s.suspend_reason === "awaiting_payment";
-    const next = extendPeriodEnd(awaiting ? null : s.period_end, now, addMs);
+    let next: Date;
+    if (s.access_method === "hotspot" && durationMs == null) {
+      const dur = hotspotPackageDuration(s);
+      const from = awaiting ? now : (() => {
+        const cur = s.period_end ? new Date(s.period_end) : null;
+        return cur && !Number.isNaN(cur.getTime()) && cur.getTime() > now.getTime() ? cur : now;
+      })();
+      next = addHotspotDuration(from, dur.value, dur.unit);
+    } else {
+      const addMs = durationMs != null ? Math.max(0, Math.trunc(durationMs)) : periodMs(s.billing_interval, s.validity_hours);
+      if (addMs <= 0) continue;
+      next = extendPeriodEnd(awaiting ? null : s.period_end, now, addMs);
+    }
     await sql`update services
       set period_end = ${next.toISOString()}, bundle_used_mb = 0, suspend_reason = '',
           access_until = null, expiry_source = ${"billing"}

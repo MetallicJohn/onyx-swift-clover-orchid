@@ -10,6 +10,7 @@ export function Dialog({
   title,
   description,
   children,
+  footer,
   className,
   placement = "modal",
 }: {
@@ -18,6 +19,7 @@ export function Dialog({
   title: string;
   description?: string;
   children: ReactNode;
+  footer?: ReactNode;
   className?: string;
   placement?: "modal" | "drawer";
 }) {
@@ -52,6 +54,7 @@ export function Dialog({
             </DialogPrimitive.Close>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+          {footer ? <div className="shrink-0 border-t border-border px-4 py-3">{footer}</div> : null}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

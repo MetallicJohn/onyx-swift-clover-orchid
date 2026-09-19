@@ -195,7 +195,7 @@ function PortalPay() {
                 <p className="font-medium">{service.name}</p>
                 <dl className="mt-2 grid gap-1 text-sm">
                   <div className="flex justify-between gap-3">
-                    <dt className="text-muted">Account number</dt>
+                    <dt className="text-muted">Service Account Number</dt>
                     <dd className="font-mono">{service.account_number || service.reference}</dd>
                   </div>
                   <div className="flex justify-between gap-3">

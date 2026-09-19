@@ -68,7 +68,7 @@ export function InvoicePreview({ doc }: { doc: InvoiceDocument }) {
           <div className="text-xs font-semibold tracking-wide text-paper-muted">BILL TO</div>
           <p className="mt-1 font-medium">{doc.customer.name}</p>
           <p className="text-sm text-paper-muted">
-            Account {doc.customer.accountNo}
+            Service Account Number {doc.customer.accountNo}
             {doc.customer.phone ? ` · ${doc.customer.phone}` : ""}
             {doc.customer.email ? ` · ${doc.customer.email}` : ""}
           </p>
@@ -190,7 +190,7 @@ export function StatementPreview({ doc }: { doc: StatementDocument }) {
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold">{doc.brand.name}</h2>
-            <p className="text-sm text-paper-muted">Statement · Account {doc.customer.accountNo}</p>
+            <p className="text-sm text-paper-muted">Statement · Service Account Number {doc.customer.accountNo}</p>
             <p className="text-xs text-paper-muted">
               {formatBrandDay(doc.periodStart, doc.brand)} – {formatBrandDay(doc.periodEnd, doc.brand)}
             </p>

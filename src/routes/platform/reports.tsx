@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { nairobiTime } from "@/components/platform/format";
 import { Kpi, PageHead, Panel, Spark } from "@/components/platform/ui";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/input";
+import { Field } from "@/components/ui/input";
+import { DateYmdInput } from "@/components/isp/date-ymd-input";
 import { exportSaasReportsCsv, getSaasReports } from "@/lib/isp/server-platform";
 import { kes } from "@/lib/utils";
 
@@ -76,10 +77,10 @@ function ReportsPage() {
         }}
       >
         <Field label="From">
-          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <DateYmdInput value={from} onChange={setFrom} aria-label="From date" />
         </Field>
         <Field label="To">
-          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          <DateYmdInput value={to} onChange={setTo} aria-label="To date" />
         </Field>
         <Button type="submit" disabled={busy}>
           {busy ? "Loading…" : "Apply"}

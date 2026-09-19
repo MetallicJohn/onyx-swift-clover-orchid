@@ -87,6 +87,11 @@ async function settleFromDecision(
     } else {
       await sql`update payment_intents set status = ${decision.intentStatus}, fail_reason = ${decision.reason}
         where id = ${intent.id} and tenant_id = ${tenant.id} and status = 'pending'`;
+      const { syncHotspotPurchaseFromIntent } = await import("./hotspot-purchase.ts");
+      await syncHotspotPurchaseFromIntent(sql, tenant.id, intent.id, {
+        payment_status: decision.intentStatus,
+        fail_reason: decision.reason,
+      });
     }
     return decision.intentStatus;
   }
@@ -97,6 +102,11 @@ async function settleFromDecision(
     } else {
       await sql`update payment_intents set status = 'reconciliation_required', fail_reason = ${decision.reason}
         where id = ${intent.id} and tenant_id = ${tenant.id} and status = 'pending'`;
+      const { syncHotspotPurchaseFromIntent } = await import("./hotspot-purchase.ts");
+      await syncHotspotPurchaseFromIntent(sql, tenant.id, intent.id, {
+        payment_status: "reconciliation_required",
+        fail_reason: decision.reason,
+      });
     }
     return "reconciliation_required";
   }

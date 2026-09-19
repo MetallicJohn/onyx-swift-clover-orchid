@@ -289,6 +289,47 @@ ${localBlock({ qname, ip, user })}
 }`;
   }
 
+  if (kind === "hotspot.portal.deploy") {
+    const base = String(payload.html_base || "").replace(/\/$/, "");
+    const token = String(payload.token || "");
+    const dstRaw = String(payload.dst_dir || "hotspot").replace(/[^A-Za-z0-9/_-]/g, "");
+    const dst = dstRaw || "hotspot";
+    const allow = new Set(["login.html", "alogin.html", "status.html", "logout.html", "error.html", "md5.js"]);
+    const files = (Array.isArray(payload.files) ? payload.files.map(String) : [...allow]).filter((f) => allow.has(f));
+    const verifyOk = String(payload.verify_ok || "");
+    const verifyFail = String(payload.verify_fail || "");
+    if (!base || !token || files.length === 0) return "# missing hotspot portal url";
+    const fileArray = files.map((f) => rosQuote(f)).join(";");
+    return `${localBlock({ base, tok: token, dst, verifyOk, verifyFail })}
+:local missing 0;
+:local files {${fileArray}};
+:do { /ip hotspot profile set [find] html-directory=$dst } on-error={};
+:foreach f in=$files do={
+  :local url ($base . "/" . $f . "?token=" . $tok);
+  :local path ($dst . "/" . $f);
+  :do { /tool fetch url=$url dst-path=$path } on-error={ :set missing ($missing + 1) };
+};
+:foreach f in=$files do={
+  :local path ($dst . "/" . $f);
+  :if ([:len [/file find name=$path]] = 0) do={
+    :if ([:len [/file find name=$f]] = 0) do={
+      :set missing ($missing + 1);
+    }
+  }
+};
+:if ($missing = 0) do={
+  :if ([:len $verifyOk] > 0) do={
+    :do { /tool fetch url=$verifyOk keep-result=no } on-error={};
+  }
+  :put "portal ok";
+} else={
+  :if ([:len $verifyFail] > 0) do={
+    :do { /tool fetch url=$verifyFail keep-result=no } on-error={};
+  }
+  :error "hotspot-portal missing files";
+}`;
+  }
+
   if (kind.startsWith("hotspot.")) {
     if (!user) return "# missing hotspot username";
     if (kind.endsWith("disconnect")) {

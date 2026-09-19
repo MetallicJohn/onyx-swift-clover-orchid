@@ -72,7 +72,7 @@ test("reassign dialog searches, confirms, and stacks on small screens", () => {
   assert.match(src, /submitLock/);
   assert.match(src, /setSelected\(null\)/);
   assert.match(src, /No matching customers found/);
-  assert.match(src, /Account Number/);
+  assert.match(src, /ID/);
   assert.match(src, /250/);
   assert.doesNotMatch(src, /Select customer/);
 });

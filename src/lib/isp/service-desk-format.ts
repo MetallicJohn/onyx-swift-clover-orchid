@@ -378,7 +378,7 @@ export function toServiceRow(s: ServiceDeskRow): ServiceRow {
 
 export function selectedServicesCsv(rows: ServiceDeskRow[]) {
   const header =
-    "service_id,customer,account_number,phone,email,location,access,package,speed,identity,router,pool,status,expiry,outstanding,session";
+    "service_id,customer,service_account_number,phone,email,location,access,package,speed,identity,router,pool,status,expiry,outstanding,session";
   const body = rows
     .map((r) =>
       [

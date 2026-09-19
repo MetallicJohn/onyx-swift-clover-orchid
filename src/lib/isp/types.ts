@@ -77,6 +77,8 @@ export type PackageRow = {
   grace_days: number;
   bundle_mb: number;
   validity_hours: number;
+  duration_value?: number;
+  duration_unit?: string;
   active: boolean;
   tier?: string;
   business_credit_enabled?: boolean;

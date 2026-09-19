@@ -108,7 +108,7 @@ test("invoice and statement PDFs use live tenant data and paginate", async () =>
     assert.equal(partialDoc.brand.name, "Coast Fiber");
     assert.equal(partialDoc.brand.dateFormat, "dd/mm/yy");
     assert.equal(formatDay(partialDoc.invoice.dueDate, partialDoc.brand.timezone, partialDoc.brand.dateFormat), "20/09/26");
-    assert.match(partialDoc.customer.accountNo, /^COAS-/);
+    assert.equal(partialDoc.customer.accountNo, "");
     assert.equal(partialDoc.invoice.statusLabel, "Partially Paid");
     assert.equal(partialDoc.totals.payments, 1000);
     assert.equal(partialDoc.totals.amountDue, 2500);

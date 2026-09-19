@@ -60,7 +60,6 @@ function presentCustomer(ctx: PortalCtx): PortalCustomer {
     phone: ctx.customer.phone,
     email: ctx.customer.email,
     address: ctx.customer.address || "",
-    account_number: ctx.customer.account_number || "",
     account_status: accountStatusFrom(ctx.customer.status),
     using_initial_password: Boolean(ctx.customer.portal_password_is_initial),
   };

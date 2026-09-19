@@ -261,7 +261,7 @@ function StatementsPage() {
                 <div className="min-w-0">
                   <h2 className="truncate text-lg font-medium">{doc.customer.name}</h2>
                   <p className="text-sm text-muted">
-                    Account {doc.customer.accountNo}
+                    Service Account Number {doc.customer.accountNo}
                     {doc.customer.phone ? ` · ${doc.customer.phone}` : ""}
                   </p>
                 </div>

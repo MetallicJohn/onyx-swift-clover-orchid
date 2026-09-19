@@ -22,7 +22,7 @@ export const COMM_CHANNELS: { id: CommChannel; label: string }[] = [
 
 export const COMM_VARS = [
   { key: "customer_name", label: "Customer name" },
-  { key: "account_number", label: "Account number" },
+  { key: "account_number", label: "ID" },
   { key: "service_name", label: "Service" },
   { key: "package_name", label: "Package" },
   { key: "service_expiry", label: "Service expiry" },

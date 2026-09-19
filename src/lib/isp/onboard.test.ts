@@ -148,7 +148,7 @@ test("default activation is after payment when the package has a price", () => {
   assert.ok(daily >= today);
   assert.equal(displayDraftAccount(""), "Assigned on save");
   assert.equal(displayDraftAccount("W8CWV"), "W8CWV");
-  assert.equal(displayDraftAccount("", "existing"), "No account number");
+  assert.equal(displayDraftAccount("", "existing"), "No ID");
 });
 
 test("duplicate scoring blocks the same last-9 phone and warns on name or email", () => {

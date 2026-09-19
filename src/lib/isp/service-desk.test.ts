@@ -77,6 +77,8 @@ async function seed(sql: Awaited<ReturnType<typeof openTestDb>>["sql"]) {
     ('svc_b', 'ten_b', 'cus_b', 'pkg_b', 'pppoe', 'other.pppoe', null, 'active', now() + interval '30 days')`;
   await sql`update services set deleted_at = now(), suspend_reason = 'manual' where id = 'svc_gone'`;
   await sql`update services set suspend_reason = 'manual' where id in ('svc_amina_static','svc_brian')`;
+  await sql`update services set account_number = 'SAN-AMINA' where id = 'svc_amina_pppoe'`;
+  await sql`update services set account_number = 'SAN-BRIAN' where id = 'svc_brian'`;
   await sql`insert into service_grace_periods (id, tenant_id, service_id, customer_id, days_granted, starts_at, expires_at, status, granted_by_type, granted_by_label)
     values ('gr_esther', 'ten_a', 'svc_grace', 'cus_wait', 3, now() - interval '1 day', now() + interval '2 days', 'active', 'staff', 'Desk')`;
   await sql`insert into routers (id, tenant_id, name) values ('rtr_kas', 'ten_a', 'Kasarani AP'), ('rtr_b', 'ten_b', 'Other NAS')`;
@@ -100,24 +102,27 @@ test("service desk searches live records, pages, and stays in the tenant", async
     await asRole("ten_a");
 
     const all = await queryServicesDesk(sql, "ten_a", { pageSize: 4 });
-    assert.equal(all.counters.total, 6);
+    assert.equal(all.counters.total, 4);
     assert.equal(all.counters.active, 1);
     assert.equal(all.counters.pending, 1);
-    assert.equal(all.counters.expired, 1);
+    assert.equal(all.counters.expired, 0);
     assert.equal(all.counters.suspended, 2);
-    assert.equal(all.counters.grace, 1);
-    assert.equal(all.total, 6);
-    assert.equal(all.pages, 2);
+    assert.equal(all.counters.grace, 0);
+    assert.equal(all.total, 4);
+    assert.equal(all.pages, 1);
     assert.equal(all.services.length, 4);
+    assert.equal(all.services.some((s) => s.access_method === "hotspot"), false);
     assert.equal(all.services.some((s) => s.id === "svc_gone"), false);
     assert.equal(all.services.some((s) => s.id === "svc_b"), false);
 
     const byName = await queryServicesDesk(sql, "ten_a", { q: "Amina" });
     assert.equal(byName.services.every((s) => s.customer_id === "cus_live"), true);
-    const byAccount = await queryServicesDesk(sql, "ten_a", { q: "BRN02" });
+    const byAccount = await queryServicesDesk(sql, "ten_a", { q: "SAN-BRIAN" });
     assert.deepEqual(byAccount.services.map((s) => s.id), ["svc_brian"]);
+    const byCustomerId = await queryServicesDesk(sql, "ten_a", { q: "BRN02" });
+    assert.equal(byCustomerId.total, 0);
     const byPhone = await queryServicesDesk(sql, "ten_a", { q: "0712001003" });
-    assert.deepEqual(byPhone.services.map((s) => s.id), ["svc_cynthia"]);
+    assert.deepEqual(byPhone.services.map((s) => s.id), []);
     const byEmail = await queryServicesDesk(sql, "ten_a", { q: "amina@isp.test" });
     assert.equal(byEmail.services.every((s) => s.customer_id === "cus_live"), true);
     const byService = await queryServicesDesk(sql, "ten_a", { q: "svc_amina_static" });
@@ -127,7 +132,7 @@ test("service desk searches live records, pages, and stays in the tenant", async
     const byIp = await queryServicesDesk(sql, "ten_a", { q: "10.8.0.44" });
     assert.deepEqual(byIp.services.map((s) => s.id), ["svc_amina_static"]);
     const byHotspot = await queryServicesDesk(sql, "ten_a", { q: "cynthia.hot" });
-    assert.deepEqual(byHotspot.services.map((s) => s.id), ["svc_cynthia"]);
+    assert.deepEqual(byHotspot.services.map((s) => s.id), []);
     const byPlace = await queryServicesDesk(sql, "ten_a", { q: "Westlands" });
     assert.deepEqual(byPlace.services.map((s) => s.id), ["svc_brian"]);
     const byRouter = await queryServicesDesk(sql, "ten_a", { q: "Kasarani AP" });
@@ -162,15 +167,13 @@ test("service desk filters combine and keep expired distinct from suspended", as
     assert.equal(suspended.services.every((s) => s.display_status === "suspended"), true);
 
     const expired = await queryServicesDesk(sql, "ten_a", { status: "expired" });
-    assert.deepEqual(expired.services.map((s) => s.id), ["svc_cynthia"]);
-    assert.equal(expired.services[0]?.display_status, "expired");
+    assert.deepEqual(expired.services.map((s) => s.id), []);
 
     const pending = await queryServicesDesk(sql, "ten_a", { status: "pending" });
     assert.deepEqual(pending.services.map((s) => s.id), ["svc_esther"]);
 
     const grace = await queryServicesDesk(sql, "ten_a", { status: "grace" });
-    assert.deepEqual(grace.services.map((s) => s.id), ["svc_grace"]);
-    assert.equal(grace.services[0]?.display_status, "grace");
+    assert.deepEqual(grace.services.map((s) => s.id), []);
 
     const pppoe = await queryServicesDesk(sql, "ten_a", { access: "pppoe" });
     assert.equal(pppoe.services.every((s) => s.access_method === "pppoe"), true);
@@ -198,7 +201,7 @@ test("service desk filters combine and keep expired distinct from suspended", as
     assert.deepEqual(expiring.services.map((s) => s.id), ["svc_amina_pppoe"]);
 
     const combo = await queryServicesDesk(sql, "ten_a", { access: "hotspot", status: "expired" });
-    assert.deepEqual(combo.services.map((s) => s.id), ["svc_cynthia"]);
+    assert.deepEqual(combo.services.map((s) => s.id), []);
 
     const sorted = await queryServicesDesk(sql, "ten_a", { sort: "customer", dir: "asc", pageSize: 10 });
     assert.equal(sorted.services[0]?.customer_name, "Amina Otieno");
@@ -209,7 +212,8 @@ test("service desk filters combine and keep expired distinct from suspended", as
     const csv = selectedServicesCsv([live]);
     assert.match(csv, /Amina Otieno/);
     assert.match(csv, /amina.pppoe/);
-    assert.match(csv, /AMN01/);
+    assert.match(csv, /SAN-AMINA/);
+    assert.doesNotMatch(csv, /AMN01/);
   } finally {
     await close();
   }

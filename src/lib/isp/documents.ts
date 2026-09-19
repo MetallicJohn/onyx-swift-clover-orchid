@@ -1,6 +1,5 @@
 import { remainingKes, taxOn } from "./billing.ts";
 import {
-  resolveAccountNumber,
   buildStatementRows,
   formatDay,
   invoicePayable,
@@ -258,9 +257,7 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
     previousBalance = ledger - remaining;
   }
   const payable = invoicePayable(previousBalance, remaining);
-  const accountNo = billed?.account_number
-    ? billed.account_number
-    : resolveAccountNumber(brand.slug, customer.id, customer.account_number);
+  const accountNo = billed?.account_number || "";
 
   return {
     kind: "invoice",
@@ -385,7 +382,7 @@ export async function loadStatementDocument(
     customer: {
       id: customer.id,
       name: customer.name,
-      accountNo: svc?.account_number || resolveAccountNumber(brand.slug, customer.id, customer.account_number),
+      accountNo: svc?.account_number || "",
       phone: customer.phone,
       email: customer.email,
       address: customer.address,

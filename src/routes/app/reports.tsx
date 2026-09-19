@@ -652,12 +652,12 @@ function PaybillDesk({
               ))}
             </Select>
           </Field>
-          <Field label="Service account">
+          <Field label="Service Account Number">
             <Select value={serviceId} onChange={(e) => setServiceId(e.target.value)} disabled={!customerId}>
               <option value="">{services.length > 1 ? "Pick the service" : "Only service (if one)"}</option>
               {services.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.account || "No account"} · {s.name}
+                  {s.account || "No service account"} · {s.name}
                 </option>
               ))}
             </Select>

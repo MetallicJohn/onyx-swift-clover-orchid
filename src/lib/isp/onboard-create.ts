@@ -1,7 +1,8 @@
 import { nid } from "../utils.ts";
 import { provisionServiceAccess } from "./access.ts";
 import { allocateStaticIp, assignStaticIp } from "./access-service.ts";
-import { allocateAccountNumber, ensureServiceAccountNumber } from "./account-numbers.ts";
+import { ensureServiceAccountNumber } from "./account-numbers.ts";
+import { allocateCustomerId, getCustomerIdSettings } from "./customer-ids.ts";
 import { enqueueAgentCommand } from "./agent.ts";
 import { issueInvoice } from "./billing.ts";
 import { last9Phone } from "./customer-portal-format.ts";
@@ -61,6 +62,13 @@ export type OnboardCatalog = {
     allow_manual: boolean;
     preview: string;
     scheme: "random" | "sequence";
+  };
+  customer_id: {
+    configured: boolean;
+    issued: boolean;
+    locked: boolean;
+    start_n: number;
+    next_preview: string;
   };
   partial: {
     enabled_default: boolean;
@@ -144,6 +152,7 @@ export async function loadOnboardCatalog(sql: Sql, tenantId: string, slug = ""):
   const { getAccountNumberSettings, previewNextAccountNumber } = await import("./account-numbers.ts");
   const settings = await getAccountNumberSettings(sql, tenantId, slug);
   const preview = await previewNextAccountNumber(sql, tenantId, slug);
+  const customerIdDesk = await getCustomerIdSettings(sql, tenantId);
   const { getPartialPolicy } = await import("./partial-payment.ts");
   const partial = await getPartialPolicy(sql, tenantId);
   const canOffer = Boolean(partial.enabled_default || partial.allow_service_override);
@@ -162,6 +171,13 @@ export async function loadOnboardCatalog(sql: Sql, tenantId: string, slug = ""):
       allow_manual: settings.allow_manual,
       preview: preview.preview,
       scheme: settings.scheme === "sequence" ? "sequence" : "random",
+    },
+    customer_id: {
+      configured: customerIdDesk.configured,
+      issued: customerIdDesk.issued,
+      locked: customerIdDesk.locked,
+      start_n: customerIdDesk.start_n,
+      next_preview: customerIdDesk.next_preview,
     },
     partial: {
       enabled_default: partial.enabled_default,
@@ -411,13 +427,13 @@ export async function createOnboard(
     }
     await assertUniqueCustomerPhone(sql, tid, draft.phone);
     customerId = nid("cus");
-    customerAccountNumber = await allocateAccountNumber(sql, tid, draft.account_number);
+    customerAccountNumber = await allocateCustomerId(sql, tid);
     try {
       await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status, account_number, notes)
         values (${customerId}, ${tid}, ${draft.type}, ${draft.name}, ${draft.phone}, ${draft.email}, ${draft.address}, 'active', ${customerAccountNumber}, ${draft.notes})`;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (/account_number|unique/i.test(msg)) throw new Error("Account number already assigned.");
+      if (/account_number|unique/i.test(msg)) throw new Error("ID already assigned.");
       throw err;
     }
     createdCustomer = true;

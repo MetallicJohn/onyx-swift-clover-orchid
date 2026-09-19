@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
+import { DateYmdInput } from "@/components/isp/date-ymd-input";
 import {
   categoryLabel,
   COMM_CATEGORIES,
@@ -659,7 +660,11 @@ export function Communications() {
                   {category === "planned_maintenance" ? (
                     <>
                       <Field label="Maintenance date">
-                        <Input type="date" value={extras.maintenance_date ?? ""} onChange={(e) => setExtras((x) => ({ ...x, maintenance_date: e.target.value }))} />
+                        <DateYmdInput
+                          value={extras.maintenance_date ?? ""}
+                          onChange={(ymd) => setExtras((x) => ({ ...x, maintenance_date: ymd }))}
+                          aria-label="Maintenance date"
+                        />
                       </Field>
                       <Field label="Start time">
                         <Input type="time" value={extras.maintenance_start ?? ""} onChange={(e) => setExtras((x) => ({ ...x, maintenance_start: e.target.value }))} />

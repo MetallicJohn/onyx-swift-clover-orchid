@@ -489,13 +489,13 @@ export async function allocateAccountNumber(
     throw new Error("Could not allocate a unique account number. Check the sequence in Settings.");
   }
 
-  if (!settings.prefix) throw new Error("Set a prefix in Settings → Account numbers.");
+  if (!settings.prefix) throw new Error("Set a prefix for service account numbers.");
 
   for (let i = 0; i < 64; i += 1) {
     let formatted = "";
     if (kind === "suffix") {
       const row = await takeNextSuffix(sql, tenantId);
-      if (!row) throw new Error("Set a prefix in Settings → Account numbers.");
+      if (!row) throw new Error("Set a prefix for service account numbers.");
       formatted = formatAccountNumber({
         prefix: row.prefix,
         suffix: tokenFromIndex(row.suffix, row.n),
@@ -505,7 +505,7 @@ export async function allocateAccountNumber(
       });
     } else if (kind === "prefix") {
       const row = await takeNextPrefix(sql, tenantId);
-      if (!row) throw new Error("Set a prefix in Settings → Account numbers.");
+      if (!row) throw new Error("Set a prefix for service account numbers.");
       formatted = formatAccountNumber({
         prefix: tokenFromIndex(row.prefix, row.n),
         suffix: row.suffix,
@@ -515,7 +515,7 @@ export async function allocateAccountNumber(
       });
     } else {
       const row = await takeNextInteger(sql, tenantId);
-      if (!row) throw new Error("Set a prefix in Settings → Account numbers.");
+      if (!row) throw new Error("Set a prefix for service account numbers.");
       formatted = formatAccountNumber({
         prefix: row.prefix,
         suffix: row.suffix,
@@ -540,7 +540,7 @@ export async function changeCustomerAccountNumber(
   const next = normalizeAccountNumber(opts.next);
   if (next === previous) return { previous, next };
   if (!opts.allowManual) {
-    throw new Error("Manual editing of account numbers is turned off. Enable it in Settings → Account numbers.");
+    throw new Error("Manual editing of account numbers is turned off.");
   }
   const unique = await assertUniqueAccountNumber(sql, opts.tenantId, next, { customerId: opts.customerId });
   await sql`update customers set account_number = ${unique} where id = ${opts.customerId} and tenant_id = ${opts.tenantId}`;
@@ -560,7 +560,7 @@ export async function changeServiceAccountNumber(
   const next = normalizeAccountNumber(opts.next);
   if (next === previous) return { previous, next };
   if (!opts.allowManual) {
-    throw new Error("Manual editing of account numbers is turned off. Enable it in Settings → Account numbers.");
+    throw new Error("Manual editing of account numbers is turned off.");
   }
   const unique = await assertUniqueAccountNumber(sql, opts.tenantId, next, { serviceId: opts.serviceId });
   await sql`update services set account_number = ${unique} where id = ${opts.serviceId} and tenant_id = ${opts.tenantId}`;

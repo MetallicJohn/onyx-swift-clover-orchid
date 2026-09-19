@@ -1,0 +1,15 @@
+signed up cafe090001
+create hotspot from module Business:false Minutes:true Status:true
+created 1 Hour: true
+settings slug match: "imani-cafe-ab4d3a"
+slug from settings: imani-cafe-ab4d3a
+catalog: {"status":200,"body":{"slug":"imani-cafe-ab4d3a","name":"Imani Cafe","packages":[{"id":"pkg_ea0941d76f2642bf","name":"1 Hour","description":"","price_kes":50,"download_mbps":10,"upload_mbps":5,"bundle_mb":0,"duration_value":1,"duration_unit":"hours","validity_hours":1,"duration_label":"1 Hour"}]}}
+wifi: Imani Cafe |  | Buy Wi-Fi with M-Pesa |  | 1 Hour |  | Valid for 1 Hour · 10 Mbps |  | KSh 50 |  | BUY
+buy modal: Imani Cafe |  | Buy Wi-Fi with M-Pesa |  | 1 Hour |  | Valid for 1 Hour · 10 Mbps |  | KSh 50 |  | BUY | Buy 1 Hour |  | KSh 50 · 1 Hour · 10 Mbps |  | M-Pesa phone | Cancel | Pay now
+after pay: Imani Cafe |  | Buy Wi-Fi with M-Pesa |  | 1 Hour |  | Valid for 1 Hour · 10 Mbps |  | KSh 50 |  | BUY | Buy 1 Hour |  | KSh 50 · 1 Hour · 10 Mbps |  | M-Pesa payment request sent | Check your phone and enter your M-Pesa PIN to complete the payment. |  | Cancel | Waiting…
+ERROR: page.waitForURL: Timeout 40000ms exceeded.
+=========================== logs ===========================
+waiting for navigation until "load"
+  navigated to "http://127.0.0.1:8080/login?email=cafe090001%40example.com&password=password12"
+============================================================
+    at /workspace/scripts/hotspot-qa.mjs:84:16

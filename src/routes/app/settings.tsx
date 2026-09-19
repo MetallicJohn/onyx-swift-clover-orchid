@@ -6,7 +6,7 @@ import { APP_NAME } from "@/lib/brand";
 import { DATE_FORMATS, DEFAULT_DATE_FORMAT, dateFormatExample, formatDate, normalizeDateFormat, setActiveDateFormat, type DateFormatId } from "@/lib/isp/display";
 import { AppearanceSettings } from "@/components/isp/appearance-settings";
 import { CustomerTagsSettings } from "@/components/isp/customer-tags-settings";
-import { AccountNumberSettings } from "@/components/isp/account-number-settings";
+import { CustomerIdSettings } from "@/components/isp/customer-id-settings";
 import { NotificationsSettings } from "@/components/isp/notifications-settings";
 import { hasPermission, STAFF_ROLES } from "@/lib/isp/rbac";
 import { changeMyPassword, getDashboard, renameTenant, setStaffPassword } from "@/lib/isp/server";
@@ -46,7 +46,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "grace", label: "Grace period" },
   { id: "partial", label: "Partial payments" },
   { id: "tags", label: "Customer tags" },
-  { id: "accounts", label: "Account numbers" },
+  { id: "accounts", label: "ID Settings" },
 ];
 
 function isTabId(value: unknown): value is TabId {
@@ -552,8 +552,8 @@ function SettingsPage() {
             </Select>
           </Field>
           <p className="text-xs text-muted">
-            Used on every page, invoice, statement, and SMS. Preview:{" "}
-            <span className="font-medium text-fg">{dateFormatExample(form.dateFormat)}</span>. Default is dd/mm/yy.
+            Used on every page, invoice, statement, SMS, and date field. Date entry uses this format (default dd/mm/yy). Preview:{" "}
+            <span className="font-medium text-fg">{dateFormatExample(form.dateFormat)}</span>.
           </p>
           <p className="text-xs text-subtle">
             Role: {ws?.role} · Plan: {ws?.status} · Customer portal slug:{" "}
@@ -1882,7 +1882,7 @@ function SettingsPage() {
       ) : null}
 
       {tab === "tags" ? <CustomerTagsSettings /> : null}
-      {tab === "accounts" ? <AccountNumberSettings /> : null}
+      {tab === "accounts" ? <CustomerIdSettings /> : null}
     </div>
   );
 }

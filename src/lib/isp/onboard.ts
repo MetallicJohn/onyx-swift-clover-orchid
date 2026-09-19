@@ -461,7 +461,7 @@ export function displayDraftAccount(
 ) {
   const v = (entered || "").trim();
   if (v) return v;
-  return kind === "existing" ? "No account number" : "Assigned on save";
+  return kind === "existing" ? "No ID" : "Assigned on save";
 }
 
 export function displayPhone(raw: string) {

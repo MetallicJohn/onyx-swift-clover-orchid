@@ -220,6 +220,25 @@ export function compileMikrotik(kind: string, payload: Record<string, unknown>):
     };
   }
 
+  if (kind === "hotspot.portal.deploy") {
+    const base = String(payload.html_base || "").replace(/\/$/, "");
+    const token = String(payload.token || "");
+    const dst = String(payload.dst_dir || "hotspot").replace(/[^A-Za-z0-9/_-]/g, "") || "hotspot";
+    const allow = new Set(["login.html", "alogin.html", "status.html", "logout.html", "error.html", "md5.js"]);
+    const files = (Array.isArray(payload.files) ? payload.files.map(String) : [...allow]).filter((f) => allow.has(f));
+    return {
+      rest: files.map((f) => ({
+        method: "POST" as const,
+        path: "/rest/tool/fetch",
+        body: {
+          url: `${base}/${f}?token=${encodeURIComponent(token)}`,
+          "dst-path": `${dst}/${f}`,
+        },
+      })),
+      script,
+    };
+  }
+
   if (kind.startsWith("hotspot.")) {
     if (!user) return { rest: [], script };
     if (kind.endsWith("disconnect")) {

@@ -133,7 +133,7 @@ export function ReassignServiceDialog({
             <p className="text-xs font-medium tracking-wide text-muted">Service being reassigned</p>
             <dl className="mt-2 grid gap-1 text-sm">
               <Row label="Service" value={service.package_name} />
-              <Row label="Account" value={service.account_number || "—"} />
+              <Row label="Service Account Number" value={service.account_number || "—"} />
               <Row label="Access" value={accessMethodLabel(service.access_method)} />
               <Row label="Status" value={service.status} />
               <Row label="Expiry" value={service.period_end ? formatDate(service.period_end) : "—"} />
@@ -144,7 +144,7 @@ export function ReassignServiceDialog({
             <p className="text-xs font-medium tracking-wide text-muted">Current customer</p>
             <p className="mt-1 font-medium">{service.customer_name}</p>
             <p className="mt-0.5 text-xs text-muted">
-              {service.customer_account_number ? `Account ${service.customer_account_number}` : "No customer account"}
+              {service.customer_account_number ? `ID ${service.customer_account_number}` : "No ID"}
               {service.customer_phone ? ` · ${displayReassignPhone(service.customer_phone)}` : ""}
             </p>
           </section>
@@ -156,7 +156,7 @@ export function ReassignServiceDialog({
                   <p className="text-xs font-medium tracking-wide text-muted">Destination customer</p>
                   <dl className="mt-2 grid gap-1 text-sm">
                     <Row label="Name" value={selected.name} />
-                    <Row label="Account Number" value={selected.account_number || "—"} />
+                    <Row label="ID" value={selected.account_number || "—"} />
                     <Row label="Phone" value={selected.phone ? displayReassignPhone(selected.phone) : "—"} />
                   </dl>
                 </div>
@@ -187,7 +187,7 @@ export function ReassignServiceDialog({
                 <p className="text-sm text-danger">{searchError}</p>
               ) : hits.length === 0 ? (
                 <p className="text-sm text-muted">
-                  No matching customers found. Try a different name, phone number, or account number.
+                  No matching customers found. Try a different name, phone number, or ID.
                 </p>
               ) : (
                 <ul className="max-h-56 overflow-y-auto rounded-xl border border-border" role="listbox" aria-label="Matching customers">

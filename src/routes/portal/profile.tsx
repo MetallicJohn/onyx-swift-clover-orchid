@@ -33,10 +33,6 @@ function PortalProfile() {
             <dd className="font-medium">{c.name}</dd>
           </div>
           <div>
-            <dt className="text-xs text-muted">Account number</dt>
-            <dd className="font-mono">{c.account_number || "—"}</dd>
-          </div>
-          <div>
             <dt className="text-xs text-muted">Phone / username</dt>
             <dd>{c.phone}</dd>
           </div>

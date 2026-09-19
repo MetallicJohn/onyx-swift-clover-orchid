@@ -8,6 +8,7 @@ import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
+import { DateYmdInput } from "@/components/isp/date-ymd-input";
 import { invoiceStatusLabel, type InvoiceDocument } from "@/lib/isp/document-format";
 import { formatDate, setActiveDateFormat } from "@/lib/isp/display";
 import { downloadPdf, printPdf, viewPdf } from "@/lib/isp/pdf-client";
@@ -349,7 +350,7 @@ function BillingPage() {
                   </Button>
                 </div>
                 <Field label="Due date">
-                  <Input type="date" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
+                  <DateYmdInput value={form.due_date} onChange={(ymd) => setForm({ ...form, due_date: ymd })} aria-label="Due date" />
                 </Field>
                 <Field label="Notes">
                   <Input

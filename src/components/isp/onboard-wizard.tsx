@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TagPicker } from "@/components/isp/tag-picker";
+import { CustomerIdSetupForm } from "@/components/isp/customer-id-setup-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
@@ -135,7 +136,7 @@ function CustomerCard({
       <div className="min-w-0">
         <p className="font-medium">{c.name}</p>
         <p className="mt-0.5 text-xs text-muted">
-          {c.account_number || "No account number"}
+          {c.account_number || "No ID"}
           {c.phone ? ` · ${displayPhone(c.phone)}` : ""}
           {c.email ? ` · ${c.email}` : ""}
         </p>
@@ -203,7 +204,6 @@ export function OnboardWizard({
     setCustomerMode(lockedCustomer || mode === "service" ? "existing" : "new");
     setCustomer({
       ...EMPTY_CUSTOMER,
-      account_number: catalog?.account.allow_manual && catalog.account.scheme !== "random" ? catalog.account.preview : "",
     });
     setSelected(lockedCustomer ?? null);
     setService(EMPTY_SERVICE);
@@ -219,11 +219,6 @@ export function OnboardWizard({
     loadOnboardCatalogFn()
       .then((res) => {
         setCatalog(res);
-        setCustomer((c) => ({
-          ...c,
-          account_number:
-            res.account.allow_manual && res.account.scheme !== "random" ? res.account.preview : c.account_number,
-        }));
         setService((s) => {
           if (s.package_id && res.packages.some((p) => p.id === s.package_id)) return s;
           const first =
@@ -528,6 +523,13 @@ export function OnboardWizard({
         <p className="text-sm text-muted">Loading packages and devices…</p>
       ) : result ? (
         <SuccessPanel result={result} service={service} pkg={selectedPkg} onContinue={() => onCreated(result)} />
+      ) : catalog && !catalog.customer_id.configured && !lockedCustomer && mode !== "service" && customerMode === "new" ? (
+        <CustomerIdSetupForm
+          onResolved={() => {
+            loadOnboardCatalogFn().then(setCatalog).catch(() => undefined);
+          }}
+          onCancel={() => onOpenChange(false)}
+        />
       ) : (
         <div className="grid gap-4">
           <ol className="flex flex-wrap gap-2" aria-label="Steps">
@@ -563,7 +565,7 @@ export function OnboardWizard({
                       <Input
                         value={query}
                         onChange={(e) => onSearch(e.target.value)}
-                        placeholder="Name, phone, account number, or email"
+                        placeholder="Name, phone, ID, or email"
                         autoFocus
                       />
                     </Field>
@@ -583,7 +585,7 @@ export function OnboardWizard({
                               <span className="min-w-0">
                                 <span className="block text-sm font-medium">{h.name}</span>
                                 <span className="block text-xs text-muted">
-                                  {h.account_number || "No account"} · {displayPhone(h.phone)}
+                                  {h.account_number || "No ID"} · {displayPhone(h.phone)}
                                   {h.email ? ` · ${h.email}` : ""}
                                 </span>
                               </span>
@@ -595,7 +597,7 @@ export function OnboardWizard({
                     ) : query.trim().length >= 2 && !searching ? (
                       <p className="text-sm text-muted">No matching customer.</p>
                     ) : (
-                      <p className="text-sm text-muted">Search by name, phone, account number, or email.</p>
+                      <p className="text-sm text-muted">Search by name, phone, ID, or email.</p>
                     )}
                     {mode === "customer" && canCustomer ? (
                       <Button
@@ -633,25 +635,9 @@ export function OnboardWizard({
                   <Field label="Address / location">
                     <Input value={customer.address} onChange={(e) => setCustomer({ ...customer, address: e.target.value })} />
                   </Field>
-                  {catalog?.account.enabled || catalog?.account.allow_manual ? (
-                    <Field label="Account number">
-                      <Input
-                        value={customer.account_number}
-                        readOnly={!catalog.account.allow_manual}
-                        onChange={(e) => setCustomer({ ...customer, account_number: e.target.value.toUpperCase() })}
-                        placeholder={catalog.account.scheme === "random" ? "Assigned on save" : catalog.account.preview || "Optional"}
-                      />
-                    </Field>
-                  ) : null}
-                  {catalog?.account.enabled ? (
-                    <p className="text-xs text-muted sm:col-span-2">
-                      {catalog.account.scheme === "random"
-                        ? "A unique account code is assigned when you save."
-                        : catalog.account.allow_manual
-                          ? `Next number ${catalog.account.preview || "is assigned on save"}. Change it only if you need a specific code.`
-                          : `Next number ${catalog.account.preview || "is assigned on save"}.`}
-                    </p>
-                  ) : null}
+                  <p className="text-xs text-muted sm:col-span-2">
+                    ID {catalog?.customer_id.next_preview || "1"} is assigned when you save.
+                  </p>
                   <div className="sm:col-span-2">
                     <Field label="Tags">
                       <TagPicker tags={catalog?.tags ?? []} selected={customer.tag_ids} onChange={(tag_ids) => setCustomer({ ...customer, tag_ids })} />
@@ -782,7 +768,7 @@ export function OnboardWizard({
                     placeholder={selectedPkg.name}
                   />
                 </Field>
-                <Field label="Service account number">
+                <Field label="Service Account Number">
                   <Input value="Assigned on save" readOnly className="text-muted" />
                 </Field>
               </div>
@@ -1087,12 +1073,12 @@ export function OnboardWizard({
                 <Row label="Name" value={confirmedCustomer?.name || "—"} />
                 <Row label="Phone" value={confirmedCustomer?.phone ? displayPhone(confirmedCustomer.phone) : "—"} />
                 <Row label="Email" value={confirmedCustomer?.email || "—"} />
-                <Row label="Account" value={confirmedCustomer?.account_number || (customerMode === "new" ? "Assigned on save" : "Kept")} />
+                <Row label="ID" value={confirmedCustomer?.account_number || (customerMode === "new" ? "Assigned on save" : "Kept")} />
               </ReviewBlock>
               {includeService && canService && selectedPkg ? (
                 <ReviewBlock title="Service" onEdit={() => setStep("plan")}>
                   <Row label="Name" value={service.name || selectedPkg.name} />
-                  <Row label="Account" value="New unique number on save" />
+                  <Row label="Service Account Number" value="New unique number on save" />
                   <Row label="Type" value={accessMethodLabel(service.access_method)} />
                   <Row label="Package" value={selectedPkg.name} />
                   <Row label="Price" value={`${kes(selectedPkg.price_kes)} · ${billingPeriodLabel(selectedPkg.billing_interval, selectedPkg.validity_hours)}`} />
@@ -1201,10 +1187,8 @@ function SuccessPanel({
     <div className="grid gap-4">
       {result.partial_error ? <p className="text-sm text-warn">{result.partial_error}</p> : null}
       <dl className="grid gap-2 text-sm">
-        <Row label="Account" value={result.account_number || result.customer_id} />
-        {result.customer_account_number && result.customer_account_number !== result.account_number ? (
-          <Row label="Customer" value={result.customer_account_number} />
-        ) : null}
+        <Row label="ID" value={result.customer_account_number || (!result.service_id ? result.account_number : "") || "—"} />
+        {result.service_id ? <Row label="Service Account Number" value={result.account_number || "—"} /> : null}
         {result.service_id && pkg ? <Row label="Package" value={service.name || pkg.name} /> : null}
         {result.status ? (
           <Row

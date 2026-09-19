@@ -28,7 +28,12 @@ import { groupAssignments, listTags, loadAssignments, setCustomerTags } from "./
 import { assertPermission } from "./rbac";
 import { assertCustomerQuota, assertRouterQuota, assertTenantOperable } from "./saas";
 import { assertFeature, featureForAccess } from "./plans";
-import { allocateAccountNumber, changeCustomerAccountNumber, ensureServiceAccountNumber, getAccountNumberSettings } from "./account-numbers";
+import {
+  isHotspotDurationUnit,
+  validityHoursFromDuration,
+} from "./hotspot-duration";
+import { ensureServiceAccountNumber } from "./account-numbers";
+import { allocateCustomerId } from "./customer-ids";
 import { applyRls } from "./rls";
 import { loadAuthUser, provisionTenant, setCredentialPassword, changeOwnPassword, isPlatformAdmin } from "./accounts";
 import { resolveActiveTenant, setActiveTenant } from "./tenant-context";
@@ -71,6 +76,56 @@ function normalizePackageCredit(data: {
     sendWarning: data.send_credit_limit_warning !== false,
     daysLimit: Math.max(0, Math.round(data.credit_days_limit ?? 0)),
     notes: String(data.credit_terms_notes || "").slice(0, 500),
+  };
+}
+
+function packageDurationFields(data: {
+  access_method: AccessMethod;
+  billing_interval: string;
+  grace_days: number;
+  validity_hours?: number;
+  duration_value?: number;
+  duration_unit?: string;
+  tier?: string;
+  business_credit_enabled?: boolean;
+  max_credit_kes?: number;
+  credit_warning_kes?: number;
+  disconnect_when_credit_reached?: boolean;
+  allow_service_continuity_after_expiry?: boolean;
+  send_credit_limit_warning?: boolean;
+  credit_days_limit?: number;
+  credit_terms_notes?: string;
+}) {
+  if (data.access_method === "hotspot") {
+    const unit = isHotspotDurationUnit(data.duration_unit) ? data.duration_unit : "hours";
+    const value = Math.max(1, Math.trunc(Number(data.duration_value) || 0));
+    if (!(value >= 1)) throw new Error("Duration is required");
+    return {
+      billing_interval: data.billing_interval || "daily",
+      grace_days: 0,
+      validity_hours: validityHoursFromDuration(value, unit),
+      duration_value: value,
+      duration_unit: unit,
+      credit: normalizePackageCredit({
+        tier: "residential",
+        business_credit_enabled: false,
+        max_credit_kes: 0,
+        credit_warning_kes: 0,
+        disconnect_when_credit_reached: true,
+        allow_service_continuity_after_expiry: false,
+        send_credit_limit_warning: false,
+        credit_days_limit: 0,
+        credit_terms_notes: "",
+      }),
+    };
+  }
+  return {
+    billing_interval: data.billing_interval,
+    grace_days: data.grace_days,
+    validity_hours: Math.max(0, data.validity_hours ?? 0),
+    duration_value: Math.max(0, Math.trunc(Number(data.duration_value) || 0)),
+    duration_unit: isHotspotDurationUnit(data.duration_unit) ? data.duration_unit : "hours",
+    credit: normalizePackageCredit(data),
   };
 }
 
@@ -295,13 +350,13 @@ export const createCustomer = createServerFn({ method: "POST" })
     const { assertUniqueCustomerPhone, ensureInitialPortalPassword, setPortalPassword } = await import("./portal");
     await assertUniqueCustomerPhone(sql, workspace.tenantId, data.phone);
     const id = nid("cus");
-    const accountNumber = await allocateAccountNumber(sql, workspace.tenantId, data.account_number);
+    const accountNumber = await allocateCustomerId(sql, workspace.tenantId);
     try {
       await sql`insert into customers (id, tenant_id, type, name, phone, email, address, status, account_number, notes)
         values (${id}, ${workspace.tenantId}, ${data.type || "individual"}, ${name}, ${data.phone.trim()}, ${data.email.trim()}, ${data.address.trim()}, 'active', ${accountNumber}, ${notes})`;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (/account_number|unique/i.test(msg)) throw new Error("Account number already assigned.");
+      if (/account_number|unique/i.test(msg)) throw new Error("ID already assigned.");
       throw err;
     }
     if (data.portal_password) {
@@ -337,24 +392,6 @@ export const updateCustomer = createServerFn({ method: "POST" })
       returning id, coalesce(account_number,'') as account_number`;
     if (!rows[0]) throw new Error("Customer not found");
     if (data.tag_ids) await setCustomerTags(sql, workspace.tenantId, data.id, data.tag_ids);
-    if (data.account_number !== undefined && data.account_number !== rows[0].account_number) {
-      const settings = await getAccountNumberSettings(sql, workspace.tenantId, workspace.slug);
-      const changed = await changeCustomerAccountNumber(sql, {
-        tenantId: workspace.tenantId,
-        customerId: data.id,
-        next: data.account_number,
-        allowManual: settings.allow_manual,
-      });
-      await audit(
-        sql,
-        workspace.tenantId,
-        context.userId,
-        "customer.account_number_changed",
-        "customer",
-        data.id,
-        `${changed.previous || "(none)"} → ${changed.next || "(none)"}`,
-      );
-    }
     await audit(sql, workspace.tenantId, context.userId, "customer.updated", "customer", data.id);
     return { id: data.id };
   });
@@ -365,7 +402,8 @@ export const listPackages = createServerFn({ method: "GET" })
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "packages.read");
     const packages = await sql<PackageRow>`
-      select id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active,
+      select id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours,
+             coalesce(duration_value,0)::int as duration_value, coalesce(duration_unit,'hours') as duration_unit, active,
              coalesce(tier,'residential') as tier, business_credit_enabled, coalesce(max_credit_kes,0)::int as max_credit_kes,
              coalesce(credit_warning_kes,0)::int as credit_warning_kes, disconnect_when_credit_reached,
              allow_service_continuity_after_expiry, send_credit_limit_warning, coalesce(credit_days_limit,0)::int as credit_days_limit,
@@ -387,6 +425,9 @@ export const createPackage = createServerFn({ method: "POST" })
     grace_days: number;
     bundle_mb?: number;
     validity_hours?: number;
+    duration_value?: number;
+    duration_unit?: string;
+    active?: boolean;
     tier?: string;
     business_credit_enabled?: boolean;
     max_credit_kes?: number;
@@ -407,11 +448,12 @@ export const createPackage = createServerFn({ method: "POST" })
     await assertTenantOperable(sql, workspace.tenantId);
     await assertFeature(sql, workspace.tenantId, featureForAccess(data.access_method));
     const id = nid("pkg");
-    const credit = normalizePackageCredit(data);
-    await sql`insert into packages (id, tenant_id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, active,
+    const fields = packageDurationFields(data);
+    const active = data.active !== false;
+    await sql`insert into packages (id, tenant_id, name, description, access_method, download_mbps, upload_mbps, price_kes, billing_interval, grace_days, bundle_mb, validity_hours, duration_value, duration_unit, active,
         tier, business_credit_enabled, max_credit_kes, credit_warning_kes, disconnect_when_credit_reached, allow_service_continuity_after_expiry, send_credit_limit_warning, credit_days_limit, credit_terms_notes)
-      values (${id}, ${workspace.tenantId}, ${data.name.trim()}, ${data.description}, ${data.access_method}, ${data.download_mbps}, ${data.upload_mbps}, ${data.price_kes}, ${data.billing_interval}, ${data.grace_days}, ${Math.max(0, data.bundle_mb ?? 0)}, ${Math.max(0, data.validity_hours ?? 0)}, true,
-        ${credit.tier}, ${credit.enabled}, ${credit.maxKes}, ${credit.warningKes}, ${credit.disconnect}, ${credit.continuity}, ${credit.sendWarning}, ${credit.daysLimit}, ${credit.notes})`;
+      values (${id}, ${workspace.tenantId}, ${data.name.trim()}, ${data.description}, ${data.access_method}, ${data.download_mbps}, ${data.upload_mbps}, ${data.price_kes}, ${fields.billing_interval}, ${fields.grace_days}, ${Math.max(0, data.bundle_mb ?? 0)}, ${fields.validity_hours}, ${fields.duration_value}, ${fields.duration_unit}, ${active},
+        ${fields.credit.tier}, ${fields.credit.enabled}, ${fields.credit.maxKes}, ${fields.credit.warningKes}, ${fields.credit.disconnect}, ${fields.credit.continuity}, ${fields.credit.sendWarning}, ${fields.credit.daysLimit}, ${fields.credit.notes})`;
     await enqueuePackageProfiles(sql, workspace.tenantId, {
       name: data.name.trim(),
       download_mbps: data.download_mbps,
@@ -436,6 +478,8 @@ export const updatePackage = createServerFn({ method: "POST" })
     grace_days: number;
     bundle_mb?: number;
     validity_hours?: number;
+    duration_value?: number;
+    duration_unit?: string;
     active: boolean;
     tier?: string;
     business_credit_enabled?: boolean;
@@ -454,7 +498,7 @@ export const updatePackage = createServerFn({ method: "POST" })
     if (!["pppoe", "static", "hotspot"].includes(data.access_method)) {
       throw new Error("Access method must be PPPoE, static, or hotspot");
     }
-    const credit = normalizePackageCredit(data);
+    const fields = packageDurationFields(data);
     const rows = await sql<{ id: string }>`
       update packages
       set name = ${data.name.trim()},
@@ -463,20 +507,22 @@ export const updatePackage = createServerFn({ method: "POST" })
           download_mbps = ${data.download_mbps},
           upload_mbps = ${data.upload_mbps},
           price_kes = ${data.price_kes},
-          billing_interval = ${data.billing_interval},
-          grace_days = ${data.grace_days},
+          billing_interval = ${fields.billing_interval},
+          grace_days = ${fields.grace_days},
           bundle_mb = ${Math.max(0, data.bundle_mb ?? 0)},
-          validity_hours = ${Math.max(0, data.validity_hours ?? 0)},
+          validity_hours = ${fields.validity_hours},
+          duration_value = ${fields.duration_value},
+          duration_unit = ${fields.duration_unit},
           active = ${data.active},
-          tier = ${credit.tier},
-          business_credit_enabled = ${credit.enabled},
-          max_credit_kes = ${credit.maxKes},
-          credit_warning_kes = ${credit.warningKes},
-          disconnect_when_credit_reached = ${credit.disconnect},
-          allow_service_continuity_after_expiry = ${credit.continuity},
-          send_credit_limit_warning = ${credit.sendWarning},
-          credit_days_limit = ${credit.daysLimit},
-          credit_terms_notes = ${credit.notes}
+          tier = ${fields.credit.tier},
+          business_credit_enabled = ${fields.credit.enabled},
+          max_credit_kes = ${fields.credit.maxKes},
+          credit_warning_kes = ${fields.credit.warningKes},
+          disconnect_when_credit_reached = ${fields.credit.disconnect},
+          allow_service_continuity_after_expiry = ${fields.credit.continuity},
+          send_credit_limit_warning = ${fields.credit.sendWarning},
+          credit_days_limit = ${fields.credit.daysLimit},
+          credit_terms_notes = ${fields.credit.notes}
       where id = ${data.id} and tenant_id = ${workspace.tenantId}
       returning id`;
     if (!rows[0]) throw new Error("Package not found");

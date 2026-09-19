@@ -352,7 +352,7 @@ export function customerRecordPath(id: string, search?: ProfileSearch) {
 }
 
 export function selectedCustomersCsv(rows: DeskCustomer[]) {
-  const header = "name,account_number,phone,email,address,package,access,status,service_status,outstanding,expiry";
+  const header = "name,id,phone,email,address,package,access,status,service_status,outstanding,expiry";
   const body = rows
     .map((r) =>
       [

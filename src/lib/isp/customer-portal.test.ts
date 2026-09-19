@@ -206,7 +206,8 @@ test("customer portal phone login, safe DTO, STK pending, ticket privacy", async
     const home = await loadPortalHome(sql, ctx);
     assertSafe(home);
     assert.equal(home.customer.name, "Amina Otieno");
-    assert.equal(home.customer.account_number, "PN-1001");
+    assert.equal("account_number" in home.customer, false);
+    assert.ok(!JSON.stringify(home).includes("PN-1001"));
     assert.equal(home.customer.using_initial_password, true);
     assert.equal(home.dashboard.services_total, 1);
     assert.equal(home.dashboard.services_active, 1);

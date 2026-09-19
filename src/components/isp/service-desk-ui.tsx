@@ -94,7 +94,7 @@ export function ServiceSearch({
         type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Search service ID, customer, account, phone, username, IP, router, package, or location"
+        placeholder="Search service account number, customer, phone, username, IP, router, package, or location"
         aria-label="Search services"
         className="h-11 w-full rounded-md border border-border bg-bg pl-10 pr-12 text-sm text-fg placeholder:text-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
       />
@@ -172,7 +172,6 @@ export function ServiceFilterFields({
         <option value="all">Any access</option>
         <option value="pppoe">PPPoE</option>
         <option value="static">Static IP</option>
-        <option value="hotspot">Hotspot</option>
       </Select>
       <Select
         aria-label="Package"
@@ -560,7 +559,7 @@ export function ServiceTable({
               ) : null}
             </th>
             <SortHead label="Customer" id="customer" sort={sort} dir={dir} onSort={onSort} />
-            <SortHead label="Service" id="service" sort={sort} dir={dir} onSort={onSort} />
+            <SortHead label="Service Account Number" id="service" sort={sort} dir={dir} onSort={onSort} />
             <SortHead label="Access" id="access" sort={sort} dir={dir} onSort={onSort} />
             <SortHead label="Package" id="package" sort={sort} dir={dir} onSort={onSort} />
             <th className="px-3 py-2 font-medium">Identity</th>
@@ -608,14 +607,14 @@ export function ServiceTable({
                     >
                       {s.customer_name}
                     </Link>
-                    <div className="font-mono text-xs text-muted">{s.account_number || "No account"}</div>
+                    <div className="text-xs text-muted">{s.customer_phone || "No phone"}</div>
                   </div>
                 </td>
                 <td className="px-3 py-2">
-                  <a href={serviceRecordPath(s.id)} className="font-mono text-xs hover:text-accent hover:underline" title={s.id}>
-                    {s.id}
+                  <a href={serviceRecordPath(s.id)} className="font-mono text-xs hover:text-accent hover:underline" title={s.account_number || s.id}>
+                    {s.account_number || "—"}
                   </a>
-                  <div className="text-xs text-muted">{s.router_name || "No router"}</div>
+                  <div className="text-xs text-muted">{s.router_name || s.package_name}</div>
                 </td>
                 <td className="px-3 py-2 text-muted">
                   <div>{accessMethodLabel(s.access_method)}</div>
@@ -698,10 +697,7 @@ export function ServiceCards({
                 <ServiceActionsMenu s={s} perms={perms} actions={actions} />
               </div>
               <p className="font-mono text-xs text-muted">
-                <a href={serviceRecordPath(s.id)} className="hover:text-accent hover:underline">
-                  {s.id}
-                </a>
-                {s.account_number ? ` · ${s.account_number}` : ""}
+                {s.account_number || "No service account"}
               </p>
               <div className="mt-2 flex flex-wrap gap-1">
                 <Badge tone={statusTone(s.display_status)}>{serviceStatusLabel(s.display_status)}</Badge>
@@ -864,7 +860,7 @@ export function ServicePreview({
             >
               {s.customer_name}
             </Link>
-            <p className="font-mono text-xs text-muted">{s.account_number || "No account number"}</p>
+            <p className="font-mono text-xs text-muted">{s.account_number || "No service account"}</p>
             <p>{s.customer_phone || "No phone"}</p>
             <div className="flex flex-wrap gap-1 pt-1">
               <Badge tone={statusTone(service?.display_status || s.status)}>

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { EmptyState, ErrorBanner, LoadingBlock, PaymentRow, PortalCard } from "@/components/isp/portal-ui";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
+import { DateYmdInput } from "@/components/isp/date-ymd-input";
 import type { PortalPaymentPage } from "@/lib/isp/customer-portal-dto";
 import { getPortalPayments } from "@/lib/isp/server-portal";
 import { usePortal } from "@/lib/isp/portal-context";
@@ -53,10 +54,10 @@ function PortalPayments() {
             </Select>
           </Field>
           <Field label="From">
-            <Input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} />
+            <DateYmdInput value={from} onChange={(ymd) => { setFrom(ymd); setPage(1); }} aria-label="From date" />
           </Field>
           <Field label="To">
-            <Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} />
+            <DateYmdInput value={to} onChange={(ymd) => { setTo(ymd); setPage(1); }} aria-label="To date" />
           </Field>
         </div>
       </PortalCard>

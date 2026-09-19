@@ -23,7 +23,6 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { accessMethodLabel, formatDate, formatDateTime, formatMac, remainingLabel } from "@/lib/isp/display";
 import { accountState, accountStateLabel, customerRecordPath, normalizeProfileSearch, type ProfileTab } from "@/lib/isp/customer-desk-format";
 import { hasPermission } from "@/lib/isp/rbac";
-import { getAccountNumberSettingsFn } from "@/lib/isp/server-account-numbers";
 import { extendGraceFn, grantGraceFn, revokeGraceFn } from "@/lib/isp/server-grace";
 import { setServiceExpiryFn } from "@/lib/isp/server-expiry";
 import {
@@ -102,7 +101,6 @@ function CustomerRecordPage() {
   } | null>(null);
   const [drop, setDrop] = useState<{ id: string; label: string; reason: string } | null>(null);
   const [portalPass, setPortalPass] = useState("");
-  const [allowManual, setAllowManual] = useState(false);
 
   async function load() {
     const rec = await getCustomerFn({ data: { id: customerId } });
@@ -117,12 +115,6 @@ function CustomerRecordPage() {
       notes: rec.customer.notes,
       tag_ids: rec.customer.tags.map((t) => t.id),
     });
-    try {
-      const policy = await getAccountNumberSettingsFn();
-      setAllowManual(policy.allow_manual);
-    } catch {
-      setAllowManual(false);
-    }
   }
 
   useEffect(() => {
@@ -202,7 +194,7 @@ function CustomerRecordPage() {
           <BackLink />
           <h1 className="text-2xl font-semibold tracking-tight">{c.name}</h1>
           <p className="text-sm text-muted">
-            <span className="font-mono">{c.account_number || "No account number"}</span>
+            <span className="font-mono">ID {c.account_number || "—"}</span>
             {" · "}
             <span className="capitalize">{c.type}</span>
             {c.phone ? ` · ${c.phone}` : ""}
@@ -263,16 +255,6 @@ function CustomerRecordPage() {
           onSubmit={(e) => {
             e.preventDefault();
             void run(async () => {
-              if (form.account_number !== c.account_number) {
-                if (!allowManual) throw new Error("Manual editing of account numbers is turned off.");
-                if (
-                  !window.confirm(
-                    `Change account number from ${c.account_number || "(none)"} to ${form.account_number || "(none)"}? Invoices, services, and history stay on this customer.`,
-                  )
-                ) {
-                  return;
-                }
-              }
               await updateCustomer({
                 data: {
                   id: c.id,
@@ -282,7 +264,6 @@ function CustomerRecordPage() {
                   address: form.address,
                   type: form.type,
                   tag_ids: form.tag_ids,
-                  account_number: form.account_number,
                   notes: form.notes,
                 },
               });
@@ -309,12 +290,8 @@ function CustomerRecordPage() {
           <Field label="Address / location">
             <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
           </Field>
-          <Field label="Account number">
-            <Input
-              value={form.account_number}
-              readOnly={!allowManual}
-              onChange={(e) => setForm({ ...form, account_number: e.target.value.toUpperCase() })}
-            />
+          <Field label="ID">
+            <Input value={form.account_number || "—"} readOnly />
           </Field>
           <div className="md:col-span-2">
             <Field label="Notes">
@@ -660,7 +637,7 @@ function Overview({ data }: { data: RecordData }) {
           <Row label="Phone" value={data.customer.phone || "—"} />
           <Row label="Email" value={data.customer.email || "—"} />
           <Row label="Address" value={data.customer.address || "—"} />
-          <Row label="Account" value={data.customer.account_number || "—"} mono />
+          <Row label="ID" value={data.customer.account_number || "—"} mono />
           <Row label="Created" value={formatDate(data.customer.created_at)} />
         </dl>
       </section>
@@ -759,7 +736,7 @@ function ServiceTable({
         <thead className="text-xs text-muted">
           <tr>
             <th className="px-3 py-2 font-medium">Service</th>
-            <th className="px-3 py-2 font-medium">Account</th>
+            <th className="px-3 py-2 font-medium">Service Account Number</th>
             <th className="px-3 py-2 font-medium">Type</th>
             <th className="px-3 py-2 font-medium">Identity</th>
             <th className="px-3 py-2 font-medium">Status</th>

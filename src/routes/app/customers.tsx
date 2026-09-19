@@ -29,7 +29,6 @@ import {
   type DeskFilters,
 } from "@/lib/isp/customer-desk-format";
 import { hasPermission } from "@/lib/isp/rbac";
-import { getAccountNumberSettingsFn } from "@/lib/isp/server-account-numbers";
 import { queryCustomersDeskFn } from "@/lib/isp/server-desk";
 import { deleteCustomerFn, getCustomerFn } from "@/lib/isp/server-lifecycle";
 import { createCustomer, exportCustomersCsv, setServiceStatus, updateCustomer } from "@/lib/isp/server";
@@ -186,12 +185,6 @@ function CustomersPage() {
   const [tagFor, setTagFor] = useState<DeskCustomer | null>(null);
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [messageFor, setMessageFor] = useState<DeskCustomer | null>(null);
-  const [accPolicy, setAccPolicy] = useState<{
-    enabled: boolean;
-    allow_manual: boolean;
-    preview: string;
-    scheme: "random" | "sequence";
-  }>({ enabled: false, allow_manual: false, preview: "", scheme: "random" });
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestRef = useRef(0);
@@ -245,19 +238,6 @@ function CustomersPage() {
   }, [search.q, search.customer, search.service, search.access, search.pkg, search.location, search.billing, search.expiring, search.grace, search.overdue, search.tags, search.tagMode, search.page]);
 
   useEffect(() => {
-    getAccountNumberSettingsFn()
-      .then((policy) =>
-        setAccPolicy({
-          enabled: policy.enabled,
-          allow_manual: policy.allow_manual,
-          preview: policy.preview,
-          scheme: policy.scheme === "sequence" ? "sequence" : "random",
-        }),
-      )
-      .catch(() => setAccPolicy({ enabled: true, allow_manual: false, preview: "", scheme: "random" }));
-  }, []);
-
-  useEffect(() => {
     if (!previewFor) {
       setPreview(null);
       setPreviewErr(null);
@@ -285,7 +265,6 @@ function CustomersPage() {
   const canComms = hasPermission(role, "communications.view");
   const canTraffic = hasPermission(role, "traffic.view") || hasPermission(role, "services.read");
   const canRecycle = hasPermission(role, "recycle_bin.view");
-  const canSettings = hasPermission(role, "settings.manage");
   const activeTab: PageTab = tab === "communications" && canComms ? "communications" : "customers";
 
   const rows = desk?.customers ?? [];
@@ -343,18 +322,6 @@ function CustomersPage() {
     setBusy(true);
     try {
       if (editingId) {
-        const previous = rows.find((r) => r.id === editingId)?.account_number || "";
-        if (form.account_number !== previous) {
-          if (!accPolicy.allow_manual) throw new Error("Manual editing of account numbers is turned off.");
-          if (
-            !window.confirm(
-              `Change account number from ${previous || "(none)"} to ${form.account_number || "(none)"}? Invoices, services, and history stay on this customer.`,
-            )
-          ) {
-            setBusy(false);
-            return;
-          }
-        }
         await updateCustomer({
           data: {
             id: editingId,
@@ -364,7 +331,6 @@ function CustomersPage() {
             address: form.address,
             type: form.type,
             tag_ids: form.tag_ids,
-            account_number: form.account_number,
             notes: form.notes,
           },
         });
@@ -378,7 +344,6 @@ function CustomersPage() {
             type: form.type,
             portal_password: form.portal_password || undefined,
             tag_ids: form.tag_ids,
-            account_number: form.account_number || undefined,
             notes: form.notes,
           },
         });
@@ -714,31 +679,9 @@ function CustomersPage() {
               <Field label="Address / location">
                 <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
               </Field>
-              {accPolicy.enabled || accPolicy.allow_manual || (editingId && form.account_number) ? (
-                <Field label="Account number">
-                  <Input
-                    value={form.account_number}
-                    readOnly={editingId ? !accPolicy.allow_manual : accPolicy.enabled && !accPolicy.allow_manual}
-                    onChange={(e) => setForm({ ...form, account_number: e.target.value.toUpperCase() })}
-                    placeholder={accPolicy.scheme === "random" ? "Assigned on save" : accPolicy.enabled ? accPolicy.preview : "Optional"}
-                  />
-                </Field>
-              ) : null}
-              {accPolicy.enabled && !editingId ? (
-                <p className="text-xs text-subtle md:col-span-2">
-                  {accPolicy.scheme === "random"
-                    ? "A unique 5-character code is assigned when you save. Letters and numbers, never I, O, or L."
-                    : `Next number ${accPolicy.preview}. It is reserved when you save, so two staff cannot get the same account.`}
-                  {canSettings ? (
-                    <>
-                      {" "}
-                      <Link to="/app/settings" search={{ tab: "accounts" }} className="text-accent hover:underline">
-                        Change format
-                      </Link>
-                    </>
-                  ) : null}
-                </p>
-              ) : null}
+              <Field label="ID">
+                <Input value={form.account_number || "—"} readOnly />
+              </Field>
               {!editingId ? (
                 <div className="md:col-span-2 grid gap-1.5">
                   <Field label="Portal password (optional)">

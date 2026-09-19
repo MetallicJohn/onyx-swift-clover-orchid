@@ -100,7 +100,7 @@ export function DeskSearch({
         type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Search name, account, phone, email, service ID, username, IP, or location"
+        placeholder="Search ID, name, phone, email, or location"
         aria-label="Search customers"
         className="h-11 w-full rounded-md border border-border bg-bg pl-10 pr-12 text-sm text-fg placeholder:text-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
       />
@@ -476,8 +476,8 @@ export function DeskTable({
                 <input type="checkbox" className="size-4" checked={allSelected} onChange={onToggleAll} aria-label="Select all on this page" />
               ) : null}
             </th>
+            <th className="px-3 py-2 font-medium">ID</th>
             <th className="px-3 py-2 font-medium">Customer</th>
-            <th className="px-3 py-2 font-medium">Account</th>
             <th className="px-3 py-2 font-medium">Phone</th>
             <th className="px-3 py-2 font-medium">Package</th>
             <th className="px-3 py-2 font-medium">Type</th>
@@ -515,6 +515,7 @@ export function DeskTable({
                     />
                   ) : null}
                 </td>
+                <td className="px-3 py-2 font-mono text-xs">{c.account_number || "—"}</td>
                 <td className="px-3 py-2">
                   <div className="flex items-center gap-2.5">
                     <Avatar name={c.name} />
@@ -533,7 +534,6 @@ export function DeskTable({
                     </div>
                   </div>
                 </td>
-                <td className="px-3 py-2 font-mono text-xs">{c.account_number || "—"}</td>
                 <td className="px-3 py-2">
                   <div>{c.phone || "No phone"}</div>
                   <div className="text-xs text-muted">{c.email || "No email"}</div>
@@ -615,7 +615,7 @@ export function DeskCards({
                 <CustomerActions c={c} perms={perms} actions={actions} />
               </div>
               <p className="text-xs text-muted">
-                {c.account_number || "No account"} · {c.phone || "No phone"}
+                {c.account_number || "No ID"} · {c.phone || "No phone"}
                 {c.email ? ` · ${c.email}` : ""}
               </p>
               <div className="mt-2 flex flex-wrap gap-1">
@@ -752,7 +752,7 @@ export function CustomerPreview({
       {c ? (
         <div className="space-y-4">
           <div className="space-y-1 text-sm">
-            <p className="font-mono text-xs text-muted">{c.account_number || "No account number"}</p>
+            <p className="font-mono text-xs text-muted">ID {c.account_number || "—"}</p>
             <p>
               {c.phone || "No phone"}
               {c.email ? ` · ${c.email}` : ""}

@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
+import { DateYmdInput } from "@/components/isp/date-ymd-input";
 import { formatDate } from "@/lib/isp/display";
 import { effectiveAccessIso, expirySourceLabel, previewStaffExpiry } from "@/lib/isp/service-expiry-format";
 import type { ServiceRow } from "@/lib/isp/types";
@@ -46,7 +47,7 @@ export function ExpiryEditor({
           <dd className="font-medium">{s.customer_name}</dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt className="text-muted">Account number</dt>
+          <dt className="text-muted">Service Account Number</dt>
           <dd className="font-mono text-xs">{s.account_number || "—"}</dd>
         </div>
         <div className="flex justify-between gap-3">
@@ -68,12 +69,12 @@ export function ExpiryEditor({
         </div>
       </dl>
       <Field label="New expiry date">
-        <Input
-          type="date"
+        <DateYmdInput
           value={form.date}
-          onChange={(e) => setForm({ ...form, date: e.target.value })}
+          onChange={(ymd) => setForm({ ...form, date: ymd })}
           required
           disabled={busy}
+          aria-label="New expiry date"
         />
       </Field>
       {form.date ? (

@@ -124,7 +124,7 @@ function overdueSql() {
 
 export function serviceDeskWhere(tenantId: string, q: ServiceDeskFilters): { clause: string; params: unknown[] } {
   const params: unknown[] = [tenantId];
-  const where = ["s.tenant_id = $1", "s.deleted_at is null", "c.deleted_at is null"];
+  const where = ["s.tenant_id = $1", "s.deleted_at is null", "c.deleted_at is null", "s.access_method <> 'hotspot'"];
 
   if (q.q) {
     params.push(likeNeedle(q.q));
@@ -132,7 +132,6 @@ export function serviceDeskWhere(tenantId: string, q: ServiceDeskFilters): { cla
     where.push(`(
       s.id ilike ${p} escape '#'
       or c.name ilike ${p} escape '#'
-      or coalesce(c.account_number,'') ilike ${p} escape '#'
       or coalesce(s.account_number,'') ilike ${p} escape '#'
       or coalesce(s.name,'') ilike ${p} escape '#'
       or c.phone ilike ${p} escape '#'
@@ -263,7 +262,8 @@ async function loadCounters(sql: Sql, tenantId: string): Promise<ServiceDeskCoun
         )::int as grace
      from services s
      join customers c on c.id = s.customer_id
-     where s.tenant_id = $1 and s.deleted_at is null and c.deleted_at is null`,
+     where s.tenant_id = $1 and s.deleted_at is null and c.deleted_at is null
+       and s.access_method <> 'hotspot'`,
     [tenantId],
   );
   return row ?? { total: 0, active: 0, pending: 0, expired: 0, suspended: 0, grace: 0 };
@@ -339,7 +339,7 @@ export async function queryServicesDesk(
   const cores = await sql.query<CoreRow>(
     `select s.id, s.customer_id, c.name as customer_name, c.phone as customer_phone,
             coalesce(c.email,'') as customer_email,
-            coalesce(nullif(s.account_number,''), c.account_number,'') as account_number,
+            coalesce(s.account_number,'') as account_number,
             coalesce(c.account_number,'') as customer_account_number,
             coalesce(nullif(s.name,''), p.name) as name,
             coalesce(c.address,'') as location,
@@ -391,13 +391,13 @@ export async function queryServicesDesk(
       `select distinct p.name
        from packages p
        join services s on s.package_id = p.id and s.tenant_id = p.tenant_id and s.deleted_at is null
-       where p.tenant_id = $1
+       where p.tenant_id = $1 and p.access_method <> 'hotspot' and s.access_method <> 'hotspot'
        order by p.name`,
       [tenantId],
     ),
     sql.query<{ id: string; name: string; access_method: string }>(
       `select id, name, access_method from packages
-       where tenant_id = $1 and active = true
+       where tenant_id = $1 and active = true and access_method <> 'hotspot'
        order by name`,
       [tenantId],
     ),
@@ -406,6 +406,7 @@ export async function queryServicesDesk(
        from services s
        join customers c on c.id = s.customer_id
        where s.tenant_id = $1 and s.deleted_at is null and c.deleted_at is null and c.address <> ''
+         and s.access_method <> 'hotspot'
        order by c.address`,
       [tenantId],
     ),

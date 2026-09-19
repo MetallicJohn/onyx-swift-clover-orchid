@@ -212,9 +212,10 @@ export async function authorizeRadius(
     grace_days: number;
     grant_expires_at: string | null;
     package_name: string;
+    access_method: string;
   }>`select a.username, a.password, a.enabled, a.framed_ip, a.group_name,
             s.status, coalesce(s.suspend_reason,'') as suspend_reason, s.period_end::text as period_end, s.access_until::text as access_until, s.expiry_source,
-            s.bundle_used_mb, p.bundle_mb, p.grace_days,
+            s.bundle_used_mb, p.bundle_mb, p.grace_days, s.access_method,
             g.expires_at::text as grant_expires_at, p.name as package_name
      from radius_accounts a
      join services s on s.id = a.service_id
@@ -227,7 +228,9 @@ export async function authorizeRadius(
     if (doLog) await logAuth(sql, tenantId, username, nasIp, "reject", "unknown");
     return { ok: false, result: "reject", reason: "unknown", username, http: 200, body: rejectBody("unknown user") };
   }
-  const accessEnd = effectiveAccessEndMs(row);
+  const hotspot = row.access_method === "hotspot";
+  const accessRow = hotspot ? { ...row, grace_days: 0 } : row;
+  const accessEnd = effectiveAccessEndMs(accessRow);
   let reason = "";
   if (!row.enabled || row.status === "suspended" || row.status === "terminated" || row.suspend_reason === "awaiting_payment") reason = "suspended";
   else if (row.bundle_mb > 0 && row.bundle_used_mb >= row.bundle_mb) reason = "bundle";
@@ -241,7 +244,7 @@ export async function authorizeRadius(
   if (doLog) await logAuth(sql, tenantId, username, nasIp, "accept", "ok");
   const timeout = row.expiry_source === "staff"
     ? Math.max(0, Math.floor((accessEnd - Date.now()) / 1000))
-    : sessionTimeoutSec(row.period_end, row.grace_days, row.grant_expires_at);
+    : sessionTimeoutSec(row.period_end, hotspot ? 0 : row.grace_days, row.grant_expires_at);
   return {
     ok: true,
     result: "accept",

@@ -343,7 +343,6 @@ function Dashboard() {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-xs tracking-wide text-muted uppercase">Account {home.customer.account_number || "—"}</p>
         <h1 className="text-2xl font-semibold tracking-tight">{home.customer.name}</h1>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
           <span>{home.customer.phone}</span>

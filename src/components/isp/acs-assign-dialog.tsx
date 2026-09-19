@@ -160,9 +160,9 @@ export function AcsAssignDialog({
                   <p className="text-xs font-medium tracking-wide text-muted">Destination</p>
                   <dl className="mt-2 grid gap-1 text-sm">
                     <Row label="Customer name" value={selected.customer_name} />
-                    <Row label="Customer account" value={selected.customer_account || "—"} />
+                    <Row label="ID" value={selected.customer_account || "—"} />
                     <Row label="Phone" value={selected.phone ? displayAcsPhone(selected.phone) : "—"} />
-                    <Row label="Service account" value={selected.service_account || "—"} />
+                    <Row label="Service Account Number" value={selected.service_account || "—"} />
                     <Row label="Access type" value={accessMethodLabel(selected.access_method)} />
                     <Row label="Package" value={selected.package_name} />
                     <Row label="Service status" value={selected.service_status} />

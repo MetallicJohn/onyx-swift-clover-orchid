@@ -1,167 +1,138 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { Badge, statusTone } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Field, Input, Select } from "@/components/ui/input";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  ConfirmPackageStatusDialog,
+  PackageCards,
+  PackageEmpty,
+  PackageFormDialog,
+  PackagePagination,
+  PackageSkeleton,
+  PackageTable,
+  PackageToolbar,
+} from "@/components/isp/packages-ui";
 import { createPackage, listPackages, updatePackage } from "@/lib/isp/server";
 import { hasPermission } from "@/lib/isp/rbac";
-import type { AccessMethod, PackageRow } from "@/lib/isp/types";
-import { kes } from "@/lib/utils";
-import { tierLabel } from "@/lib/isp/business-credit-format";
+import {
+  blankPackageForm,
+  capUnitOf,
+  DEFAULT_PACKAGE_PAGE_SIZE,
+  filterPackages,
+  formFromPackage,
+  paginatePackages,
+  readPackagesPrefs,
+  sortPackages,
+  validatePackageForm,
+  validityUnitOf,
+  writePackagesPrefs,
+  type CapUnit,
+  type PackageFieldErrors,
+  type PackageFormState,
+  type PackagesAccessFilter,
+  type PackagesPrefs,
+  type PackagesSort,
+  type PackagesStatusFilter,
+  type PackagesView,
+  type ValidityUnit,
+} from "@/lib/isp/packages-ui";
+import type { PackageRow } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app/packages")({ component: PackagesPage });
 
-const EMPTY = {
-  name: "",
-  description: "",
-  access_method: "pppoe" as AccessMethod,
-  download_mbps: 10,
-  upload_mbps: 5,
-  price_kes: 2500,
-  billing_interval: "monthly",
-  grace_days: 5,
-  bundle_mb: 0,
-  validity_hours: 0,
-  active: true,
-  tier: "residential",
-  business_credit_enabled: false,
-  max_credit_kes: 0,
-  credit_warning_kes: 0,
-  disconnect_when_credit_reached: true,
-  allow_service_continuity_after_expiry: true,
-  send_credit_limit_warning: true,
-  credit_days_limit: 0,
-  credit_terms_notes: "",
-};
-
-type FormState = typeof EMPTY;
-type Filter = "all" | AccessMethod;
-type ValidityUnit = "hours" | "days";
-type CapUnit = "mb" | "gb";
-
-function blankForm(method: AccessMethod): FormState {
-  return { ...EMPTY, access_method: method };
-}
-
-function validityUnitOf(hours: number): ValidityUnit {
-  return hours > 0 && hours % 24 !== 0 ? "hours" : "days";
-}
-
-function capUnitOf(mb: number): CapUnit {
-  return mb > 0 && mb % 1024 !== 0 ? "mb" : "gb";
-}
-
-function shownValidity(hours: number, unit: ValidityUnit) {
-  if (!hours) return 0;
-  if (unit === "hours") return hours;
-  const days = hours / 24;
-  return Number.isInteger(days) ? days : Math.round(days * 100) / 100;
-}
-
-function shownCap(mb: number, unit: CapUnit) {
-  if (!mb) return 0;
-  if (unit === "mb") return mb;
-  const gb = mb / 1024;
-  return Number.isInteger(gb) ? gb : Math.round(gb * 100) / 100;
-}
-
-function hoursFromInput(value: number, unit: ValidityUnit) {
-  const n = Math.max(0, Number(value) || 0);
-  return Math.round(unit === "days" ? n * 24 : n);
-}
-
-function mbFromInput(value: number, unit: CapUnit) {
-  const n = Math.max(0, Number(value) || 0);
-  return Math.round(unit === "gb" ? n * 1024 : n);
-}
-
-function formatValidity(hours: number) {
-  if (!hours) return "";
-  if (hours % 24 === 0) return ` · ${hours / 24}d`;
-  return ` · ${hours}h`;
-}
-
-function formatCap(mb: number) {
-  if (!mb) return " · unlimited";
-  if (mb % 1024 === 0) return ` · ${mb / 1024} GB`;
-  return ` · ${mb} MB`;
-}
-
-function methodLabel(m: AccessMethod) {
-  return m === "pppoe" ? "PPPoE" : m === "static" ? "Static IP" : "Hotspot";
-}
-
 function PackagesPage() {
   const [packages, setPackages] = useState<PackageRow[]>([]);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
+  const [access, setAccess] = useState<PackagesAccessFilter>("all");
+  const [status, setStatus] = useState<PackagesStatusFilter>("all");
+  const [sort, setSort] = useState<PackagesSort>("price");
+  const [view, setView] = useState<PackagesView>("card");
+  const [pageSize, setPageSize] = useState<PackagesPrefs["pageSize"]>(DEFAULT_PACKAGE_PAGE_SIZE);
+  const [prefsReady, setPrefsReady] = useState(false);
+  const [page, setPage] = useState(1);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(EMPTY);
+  const [form, setForm] = useState<PackageFormState>(() => blankPackageForm());
   const [validityUnit, setValidityUnit] = useState<ValidityUnit>("days");
   const [capUnit, setCapUnit] = useState<CapUnit>("gb");
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<PackageFieldErrors>({});
   const [role, setRole] = useState("");
+  const [pendingToggle, setPendingToggle] = useState<PackageRow | null>(null);
 
-  async function load() {
-    const res = await listPackages();
-    setPackages(res.packages);
-    setRole(res.workspace.role);
+  async function load(opts?: { silent?: boolean }) {
+    setLoadError(null);
+    if (!opts?.silent) setLoading(true);
+    try {
+      const res = await listPackages();
+      setPackages(res.packages);
+      setRole(res.workspace.role);
+    } catch (ex) {
+      setLoadError(ex instanceof Error ? ex.message : "Could not load packages");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     load().catch(console.error);
   }, []);
 
+  useEffect(() => {
+    const prefs = readPackagesPrefs();
+    setView(prefs.view);
+    setPageSize(prefs.pageSize);
+    setPrefsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!prefsReady) return;
+    writePackagesPrefs({ view, pageSize });
+  }, [prefsReady, view, pageSize]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, access, status, sort, pageSize]);
+
   function startCreate() {
-    const method = filter === "all" ? "pppoe" : filter;
+    const method = access === "all" ? "pppoe" : access;
     setEditingId(null);
-    setForm(blankForm(method));
+    setForm(blankPackageForm(method));
     setValidityUnit("days");
     setCapUnit("gb");
-    setOpen(true);
+    setFieldErrors({});
     setError(null);
+    setOpen(true);
   }
 
   function startEdit(p: PackageRow) {
     setEditingId(p.id);
-    setForm({
-      name: p.name,
-      description: p.description,
-      access_method: p.access_method,
-      download_mbps: p.download_mbps,
-      upload_mbps: p.upload_mbps,
-      price_kes: p.price_kes,
-      billing_interval: p.billing_interval,
-      grace_days: p.grace_days,
-      bundle_mb: p.bundle_mb,
-      validity_hours: p.validity_hours,
-      active: p.active,
-      tier: p.tier || "residential",
-      business_credit_enabled: Boolean(p.business_credit_enabled),
-      max_credit_kes: p.max_credit_kes ?? 0,
-      credit_warning_kes: p.credit_warning_kes ?? 0,
-      disconnect_when_credit_reached: p.disconnect_when_credit_reached !== false,
-      allow_service_continuity_after_expiry: p.allow_service_continuity_after_expiry !== false,
-      send_credit_limit_warning: p.send_credit_limit_warning !== false,
-      credit_days_limit: p.credit_days_limit ?? 0,
-      credit_terms_notes: p.credit_terms_notes || "",
-    });
+    setForm(formFromPackage(p));
     setValidityUnit(validityUnitOf(p.validity_hours));
     setCapUnit(capUnitOf(p.bundle_mb));
-    setOpen(true);
+    setFieldErrors({});
     setError(null);
+    setOpen(true);
   }
 
-  function pickFilter(next: Filter) {
-    setFilter(next);
-    if (open && !editingId && next !== "all") {
-      setForm((f) => ({ ...f, access_method: next }));
+  function closeForm(next: boolean) {
+    setOpen(next);
+    if (!next) {
+      setEditingId(null);
+      setFieldErrors({});
+      setError(null);
     }
   }
 
-  async function submit(e: React.FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
+    const nextErrors = validatePackageForm(form);
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length) {
+      setError("Fix the highlighted fields.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -170,10 +141,9 @@ function PackagesPage() {
       } else {
         await createPackage({ data: form });
       }
-      setOpen(false);
-      setEditingId(null);
-      setForm(blankForm(filter === "all" ? "pppoe" : filter));
-      await load();
+      closeForm(false);
+      setForm(blankPackageForm(access === "all" ? "pppoe" : access));
+      await load({ silent: true });
     } catch (ex) {
       setError(ex instanceof Error ? ex.message : "Save failed");
     } finally {
@@ -181,324 +151,112 @@ function PackagesPage() {
     }
   }
 
-  async function toggleActive(p: PackageRow) {
-    await updatePackage({
-      data: {
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        access_method: p.access_method,
-        download_mbps: p.download_mbps,
-        upload_mbps: p.upload_mbps,
-        price_kes: p.price_kes,
-        billing_interval: p.billing_interval,
-        grace_days: p.grace_days,
-        bundle_mb: p.bundle_mb,
-        validity_hours: p.validity_hours,
-        active: !p.active,
-        tier: p.tier || "residential",
-        business_credit_enabled: Boolean(p.business_credit_enabled),
-        max_credit_kes: p.max_credit_kes ?? 0,
-        credit_warning_kes: p.credit_warning_kes ?? 0,
-        disconnect_when_credit_reached: p.disconnect_when_credit_reached !== false,
-        allow_service_continuity_after_expiry: p.allow_service_continuity_after_expiry !== false,
-        send_credit_limit_warning: p.send_credit_limit_warning !== false,
-        credit_days_limit: p.credit_days_limit ?? 0,
-        credit_terms_notes: p.credit_terms_notes || "",
-      },
-    });
-    await load();
+  async function confirmToggle() {
+    if (!pendingToggle) return;
+    const p = pendingToggle;
+    setBusy(true);
+    try {
+      await updatePackage({
+        data: {
+          ...formFromPackage(p),
+          id: p.id,
+          active: !p.active,
+        },
+      });
+      setPendingToggle(null);
+      await load({ silent: true });
+    } catch (ex) {
+      setLoadError(ex instanceof Error ? ex.message : "Could not update package");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  const visible = packages.filter((p) => filter === "all" || p.access_method === filter);
-  const lockMethod = !editingId && filter !== "all";
+  const filtered = useMemo(
+    () => sortPackages(filterPackages(packages, { q: query, access, status }), sort),
+    [packages, query, access, status, sort],
+  );
+  const paged = paginatePackages(filtered, page, pageSize);
   const canManage = hasPermission(role, "packages.manage");
+  const lockMethod = !editingId && access !== "all";
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Packages</h1>
-          <p className="text-sm text-muted">
-            Product catalog for PPPoE, static IP, and hotspot. Each package is one PCQ profile on the router — not a simple queue per customer. Unpaid invoices, expired time, or a used-up data cap suspend access automatically. Payment restores it.
-          </p>
+    <div className="min-w-0 space-y-5">
+      <PackageToolbar
+        query={query}
+        access={access}
+        status={status}
+        sort={sort}
+        view={view}
+        pageSize={pageSize}
+        canManage={canManage}
+        onQuery={setQuery}
+        onAccess={setAccess}
+        onStatus={setStatus}
+        onSort={setSort}
+        onView={setView}
+        onPageSize={(n) => setPageSize(n as PackagesPrefs["pageSize"])}
+        onCreate={startCreate}
+      />
+
+      {loadError ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-surface px-4 py-3 text-sm">
+          <p className="text-danger">{loadError}</p>
+          <button type="button" className="text-sm font-medium text-accent hover:underline" onClick={() => void load()}>
+            Retry
+          </button>
         </div>
-        {canManage ? <Button onClick={startCreate}>New package</Button> : null}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {(["all", "pppoe", "static", "hotspot"] as const).map((m) => (
-          <Button key={m} size="sm" variant={filter === m ? "default" : "secondary"} onClick={() => pickFilter(m)}>
-            {m === "all" ? "All" : methodLabel(m)}
-          </Button>
-        ))}
-      </div>
-
-      {canManage && open ? (
-        <form onSubmit={submit} className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2">
-          <h2 className="font-medium md:col-span-2">{editingId ? "Edit package" : "Create package"}</h2>
-          <Field label="Name">
-            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </Field>
-          <Field label="Access method">
-            <Select
-              value={form.access_method}
-              disabled={lockMethod}
-              onChange={(e) => setForm({ ...form, access_method: e.target.value as AccessMethod })}
-            >
-              <option value="pppoe">PPPoE</option>
-              <option value="static">Static IP</option>
-              <option value="hotspot">Hotspot</option>
-            </Select>
-            {lockMethod ? (
-              <p className="text-xs text-muted">Locked to {methodLabel(filter as AccessMethod)} from the filter above.</p>
-            ) : null}
-          </Field>
-          <Field label="Description">
-            <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          </Field>
-          <Field label="Billing interval">
-            <Select
-              value={form.billing_interval}
-              onChange={(e) => setForm({ ...form, billing_interval: e.target.value })}
-            >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="quarterly">Quarterly</option>
-              <option value="yearly">Yearly</option>
-            </Select>
-          </Field>
-          <Field label="Download Mbps">
-            <Input
-              type="number"
-              min={1}
-              value={form.download_mbps}
-              onChange={(e) => setForm({ ...form, download_mbps: Number(e.target.value) })}
-            />
-          </Field>
-          <Field label="Upload Mbps">
-            <Input
-              type="number"
-              min={1}
-              value={form.upload_mbps}
-              onChange={(e) => setForm({ ...form, upload_mbps: Number(e.target.value) })}
-            />
-          </Field>
-          <Field label="Price (KES)">
-            <Input
-              type="number"
-              min={0}
-              value={form.price_kes}
-              onChange={(e) => setForm({ ...form, price_kes: Number(e.target.value) })}
-            />
-          </Field>
-          <Field label="Automatic grace days">
-            <Input
-              type="number"
-              min={0}
-              value={form.grace_days}
-              onChange={(e) => setForm({ ...form, grace_days: Number(e.target.value) })}
-            />
-          </Field>
-          <Field label="Data cap (0 = unlimited)">
-            <div className="flex gap-2">
-              <Input
-                className="min-w-0 flex-1"
-                type="number"
-                min={0}
-                step={capUnit === "gb" ? "0.5" : "1"}
-                value={shownCap(form.bundle_mb, capUnit)}
-                onChange={(e) => setForm({ ...form, bundle_mb: mbFromInput(Number(e.target.value), capUnit) })}
-              />
-              <Select
-                className="w-28 shrink-0"
-                aria-label="Data cap unit"
-                value={capUnit}
-                onChange={(e) => setCapUnit(e.target.value as CapUnit)}
-              >
-                <option value="mb">MB</option>
-                <option value="gb">GB</option>
-              </Select>
-            </div>
-          </Field>
-          <Field label="Validity (0 = billing interval)">
-            <div className="flex gap-2">
-              <Input
-                className="min-w-0 flex-1"
-                type="number"
-                min={0}
-                step={validityUnit === "days" ? "0.5" : "1"}
-                value={shownValidity(form.validity_hours, validityUnit)}
-                onChange={(e) =>
-                  setForm({ ...form, validity_hours: hoursFromInput(Number(e.target.value), validityUnit) })
-                }
-              />
-              <Select
-                className="w-28 shrink-0"
-                aria-label="Validity unit"
-                value={validityUnit}
-                onChange={(e) => setValidityUnit(e.target.value as ValidityUnit)}
-              >
-                <option value="hours">Hours</option>
-                <option value="days">Days</option>
-              </Select>
-            </div>
-          </Field>
-          {editingId ? (
-            <Field label="Availability">
-              <Select
-                value={form.active ? "active" : "inactive"}
-                onChange={(e) => setForm({ ...form, active: e.target.value === "active" })}
-              >
-                <option value="active">Active — can be assigned</option>
-                <option value="inactive">Inactive — hidden from new services</option>
-              </Select>
-            </Field>
-          ) : null}
-          <Field label="Customer tier">
-            <Select value={form.tier} onChange={(e) => setForm({ ...form, tier: e.target.value })}>
-              <option value="residential">Residential</option>
-              <option value="business">Business</option>
-              <option value="enterprise">Enterprise</option>
-            </Select>
-          </Field>
-          {form.tier === "business" || form.tier === "enterprise" ? (
-            <>
-              <Field label="Business credit">
-                <Select
-                  value={form.business_credit_enabled ? "on" : "off"}
-                  onChange={(e) => setForm({ ...form, business_credit_enabled: e.target.value === "on" })}
-                >
-                  <option value="off">Off — expire like residential</option>
-                  <option value="on">On — stay online until the credit limit</option>
-                </Select>
-              </Field>
-              <Field label="Maximum credit (KES)">
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.max_credit_kes}
-                  onChange={(e) => setForm({ ...form, max_credit_kes: Number(e.target.value) })}
-                />
-                {form.business_credit_enabled && form.max_credit_kes <= 0 ? (
-                  <p className="text-xs text-warn">Set a maximum credit. Unlimited credit is never granted.</p>
-                ) : null}
-              </Field>
-              <Field label="Warning threshold (KES)">
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.credit_warning_kes}
-                  onChange={(e) => setForm({ ...form, credit_warning_kes: Number(e.target.value) })}
-                />
-              </Field>
-              <Field label="Disconnect at limit">
-                <Select
-                  value={form.disconnect_when_credit_reached ? "yes" : "no"}
-                  onChange={(e) => setForm({ ...form, disconnect_when_credit_reached: e.target.value === "yes" })}
-                >
-                  <option value="yes">Yes — suspend when the limit is reached</option>
-                  <option value="no">No — stop new credit but keep access</option>
-                </Select>
-              </Field>
-              <Field label="Continue after expiry">
-                <Select
-                  value={form.allow_service_continuity_after_expiry ? "yes" : "no"}
-                  onChange={(e) => setForm({ ...form, allow_service_continuity_after_expiry: e.target.value === "yes" })}
-                >
-                  <option value="yes">Yes — stay online while below the limit</option>
-                  <option value="no">No — expire on the billed period</option>
-                </Select>
-              </Field>
-              <Field label="Credit warning SMS">
-                <Select
-                  value={form.send_credit_limit_warning ? "yes" : "no"}
-                  onChange={(e) => setForm({ ...form, send_credit_limit_warning: e.target.value === "yes" })}
-                >
-                  <option value="yes">Send a warning before the limit</option>
-                  <option value="no">Do not warn</option>
-                </Select>
-              </Field>
-              <Field label="Credit days limit (0 = none)">
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.credit_days_limit}
-                  onChange={(e) => setForm({ ...form, credit_days_limit: Number(e.target.value) })}
-                />
-              </Field>
-              <Field label="Credit terms notes">
-                <Input
-                  value={form.credit_terms_notes}
-                  onChange={(e) => setForm({ ...form, credit_terms_notes: e.target.value })}
-                />
-              </Field>
-            </>
-          ) : null}
-          {error ? <p className="text-sm text-danger md:col-span-2">{error}</p> : null}
-          <div className="flex gap-2 md:col-span-2">
-            <Button type="submit" disabled={busy}>
-              {busy ? "Saving…" : editingId ? "Save changes" : "Create package"}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                setOpen(false);
-                setEditingId(null);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </form>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-2">
-        {visible.map((p) => (
-          <article key={p.id} className="rounded-xl border border-border bg-surface p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="font-medium">{p.name}</div>
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <Badge tone="accent">{methodLabel(p.access_method)}</Badge>
-                  <Badge tone={statusTone(p.active ? "active" : "pending")}>{p.active ? "active" : "inactive"}</Badge>
-                  {p.tier && p.tier !== "residential" ? <Badge tone="ok">{tierLabel(p.tier)}</Badge> : null}
-                  {p.business_credit_enabled ? (
-                    <Badge tone={p.max_credit_kes && p.max_credit_kes > 0 ? "warn" : "danger"}>
-                      {p.max_credit_kes && p.max_credit_kes > 0 ? `Credit ${kes(p.max_credit_kes)}` : "Credit not set"}
-                    </Badge>
-                  ) : null}
-                </div>
-              </div>
-              <div className="font-mono text-sm tabular-nums">{kes(p.price_kes)}</div>
-            </div>
-            <p className="mt-3 text-sm text-muted">
-              {p.download_mbps}/{p.upload_mbps} Mbps · {p.billing_interval}
-              {formatValidity(p.validity_hours)} · {p.grace_days}d automatic grace
-              {formatCap(p.bundle_mb)}
-            </p>
-            {p.description ? <p className="mt-1 text-sm text-subtle">{p.description}</p> : null}
-            {canManage ? (
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button size="sm" variant="secondary" onClick={() => startEdit(p)}>
-                Edit
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => void toggleActive(p)}>
-                {p.active ? "Deactivate" : "Activate"}
-              </Button>
-            </div>
-            ) : null}
-          </article>
-        ))}
-      </div>
-      {visible.length === 0 ? (
-        <p className="text-sm text-muted">
-          No packages in this mode yet.
-          {filter !== "all" && canManage ? ` New package will create a ${methodLabel(filter)} plan.` : ""}
-        </p>
+      {loading ? (
+        <PackageSkeleton />
+      ) : paged.total === 0 ? (
+        <PackageEmpty filtered={packages.length > 0} canManage={canManage} onCreate={startCreate} />
+      ) : view === "card" ? (
+        <PackageCards rows={paged.rows} canManage={canManage} onEdit={startEdit} onToggle={setPendingToggle} />
+      ) : (
+        <PackageTable rows={paged.rows} canManage={canManage} onEdit={startEdit} onToggle={setPendingToggle} />
+      )}
+
+      {!loading && paged.total > 0 ? (
+        <PackagePagination
+          page={paged.page}
+          pages={paged.pages}
+          from={paged.from}
+          to={paged.to}
+          total={paged.total}
+          onPage={setPage}
+        />
       ) : null}
+
+      <PackageFormDialog
+        open={open}
+        editing={Boolean(editingId)}
+        form={form}
+        lockMethod={lockMethod}
+        validityUnit={validityUnit}
+        capUnit={capUnit}
+        busy={busy}
+        error={error}
+        fieldErrors={fieldErrors}
+        onOpenChange={closeForm}
+        onChange={(next) => {
+          setForm(next);
+          setFieldErrors({});
+        }}
+        onValidityUnit={setValidityUnit}
+        onCapUnit={setCapUnit}
+        onSubmit={submit}
+      />
+
+      <ConfirmPackageStatusDialog
+        pkg={pendingToggle}
+        busy={busy}
+        onOpenChange={(next) => {
+          if (!next) setPendingToggle(null);
+        }}
+        onConfirm={() => void confirmToggle()}
+      />
     </div>
   );
 }
