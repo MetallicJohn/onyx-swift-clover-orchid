@@ -931,6 +931,54 @@ var Network = createLucideIcon("network", [
 * This source code is licensed under the ISC license.
 * See the LICENSE file in the root directory of this source tree.
 */
+var PanelLeftClose = createLucideIcon("panel-left-close", [
+	["rect", {
+		width: "18",
+		height: "18",
+		x: "3",
+		y: "3",
+		rx: "2",
+		key: "afitv7"
+	}],
+	["path", {
+		d: "M9 3v18",
+		key: "fh3hqa"
+	}],
+	["path", {
+		d: "m16 15-3-3 3-3",
+		key: "14y99z"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
+var PanelLeftOpen = createLucideIcon("panel-left-open", [
+	["rect", {
+		width: "18",
+		height: "18",
+		x: "3",
+		y: "3",
+		rx: "2",
+		key: "afitv7"
+	}],
+	["path", {
+		d: "M9 3v18",
+		key: "fh3hqa"
+	}],
+	["path", {
+		d: "m14 9 3 3-3 3",
+		key: "8010ee"
+	}]
+]);
+/**
+* @license lucide-react v0.510.0 - ISC
+*
+* This source code is licensed under the ISC license.
+* See the LICENSE file in the root directory of this source tree.
+*/
 var Plus = createLucideIcon("plus", [["path", {
 	d: "M5 12h14",
 	key: "1ays0h"
@@ -1540,4 +1588,4 @@ var X = createLucideIcon("x", [["path", {
 	key: "d8bk6v"
 }]]);
 //#endregion
-export { Building2 as $, Menu as A, Globe as B, Receipt as C, Network as D, Plus as E, LayoutGrid as F, Download as G, FileText as H, LayoutDashboard as I, ChevronLeft as J, CreditCard as K, Import as L, Mail as M, LogOut as N, Moon as O, List as P, Cable as Q, Headset as R, RefreshCw as S, Printer as T, Eye as U, Funnel as V, Ellipsis as W, ChartColumn as X, Check as Y, CalendarDays as Z, Share2 as _, Users as a, ArrowDown as at, Search as b, Upload as c, ArchiveRestore as ct, Ticket as d, Boxes as et, Tablet as f, Shield as g, Smartphone as h, Wallet as i, ArrowLeft as it, MapPinned as j, Monitor as k, TriangleAlert as l, Activity as lt, Sparkles as m, Wrench as n, ArrowUpRight as nt, User as o, ArrowDownRight as ot, Sun as p, ChevronRight as q, Wifi as r, ArrowRight as rt, UserPlus as s, Archive as st, X as t, Bell as tt, Trash2 as u, Settings as v, Radio as w, Router as x, Server as y, Handshake as z };
+export { CalendarDays as $, Moon as A, Headset as B, Receipt as C, PanelLeftOpen as D, Plus as E, LogOut as F, Eye as G, Globe as H, List as I, CreditCard as J, Ellipsis as K, LayoutGrid as L, Menu as M, MapPinned as N, PanelLeftClose as O, Mail as P, ChartColumn as Q, LayoutDashboard as R, RefreshCw as S, Printer as T, Funnel as U, Handshake as V, FileText as W, ChevronLeft as X, ChevronRight as Y, Check as Z, Share2 as _, Users as a, ArrowRight as at, Search as b, Upload as c, ArrowDownRight as ct, Ticket as d, Activity as dt, Cable as et, Tablet as f, Shield as g, Smartphone as h, Wallet as i, ArrowUpRight as it, Monitor as j, Network as k, TriangleAlert as l, Archive as lt, Sparkles as m, Wrench as n, Boxes as nt, User as o, ArrowLeft as ot, Sun as p, Download as q, Wifi as r, Bell as rt, UserPlus as s, ArrowDown as st, X as t, Building2 as tt, Trash2 as u, ArchiveRestore as ut, Settings as v, Radio as w, Router as x, Server as y, Import as z };

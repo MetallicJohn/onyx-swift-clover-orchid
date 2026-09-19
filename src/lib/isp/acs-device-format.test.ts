@@ -85,7 +85,10 @@ test("GenieACS page loads with Add Device and a searchable desk", () => {
   const desk = readFileSync(new URL("../../components/isp/acs-device-desk.tsx", import.meta.url), "utf8");
   const add = readFileSync(new URL("../../components/isp/acs-add-device-dialog.tsx", import.meta.url), "utf8");
   const assign = readFileSync(new URL("../../components/isp/acs-assign-dialog.tsx", import.meta.url), "utf8");
+  const shell = readFileSync(new URL("../../components/app-shell.tsx", import.meta.url), "utf8");
   assert.match(page, /AcsDeviceDesk/);
+  assert.match(shell, /to: "\/app\/acs", label: "Devices"/);
+  assert.doesNotMatch(shell, /to: "\/app\/acs", label: "GenieACS"/);
   assert.match(desk, /Add Device/);
   assert.match(desk, /Search devices/);
   assert.match(desk, /w-full sm:w-auto|flex-col/);
