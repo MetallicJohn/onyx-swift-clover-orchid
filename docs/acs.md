@@ -18,7 +18,7 @@ GenieACS is a **separate process** (CWMP :7547, NBI :7557, FS :7567, UI on `acs.
 
 ## CWMP settings (GenieACS)
 
-These are written on first boot (`genieacs-init`) and can be re-applied from **System settings → Apply CWMP settings** or **GenieACS → NBI**:
+These are written on first boot (`genieacs-init` into Mongo) and can be re-applied from **System settings → Apply CWMP settings** or **Devices → NBI**:
 
 | Key | Value |
 | --- | --- |
@@ -28,6 +28,14 @@ These are written on first boot (`genieacs-init`) and can be re-applied from **S
 | `cwmp.debug` | `false` |
 | Preset `ispsolutions-lock-url` | Rewrite ACS URL + connection-request login on inform |
 | Preset `ispsolutions-service` | Write assigned WAN/SSID/Wi-Fi on inform |
+
+GenieACS 1.2 **NBI has no PUT /config**. Digest login is not written through port 7557. Apply CWMP:
+
+1. PUTs provisions and presets on NBI (that API exists)
+2. PUTs `cwmp.*` on the GenieACS UI (`/api/config/:id` with `{ "value": "…" }` and a local-admin JWT) when `GENIEACS_UI_JWT_SECRET` is set
+3. GETs `/config/` and treats matching sidecar values as already applied
+
+If UI write is unavailable, digest from `genieacs-init` stays in effect. That is expected on a single VPS after `update.sh`.
 
 GenieACS CWMP/NBI/FS/UI each run **one worker**. The image default (`0` = one process per CPU) SIGABRTs a pile of child processes on typical VPS sizes, and NBI never binds 7557. After recreate, `http://genieacs:7557` is the private NBI URL the console should save.
 

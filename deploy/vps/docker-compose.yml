@@ -53,6 +53,7 @@ services:
       ROLE: web
       GENIEACS_NBI_URL: ${GENIEACS_NBI_URL:-http://genieacs:7557}
       GENIEACS_CWMP_URL: ${GENIEACS_CWMP_URL:-http://genieacs:7547}
+      GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
       ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL:-http://web:3000}
       REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
       MONGODB_URL: ${MONGODB_URL:-mongodb://mongo:27017/genieacs}

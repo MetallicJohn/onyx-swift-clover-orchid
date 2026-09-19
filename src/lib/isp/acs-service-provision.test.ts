@@ -206,11 +206,21 @@ test("staff Wi-Fi change on an assigned device updates the service used on Infor
 
 test("applyGenieAcsSecurity uploads the service provision and can turn the preset off", async () => {
   const { sql, bypass, close } = await openTestDb();
+  const prevJwt = process.env.GENIEACS_UI_JWT_SECRET;
+  delete process.env.GENIEACS_UI_JWT_SECRET;
   try {
     await bypass();
+    const sidecar = JSON.stringify([
+      { _id: "cwmp.auth", value: 'AUTH(USERNAME, EXT("ispsolutions", "passwordFor", USERNAME))' },
+      { _id: "cwmp.connectionRequestAuth", value: "AUTH(username, password)" },
+    ]);
     const calls: { url: string; method: string; body: string }[] = [];
     const fetchImpl = async (url: string, init?: RequestInit) => {
-      calls.push({ url, method: (init?.method || "GET").toUpperCase(), body: String(init?.body || "") });
+      const method = (init?.method || "GET").toUpperCase();
+      calls.push({ url, method, body: String(init?.body || "") });
+      if (method === "GET" && url.includes("/config/")) {
+        return new Response(sidecar, { status: 200, headers: { "content-type": "application/json" } });
+      }
       return new Response("", { status: 200 });
     };
     const nbi = { nbiUrl: "http://genieacs:7557", user: "", pass: "", oui: "" };
@@ -226,6 +236,8 @@ test("applyGenieAcsSecurity uploads the service provision and can turn the prese
     assert.equal(off.steps.includes("service-preset-off"), true);
     assert.equal(calls.some((c) => c.url.includes("/presets/ispsolutions-service") && c.method === "DELETE"), true);
   } finally {
+    if (prevJwt == null) delete process.env.GENIEACS_UI_JWT_SECRET;
+    else process.env.GENIEACS_UI_JWT_SECRET = prevJwt;
     await close();
   }
 });

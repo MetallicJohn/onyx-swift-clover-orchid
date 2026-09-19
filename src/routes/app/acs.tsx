@@ -216,7 +216,7 @@ function AcsPage() {
           snapshot={cwmp}
           apply={cwmpApply}
           busy={cwmpBusy}
-          hint="Applies digest login, connection-request auth, URL lock, and WAN/Wi-Fi provision on the shared GenieACS. ONUs do not use NBI."
+          hint="Writes URL-lock and WAN/Wi-Fi provisions over NBI. CPE digest lives in GenieACS config (Mongo/UI) — Apply confirms it, and the ACS sidecar already sets it on deploy."
           onApply={async () => {
             setCwmpBusy(true);
             setNote(null);

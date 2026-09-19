@@ -40,10 +40,40 @@ export function cwmpAuthExpression(requireCpeAuth: boolean) {
 }
 
 export function hs256Jwt(payload: Record<string, unknown>, secret: string) {
+  const now = Math.floor(Date.now() / 1000);
+  const claims = {
+    iat: now,
+    exp: now + 86400,
+    ...payload,
+  };
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
-  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const body = Buffer.from(JSON.stringify(claims)).toString("base64url");
   const sig = createHmac("sha256", secret).update(`${header}.${body}`).digest("base64url");
   return `${header}.${body}.${sig}`;
+}
+
+export function desiredCwmpValues(plat: Pick<AcsPlatformSettings, "acs_require_cpe_auth">) {
+  return {
+    "cwmp.auth": cwmpAuthExpression(plat.acs_require_cpe_auth),
+    "cwmp.connectionRequestAuth": CWMP_CONNECTION_REQUEST_AUTH,
+    "cwmp.connectionRequestAllowBasicAuth": CWMP_CONNECTION_REQUEST_ALLOW_BASIC,
+    "cwmp.debug": CWMP_DEBUG,
+  };
+}
+
+export function describeCwmpApplyError(missing: string[]) {
+  if (!missing.length) return "";
+  const configKeys = missing.filter((id) => id.startsWith("cwmp."));
+  const other = missing.filter((id) => !id.startsWith("cwmp."));
+  const parts: string[] = [];
+  if (other.length) parts.push(`GenieACS did not accept: ${other.join(", ")}.`);
+  if (configKeys.length) {
+    parts.push(
+      `GenieACS NBI cannot write ${configKeys.join(", ")} — that collection is Mongo/UI, not NBI.`,
+    );
+  }
+  parts.push("Digest auth still applies on the VPS from the ACS sidecar if it was written on deploy.");
+  return parts.join(" ");
 }
 
 function dummyWork() {
@@ -271,6 +301,8 @@ export function acsSecurityFromPlatform(
 }
 
 function uiOriginFromNbi(nbiUrl: string) {
+  const fromEnv = (process.env.GENIEACS_UI_URL || "").trim().replace(/\/+$/, "");
+  if (fromEnv) return fromEnv;
   try {
     const u = new URL(nbiUrl.includes("://") ? nbiUrl : `http://${nbiUrl}`);
     u.port = "3000";
@@ -283,25 +315,62 @@ function uiOriginFromNbi(nbiUrl: string) {
   }
 }
 
+function genieAcsUiToken(secret: string) {
+  const username = (process.env.GENIEACS_UI_USER || "admin").trim() || "admin";
+  return hs256Jwt({ username, authMethod: "local" }, secret);
+}
+
+async function nbiSafe(
+  cfg: AcsNbiConfig,
+  path: string,
+  init: RequestInit,
+  fetchImpl: NbiFetch,
+) {
+  try {
+    return await nbiRequest(cfg, path, init, fetchImpl);
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      json: null as unknown,
+      text: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+function presetPayload(provisionName: string, weight: number) {
+  return {
+    weight,
+    channel: "",
+    precondition: "true",
+    configurations: [{ type: "provision" as const, name: provisionName }],
+  };
+}
+
+/** GenieACS 1.2 NBI has no PUT /config — config is Mongo + UI only. */
 async function putCwmpConfig(
   cfg: AcsNbiConfig,
   name: string,
   expression: string,
   fetchImpl: NbiFetch,
 ) {
-  const body = JSON.stringify(expression);
-  const nbi = await nbiRequest(cfg, `/config/${encodeURIComponent(name)}`, { method: "PUT", body }, fetchImpl);
-  if (nbi.ok) return { ok: true as const, via: "nbi" as const, status: nbi.status };
   const ui = uiOriginFromNbi(cfg.nbiUrl);
   const secret = (process.env.GENIEACS_UI_JWT_SECRET || "").trim();
-  if (!ui || !secret) return { ok: false as const, via: "nbi" as const, status: nbi.status };
-  const token = hs256Jwt({ username: "admin" }, secret);
-  const res = await fetchImpl(`${ui}/api/config/${encodeURIComponent(name)}`, {
-    method: "PUT",
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body,
-  });
-  return { ok: res.ok, via: "ui" as const, status: res.status };
+  if (ui && secret) {
+    try {
+      const token = genieAcsUiToken(secret);
+      const res = await fetchImpl(`${ui}/api/config/${encodeURIComponent(name)}`, {
+        method: "PUT",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ value: expression }),
+      });
+      if (res.ok) return { ok: true as const, via: "ui" as const, status: res.status };
+      return { ok: false as const, via: "ui" as const, status: res.status };
+    } catch {
+      return { ok: false as const, via: "ui" as const, status: 0 };
+    }
+  }
+  return { ok: false as const, via: "nbi" as const, status: 404 };
 }
 
 export async function applyGenieAcsSecurity(
@@ -310,17 +379,17 @@ export async function applyGenieAcsSecurity(
 ) {
   const cfg = opts.nbi && nbiOrigin(opts.nbi) ? opts.nbi : platformNbi();
   const fetchImpl = opts.fetchImpl ?? fetch;
-  if (!nbiOrigin(cfg)) return { ok: false, error: "GenieACS NBI URL is not set", steps: [] as string[] };
+  if (!nbiOrigin(cfg)) return { ok: false, error: "GenieACS NBI URL is not set", steps: [] as string[], missing: [] as string[] };
   const plat = await loadAcsPlatformSettings(sql);
   const steps: string[] = [];
-  const provision = await nbiRequest(
+  const provision = await nbiSafe(
     cfg,
     `/provisions/${LOCK_URL_PROVISION}`,
     { method: "PUT", headers: { "content-type": "application/javascript" }, body: LOCK_URL_SCRIPT },
     fetchImpl,
   );
   if (provision.ok) steps.push("provision");
-  const serviceProvision = await nbiRequest(
+  const serviceProvision = await nbiSafe(
     cfg,
     `/provisions/${SERVICE_PROVISION}`,
     { method: "PUT", headers: { "content-type": "application/javascript" }, body: SERVICE_PROVISION_SCRIPT },
@@ -328,63 +397,56 @@ export async function applyGenieAcsSecurity(
   );
   if (serviceProvision.ok) steps.push("service-provision");
   if (plat.acs_lock_url) {
-    const preset = await nbiRequest(
+    const preset = await nbiSafe(
       cfg,
       `/presets/${LOCK_URL_PRESET}`,
-      {
-        method: "PUT",
-        body: JSON.stringify({
-          weight: 1,
-          precondition: "true",
-          configurations: [{ type: "provision", name: LOCK_URL_PROVISION }],
-        }),
-      },
+      { method: "PUT", body: JSON.stringify(presetPayload(LOCK_URL_PROVISION, 1)) },
       fetchImpl,
     );
     if (preset.ok) steps.push("preset");
   } else {
-    const dropped = await nbiRequest(cfg, `/presets/${LOCK_URL_PRESET}`, { method: "DELETE" }, fetchImpl);
+    const dropped = await nbiSafe(cfg, `/presets/${LOCK_URL_PRESET}`, { method: "DELETE" }, fetchImpl);
     if (dropped.ok || dropped.status === 404) steps.push("preset-off");
   }
   if (plat.acs_provision_service) {
-    const servicePreset = await nbiRequest(
+    const servicePreset = await nbiSafe(
       cfg,
       `/presets/${SERVICE_PRESET}`,
-      {
-        method: "PUT",
-        body: JSON.stringify({
-          weight: 0,
-          precondition: "true",
-          configurations: [{ type: "provision", name: SERVICE_PROVISION }],
-        }),
-      },
+      { method: "PUT", body: JSON.stringify(presetPayload(SERVICE_PROVISION, 0)) },
       fetchImpl,
     );
     if (servicePreset.ok) steps.push("service-preset");
   } else {
-    const droppedService = await nbiRequest(cfg, `/presets/${SERVICE_PRESET}`, { method: "DELETE" }, fetchImpl);
+    const droppedService = await nbiSafe(cfg, `/presets/${SERVICE_PRESET}`, { method: "DELETE" }, fetchImpl);
     if (droppedService.ok || droppedService.status === 404) steps.push("service-preset-off");
   }
-  const auth = await putCwmpConfig(cfg, "cwmp.auth", cwmpAuthExpression(plat.acs_require_cpe_auth), fetchImpl);
-  if (auth.ok) steps.push("cwmp.auth");
-  const cr = await putCwmpConfig(cfg, "cwmp.connectionRequestAuth", CWMP_CONNECTION_REQUEST_AUTH, fetchImpl);
-  if (cr.ok) steps.push("cwmp.connectionRequestAuth");
-  const basic = await putCwmpConfig(cfg, "cwmp.connectionRequestAllowBasicAuth", CWMP_CONNECTION_REQUEST_ALLOW_BASIC, fetchImpl);
-  if (basic.ok) steps.push("cwmp.connectionRequestAllowBasicAuth");
-  const debug = await putCwmpConfig(cfg, "cwmp.debug", CWMP_DEBUG, fetchImpl);
-  if (debug.ok) steps.push("cwmp.debug");
-  const ok =
-    steps.includes("provision") &&
-    steps.includes("service-provision") &&
-    steps.includes("cwmp.auth") &&
-    steps.includes("cwmp.connectionRequestAuth") &&
-    (plat.acs_lock_url ? steps.includes("preset") : true) &&
-    (plat.acs_provision_service ? steps.includes("service-preset") : true);
+  const desired = desiredCwmpValues(plat);
+  const writes: Record<string, { ok: boolean }> = {};
+  for (const [name, expression] of Object.entries(desired)) {
+    writes[name] = await putCwmpConfig(cfg, name, expression, fetchImpl);
+    if (writes[name]?.ok) steps.push(name);
+  }
+  const live = await loadGenieAcsCwmp({ nbi: cfg, fetchImpl });
+  for (const [name, expression] of Object.entries(desired)) {
+    if (steps.includes(name)) continue;
+    if (live.values[name] === expression) steps.push(name);
+  }
+  const required = [
+    "provision",
+    "service-provision",
+    "cwmp.auth",
+    "cwmp.connectionRequestAuth",
+    ...(plat.acs_lock_url ? ["preset"] : []),
+    ...(plat.acs_provision_service ? ["service-preset"] : []),
+  ];
+  const missing = required.filter((id) => !steps.includes(id));
+  const ok = missing.length === 0;
   return {
     ok,
     steps,
-    auth: auth.ok,
-    error: ok ? "" : "GenieACS did not accept the full CWMP config. Digest auth still applies on the VPS from the ACS sidecar.",
+    missing,
+    auth: steps.includes("cwmp.auth"),
+    error: ok ? "" : describeCwmpApplyError(missing),
   };
 }
 

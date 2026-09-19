@@ -261,7 +261,7 @@ function SettingsPage() {
             snapshot={cwmp}
             apply={cwmpApply}
             busy={cwmpBusy}
-            hint="Save the host and flags above first if you changed them. Then apply digest login, connection-request auth, URL lock, and WAN/Wi-Fi provision onto GenieACS."
+            hint="Save the host and flags above first if you changed them. Apply writes URL-lock and WAN/Wi-Fi provisions over NBI, then confirms digest login already set by the ACS sidecar."
             onApply={async () => {
               setCwmpBusy(true);
               setError(null);

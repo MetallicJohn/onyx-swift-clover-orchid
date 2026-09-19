@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import vm from "node:vm";
 import { generateAcsCredentials, saveAcsCredentialSettings } from "./acs-credentials.ts";
 import { buildAcsUrl } from "./acs-ports.ts";
 import {
@@ -9,6 +10,11 @@ import {
   applyGenieAcsSecurity,
   authorizedAcsEdge,
   CWMP_AUTH_DIGEST,
+  CWMP_CONNECTION_REQUEST_AUTH,
+  CWMP_CONNECTION_REQUEST_ALLOW_BASIC,
+  CWMP_DEBUG,
+  describeCwmpApplyError,
+  desiredCwmpValues,
   handleAcsAuthRequest,
   loadGenieAcsCwmp,
   LOCK_URL_SCRIPT,
@@ -55,6 +61,8 @@ test("ACS URL lock script writes TR-098 and TR-181 ManagementServer.URL", () => 
   assert.ok(init.includes(SERVICE_PROVISION_SCRIPT.trim()));
   assert.match(init, /cwmp\.connectionRequestAllowBasicAuth/);
   assert.match(init, /cwmp\.debug/);
+  new vm.Script(`"use strict";(function(){\n${LOCK_URL_SCRIPT}\n})();`);
+  new vm.Script(`"use strict";(function(){\n${SERVICE_PROVISION_SCRIPT}\n})();`);
 });
 
 test("lookup rejects unknown, disabled, and cross-ISP usernames; does not audit informs", async () => {
@@ -140,12 +148,26 @@ test("HTTPS scheme rewrites issued ACS URLs; checklist reflects platform flags",
 
 test("applyGenieAcsSecurity puts URL-lock provision/preset and digest auth expression", async () => {
   const { sql, bypass, close } = await openTestDb();
+  const prevJwt = process.env.GENIEACS_UI_JWT_SECRET;
+  delete process.env.GENIEACS_UI_JWT_SECRET;
   try {
     await bypass();
+    const sidecar = [
+      { _id: "cwmp.auth", value: CWMP_AUTH_DIGEST },
+      { _id: "cwmp.connectionRequestAuth", value: CWMP_CONNECTION_REQUEST_AUTH },
+      { _id: "cwmp.connectionRequestAllowBasicAuth", value: CWMP_CONNECTION_REQUEST_ALLOW_BASIC },
+      { _id: "cwmp.debug", value: CWMP_DEBUG },
+    ];
     const calls: { url: string; method: string; body: string }[] = [];
     const fetchImpl = async (url: string, init?: RequestInit) => {
       const method = (init?.method || "GET").toUpperCase();
       calls.push({ url, method, body: String(init?.body || "") });
+      if (method === "PUT" && /\/config\//.test(url) && !url.includes("/api/config/")) {
+        return new Response("404 Not Found", { status: 404 });
+      }
+      if (method === "GET" && url.includes("/config/")) {
+        return new Response(JSON.stringify(sidecar), { status: 200, headers: { "content-type": "application/json" } });
+      }
       return new Response("", { status: 200 });
     };
     const nbi = { nbiUrl: "http://genieacs:7557", user: "", pass: "", oui: "" };
@@ -155,13 +177,13 @@ test("applyGenieAcsSecurity puts URL-lock provision/preset and digest auth expre
     assert.ok(on.steps.includes("preset"));
     assert.ok(on.steps.includes("service-provision"));
     assert.ok(on.steps.includes("service-preset"));
+    assert.ok(on.steps.includes("cwmp.auth"));
+    assert.ok(on.steps.includes("cwmp.connectionRequestAuth"));
+    assert.equal(calls.some((c) => c.method === "PUT" && c.url.includes(":7557/config/")), false);
     assert.match(calls.find((c) => c.url.includes("/provisions/ispsolutions-lock-url"))?.body || "", /ManagementServer\.URL/);
     assert.match(calls.find((c) => c.url.includes("/presets/ispsolutions-lock-url"))?.body || "", /ispsolutions-lock-url/);
+    assert.match(calls.find((c) => c.url.includes("/presets/ispsolutions-lock-url"))?.body || "", /"channel":""/);
     assert.match(calls.find((c) => c.url.includes("/provisions/ispsolutions-service"))?.body || "", /WLANConfiguration/);
-    assert.match(calls.find((c) => c.url.includes("cwmp.auth"))?.body || "", /passwordFor/);
-    assert.match(calls.find((c) => c.url.includes("cwmp.connectionRequestAuth"))?.body || "", /AUTH\(username, password\)/);
-    assert.match(calls.find((c) => c.url.includes("cwmp.connectionRequestAllowBasicAuth"))?.body || "", /true/);
-    assert.match(calls.find((c) => c.url.includes("cwmp.debug"))?.body || "", /false/);
     await sql`insert into platform_settings (key, value) values ('acs_lock_url', 'false')
       on conflict (key) do update set value = 'false'`;
     calls.length = 0;
@@ -169,12 +191,84 @@ test("applyGenieAcsSecurity puts URL-lock provision/preset and digest auth expre
     assert.equal(off.steps.includes("preset-off"), true);
     assert.equal(calls.some((c) => c.url.includes("/presets/") && c.method === "DELETE"), true);
   } finally {
+    if (prevJwt == null) delete process.env.GENIEACS_UI_JWT_SECRET;
+    else process.env.GENIEACS_UI_JWT_SECRET = prevJwt;
+    await close();
+  }
+});
+
+test("Apply CWMP writes cwmp.* through GenieACS UI with { value } and a local JWT", async () => {
+  const { sql, bypass, close } = await openTestDb();
+  const prevJwt = process.env.GENIEACS_UI_JWT_SECRET;
+  process.env.GENIEACS_UI_JWT_SECRET = "ui-secret";
+  try {
+    await bypass();
+    const calls: { url: string; method: string; body: string; authorization: string }[] = [];
+    const fetchImpl = async (url: string, init?: RequestInit) => {
+      const method = (init?.method || "GET").toUpperCase();
+      const headers = (init?.headers || {}) as Record<string, string>;
+      calls.push({
+        url,
+        method,
+        body: String(init?.body || ""),
+        authorization: headers.authorization || headers.Authorization || "",
+      });
+      if (method === "GET" && url.includes("/config/")) {
+        return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("", { status: 200 });
+    };
+    const nbi = { nbiUrl: "http://genieacs:7557", user: "", pass: "", oui: "" };
+    const on = await applyGenieAcsSecurity(sql, { nbi, fetchImpl });
+    assert.equal(on.ok, true);
+    const authPut = calls.find((c) => c.method === "PUT" && c.url === "http://genieacs:3000/api/config/cwmp.auth");
+    assert.ok(authPut);
+    assert.equal(JSON.parse(authPut!.body).value, CWMP_AUTH_DIGEST);
+    const token = authPut!.authorization.replace(/^Bearer\s+/i, "");
+    const payload = JSON.parse(Buffer.from(token.split(".")[1] || "", "base64url").toString());
+    assert.equal(payload.username, "admin");
+    assert.equal(payload.authMethod, "local");
+    assert.equal(calls.some((c) => c.method === "PUT" && c.url.includes(":7557/config/")), false);
+  } finally {
+    if (prevJwt == null) delete process.env.GENIEACS_UI_JWT_SECRET;
+    else process.env.GENIEACS_UI_JWT_SECRET = prevJwt;
+    await close();
+  }
+});
+
+test("Apply CWMP names missing cwmp keys when NBI has no PUT /config and sidecar is empty", async () => {
+  const { sql, bypass, close } = await openTestDb();
+  const prevJwt = process.env.GENIEACS_UI_JWT_SECRET;
+  delete process.env.GENIEACS_UI_JWT_SECRET;
+  try {
+    await bypass();
+    const fetchImpl = async (url: string, init?: RequestInit) => {
+      const method = (init?.method || "GET").toUpperCase();
+      if (method === "PUT" && url.includes("/config/")) return new Response("404 Not Found", { status: 404 });
+      if (method === "GET" && url.includes("/config/")) {
+        return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("", { status: 200 });
+    };
+    const nbi = { nbiUrl: "http://genieacs:7557", user: "", pass: "", oui: "" };
+    const result = await applyGenieAcsSecurity(sql, { nbi, fetchImpl });
+    assert.equal(result.ok, false);
+    assert.ok(result.missing?.includes("cwmp.auth"));
+    assert.match(result.error, /NBI cannot write/);
+    assert.match(result.error, /sidecar/);
+    assert.match(describeCwmpApplyError(["cwmp.auth"]), /cwmp\.auth/);
+    assert.equal(desiredCwmpValues({ acs_require_cpe_auth: true })["cwmp.auth"], CWMP_AUTH_DIGEST);
+  } finally {
+    if (prevJwt == null) delete process.env.GENIEACS_UI_JWT_SECRET;
+    else process.env.GENIEACS_UI_JWT_SECRET = prevJwt;
     await close();
   }
 });
 
 test("applyGenieAcsCwmp rewrites ACS URLs and reads cwmp.* config", async () => {
   const { sql, bypass, asRole, close } = await openTestDb();
+  const prevJwt = process.env.GENIEACS_UI_JWT_SECRET;
+  delete process.env.GENIEACS_UI_JWT_SECRET;
   try {
     await bypass();
     await sql`insert into platform_settings (key, value) values ('acs_public_host', 'acs.example.com')
@@ -193,6 +287,8 @@ test("applyGenieAcsCwmp rewrites ACS URLs and reads cwmp.* config", async () => 
         return new Response(
           JSON.stringify([
             { _id: "cwmp.auth", value: 'AUTH(USERNAME, EXT("ispsolutions", "passwordFor", USERNAME))' },
+            { _id: "cwmp.connectionRequestAuth", value: CWMP_CONNECTION_REQUEST_AUTH },
+            { _id: "cwmp.connectionRequestAllowBasicAuth", value: CWMP_CONNECTION_REQUEST_ALLOW_BASIC },
             { _id: "cwmp.debug", value: "false" },
             { _id: "ui.pageSize", value: "10" },
           ]),
@@ -216,6 +312,8 @@ test("applyGenieAcsCwmp rewrites ACS URLs and reads cwmp.* config", async () => 
     assert.equal(snap.ok, true);
     assert.ok(calls.some((c) => c.method === "GET" && c.url.includes("/config/")));
   } finally {
+    if (prevJwt == null) delete process.env.GENIEACS_UI_JWT_SECRET;
+    else process.env.GENIEACS_UI_JWT_SECRET = prevJwt;
     await close();
   }
 });

@@ -18,6 +18,7 @@ export type CwmpApplyResult = {
   ok: boolean;
   error: string;
   steps: string[];
+  missing?: string[];
   rewritten?: number;
   cwmp?: CwmpSnapshot;
 };
@@ -71,6 +72,9 @@ export function AcsCwmpPanel({
         <p className="mt-3 text-sm text-ok">
           CWMP settings applied{typeof apply.rewritten === "number" ? ` · ${apply.rewritten} ACS URL(s) rewritten` : ""}.
         </p>
+      ) : null}
+      {apply && !apply.ok && apply.steps.length > 0 ? (
+        <p className="mt-3 text-sm text-muted">Applied {apply.steps.join(" · ")}.</p>
       ) : null}
       {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
     </div>
