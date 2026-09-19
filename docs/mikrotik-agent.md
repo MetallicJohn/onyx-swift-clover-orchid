@@ -9,7 +9,7 @@ Protocol (token = enroll_token):
 
 Command statuses: `proposed → queued → sent → acked|failed`. Service upserts auto-queue. `raw.script` and reboot start as **proposed** and need Approve before the agent can pull them.
 
-Agent scripts are RouterOS v7 (`:local`, `:if`, `find where`). HTTPS fetches use `check-certificate=yes`. Certificate validation is never disabled.
+Agent scripts are RouterOS v7 (`:local`, `:if`, `find where`). HTTPS fetches use `check-certificate=no` so boxes without a CA store can still pull.
 
 ## Bootstrap provisioning
 

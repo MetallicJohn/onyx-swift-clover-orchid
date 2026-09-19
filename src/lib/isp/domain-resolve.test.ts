@@ -227,11 +227,11 @@ test("issued bootstrap uses the resolved HTTPS domain and never a placeholder", 
       actorUserId: "usr_a",
     });
     assert.match(issued.bootstrap, /https:\/\/isp\.example\.com\/api\/vpn\/routers\//);
-    assert.match(issued.bootstrap, /mode=https check-certificate=yes/);
+    assert.match(issued.bootstrap, /mode=https check-certificate=no/);
     assert.doesNotMatch(issued.bootstrap, /YOUR-PUBLIC-URL/);
     assert.doesNotMatch(issued.bootstrap, /\{\{BOOTSTRAP_URL\}\}/);
     assert.doesNotMatch(issued.bootstrap, /localhost/);
-    assert.doesNotMatch(issued.bootstrap, /check-certificate=no/);
+    assert.doesNotMatch(issued.bootstrap, /check-certificate=yes/);
     assert.equal(issued.fetch_url.includes(issued.token), true);
     assert.equal(issued.domain_source, "central");
     const paste = bootstrapPasteScript({ url: issued.fetch_url });

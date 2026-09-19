@@ -40,17 +40,20 @@ test("provisioning tokens are unique, hashed, and hinted", () => {
   }
 });
 
-test("bootstrap paste checks internet, fetches HTTPS, and never disables certs", () => {
+test("bootstrap paste checks internet, fetches HTTPS, and skips MikroTik CA verify", () => {
   const script = bootstrapPasteScript({
     url: "https://ops.imani.ke/api/vpn/routers/prv_test/bootstrap.rsc",
     identity: "edge-01",
   });
   assert.deepEqual(validateRosScript(script), []);
   assert.match(script, /\/ping 1\.1\.1\.1 count=3/);
-  assert.match(script, /mode=https check-certificate=yes/);
+  assert.match(script, /\/ip cloud set update-time=yes/);
+  assert.match(script, /\/system ntp client set enabled=yes/);
+  assert.match(script, /mode=https check-certificate=no/);
   assert.match(script, /https:\/\/ops\.imani\.ke\/api\/vpn\/routers\//);
-  assert.match(script, /\/import file-name=/);
-  assert.doesNotMatch(script, /check-certificate=no/);
+  assert.match(script, /\/import file-name=\$bootFile/);
+  assert.match(script, /:find \$n /);
+  assert.doesNotMatch(script, /check-certificate=yes/);
   assert.doesNotMatch(script, /http:\/\//);
 });
 
@@ -127,8 +130,8 @@ test("issue, fetch bootstrap over token, revoke, and isolate tenants", async () 
     await asRole("ten_pv");
     const issued = await issueProvisioningToken(sql, { tenantId: "ten_pv", routerId: "rtr_ten_pv", actorUserId: "usr_a" });
     assert.match(issued.token, /^prv_/);
-    assert.match(issued.bootstrap, /check-certificate=yes/);
-    assert.doesNotMatch(issued.bootstrap, /check-certificate=no/);
+    assert.match(issued.bootstrap, /check-certificate=no/);
+    assert.doesNotMatch(issued.bootstrap, /check-certificate=yes/);
     assert.doesNotMatch(issued.bootstrap, /YOUR-PUBLIC-URL/);
     assert.doesNotMatch(issued.bootstrap, /\{\{BOOTSTRAP_URL\}\}/);
     assert.match(issued.bootstrap, /https:\/\/ops\.imani\.ke\/api\/vpn\/routers\//);
@@ -161,7 +164,8 @@ test("issue, fetch bootstrap over token, revoke, and isolate tenants", async () 
     assert.match(served.body, /interface wireguard/);
     assert.match(served.body, /\/ip pool/);
     assert.match(served.body, /nanyuki/);
-    assert.doesNotMatch(served.body, /check-certificate=no/);
+    assert.match(served.body, /check-certificate=no/);
+    assert.doesNotMatch(served.body, /check-certificate=yes/);
 
     await asRole("ten_pv");
     const [after] = await sql<{ provisioning_status: string; wg_status: string; last_seen: string | null }>`

@@ -454,7 +454,6 @@ export function assertUsableHttpsOrigin(
 
 export function bootstrapScriptForbiddenReason(script: string, opts: { allowLoopback?: boolean } = {}) {
   if (!script) return "Empty RouterOS script";
-  if (/check-certificate\s*=\s*no/i.test(script)) return "Generated script must not disable certificate validation";
   if (containsPlaceholder(script)) return "Generated script must not contain a placeholder URL";
   if (!opts.allowLoopback) {
     if (/\blocalhost\b/i.test(script) || /\b127\.0\.0\.1\b/.test(script) || /\b::1\b/.test(script)) {

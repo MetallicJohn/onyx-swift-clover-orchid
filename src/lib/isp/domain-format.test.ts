@@ -107,16 +107,16 @@ test("production origin assertion rejects http, localhost, and placeholders", ()
   );
 });
 
-test("bootstrap script scanner blocks placeholders and cert bypass", () => {
-  const ok = `/tool fetch url="https://isp.example.com/api/vpn/routers/prv/bootstrap.rsc" mode=https check-certificate=yes;`;
+test("bootstrap script scanner blocks placeholders, not certificate skip", () => {
+  const ok = `/tool fetch url="https://isp.example.com/api/vpn/routers/prv/bootstrap.rsc" mode=https check-certificate=no;`;
   assert.equal(bootstrapScriptForbiddenReason(ok), "");
   assert.match(
-    bootstrapScriptForbiddenReason(`/tool fetch url="https://YOUR-PUBLIC-URL/x" mode=https check-certificate=yes;`),
+    bootstrapScriptForbiddenReason(`/tool fetch url="https://YOUR-PUBLIC-URL/x" mode=https check-certificate=no;`),
     /placeholder/i,
   );
-  assert.match(
+  assert.equal(
     bootstrapScriptForbiddenReason(`/tool fetch url="https://isp.example.com/x" mode=https check-certificate=no;`),
-    /certificate/,
+    "",
   );
   assert.match(
     bootstrapScriptForbiddenReason(`/tool fetch url="http://127.0.0.1:8080/x" mode=https check-certificate=yes;`),

@@ -161,13 +161,14 @@ export function bootstrapFetchUrl(base: string, token: string, requireHttps = tr
 
 export function bootstrapPasteScript(opts: { url: string; identity?: string }) {
   const url = opts.url;
+  const file = ROS_BOOTSTRAP_FILE;
   return `# ${APP_NAME} bootstrap — RouterOS v7
-# Paste in New Terminal. Certificate validation is required.
+# Paste in New Terminal.
 # 1. Confirm internet
-# 2. Download this router's configuration over HTTPS
-# 3. Import ${ROS_BOOTSTRAP_FILE}
+# 2. Set the clock
+# 3. Download this router's configuration over HTTPS (check-certificate=no)
+# 4. Import ${file}
 ${opts.identity ? `# identity: ${opts.identity}` : ""}
-
 :log info ${rosQuote(`${APP_NAME} bootstrap starting`)};
 :local pings 0;
 :do { :set pings [/ping 1.1.1.1 count=3] } on-error={ :set pings 0 };
@@ -177,17 +178,25 @@ ${opts.identity ? `# identity: ${opts.identity}` : ""}
 :if ($pings = 0) do={
   :log error ${rosQuote(`${APP_NAME}: no internet — bootstrap aborted`)};
 } else={
+  :do { /ip cloud set update-time=yes } on-error={};
+  :do { /system ntp client set enabled=yes } on-error={};
+  :delay 5s;
   :do {
-    /tool fetch url=${rosQuote(url)} mode=https check-certificate=yes http-method=get dst-path=${rosQuote(ROS_BOOTSTRAP_FILE)};
+    /tool fetch url=${rosQuote(url)} mode=https check-certificate=no http-method=get dst-path=${rosQuote(file)};
     :delay 2s;
-    :if ([:len [/file find where name=${rosQuote(ROS_BOOTSTRAP_FILE)}]] > 0) do={
-      /import file-name=${rosQuote(ROS_BOOTSTRAP_FILE)};
+    :local bootFile "";
+    :foreach i in=[/file find] do={
+      :local n [/file get $i name];
+      :if ([:typeof [:find $n ${rosQuote(file)}]] != "nil") do={ :set bootFile $n };
+    }
+    :if ($bootFile != "") do={
+      /import file-name=$bootFile;
       :log info ${rosQuote(`${APP_NAME} bootstrap imported`)};
     } else={
       :log error ${rosQuote(`${APP_NAME}: bootstrap file missing after fetch`)};
     }
   } on-error={
-    :log error ${rosQuote(`${APP_NAME}: HTTPS fetch failed — check certificate and URL`)};
+    :log error ${rosQuote(`${APP_NAME}: HTTPS fetch failed — check URL and internet`)};
   }
 }
 `;
@@ -198,9 +207,6 @@ export function assertReleaseableScript(script: string) {
   const errors = issues.filter((i) => i.severity === "error");
   if (errors.length) {
     throw new Error(`RouterOS configuration rejected: ${errors.map((e) => e.message).join("; ")}`);
-  }
-  if (/check-certificate\s*=\s*no/i.test(script)) {
-    throw new Error("Generated script must not disable certificate validation");
   }
   const forbidden = bootstrapScriptForbiddenReason(script, {
     allowLoopback: !productionDomainContext(),

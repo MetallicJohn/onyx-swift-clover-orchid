@@ -50,10 +50,15 @@ export function enrollRosScript(opts: {
 :do { /system script remove [find where name=${rosQuote(ROS_PULL_SCRIPT)}] } on-error={}
 /system script add name=${rosQuote(ROS_PULL_SCRIPT)} owner=admin policy=read,write,policy,test,password,sensitive source={
   :do {
-    /tool fetch url=${rosQuote(pull)} mode=https check-certificate=yes http-method=get dst-path=${rosQuote(ROS_PULL_FILE)};
+    /tool fetch url=${rosQuote(pull)} mode=https check-certificate=no http-method=get dst-path=${rosQuote(ROS_PULL_FILE)};
     :delay 2s;
-    :if ([:len [/file find where name=${rosQuote(ROS_PULL_FILE)}]] > 0) do={
-      /import file-name=${rosQuote(ROS_PULL_FILE)};
+    :local pullFile "";
+    :foreach i in=[/file find] do={
+      :local n [/file get $i name];
+      :if ([:typeof [:find $n ${rosQuote(ROS_PULL_FILE)}]] != "nil") do={ :set pullFile $n };
+    }
+    :if ($pullFile != "") do={
+      /import file-name=$pullFile;
     }
   } on-error={
     :log warning ${rosQuote(`${APP_NAME} agent fetch failed`)};

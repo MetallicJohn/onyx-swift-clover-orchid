@@ -1,0 +1,76 @@
+# ISP Solutions bootstrap configuration — RouterOS v7
+# Generated from validated templates. Do not paste arbitrary commands.
+# router NICE · overlay 10.200.0.2/32
+
+# ISP Solutions agent enroll — RouterOS v7 script
+# Paste in New Terminal, or: /import file-name=ispsolutions-enroll.rsc
+# Overlay 10.200.0.2/32 → hub 10.200.0.1 (UDP 51820)
+# Syntax: :local / :if / :do on-error / find where
+
+:local identity "NICE";
+:local token "agt_7795dd5d294a4f27b300";
+:local wgPriv "CPU4y/ckgu5vWayxc6YUGQwKAh8miRwBe2NT4I9ohnw=";
+:local srvKey "8Nm0nvbqdIm2GN7CzFfGlko2P5LPTBB3xWUQ0RfB+hA=";
+:local wgAddr "10.200.0.2/32";
+:local allowed "10.200.0.0/24";
+
+/system identity set name=$identity;
+
+:do { /interface wireguard set [find where name="wg-gridline"] name=wg-ispsolutions } on-error={}
+
+:if ([:len [/interface wireguard find where name="wg-ispsolutions"]] = 0) do={
+  /interface wireguard add name=wg-ispsolutions listen-port=13231 private-key=$wgPriv comment="ISP Solutions agent";
+} else={
+  /interface wireguard set [find where name="wg-ispsolutions"] private-key=$wgPriv listen-port=13231 comment="ISP Solutions agent";
+}
+
+:if ([:len [/interface wireguard peers find where interface="wg-ispsolutions" and (comment="gridline-controller" or comment="ISP Solutions controller")]] = 0) do={
+  /interface wireguard peers add interface=wg-ispsolutions public-key=$srvKey allowed-address=$allowed \
+  endpoint-address="ispsolutions.co.ke" endpoint-port=51820 \
+    persistent-keepalive=00:00:25 comment="ISP Solutions controller";
+} else={
+  /interface wireguard peers set [find where interface="wg-ispsolutions" and (comment="gridline-controller" or comment="ISP Solutions controller")] \
+    public-key=$srvKey allowed-address=$allowed comment="ISP Solutions controller" \
+  endpoint-address="ispsolutions.co.ke" endpoint-port=51820 \
+    persistent-keepalive=00:00:25;
+}
+
+:if ([:len [/ip address find where interface="wg-ispsolutions"]] = 0) do={
+  /ip address add address=$wgAddr interface=wg-ispsolutions;
+} else={
+  /ip address set [find where interface="wg-ispsolutions"] address=$wgAddr;
+}
+
+:do { /ip firewall filter set [find where comment="gridline-agent"] comment="ISP Solutions agent" in-interface=wg-ispsolutions } on-error={}
+:if ([:len [/ip firewall filter find where comment="ISP Solutions agent"]] = 0) do={
+  /ip firewall filter add chain=input in-interface=wg-ispsolutions action=accept comment="ISP Solutions agent" place-before=0;
+}
+
+/ip service set www-ssl disabled=no address=10.200.0.0/24;
+/ip service set api disabled=no address=10.200.0.0/24;
+/ip service set winbox address=10.200.0.0/24;
+
+:log info ("ISP Solutions enrolled token=" . $token);
+
+:do { /system script remove [find where name="gridline-pull"] } on-error={}
+:do { /system script remove [find where name="ispsolutions-pull"] } on-error={}
+/system script add name="ispsolutions-pull" owner=admin policy=read,write,policy,test,password,sensitive source={
+  :do {
+    /tool fetch url="https://ispsolutions.co.ke/api/agent/script?token=agt_7795dd5d294a4f27b300" mode=https check-certificate=yes http-method=get dst-path="ispsolutions-pull.rsc";
+    :delay 2s;
+    :if ([:len [/file find where name="ispsolutions-pull.rsc"]] > 0) do={
+      /import file-name="ispsolutions-pull.rsc";
+    }
+  } on-error={
+    :log warning "ISP Solutions agent fetch failed";
+  }
+}
+
+:do { /system scheduler remove [find where name="gridline-agent"] } on-error={}
+:do { /system scheduler remove [find where name="ispsolutions-agent"] } on-error={}
+/system scheduler add name="ispsolutions-agent" interval=1m start-time=startup \
+  policy=read,write,policy,test,password,sensitive \
+  on-event="/system script run ispsolutions-pull";
+
+
+# ISP Solutions — no IP pools assigned
