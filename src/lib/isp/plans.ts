@@ -63,6 +63,7 @@ export const DEFAULT_PLANS: Record<string, Omit<PlanRecord, "code" | "status" | 
       static_ip: true,
       radius: true,
       mikrotik: true,
+      genieacs: true,
       reports: true,
       customer_portal: true,
     },

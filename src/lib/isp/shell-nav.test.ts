@@ -6,6 +6,8 @@ const css = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
 const shell = readFileSync(new URL("../../components/app-shell.tsx", import.meta.url), "utf8");
 const platform = readFileSync(new URL("../../components/platform/shell.tsx", import.meta.url), "utf8");
 const nav = readFileSync(new URL("../../components/sidebar-nav.tsx", import.meta.url), "utf8");
+const plans = readFileSync(new URL("./plans.ts", import.meta.url), "utf8");
+const migrate = readFileSync(new URL("../../../migrations/0063_trial_genieacs.sql", import.meta.url), "utf8");
 
 test("console navbar uses dedicated CSS, clips labels, and keeps Devices as the ACS label", () => {
   assert.match(css, /\.app-shell\s*\{/);
@@ -31,6 +33,9 @@ test("console navbar uses dedicated CSS, clips labels, and keeps Devices as the 
   assert.match(shell, /className="app-nav-foot"/);
   assert.match(shell, /to: "\/app\/acs", label: "Devices"/);
   assert.doesNotMatch(shell, /to: "\/app\/acs", label: "GenieACS"/);
+  assert.doesNotMatch(shell, /"\/app\/acs": "genieacs"/);
+  assert.match(plans, /trial:[\s\S]*?genieacs:\s*true/);
+  assert.match(migrate, /genieacs/);
   assert.match(shell, /\/app\/recycle-bin/);
   assert.match(platform, /className="app-shell"/);
   assert.match(platform, /className="app-nav"/);

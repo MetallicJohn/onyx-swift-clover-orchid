@@ -225,6 +225,7 @@ services:
       - caddy_config:/config
     depends_on:
       - web
+      - genieacs
 
 volumes:
   pgdata:

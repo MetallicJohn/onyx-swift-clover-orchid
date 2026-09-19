@@ -91,7 +91,6 @@ export function AppShell({
   const featureNav: Record<string, string> = {
     "/app/hotspot": "hotspot",
     "/app/radius": "radius",
-    "/app/acs": "genieacs",
     "/app/ai": "ai_assistant",
     "/app/field": "technician",
     "/app/partners": "reseller",

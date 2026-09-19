@@ -69,6 +69,7 @@ test("publish pack names docker compose, health, and WireGuard", () => {
   assert.match(compose, /network_mode: host/);
   assert.match(compose, /127\.0\.0\.1:7547:7547/);
   assert.match(compose, /127\.0\.0\.1:3000:3000/);
+  assert.match(compose, /depends_on:\n      - web\n      - genieacs/);
   assert.doesNotMatch(compose, /7551-7999:7551-7999/);
   assert.match(compose, /GENIEACS_EXT_DIR/);
   assert.match(compose, /genieacs-init/);
