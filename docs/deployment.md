@@ -45,7 +45,13 @@ sudo bash /opt/ispsolutions/deploy/vps/backup.sh
 sudo bash /opt/ispsolutions/deploy/vps/update.sh --apply
 ```
 
-`--apply` backs up again, pulls `origin/main`, rebuilds, waits for `/api/v1/health`, and rolls the code back to the previous SHA if health fails. Database dumps are kept under `/opt/ispsolutions/backups/` (14 days). Restore only if you need to: `sudo bash deploy/vps/restore.sh <dump.sql.gz>`.
+`--apply` backs up again (custom `pg_dump`, verified before continuing), pulls `origin/main`, **refuses destructive SQL**, rebuilds, waits for `/api/v1/health`, compares tenant/customer/invoice/… counts, and rolls the **code** back to the previous SHA if health fails. The live database is not auto-restored. Dumps live under `/opt/ispsolutions/backups/` (14 days). Restore is last-resort only:
+
+```bash
+sudo bash deploy/vps/restore.sh --i-understand-this-overwrites-live-data <dump.dump>
+```
+
+See [disaster-recovery.md](disaster-recovery.md). Never `docker compose down -v` on production.
 
 `--force` rebuilds the same SHA (for example after editing `ispsolutions.env`).
 

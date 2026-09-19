@@ -106,7 +106,8 @@ function ResetPassword() {
           <>
             <h1 className="text-2xl font-semibold tracking-tight">Forgot password</h1>
             <p className="mt-2 text-sm text-muted">
-              ISP owners, staff, and the {APP_NAME} superadmin use the same email login. We email a reset link when SMTP is configured.
+              ISP owners, staff, and the {APP_NAME} superadmin use the same email login — including Google or X
+              accounts that never set a password. We email a reset link when SMTP is configured.
             </p>
             <form className="mt-6 grid gap-3" onSubmit={onRequest}>
               <Field label="Email">
@@ -116,6 +117,9 @@ function ResetPassword() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
               </Field>
               {error ? <p className="text-sm text-danger">{error}</p> : null}

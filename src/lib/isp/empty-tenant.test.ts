@@ -39,6 +39,26 @@ test("emptying a tenant created today drops customers and invoices, keeps the lo
   }
 });
 
+test("production never auto-empties a tenant even if demo_seeded", async () => {
+  const { sql, bypass, close } = await openTestDb();
+  const previous = process.env.NODE_ENV;
+  process.env.NODE_ENV = "production";
+  try {
+    await bypass();
+    await sql`insert into tenants (id, name, slug, demo_seeded, created_at)
+      values ('ten_prod', 'Live', 'live', true, now())`;
+    await sql`insert into customers (id, tenant_id, name) values ('cus_prod', 'ten_prod', 'Keep me')`;
+    const result = await emptySeededTenantsCreatedOn(sql, "ten_prod");
+    assert.equal(result.emptied, false);
+    const [cus] = await sql<{ n: number }>`select count(*)::int as n from customers where tenant_id = 'ten_prod'`;
+    assert.equal(cus?.n, 1);
+  } finally {
+    if (previous === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previous;
+    await close();
+  }
+});
+
 test("tenants created on another day are left alone", async () => {
   const { sql, bypass, close } = await openTestDb();
   try {

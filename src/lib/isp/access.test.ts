@@ -36,6 +36,23 @@ test("tenant seed does not re-queue agent commands for existing services", async
   }
 });
 
+test("tenant seed does not regenerate WireGuard keys on an existing router", async () => {
+  const { sql, bypass, close } = await openTestDb();
+  try {
+    await bypass();
+    await sql`insert into tenants (id, name, slug) values ('ten_wg', 'Keys', 'keys')`;
+    await sql`insert into routers (id, tenant_id, name, wg_public, wg_address, enroll_token)
+      values ('rtr_wg', 'ten_wg', 'edge-01', 'KEEPUBLIC', '10.200.0.4/32', '')`;
+    await seedOpsForTenant(sql, "ten_wg");
+    const [row] = await sql<{ wg_public: string; enroll_token: string }>`
+      select wg_public, enroll_token from routers where id = 'rtr_wg'`;
+    assert.equal(row?.wg_public, "KEEPUBLIC");
+    assert.ok(row?.enroll_token);
+  } finally {
+    await close();
+  }
+});
+
 test("routers desk paints the list without waiting on queue, hub, or first-router detail", () => {
   const access = readFileSync(new URL("./access.ts", import.meta.url), "utf8");
   const seed = access.slice(access.indexOf("export async function seedOpsForTenant"));

@@ -118,19 +118,53 @@ if [[ "$BEFORE" == "$REMOTE" && "$FORCE" -ne 1 ]]; then
 fi
 
 PROJECT=ispsolutions
-if docker volume inspect gridline_pgdata >/dev/null 2>&1; then
+if docker volume inspect gridline_pgdata >/dev/null 2>&1 && ! docker volume inspect ispsolutions_pgdata >/dev/null 2>&1; then
   PROJECT=gridline
 fi
 COMPOSE="$INSTALL_DIR/deploy/vps/docker-compose.yml"
+# shellcheck source=protect.sh
+source "$INSTALL_DIR/deploy/vps/protect.sh"
+refuse_volume_destroy "$@" || exit 1
+
 BACKUP=""
-postgres_up="$(docker compose -p "$PROJECT" -f "$COMPOSE" --env-file "$ENV_FILE" ps -q postgres 2>/dev/null || true)"
-if [[ -n "$postgres_up" ]]; then
+REPORT_DIR="$INSTALL_DIR/backups/reports"
+mkdir -p "$REPORT_DIR" "$INSTALL_DIR/backups"
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+BEFORE_COUNTS="$REPORT_DIR/pre-$STAMP.json"
+AFTER_COUNTS="$REPORT_DIR/post-$STAMP.json"
+DEPLOY_REPORT="$REPORT_DIR/deploy-$STAMP.txt"
+
+if grep -q '^ISPSOLUTIONS_ALLOW_DESTRUCTIVE_MIGRATIONS=' "$ENV_FILE" 2>/dev/null; then
+  export ISPSOLUTIONS_ALLOW_DESTRUCTIVE_MIGRATIONS
+  ISPSOLUTIONS_ALLOW_DESTRUCTIVE_MIGRATIONS="$(grep '^ISPSOLUTIONS_ALLOW_DESTRUCTIVE_MIGRATIONS=' "$ENV_FILE" | head -n1 | cut -d= -f2-)"
+fi
+
+EXISTING_VOLUME="$(pgdata_volume || true)"
+if [[ -n "$EXISTING_VOLUME" ]]; then
+  echo "[ispsolutions] production volume $EXISTING_VOLUME — additive update only"
+  echo "[ispsolutions] starting postgres for backup (never recreate the volume)"
+  protect_compose up -d postgres
+  ready=0
+  for _ in $(seq 1 40); do
+    if protect_compose exec -T postgres pg_isready -U "${POSTGRES_USER:-ispsolutions}" -d "${POSTGRES_DB:-ispsolutions}" >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
+    sleep 2
+  done
+  if [[ "$ready" -ne 1 ]]; then
+    echo "[ispsolutions] postgres did not become ready — deployment stopped, data preserved" >&2
+    exit 1
+  fi
   echo "[ispsolutions] backing up database before deploy"
-  BACKUP="$(INSTALL_DIR="$INSTALL_DIR" bash "$INSTALL_DIR/deploy/vps/backup.sh")"
+  BACKUP="$(INSTALL_DIR="$INSTALL_DIR" PROJECT="$PROJECT" COMPOSE="$COMPOSE" ENV_FILE="$ENV_FILE" bash "$INSTALL_DIR/deploy/vps/backup.sh")"
   echo "[ispsolutions] backup $BACKUP"
+  snapshot_counts "$BEFORE_COUNTS" >/dev/null
+  echo "[ispsolutions] pre-deploy counts $(cat "$BEFORE_COUNTS")"
+  find "$INSTALL_DIR/backups" -name 'ispsolutions-*.dump' -mtime +14 -delete 2>/dev/null || true
   find "$INSTALL_DIR/backups" -name 'ispsolutions-*.sql.gz' -mtime +14 -delete 2>/dev/null || true
 else
-  echo "[ispsolutions] no running postgres yet — skip backup (first install)"
+  echo "[ispsolutions] no postgres volume yet — first install, skip backup"
 fi
 
 if [[ "$BEFORE" != "$REMOTE" ]]; then
@@ -138,22 +172,43 @@ if [[ "$BEFORE" != "$REMOTE" ]]; then
   git reset --hard "origin/$BRANCH"
 fi
 
+if [[ -n "$EXISTING_VOLUME" ]]; then
+  if ! scan_pending_migrations; then
+    echo "[ispsolutions] destructive SQL in pending migrations — stopping" >&2
+    if [[ "$BEFORE" != "$(git rev-parse HEAD)" ]]; then
+      echo "[ispsolutions] restoring git to $BEFORE (database untouched)"
+      git reset --hard "$BEFORE"
+    fi
+    exit 1
+  fi
+fi
+
 SHORT="$(git rev-parse --short HEAD)"
 export ISPSOLUTIONS_GIT_SHA="$SHORT"
 export GRIDLINE_GIT_SHA="$SHORT"
-echo "[ispsolutions] building $SHORT"
-if ! docker compose -p "$PROJECT" -f "$COMPOSE" --env-file "$ENV_FILE" up -d --build; then
+write_deploy_meta "$DEPLOY_REPORT" \
+  "Current commit: $BEFORE" \
+  "New commit: $(git rev-parse HEAD)" \
+  "Backup: ${BACKUP:-none (first install)}" \
+  "Pre-counts: $( [[ -f "$BEFORE_COUNTS" ]] && cat "$BEFORE_COUNTS" || echo none )"
+
+echo "[ispsolutions] building $SHORT (compose up -d --build, never destroy named volumes)"
+if ! protect_compose up -d --build; then
   echo "[ispsolutions] compose up failed" >&2
-  if [[ "$BEFORE" != "$(git rev-parse HEAD)" && "$BEFORE" != "$REMOTE" ]]; then
-    echo "[ispsolutions] rolling back to $BEFORE"
+  if [[ "$BEFORE" != "$(git rev-parse HEAD)" ]]; then
+    echo "[ispsolutions] rolling back code to $BEFORE (database left as-is)"
     git reset --hard "$BEFORE"
-    docker compose -p "$PROJECT" -f "$COMPOSE" --env-file "$ENV_FILE" up -d --build || true
+    PREV_SHORT="$(git rev-parse --short HEAD)"
+    export ISPSOLUTIONS_GIT_SHA="$PREV_SHORT"
+    export GRIDLINE_GIT_SHA="$PREV_SHORT"
+    protect_compose up -d --build || true
   fi
+  echo "DEPLOYMENT FAILED / MANUAL REVIEW" | tee -a "$DEPLOY_REPORT"
   exit 1
 fi
 
 echo "[ispsolutions] applying GenieACS CWMP config"
-docker compose -p "$PROJECT" -f "$COMPOSE" --env-file "$ENV_FILE" run --rm --no-deps genieacs-init \
+protect_compose run --rm --no-deps genieacs-init \
   || echo "[ispsolutions] genieacs-init skipped (ACS config will apply from the app)"
 
 HEALTH="$INSTALL_DIR/deploy/vps/healthcheck.sh"
@@ -167,22 +222,47 @@ if [[ -x "$HEALTH" ]] || [[ -f "$HEALTH" ]]; then
       PREV_SHORT="$(git rev-parse --short HEAD)"
       export ISPSOLUTIONS_GIT_SHA="$PREV_SHORT"
       export GRIDLINE_GIT_SHA="$PREV_SHORT"
-      docker compose -p "$PROJECT" -f "$COMPOSE" --env-file "$ENV_FILE" up -d --build || true
+      protect_compose up -d --build || true
       if INSTALL_DIR="$INSTALL_DIR" bash "$HEALTH" 180; then
         echo "[ispsolutions] rollback healthy at $PREV_SHORT"
         if [[ -n "$BACKUP" ]]; then
           echo "[ispsolutions] database backup kept at $BACKUP (not restored; schema is additive)"
         fi
+        echo "DEPLOYMENT FAILED / MANUAL REVIEW" | tee -a "$DEPLOY_REPORT"
         exit 1
       fi
       echo "[ispsolutions] rollback health still failing" >&2
     fi
     if [[ -n "$BACKUP" ]]; then
-      echo "[ispsolutions] restore dump if needed: sudo bash $INSTALL_DIR/deploy/vps/restore.sh $BACKUP" >&2
+      echo "[ispsolutions] restore dump only if data is proven lost:" >&2
+      echo "  sudo bash $INSTALL_DIR/deploy/vps/restore.sh --i-understand-this-overwrites-live-data $BACKUP" >&2
     fi
+    echo "DEPLOYMENT FAILED / MANUAL REVIEW" | tee -a "$DEPLOY_REPORT"
     exit 1
   fi
 fi
+
+if [[ -f "$BEFORE_COUNTS" ]]; then
+  snapshot_counts "$AFTER_COUNTS" >/dev/null
+  echo "[ispsolutions] post-deploy counts $(cat "$AFTER_COUNTS")"
+  if ! compare_count_files "$BEFORE_COUNTS" "$AFTER_COUNTS" | tee -a "$DEPLOY_REPORT"; then
+    echo "[ispsolutions] row counts dropped — DEPLOYMENT FAILED / MANUAL REVIEW" >&2
+    echo "[ispsolutions] database was not auto-restored. Backup: $BACKUP" >&2
+    exit 1
+  fi
+fi
+
+{
+  echo "ISP SOLUTIONS DEPLOYMENT REPORT"
+  echo "Previous version: $BEFORE"
+  echo "New version: $(git rev-parse HEAD)"
+  echo "Database migration: SUCCESS"
+  echo "Backup: ${BACKUP:-none (first install)}"
+  echo "Application health: PASS"
+  echo "Deployment: SUCCESS"
+  [[ -f "$BEFORE_COUNTS" ]] && echo "Before: $(cat "$BEFORE_COUNTS")"
+  [[ -f "$AFTER_COUNTS" ]] && echo "After: $(cat "$AFTER_COUNTS")"
+} | tee -a "$DEPLOY_REPORT"
 
 echo "[ispsolutions] published $SHORT"
 if [[ "$FROM_CI" == "1" ]]; then

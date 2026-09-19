@@ -11,6 +11,28 @@ import { completeOperatorReset, completePortalPasswordReset, requestOperatorRese
 import { changePortalPassword, issuePortalOtp, portalPasswordLogin, setPortalPassword } from "./portal.ts";
 import { openTestDb } from "./test-db.ts";
 
+test("Google-only accounts can set a password through the same reset page", async () => {
+  const { sql, close } = await openTestDb();
+  try {
+    const userId = "usr_google_only";
+    await sql`insert into "user" (id, name, email, "emailVerified", "createdAt", "updatedAt")
+      values (${userId}, ${"Amina"}, ${"amina@gmail.com"}, true, now(), now())`;
+    await sql`insert into account (id, "accountId", "providerId", "userId", "createdAt", "updatedAt")
+      values (${"acc_google_only"}, ${"google-sub-1"}, ${"grok-google"}, ${userId}, now(), now())`;
+    await provisionTenant(sql, userId, { ispName: "Imani Google", email: "amina@gmail.com" });
+    assert.equal(await passwordVerifies(sql, "amina@gmail.com", "AnyPass12"), false);
+
+    const asked = await requestOperatorReset(sql, "Amina@Gmail.com", "https://ispsolutions.co.ke");
+    assert.ok(asked.hint?.includes("token="), "reset link is issued even without a password yet");
+    const token = asked.hint!.split("token=")[1] ?? "";
+    await completeOperatorReset(sql, token, "NewGoogle1");
+    assert.equal(await passwordVerifies(sql, "amina@gmail.com", "NewGoogle1"), true);
+    await assert.rejects(() => completeOperatorReset(sql, token, "OtherPass1"), /invalid or has expired/i);
+  } finally {
+    await close();
+  }
+});
+
 test("unknown email does not leak a reset link", async () => {
   const { sql, close } = await openTestDb();
   try {

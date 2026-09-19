@@ -81,23 +81,32 @@ export async function seedOpsForTenant(sql: Sql, tenantId: string) {
       values (${nid("prv")}, ${tenantId}, ${p.kind}, ${p.label}, true, true)`;
   }
 
-  const routers = await sql<{ id: string; name: string; enroll_token: string }>`
-    select id, name, enroll_token from routers where tenant_id = ${tenantId}`;
+  const routers = await sql<{
+    id: string;
+    name: string;
+    enroll_token: string;
+    wg_public: string | null;
+    wg_address: string | null;
+  }>`
+    select id, name, enroll_token, wg_public, wg_address from routers where tenant_id = ${tenantId}`;
   await ensureTenantHub(sql, tenantId);
   let i = 0;
   for (const r of routers) {
     i += 1;
-    if (!r.enroll_token) {
-      const enroll = enrollFields(r.name);
-      const address = wgAddressForIndex(i);
-      await sql`update routers set enroll_token = ${enroll.token}, wg_public = ${enroll.wg_public}, wg_private_ref = ${enroll.wg_private_sealed}, wg_address = ${address}, agent_version = '0.2.0'
-        where id = ${r.id}`;
-      await syncRouterWgPeer(sql, tenantId, {
-        id: r.id,
-        wg_public: enroll.wg_public,
-        wg_private_ref: enroll.wg_private_sealed,
-        wg_address: address,
-      });
+    if (r.enroll_token) continue;
+    const enroll = enrollFields(r.name);
+    if (r.wg_public) {
+      await sql`update routers set enroll_token = ${enroll.token} where id = ${r.id} and tenant_id = ${tenantId}`;
+      continue;
     }
+    const address = r.wg_address || wgAddressForIndex(i);
+    await sql`update routers set enroll_token = ${enroll.token}, wg_public = ${enroll.wg_public}, wg_private_ref = ${enroll.wg_private_sealed}, wg_address = ${address}, agent_version = '0.2.0'
+      where id = ${r.id} and tenant_id = ${tenantId} and coalesce(wg_public, '') = ''`;
+    await syncRouterWgPeer(sql, tenantId, {
+      id: r.id,
+      wg_public: enroll.wg_public,
+      wg_private_ref: enroll.wg_private_sealed,
+      wg_address: address,
+    });
   }
 }

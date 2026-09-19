@@ -113,6 +113,7 @@ export async function emptySeededTenantsCreatedOn(
   const [ten] = await sql<{ demo_seeded: boolean; created_at: string }>`
     select demo_seeded, created_at::text as created_at from tenants where id = ${tenantId}`;
   if (!ten?.demo_seeded) return { emptied: false };
+  if (process.env.NODE_ENV === "production") return { emptied: false };
   if (nairobiDate(ten.created_at) !== day) return { emptied: false };
   await emptyTenantBusinessData(sql, tenantId);
   await sql`update tenants set demo_seeded = false where id = ${tenantId}`;

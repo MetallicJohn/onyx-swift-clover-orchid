@@ -41,7 +41,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 echo "[ispsolutions] installing Docker, git, and WireGuard"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y ca-certificates curl git ufw wireguard rsync
+apt-get install -y ca-certificates curl git ufw wireguard rsync python3
 if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
 fi
@@ -161,6 +161,9 @@ if command -v ufw >/dev/null 2>&1; then
 fi
 
 echo "[ispsolutions] building and starting containers (first build takes several minutes)"
+if docker volume inspect ispsolutions_pgdata >/dev/null 2>&1 || docker volume inspect gridline_pgdata >/dev/null 2>&1; then
+  echo "[ispsolutions] existing Postgres volume detected — install will not recreate it or seed demo data"
+fi
 INSTALL_DIR="$INSTALL_DIR" bash "$INSTALL_DIR/deploy/vps/update.sh" --force
 
 echo

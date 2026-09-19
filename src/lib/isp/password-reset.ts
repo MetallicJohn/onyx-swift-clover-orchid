@@ -34,9 +34,6 @@ export async function requestOperatorReset(
 
   const user = await findAuthUserByEmail(sql, trimmed);
   if (!user) return generic;
-  const [cred] = await sql<{ id: string }>`
-    select id from account where "userId" = ${user.id} and "providerId" = 'credential'`;
-  if (!cred) return generic;
 
   const recent = await sql<{ n: number }>`
     select count(*)::int as n from password_resets

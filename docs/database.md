@@ -18,6 +18,6 @@ Authoritative migrations:
 | 0046_ispsolutions_role.sql | Rename RLS role and router API default to `ispsolutions` |
 | 0047_traffic_monitoring.sql | Minute/hourly/daily telemetry, router and interface metrics |
 
-Rollback: restore DB backup from before the migration; 0006 is additive (`IF NOT EXISTS`). Runtime `CREATE TABLE` during requests is removed.
+Rollback: restore a **verified** custom dump from before the migration (`deploy/vps/restore.sh --i-understand-this-overwrites-live-data`). Do not auto-restore on a failed deploy — roll the application SHA back and keep the live data. 0006 is additive (`IF NOT EXISTS`). Runtime `CREATE TABLE` during requests is removed.
 
-Connection pooling, TLS, and moving Postgres to another VPS: [distributed.md](distributed.md). Use a non-superuser `DATABASE_URL`. Migrations: `node scripts/migrate.mjs` (web entrypoint; workers set `SKIP_MIGRATE=1`). Backup/restore: `deploy/vps/backup.sh` / `restore.sh`. No automatic failover.
+Connection pooling, TLS, and moving Postgres to another VPS: [distributed.md](distributed.md). Use a non-superuser `DATABASE_URL`. Migrations: `node scripts/migrate.mjs` (web entrypoint; workers set `SKIP_MIGRATE=1`). Pending SQL is scanned for `DROP TABLE` / `TRUNCATE` / `DELETE FROM` / `DROP COLUMN` and blocked in production. Backup/restore: `deploy/vps/backup.sh` / `restore.sh`. No automatic failover. Full procedure: [disaster-recovery.md](disaster-recovery.md).
