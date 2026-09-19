@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { seedOpsForTenant } from "./access.ts";
 import {
   addStaffMember,
+  canonicalizeOperatorEmail,
   createCredentialAccount,
   createIspWithOwner,
   ensureFirstPlatformAdmin,
@@ -32,6 +33,24 @@ test("credential accounts can be created and verified for sign-in", async () => 
         }),
       /already exists/,
     );
+  } finally {
+    await close();
+  }
+});
+
+test("mixed-case stored emails canonicalize so Better Auth can find them", async () => {
+  const { sql, close } = await openTestDb();
+  try {
+    const user = await createCredentialAccount(sql, {
+      email: "owner@imani.ke",
+      password: "ChangeMe1!",
+      name: "Amina",
+    });
+    await sql`update "user" set email = ${"Owner@Imani.ke"} where id = ${user.id}`;
+    const out = await canonicalizeOperatorEmail(sql, "  OWNER@imani.ke ");
+    assert.equal(out.email, "owner@imani.ke");
+    const [row] = await sql<{ email: string }>`select email from "user" where id = ${user.id}`;
+    assert.equal(row?.email, "owner@imani.ke");
   } finally {
     await close();
   }

@@ -36,7 +36,7 @@ import {
 import { ensureServiceAccountNumber } from "./account-numbers";
 import { allocateCustomerId } from "./customer-ids";
 import { applyRls } from "./rls";
-import { loadAuthUser, provisionTenant, setCredentialPassword, changeOwnPassword, isPlatformAdmin } from "./accounts";
+import { loadAuthUser, provisionTenant, setCredentialPassword, changeOwnPassword, isPlatformAdmin, canonicalizeOperatorEmail } from "./accounts";
 import { resolveActiveTenant, setActiveTenant } from "./tenant-context";
 import { openTicket } from "./tickets";
 import type {
@@ -194,6 +194,13 @@ export const bootstrapWorkspace = createServerFn({ method: "POST" })
     if (!phone) throw new Error("Enter a mobile number. One free trial is allowed per email or phone.");
     const { workspace } = await requireTenant(context.userId, null, null, data.isp_name, phone);
     return workspace;
+  });
+
+export const prepareOperatorSignIn = createServerFn({ method: "POST" })
+  .validator((d: { email: string }) => d)
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    return canonicalizeOperatorEmail(sql, data.email);
   });
 
 export const requestPasswordReset = createServerFn({ method: "POST" })

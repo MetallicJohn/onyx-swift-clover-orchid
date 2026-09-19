@@ -28,6 +28,24 @@ export async function findAuthUserByEmail(sql: Sql, email: string): Promise<Auth
   return row ?? null;
 }
 
+export function normalizeLoginEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+export async function canonicalizeOperatorEmail(sql: Sql, email: string) {
+  const trimmed = normalizeLoginEmail(email);
+  if (!trimmed.includes("@")) return { email: trimmed };
+  const user = await findAuthUserByEmail(sql, trimmed);
+  if (!user) return { email: trimmed };
+  if (user.email === trimmed) return { email: trimmed };
+  const [clash] = await sql<{ id: string }>`
+    select id from "user" where email = ${trimmed} and id <> ${user.id} limit 1`;
+  if (!clash) {
+    await sql`update "user" set email = ${trimmed}, "updatedAt" = now() where id = ${user.id}`;
+  }
+  return { email: trimmed };
+}
+
 /** Create (or attach) a Better Auth email/password credential. Does not start a session. */
 export async function createCredentialAccount(
   sql: Sql,

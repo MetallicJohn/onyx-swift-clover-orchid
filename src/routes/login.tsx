@@ -9,8 +9,8 @@ import { Field, Input } from "@/components/ui/input";
 import { usePublicTheme } from "@/components/theme-provider";
 import { APP_NAME } from "@/lib/brand";
 import { hasOperatorBearer, loginPageAction, rememberAuthSession } from "@/lib/isp/auth-session";
-import { bootstrapWorkspace } from "@/lib/isp/server";
-import { loginDestination, loginModeFromSearch } from "@/lib/isp/login-next";
+import { bootstrapWorkspace, prepareOperatorSignIn } from "@/lib/isp/server";
+import { loginDestination, loginModeFromSearch, normalizeLoginEmail, signInErrorMessage } from "@/lib/isp/login-next";
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>): { next?: string; mode?: string; isp?: string } => ({
@@ -22,14 +22,6 @@ export const Route = createFileRoute("/login")({
 });
 
 const subscribeToNothing = () => () => {};
-
-function signInErrorMessage(err: unknown) {
-  const raw = err instanceof Error ? err.message : "Sign-in failed";
-  if (/invalid origin/i.test(raw)) {
-    return `This address is not yet allowed for sign-in. Open ${APP_NAME} at your public HTTPS URL (the same one under Settings → Callback URLs).`;
-  }
-  return raw;
-}
 
 function Login() {
   const { user, isPending } = useCurrentUserState();
@@ -70,6 +62,7 @@ function Login() {
     setBusy(true);
     setError(null);
     try {
+      const loginEmail = normalizeLoginEmail(email);
       const fetchOptions = {
         onSuccess: (ctx: { data?: { token?: string | null }; response: Response }) => {
           rememberAuthSession({ data: ctx.data }, ctx.response.headers);
@@ -77,9 +70,9 @@ function Login() {
       };
       if (mode === "up") {
         const result = await authClient.signUp.email({
-          email,
+          email: loginEmail,
           password,
-          name: name.trim() || email.split("@")[0] || "Operator",
+          name: name.trim() || loginEmail.split("@")[0] || "Operator",
           fetchOptions,
         });
         if (result.error) throw new Error(result.error.message || "Could not create the account");
@@ -90,13 +83,18 @@ function Login() {
           throw err instanceof Error ? err : new Error("Could not start the workspace");
         }
       } else {
-        const result = await authClient.signIn.email({ email, password, fetchOptions });
+        try {
+          await prepareOperatorSignIn({ data: { email: loginEmail } });
+        } catch {
+          /* still attempt sign-in */
+        }
+        const result = await authClient.signIn.email({ email: loginEmail, password, fetchOptions });
         if (result.error) throw new Error(result.error.message || "Invalid email or password");
         rememberAuthSession(result);
       }
       window.location.assign(dest);
     } catch (err) {
-      setError(signInErrorMessage(err));
+      setError(signInErrorMessage(err, APP_NAME));
     } finally {
       setBusy(false);
     }
@@ -186,7 +184,10 @@ function Login() {
                   placeholder="you@isp.co.ke"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  autoComplete="email"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   name="email"
                 />
               </Field>

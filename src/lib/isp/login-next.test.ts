@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isAllowedLoginNext, loginDestination, loginModeFromSearch } from "./login-next.ts";
+import { isAllowedLoginNext, loginDestination, loginModeFromSearch, normalizeLoginEmail, signInErrorMessage } from "./login-next.ts";
 
 test("signup always lands in the ISP console", () => {
   assert.equal(loginModeFromSearch("?mode=up"), "up");
@@ -18,4 +18,14 @@ test("superadmin login may continue to /platform only", () => {
   assert.equal(isAllowedLoginNext("/superadmin"), true);
   assert.equal(isAllowedLoginNext("/app"), true);
   assert.equal(isAllowedLoginNext("/login"), false);
+});
+
+test("login emails are trimmed and lowercased", () => {
+  assert.equal(normalizeLoginEmail("  Jane@ISP.co.ke "), "jane@isp.co.ke");
+});
+
+test("sign-in errors tell operators to use the public HTTPS URL", () => {
+  assert.match(signInErrorMessage(new Error("Invalid origin")), /HTTPS/);
+  assert.match(signInErrorMessage(new Error("Invalid email or password")), /Forgot password/);
+  assert.match(signInErrorMessage(new Error("Too many requests")), /Wait a minute/);
 });
