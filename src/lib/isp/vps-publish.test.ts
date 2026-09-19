@@ -65,12 +65,15 @@ test("publish pack names docker compose, health, and WireGuard", () => {
   assert.match(compose, /postgres:16-alpine/);
   assert.match(compose, /drumsergio\/genieacs/);
   assert.match(compose, /cwmp-edge/);
-  assert.match(compose, /7551-7999:7551-7999/);
+  assert.match(compose, /network_mode: host/);
+  assert.match(compose, /127\.0\.0\.1:7547:7547/);
+  assert.match(compose, /127\.0\.0\.1:3000:3000/);
+  assert.doesNotMatch(compose, /7551-7999:7551-7999/);
   assert.match(compose, /GENIEACS_EXT_DIR/);
   assert.match(compose, /genieacs-init/);
   assert.match(compose, /ACS_TLS_CERT/);
   assert.equal(compose.includes("7557:7557"), false);
-  assert.equal(compose.includes("7547:7547"), false);
+  assert.doesNotMatch(compose, /["']7547:7547["']/);
   const edge = readFileSync(new URL("../../../deploy/vps/cwmp-edge.mjs", import.meta.url), "utf8");
   assert.match(edge, /tls\.createServer/);
   const ext = readFileSync(new URL("../../../deploy/vps/genieacs/ext/ispsolutions.js", import.meta.url), "utf8");

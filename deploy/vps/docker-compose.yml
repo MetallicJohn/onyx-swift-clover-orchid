@@ -71,6 +71,9 @@ services:
       timeout: 5s
       retries: 12
       start_period: 40s
+    ports:
+      # Loopback only — cwmp-edge uses host networking and cannot resolve `web`.
+      - "127.0.0.1:3000:3000"
 
   worker:
     build:
@@ -144,6 +147,9 @@ services:
     volumes:
       - ./genieacs/ext:/opt/genieacs/ext:ro
       - ./genieacs/ext:/opt/genieacs/config/ext:ro
+    ports:
+      # Loopback only — cwmp-edge (host network) forwards here. NBI stays unpublished.
+      - "127.0.0.1:7547:7547"
     expose:
       - "7547"
       - "7557"
@@ -163,11 +169,14 @@ services:
   cwmp-edge:
     image: node:22-alpine
     restart: unless-stopped
+    # Bind 7551–7999 on the VPS. Mapping that range through docker-proxy
+    # starts ~450 userland proxies and fails ("failed to start docker-proxy").
+    network_mode: host
     working_dir: /edge
     command: ["node", "cwmp-edge.mjs"]
     environment:
-      GENIEACS_CWMP_URL: ${GENIEACS_CWMP_URL:-http://genieacs:7547}
-      ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL:-http://web:3000}
+      GENIEACS_CWMP_URL: ${ACS_EDGE_CWMP_URL:-http://127.0.0.1:7547}
+      ISPSOLUTIONS_INTERNAL_URL: ${ACS_EDGE_INTERNAL_URL:-http://127.0.0.1:3000}
       ACS_EDGE_TOKEN: ${ACS_EDGE_TOKEN}
       ACS_TLS_CERT: ${ACS_TLS_CERT:-}
       ACS_TLS_KEY: ${ACS_TLS_KEY:-}
@@ -175,8 +184,6 @@ services:
       ACS_TLS_KEY_FILE: ${ACS_TLS_KEY_FILE:-}
     volumes:
       - ./cwmp-edge.mjs:/edge/cwmp-edge.mjs:ro
-    ports:
-      - "7551-7999:7551-7999"
     depends_on:
       - genieacs
       - web

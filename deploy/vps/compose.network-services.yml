@@ -39,6 +39,7 @@ services:
       - ./genieacs/ext:/opt/genieacs/config/ext:ro
     ports:
       - "${GENIEACS_NBI_BIND:-127.0.0.1}:7557:7557"
+      - "127.0.0.1:7547:7547"
     expose:
       - "7547"
       - "7567"
@@ -57,11 +58,13 @@ services:
   cwmp-edge:
     image: node:22-alpine
     restart: unless-stopped
+    # Host bind of 7551–7999 — docker-proxy cannot map this range.
+    network_mode: host
     working_dir: /edge
     command: ["node", "cwmp-edge.mjs"]
     environment:
-      GENIEACS_CWMP_URL: ${GENIEACS_CWMP_URL:-http://genieacs:7547}
-      ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL}
+      GENIEACS_CWMP_URL: ${ACS_EDGE_CWMP_URL:-http://127.0.0.1:7547}
+      ISPSOLUTIONS_INTERNAL_URL: ${ACS_EDGE_INTERNAL_URL:-${ISPSOLUTIONS_INTERNAL_URL}}
       ACS_EDGE_TOKEN: ${ACS_EDGE_TOKEN}
       ACS_TLS_CERT: ${ACS_TLS_CERT:-}
       ACS_TLS_KEY: ${ACS_TLS_KEY:-}
@@ -69,8 +72,6 @@ services:
       ACS_TLS_KEY_FILE: ${ACS_TLS_KEY_FILE:-}
     volumes:
       - ./cwmp-edge.mjs:/edge/cwmp-edge.mjs:ro
-    ports:
-      - "7551-7999:7551-7999"
     depends_on:
       - genieacs
 
