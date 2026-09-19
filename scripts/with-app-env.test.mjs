@@ -7,15 +7,19 @@ import { test } from "node:test";
 import { promisify } from "node:util";
 import {
   APP_ENV_REL_PATH,
+  localBinDir,
   mergeAppEnv,
   parseAppEnv,
+  pathListSeparator,
   projectRoot,
   readAppEnv,
+  withLocalBinPath,
 } from "./with-app-env.mjs";
 
 const execFileAsync = promisify(execFile);
 const WRAPPER = join(projectRoot(), "scripts/with-app-env.mjs");
 const PRINT_FLAG = "process.stdout.write(String(process.env.VITE_AUTH_ENABLED));";
+const PRINT_PATH = "process.stdout.write(String(process.env.PATH || ''));";
 
 function makeWorkspace(appEnvJson) {
   const root = mkdtempSync(join(tmpdir(), "app-env-"));
@@ -73,6 +77,31 @@ test("vite loadEnv resolves the wrapped value", () => {
   assert.equal(merged.VITE_AUTH_ENABLED, "false");
 });
 
+test("PATH list separator is platform-specific", () => {
+  assert.equal(pathListSeparator("linux"), ":");
+  assert.equal(pathListSeparator("darwin"), ":");
+  assert.equal(pathListSeparator("win32"), ";");
+});
+
+test("local bin dir is <root>/node_modules/.bin and leads PATH", () => {
+  const root = "/tmp/isp-app";
+  const bin = localBinDir(root);
+  assert.equal(bin, join(root, "node_modules", ".bin"));
+  const unix = withLocalBinPath({ PATH: "/usr/bin:/bin" }, root, "linux");
+  assert.equal(unix.PATH, `${bin}:/usr/bin:/bin`);
+  const win = withLocalBinPath({ PATH: "C:\\Windows" }, root, "win32");
+  assert.equal(win.PATH, `${bin};C:\\Windows`);
+  const empty = withLocalBinPath({}, root, "linux");
+  assert.equal(empty.PATH, `${bin}:`);
+});
+
+test("withLocalBinPath does not drop VITE_ keys or explicit PATH from process env", () => {
+  const merged = mergeAppEnv({ VITE_AUTH_ENABLED: "false" }, { VITE_AUTH_ENABLED: "true", PATH: "/usr/bin" });
+  const next = withLocalBinPath(merged, "/app", "linux");
+  assert.equal(next.VITE_AUTH_ENABLED, "true");
+  assert.equal(next.PATH, `${localBinDir("/app")}:/usr/bin`);
+});
+
 test("the wrapped command runs with the app env applied", async () => {
   const { stdout } = await execFileAsync(process.execPath, [
     WRAPPER,
@@ -90,6 +119,25 @@ test("the wrapped command sees an explicit override, not the file value", async 
     { env: { ...process.env, VITE_AUTH_ENABLED: "true" } },
   );
   assert.equal(stdout, "true");
+});
+
+test("the wrapped command sees node_modules/.bin first on PATH", async () => {
+  const { stdout } = await execFileAsync(process.execPath, [WRAPPER, process.execPath, "-e", PRINT_PATH]);
+  const bin = localBinDir(projectRoot());
+  const sep = pathListSeparator();
+  assert.equal(stdout.split(sep)[0], bin);
+  assert.ok(stdout.includes(bin));
+});
+
+test("an inherited PATH is kept after the local bin dir", async () => {
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    [WRAPPER, process.execPath, "-e", PRINT_PATH],
+    { env: { ...process.env, PATH: "/custom/bin" } },
+  );
+  const bin = localBinDir(projectRoot());
+  const sep = pathListSeparator();
+  assert.equal(stdout, `${bin}${sep}/custom/bin`);
 });
 
 test("the wrapper propagates the command's exit code", async () => {

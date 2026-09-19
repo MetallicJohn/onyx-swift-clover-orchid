@@ -65,6 +65,26 @@ export function mergeAppEnv(appEnv, processEnv) {
   return { ...appEnv, ...processEnv };
 }
 
+/** `:` on Unix, `;` on Windows — PATH is not always `path.delimiter` in tests. */
+export function pathListSeparator(platform = process.platform) {
+  return platform === "win32" ? ";" : ":";
+}
+
+/** Local package binaries for `root` (`<root>/node_modules/.bin`). */
+export function localBinDir(root) {
+  return join(root, "node_modules", ".bin");
+}
+
+/**
+ * Put `<root>/node_modules/.bin` first on PATH so `spawn("vite")` finds the
+ * locally installed CLI. npm scripts do this automatically; `spawn` does not.
+ */
+export function withLocalBinPath(env, root, platform = process.platform) {
+  const binPath = localBinDir(root);
+  const sep = pathListSeparator(platform);
+  return { ...env, PATH: `${binPath}${sep}${env.PATH || ""}` };
+}
+
 /**
  * Translate a child's `exit` `(code, signal)` into this process's exit status.
  *
@@ -110,7 +130,7 @@ function main(argv) {
     console.error("usage: node scripts/with-app-env.mjs <command> [args…]");
     process.exit(2);
   }
-  const env = mergeAppEnv(readAppEnv(projectRoot()), process.env);
+  const env = withLocalBinPath(mergeAppEnv(readAppEnv(projectRoot()), process.env), projectRoot());
   const child = spawn(command, args, { stdio: "inherit", env });
   // The dev server is long-running and is stopped by signalling this wrapper.
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
