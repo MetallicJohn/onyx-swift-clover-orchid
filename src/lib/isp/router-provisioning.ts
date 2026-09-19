@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
-import { APP_NAME, ROS_BOOTSTRAP_FILE } from "../brand.ts";
+import { APP_NAME, ROS_API_USER, ROS_BOOTSTRAP_FILE } from "../brand.ts";
 import { nid } from "../utils.ts";
-import { agentPullUrl, enqueueAgentCommand } from "./agent.ts";
+import { agentPullUrl, enqueueAgentCommand, generateRouterApiPassword } from "./agent.ts";
 import {
   MISSING_PUBLIC_DOMAIN,
   assertUsableHttpsOrigin,
@@ -13,7 +13,9 @@ import { productionDomainContext, resolveTenantPublicDomain } from "./domain-res
 import { parseV4Cidr } from "./ipam.ts";
 import { routerReachability, validateRosScript } from "./mikrotik-ops.ts";
 import { applyRls } from "./rls.ts";
+import { recordEnrollState } from "./router-enroll-state.ts";
 import { enrollRosScript, poolPushRosScript, rosQuote, type RosPool } from "./routeros.ts";
+import { open, seal } from "./secrets.ts";
 import { ensureTenantHub, syncRouterWgPeer, wgEnrollContext } from "./wireguard.ts";
 
 type Sql = {
@@ -61,6 +63,15 @@ export type RouterRecord = {
   provision_token_revoked_at: string | null;
   provisioned_at: string | null;
   config_version: number;
+  enroll_state?: string;
+  last_handshake_at?: string | null;
+  api_verified_at?: string | null;
+  agent_last_ok_at?: string | null;
+  api_user?: string;
+  serial_number?: string;
+  board_name?: string;
+  architecture?: string;
+  api_last_error?: string;
 };
 
 export type PublicRouter = {
@@ -317,13 +328,40 @@ export async function loadRouter(sql: Sql, tenantId: string, id: string) {
       provision_token_expires_at::text as provision_token_expires_at,
       provision_token_revoked_at::text as provision_token_revoked_at,
       provisioned_at::text as provisioned_at,
-      coalesce(config_version,0)::int as config_version
+      coalesce(config_version,0)::int as config_version,
+      coalesce(enroll_state,'PENDING') as enroll_state,
+      last_handshake_at::text as last_handshake_at,
+      api_verified_at::text as api_verified_at,
+      agent_last_ok_at::text as agent_last_ok_at,
+      coalesce(api_user,'') as api_user,
+      coalesce(serial_number,'') as serial_number,
+      coalesce(board_name,'') as board_name,
+      coalesce(architecture,'') as architecture,
+      coalesce(api_last_error,'') as api_last_error
     from routers where id = ${id} and tenant_id = ${tenantId}`;
   if (!row) throw new Error("Router not found");
   return row;
 }
 
 export { loadRouter as getRouter };
+
+export async function ensureRouterApiCredentials(sql: Sql, tenantId: string, routerId: string) {
+  const [row] = await sql<{ api_user: string; api_password: string }>`
+    select coalesce(api_user, '') as api_user, coalesce(api_password, '') as api_password
+    from routers where id = ${routerId} and tenant_id = ${tenantId}`;
+  if (!row) throw new Error("Router not found");
+  const user = row.api_user.trim() || ROS_API_USER;
+  const existing = open(row.api_password);
+  if (existing) return { user, password: existing };
+  const password = generateRouterApiPassword();
+  const sealed = seal(password);
+  await sql`update routers set api_user = ${user}, api_password = ${sealed}, api_port = 8728
+    where id = ${routerId} and tenant_id = ${tenantId}`;
+  await sql`insert into router_credentials (id, tenant_id, router_id, kind, secret_sealed)
+    values (${nid("rcr")}, ${tenantId}, ${routerId}, 'api_password', ${sealed})
+    on conflict (router_id, kind) do update set secret_sealed = excluded.secret_sealed, rotated_at = now()`;
+  return { user, password };
+}
 
 export async function listTenantRouters(sql: Sql, tenantId: string) {
   const rows = await sql<RouterRecord>`
@@ -434,6 +472,7 @@ export async function generateRouterConfig(
 ) {
   const settings = await ensureTenantProvisioning(sql, tenantId);
   const base = await publicBaseUrl(sql, tenantId);
+  const api = await ensureRouterApiCredentials(sql, tenantId, router.id);
   const ctx = await wgEnrollContext(sql, tenantId, {
     id: router.id,
     name: router.name,
@@ -444,7 +483,7 @@ export async function generateRouterConfig(
     wg_address: router.wg_address || "10.200.0.2/32",
     pullUrl: agentPullUrl(httpsPublicBase(base, settings.require_https), router.enroll_token),
   });
-  const enroll = enrollRosScript(ctx);
+  const enroll = enrollRosScript({ ...ctx, apiUser: api.user, apiPassword: api.password });
   const pools = await assignedPools(sql, tenantId, router.id);
   const poolBlock = settings.allow_pool_push ? poolPushRosScript(pools) : "";
   const script = `# ${APP_NAME} ${kind} configuration — RouterOS v7
@@ -492,6 +531,12 @@ export async function issueProvisioningToken(
     provision_token_revoked_at = null,
     provisioning_status = 'awaiting_bootstrap'
     where id = ${router.id} and tenant_id = ${opts.tenantId}`;
+  await recordEnrollState(sql, {
+    tenantId: opts.tenantId,
+    routerId: router.id,
+    state: "BOOTSTRAP_GENERATED",
+    actorUserId: opts.actorUserId,
+  });
   await recordProvisionEvent(sql, {
     tenantId: opts.tenantId,
     routerId: router.id,
@@ -521,7 +566,7 @@ export async function issueProvisioningToken(
     public_url: domain.origin,
     fallback_reason: domain.fallback_reason,
     warning: domain.warning,
-    certificate_validation: true,
+    certificate_validation: false,
     router: toPublicRouter(await loadRouter(sql, opts.tenantId, router.id)),
   };
 }
@@ -594,6 +639,11 @@ export async function serveBootstrapRsc(sql: Sql, token: string) {
     provisioning_status = 'bootstrapping',
     provisioned_at = coalesce(provisioned_at, now())
     where id = ${router.id}`;
+  await recordEnrollState(sql, {
+    tenantId: router.tenant_id,
+    routerId: router.id,
+    state: "BOOTSTRAP_EXECUTED",
+  });
   await recordProvisionEvent(sql, {
     tenantId: router.tenant_id,
     routerId: router.id,
@@ -630,6 +680,15 @@ export async function routerStatus(sql: Sql, tenantId: string, id: string) {
     })),
     provisioning_enabled: settings.enabled,
     allow_pool_push: settings.allow_pool_push,
+    enroll_state: row.enroll_state || "PENDING",
+    last_handshake_at: row.last_handshake_at || null,
+    api_verified_at: row.api_verified_at || null,
+    agent_last_ok_at: row.agent_last_ok_at || null,
+    api_user: row.api_user || "",
+    serial_number: row.serial_number || "",
+    board_name: row.board_name || "",
+    architecture: row.architecture || "",
+    api_last_error: row.api_last_error || "",
   };
 }
 
@@ -818,5 +877,5 @@ export async function updateRouterFields(
 
 export function configContainsSecrets(payload: unknown) {
   const text = JSON.stringify(payload);
-  return /wg_private|private_key|provision_token_hash|enc:v1:/i.test(text);
+  return /wg_private|private_key|provision_token_hash|api_password|enc:v1:/i.test(text);
 }

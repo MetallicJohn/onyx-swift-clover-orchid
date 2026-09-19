@@ -367,12 +367,23 @@ export async function heartbeatRouter(
   const router = await routerByToken(sql, token);
   if (!router) throw new Error("Unknown enroll token");
   await sql`update routers set
-    wg_status = 'connected',
     last_seen = now(),
+    agent_last_ok_at = now(),
+    agent_fail_count = 0,
     cpu_pct = ${stats?.cpu ?? 8},
     uptime_hours = ${stats?.uptime_hours ?? 1},
     agent_version = ${stats?.version || "0.2.0"}
     where id = ${router.id}`;
+  try {
+    const { recordEnrollState } = await import("./router-enroll-state.ts");
+    await recordEnrollState(sql, {
+      tenantId: router.tenant_id,
+      routerId: router.id,
+      state: "AGENT_CONNECTED",
+    });
+  } catch {
+    /* enroll_state may be missing on old snapshots */
+  }
   return { ok: true, router_id: router.id };
 }
 

@@ -3,6 +3,7 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import { ROS_API_USER } from "@/lib/brand";
 import { compileMikrotik, compileRow, curlForOps, executeRestOps, queueCompiledCommand, approveCommand } from "./mikrotik";
 import { assertPermission } from "./rbac";
+import { open, seal } from "./secrets";
 import { requireWorkspace as requireWs } from "./workspace";
 
 function hint(secret: string) {
@@ -40,7 +41,7 @@ export const getRouterApi = createServerFn({ method: "GET" })
       api_host: r.api_host,
       wg_address: r.wg_address,
       api_password_set: Boolean(r.api_password),
-      api_password_hint: hint(r.api_password),
+      api_password_hint: hint(open(r.api_password) || r.api_password),
       json_pull: base ? `${base}/api/agent/pull?token=${encodeURIComponent(r.enroll_token)}` : "",
       script_pull: base ? `${base}/api/agent/script?token=${encodeURIComponent(r.enroll_token)}` : "",
     };
@@ -56,7 +57,7 @@ export const saveRouterApi = createServerFn({ method: "POST" })
       select id, api_password from routers where id = ${data.router_id} and tenant_id = ${tenantId}`;
     if (!r) throw new Error("Router not found");
     const password =
-      !data.api_password || data.api_password.startsWith("••••") ? r.api_password : data.api_password;
+      !data.api_password || data.api_password.startsWith("••••") ? r.api_password : seal(data.api_password);
     await sql`update routers set
       api_user = ${data.api_user.trim() || ROS_API_USER},
       api_password = ${password},
@@ -132,7 +133,7 @@ export const runRouterApi = createServerFn({ method: "POST" })
       return { simulated: true, rest: compiled.rest, note: "No API host — command compiled and marked simulated." };
     }
 
-    const results = await executeRestOps(host, r.api_user || ROS_API_USER, r.api_password, r.api_port || 443, compiled.rest);
+    const results = await executeRestOps(host, r.api_user || ROS_API_USER, open(r.api_password), r.api_port || 443, compiled.rest);
     if (data.command_id) {
       await sql`update agent_commands set status = 'acked', acked_at = now(), result = ${JSON.stringify(results).slice(0, 2000)}
         where id = ${data.command_id}`;

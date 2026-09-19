@@ -131,7 +131,13 @@ export type ServiceConfig = {
   trafficCollectorKeySet: boolean;
   trafficIntervalSec: number;
   mikrotikTimeoutMs: number;
+  routerosApiPort: number;
+  routerosApiTls: boolean;
   wireguardEndpoint: string;
+  wireguardPublicHost: string;
+  wireguardPublicPort: number;
+  wireguardHubAddress: string;
+  wireguardNetwork: string;
   wireguardApiUrl: string;
   workerConcurrency: number;
   jobQueueName: string;
@@ -210,7 +216,13 @@ export function loadServiceConfig(env: NodeJS.ProcessEnv = process.env): Service
     trafficCollectorKeySet: Boolean((env.TRAFFIC_COLLECTOR_API_KEY || "").trim()),
     trafficIntervalSec: parseIntEnv(env.TRAFFIC_COLLECTION_INTERVAL || "", 30, 5, 3600),
     mikrotikTimeoutMs: parseIntEnv(env.MIKROTIK_API_TIMEOUT || "", 4_000, 500, 30_000),
-    wireguardEndpoint: (env.WIREGUARD_ENDPOINT || "").trim(),
+    routerosApiPort: parseIntEnv(env.ROUTEROS_API_PORT || "", 8728, 1, 65535),
+    routerosApiTls: parseBoolEnv(env.ROUTEROS_API_TLS || "", false),
+    wireguardEndpoint: (env.WIREGUARD_ENDPOINT || env.WIREGUARD_PUBLIC_HOST || "").trim(),
+    wireguardPublicHost: (env.WIREGUARD_PUBLIC_HOST || "").trim(),
+    wireguardPublicPort: parseIntEnv(env.WIREGUARD_PUBLIC_PORT || "", 51820, 1, 65535),
+    wireguardHubAddress: (env.WIREGUARD_HUB_ADDRESS || "").trim() || "10.200.0.1",
+    wireguardNetwork: (env.WIREGUARD_NETWORK || "").trim() || "10.200.0.0/24",
     wireguardApiUrl: parseHttpUrl(env.WIREGUARD_API_URL || "", "WIREGUARD_API_URL", { allowEmpty: true }),
     workerConcurrency: parseIntEnv(env.WORKER_CONCURRENCY || "", 2, 1, 32),
     jobQueueName: (env.JOB_QUEUE_NAME || "").trim(),

@@ -35,6 +35,8 @@ function enroll(extra: Partial<Parameters<typeof enrollRosScript>[0]> = {}) {
     endpointPort: 51820,
     serverAddress: "10.200.0.1",
     pullUrl: "https://ops.imani.ke/api/agent/script?token=agt_testtoken",
+    apiUser: "ispsolutions",
+    apiPassword: "ApiPassTest123",
     ...extra,
   });
 }
@@ -47,12 +49,24 @@ test("router enrollment script is RouterOS v7 and names ISP Solutions", () => {
   assert.match(script, /interface wireguard add name=wg-ispsolutions/);
   assert.match(script, /system script add name="ispsolutions-pull"/);
   assert.match(script, /system scheduler add name="ispsolutions-agent"/);
-  assert.match(script, /\/ip service set api disabled=no address=10\.200\.0\.0\/24/);
-  assert.match(script, /\/ip service set winbox address=10\.200\.0\.0\/24/);
+  assert.match(script, /\/ip service set api disabled=no port=8728 address=10\.200\.0\.0\/24/);
+  assert.match(script, /\/user add name=\$apiUser password=\$apiPass group=\$apiGroup/);
+  assert.match(script, /:local allowed "10\.200\.0\.1\/32"/);
+  assert.match(script, /ispSolLock/);
+  assert.match(script, /check-certificate=no/);
+  assert.doesNotMatch(script, /enrolled token=/);
+  assert.doesNotMatch(script, /www-ssl/);
+  assert.doesNotMatch(script, /\/ip service set winbox/);
+  assert.doesNotMatch(script, /in-interface=wg-ispsolutions action=accept;/);
   assert.match(script, /persistent-keepalive=00:00:25/);
   assert.match(script, /check-certificate=no/);
   assert.doesNotMatch(script, /check-certificate=yes/);
   assert.equal(duplicateRisks(script).length, 0);
+});
+
+test("enrollment skips the API user when no password is stored", () => {
+  const script = enroll({ apiPassword: "" });
+  assert.doesNotMatch(script, /\/user add name=/);
 });
 
 test("WireGuard overlay is live only when the hub endpoint is set", () => {

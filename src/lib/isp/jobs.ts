@@ -245,6 +245,50 @@ export async function executeJob(sql: Sql, job: JobRow) {
     return retainTrafficSamples(sql);
   }
 
+  if (job.kind === "mikrotik.health" || job.kind === "mikrotik.api_verify") {
+    await applyRls(sql, { bypass: true });
+    const { persistHandshake, snapshotHealth, verifyRouterApi } = await import("./router-health.ts");
+    const { readHostWgDump } = await import("./wg-host.ts");
+    const dump = await readHostWgDump();
+    const rows = await sql.query<{
+      id: string;
+      tenant_id: string;
+      enroll_state: string;
+      wg_public: string;
+      wg_address: string;
+      api_user: string;
+      api_password: string;
+      api_port: number;
+      last_seen: string | null;
+      last_handshake_at: string | null;
+      api_verified_at: string | null;
+      agent_last_ok_at: string | null;
+      wg_rx_bytes: number;
+      wg_tx_bytes: number;
+    }>(
+      `select id, tenant_id, coalesce(enroll_state,'PENDING') as enroll_state, coalesce(wg_public,'') as wg_public,
+              coalesce(wg_address,'') as wg_address, coalesce(api_user,'') as api_user, coalesce(api_password,'') as api_password,
+              coalesce(api_port,8728) as api_port, last_seen::text as last_seen, last_handshake_at::text as last_handshake_at,
+              api_verified_at::text as api_verified_at, agent_last_ok_at::text as agent_last_ok_at,
+              coalesce(wg_rx_bytes,0)::bigint as wg_rx_bytes, coalesce(wg_tx_bytes,0)::bigint as wg_tx_bytes
+       from routers where archived_at is null and enroll_state <> 'REVOKED'
+       order by name limit 80`,
+    );
+    const out: Array<{ id: string; handshake?: boolean; api?: boolean }> = [];
+    for (const row of rows) {
+      if (tenantId && row.tenant_id !== tenantId) continue;
+      const hs = await persistHandshake(sql, row, dump);
+      if (job.kind === "mikrotik.api_verify" || hs.handshake) {
+        const api = await verifyRouterApi(sql, row);
+        await snapshotHealth(sql, { ...row, last_handshake_at: hs.lastHandshakeAt });
+        out.push({ id: row.id, handshake: hs.handshake, api: api.ok });
+      } else {
+        out.push({ id: row.id, handshake: hs.handshake });
+      }
+    }
+    return { routers: out.length, results: out };
+  }
+
   throw new Error(`Unknown job kind ${job.kind}`);
 }
 

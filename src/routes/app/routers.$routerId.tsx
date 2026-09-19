@@ -17,10 +17,13 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { formatDateTime } from "@/lib/isp/display";
 import { hasPermission } from "@/lib/isp/rbac";
 import type { RouterPoolRow } from "@/lib/isp/router-desk";
+import { getRouterApi, saveRouterApi } from "@/lib/isp/server-mikrotik";
+import { hubPeerShell } from "@/lib/isp/wireguard";
 import {
   archiveRouterFn,
   archiveRouterPoolFn,
   copyRouterScript,
+  copyRouterApiUser,
   createRouterPoolFn,
   getRouterDeskFn,
   issueRouterTokenFn,
@@ -102,6 +105,14 @@ function RouterRecordPage() {
   const [copied, setCopied] = useState(false);
   const [confirmSync, setConfirmSync] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [apiForm, setApiForm] = useState({
+    api_user: "ispsolutions-agent",
+    api_password: "",
+    api_port: 443,
+    api_host: "",
+    api_password_set: false,
+    api_password_hint: "",
+  });
 
   async function load() {
     const rec = await getRouterDeskFn({ data: { id: routerId } });
@@ -115,6 +126,21 @@ function RouterRecordPage() {
       management_ip: rec.router.management_ip || "",
       role: rec.router.role,
     });
+    if (hasPermission(rec.workspace.role, "routers.manage")) {
+      try {
+        const api = await getRouterApi({ data: { router_id: routerId } });
+        setApiForm({
+          api_user: api.api_user,
+          api_password: api.api_password_hint || "",
+          api_port: api.api_port,
+          api_host: api.api_host || api.wg_address.replace(/\/\d+$/, ""),
+          api_password_set: api.api_password_set,
+          api_password_hint: api.api_password_hint,
+        });
+      } catch {
+        /* API fields are optional until saved */
+      }
+    }
     setError(null);
   }
 
@@ -246,6 +272,15 @@ function RouterRecordPage() {
             <Info label="Provisioning">
               <Badge tone={statusTone(router.provisioning_status)}>{router.provisioning_status.replaceAll("_", " ")}</Badge>
             </Info>
+            <Info label="Enrollment">
+              <Badge tone={statusTone(router.enroll_state === "ENROLLED" ? "active" : router.enroll_state === "DEGRADED" ? "warning" : "pending")}>
+                {router.enroll_state || "PENDING"}
+              </Badge>
+              <div className="mt-1 text-xs text-muted">
+                WG {router.last_handshake_at ? "up" : "waiting"} · API {router.api_verified_at ? "verified" : "pending"} · Agent{" "}
+                {router.agent_last_ok_at || router.last_seen ? "seen" : "silent"}
+              </div>
+            </Info>
             <Info label="Connection">
               <Badge tone={statusTone(router.reachability)}>{router.reachability}</Badge>
               <div className="mt-1 text-xs text-muted">
@@ -264,6 +299,29 @@ function RouterRecordPage() {
             <Info label="WireGuard public">
               <span className="break-all font-mono text-xs">{router.wg_public || "—"}</span>
             </Info>
+            {router.wg_public && router.wg_address ? (
+              <Info label="Hub peer (VPS)">
+                <p className="text-xs text-muted">Handshake fails until this peer is on the VPS hub.</p>
+                <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-elevated p-2 font-mono text-[11px]">
+                  {hubPeerShell({ publicKey: router.wg_public, address: router.wg_address })}
+                </pre>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="mt-2"
+                  onClick={async () => {
+                    const cmd = hubPeerShell({ publicKey: router.wg_public, address: router.wg_address });
+                    if (await copyText(cmd)) {
+                      setNote("Copied hub peer command");
+                      setTimeout(() => setNote(null), 2500);
+                    }
+                  }}
+                >
+                  Copy hub peer command
+                </Button>
+              </Info>
+            ) : null}
             <Info label="Hub">
               <span className="font-mono text-xs">
                 {router.hub.ready ? `${router.hub.endpoint_host}:${router.hub.listen_port}` : "Not set"}
@@ -324,7 +382,92 @@ function RouterRecordPage() {
               >
                 Copy enroll
               </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={async () => {
+                  const out = await copyRouterApiUser({ data: { id: router.id } });
+                  setScript(out.script);
+                  setScriptLabel(`API user · ${out.user}`);
+                  setCopied(await copyText(out.script));
+                }}
+              >
+                Copy API user
+              </Button>
             </div>
+          ) : null}
+
+          {canManage ? (
+            <section className="grid gap-3 rounded-xl border border-border bg-surface p-4">
+              <div>
+                <h2 className="font-medium">API user</h2>
+                <p className="text-sm text-muted">
+                  REST is not used. The agent login is{" "}
+                  <span className="font-mono">ispsolutions-agent</span> on TCP 8728, overlay only.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Field label="Username">
+                  <Input
+                    value={apiForm.api_user}
+                    onChange={(e) => setApiForm({ ...apiForm, api_user: e.target.value })}
+                  />
+                </Field>
+                <Field label="Password">
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder={apiForm.api_password_set ? apiForm.api_password_hint || "Set" : "Not set"}
+                    value={apiForm.api_password.startsWith("••••") ? "" : apiForm.api_password}
+                    onChange={(e) => setApiForm({ ...apiForm, api_password: e.target.value })}
+                  />
+                </Field>
+                <Field label="Host">
+                  <Input
+                    placeholder="10.200.0.2"
+                    value={apiForm.api_host}
+                    onChange={(e) => setApiForm({ ...apiForm, api_host: e.target.value })}
+                  />
+                </Field>
+                <Field label="Port">
+                  <Input
+                    type="number"
+                    value={apiForm.api_port}
+                    onChange={(e) => setApiForm({ ...apiForm, api_port: Number(e.target.value) || 443 })}
+                  />
+                </Field>
+              </div>
+              <div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      await saveRouterApi({
+                        data: {
+                          router_id: router.id,
+                          api_user: apiForm.api_user,
+                          api_password: apiForm.api_password,
+                          api_port: apiForm.api_port,
+                          api_host: apiForm.api_host,
+                        },
+                      });
+                      setNote("API user saved");
+                      await load();
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Could not save API user");
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  Save API user
+                </Button>
+              </div>
+            </section>
           ) : null}
 
           <section id="router-ip-pools" className="space-y-3 rounded-xl border border-border bg-surface p-4">

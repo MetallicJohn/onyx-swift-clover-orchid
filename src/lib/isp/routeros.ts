@@ -1,6 +1,7 @@
 /** RouterOS v7 script generation. Uses :local, :if, :do, find where — not API-style one-liners. */
 /* eslint-disable no-useless-escape -- RouterOS uses $locals; JS templates must emit a literal dollar */
-import { APP_NAME, APP_SLUG, ROS_ACTIVE_LIST, ROS_AGENT_SCHEDULER, ROS_ENROLL_FILE, ROS_PULL_FILE, ROS_PULL_SCRIPT, ROS_WG_INTERFACE, ROS_WG_INTERFACE_LEGACY } from "../brand.ts";
+import { APP_NAME, APP_SLUG, ROS_ACTIVE_LIST, ROS_AGENT_SCHEDULER, ROS_API_GROUP, ROS_API_PORT, ROS_API_USER, ROS_ENROLL_FILE, ROS_PULL_FILE, ROS_PULL_SCRIPT, ROS_WG_INTERFACE, ROS_WG_INTERFACE_LEGACY } from "../brand.ts";
+import { WG_HUB_ALLOWED } from "./wg-endpoint.ts";
 import { pcqFromPayload } from "./pcq.ts";
 
 export function rosQuote(value: string) {
@@ -25,6 +26,9 @@ export function enrollRosScript(opts: {
   endpointHost?: string;
   endpointPort?: number;
   serverAddress?: string;
+  apiUser?: string;
+  apiPassword?: string;
+  routerId?: string;
 }) {
   const identity = opts.identity || opts.name;
   const addr = opts.wgAddress.includes("/") ? opts.wgAddress : `${opts.wgAddress}/32`;
@@ -33,7 +37,7 @@ export function enrollRosScript(opts: {
   const endpointHost = (opts.endpointHost || "").trim();
   const endpointPort = opts.endpointPort || 51820;
   const hubIp = opts.serverAddress || "10.200.0.1";
-  const allowed = "10.200.0.0/24";
+  const allowed = WG_HUB_ALLOWED;
 
   const endpointSet = endpointHost
     ? `  endpoint-address=${rosQuote(endpointHost)} endpoint-port=${endpointPort} \\`
@@ -43,25 +47,50 @@ export function enrollRosScript(opts: {
     : `# No hub endpoint saved — the router cannot start the handshake.
 # Settings → Network: set the VPS public hostname or IP, then copy this script again.
 `;
+  const apiUser = opts.apiUser?.trim() || ROS_API_USER;
+  const apiPass = opts.apiPassword || "";
+  const apiGroup = ROS_API_GROUP;
+  const apiUserBlock = apiPass
+    ? `
+${localBlock({ apiUser, apiPass, apiGroup })}
+:if ([:len [/user group find where name=\$apiGroup]] = 0) do={
+  /user group add name=\$apiGroup policy=local,read,write,api,test,password,sensitive comment=${rosQuote(APP_NAME)};
+} else={
+  /user group set [find where name=\$apiGroup] policy=local,read,write,api,test,password,sensitive;
+}
+:if ([:len [/user find where name=\$apiUser]] = 0) do={
+  /user add name=\$apiUser password=\$apiPass group=\$apiGroup address=10.200.0.0/24 comment=${rosQuote(APP_NAME)};
+} else={
+  /user set [find where name=\$apiUser] password=\$apiPass group=\$apiGroup address=10.200.0.0/24 comment=${rosQuote(APP_NAME)};
+}
+`
+    : "";
 
   const scheduler = pull
     ? `
 :do { /system script remove [find where name="gridline-pull"] } on-error={}
 :do { /system script remove [find where name=${rosQuote(ROS_PULL_SCRIPT)}] } on-error={}
 /system script add name=${rosQuote(ROS_PULL_SCRIPT)} owner=admin policy=read,write,policy,test,password,sensitive source={
-  :do {
-    /tool fetch url=${rosQuote(pull)} mode=https check-certificate=no http-method=get dst-path=${rosQuote(ROS_PULL_FILE)};
-    :delay 2s;
-    :local pullFile "";
-    :foreach i in=[/file find] do={
-      :local n [/file get $i name];
-      :if ([:typeof [:find $n ${rosQuote(ROS_PULL_FILE)}]] != "nil") do={ :set pullFile $n };
+  :global ispSolLock;
+  :if (\$ispSolLock = true) do={
+    :log warning ${rosQuote(`${APP_NAME} agent already running`)};
+  } else={
+    :set ispSolLock true;
+    :do {
+      /tool fetch url=${rosQuote(pull)} mode=https check-certificate=no http-method=get dst-path=${rosQuote(ROS_PULL_FILE)};
+      :delay 2s;
+      :local pullFile "";
+      :foreach i in=[/file find] do={
+        :local n [/file get \$i name];
+        :if ([:typeof [:find \$n ${rosQuote(ROS_PULL_FILE)}]] != "nil") do={ :set pullFile \$n };
+      }
+      :if (\$pullFile != "") do={
+        /import file-name=\$pullFile;
+      }
+    } on-error={
+      :log warning ${rosQuote(`${APP_NAME} agent fetch failed`)};
     }
-    :if ($pullFile != "") do={
-      /import file-name=$pullFile;
-    }
-  } on-error={
-    :log warning ${rosQuote(`${APP_NAME} agent fetch failed`)};
+    :set ispSolLock false;
   }
 }
 
@@ -74,7 +103,7 @@ export function enrollRosScript(opts: {
 :do { /system scheduler remove [find where name="gridline-agent"] } on-error={}
 :do { /system scheduler remove [find where name=${rosQuote(ROS_AGENT_SCHEDULER)}] } on-error={}
 /system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup \\
-  on-event={ :log info (${rosQuote(`${APP_NAME} heartbeat `)} . ${rosQuote(opts.token)}) };`;
+  on-event={ :log info ${rosQuote(`${APP_NAME} agent waiting for pull URL`)} };`;
 
   return `# ${APP_NAME} agent enroll — RouterOS v7 script
 # Paste in New Terminal, or: /import file-name=${ROS_ENROLL_FILE}
@@ -83,7 +112,7 @@ export function enrollRosScript(opts: {
 ${missingEndpoint}
 ${localBlock({
     identity,
-    token: opts.token,
+    routerId: opts.routerId || identity,
     wgPriv: opts.wgPrivate || "",
     srvKey: peerKey,
     wgAddr: addr,
@@ -117,17 +146,40 @@ ${endpointSet}
   /ip address set [find where interface="${ROS_WG_INTERFACE}"] address=\$wgAddr;
 }
 
-:do { /ip firewall filter set [find where comment="gridline-agent"] comment=${rosQuote(`${APP_NAME} agent`)} in-interface=${ROS_WG_INTERFACE} } on-error={}
-:if ([:len [/ip firewall filter find where comment=${rosQuote(`${APP_NAME} agent`)}]] = 0) do={
-  /ip firewall filter add chain=input in-interface=${ROS_WG_INTERFACE} action=accept comment=${rosQuote(`${APP_NAME} agent`)} place-before=0;
+:do { /ip firewall filter remove [find where comment="gridline-agent" or comment=${rosQuote(`${APP_NAME} agent`)}] } on-error={}
+:if ([:len [/ip firewall filter find where comment=${rosQuote(`${APP_NAME} api`)}]] = 0) do={
+  /ip firewall filter add chain=input in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${hubIp} action=accept comment=${rosQuote(`${APP_NAME} api`)} place-before=0;
+} else={
+  /ip firewall filter set [find where comment=${rosQuote(`${APP_NAME} api`)}] in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${hubIp} action=accept;
 }
 
-/ip service set www-ssl disabled=no address=10.200.0.0/24;
-/ip service set api disabled=no address=10.200.0.0/24;
-/ip service set winbox address=10.200.0.0/24;
-
-:log info (${rosQuote(`${APP_NAME} enrolled token=`)} . \$token);
+/ip service set api disabled=no port=${ROS_API_PORT} address=10.200.0.0/24;
+:do { /ip service set api-ssl disabled=yes } on-error={}
+${apiUserBlock}
+:log info ${rosQuote(`${APP_NAME} enrollment bootstrap initialized for router `)} . \$routerId;
 ${scheduler}
+`;
+}
+
+export function apiUserEnsureRos(opts: { user?: string; password: string }) {
+  const user = opts.user?.trim() || ROS_API_USER;
+  const password = opts.password || "";
+  if (!password) return "";
+  return `# ${APP_NAME} API user — RouterOS v7
+${localBlock({ apiUser: user, apiPass: password, apiGroup: ROS_API_GROUP })}
+:if ([:len [/user group find where name=\$apiGroup]] = 0) do={
+  /user group add name=\$apiGroup policy=local,read,write,api,test,password,sensitive comment=${rosQuote(APP_NAME)};
+} else={
+  /user group set [find where name=\$apiGroup] policy=local,read,write,api,test,password,sensitive;
+}
+:if ([:len [/user find where name=\$apiUser]] = 0) do={
+  /user add name=\$apiUser password=\$apiPass group=\$apiGroup address=10.200.0.0/24 comment=${rosQuote(APP_NAME)};
+} else={
+  /user set [find where name=\$apiUser] password=\$apiPass group=\$apiGroup address=10.200.0.0/24 comment=${rosQuote(APP_NAME)};
+}
+/ip service set api disabled=no port=${ROS_API_PORT} address=10.200.0.0/24;
+:do { /ip service set api-ssl disabled=yes } on-error={}
+:log info ${rosQuote(`${APP_NAME} API user ready`)};
 `;
 }
 

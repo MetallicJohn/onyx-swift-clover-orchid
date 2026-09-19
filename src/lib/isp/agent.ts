@@ -1,3 +1,4 @@
+import { ROS_API_USER } from "../brand.ts";
 import { nid } from "../utils.ts";
 import { initialCommandStatus } from "./command-policy";
 import { ensureOpsSchema } from "./ops-schema";
@@ -30,10 +31,21 @@ export async function nextWgAddress(sql: Sql, tenantId: string) {
   throw new Error("WireGuard overlay 10.200.0.0/24 is full");
 }
 
+export function generateRouterApiPassword() {
+  const bytes = crypto.getRandomValues(new Uint8Array(18));
+  return Buffer.from(bytes).toString("base64url").replace(/[-_]/g, "x").slice(0, 22);
+}
+
 export function enrollFields(_name: string) {
   const token = `agt_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
   const keys = generateWireGuardKeypair();
-  return { token, wg_public: keys.publicKey, wg_private_sealed: keys.privateKeySealed };
+  return {
+    token,
+    wg_public: keys.publicKey,
+    wg_private_sealed: keys.privateKeySealed,
+    api_user: ROS_API_USER,
+    api_password: generateRouterApiPassword(),
+  };
 }
 
 export async function pickRouter(sql: Sql, tenantId: string) {
@@ -130,6 +142,9 @@ export function agentScript(opts: {
   endpointHost?: string;
   endpointPort?: number;
   serverAddress?: string;
+  apiUser?: string;
+  apiPassword?: string;
+  routerId?: string;
 }) {
   return enrollRosScript(opts);
 }

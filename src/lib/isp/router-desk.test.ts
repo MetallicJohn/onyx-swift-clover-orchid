@@ -259,6 +259,7 @@ test("RBAC: technicians cannot manage routers or IP pools; support can read", ()
   assert.match(server, /export const queryRoutersDeskFn[\s\S]+?assertPermission\(role, "routers.read"\)/);
   assert.match(server, /export const getRouterDeskFn[\s\S]+?assertPermission\(role, "routers.read"\)/);
   assert.match(server, /export const createRouterPoolFn[\s\S]+?assertPermission\(role, "routers.manage"\)/);
+  assert.match(server, /export const copyRouterApiUser[\s\S]+?assertPermission\(role, "routers.manage"\)/);
   assert.match(server, /export const updateRouterPoolFn[\s\S]+?assertPermission\(role, "routers.manage"\)/);
   assert.match(server, /export const archiveRouterPoolFn[\s\S]+?assertPermission\(role, "routers.manage"\)/);
 });

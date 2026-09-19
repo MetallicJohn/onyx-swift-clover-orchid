@@ -8,6 +8,7 @@ import {
   ensureTenantHub,
   generateWireGuardKeypair,
   generateX25519Pair,
+  hubPeerShell,
   isWireGuardPublicKey,
   normalizeWgEndpoint,
   renderServerConfig,
@@ -83,6 +84,14 @@ test("server wg-quick config is a hub with one peer per router", () => {
   assert.match(install, /wg-quick down wg-gridline/);
   assert.match(conf, /\/etc\/wireguard\/wg-ispsolutions\.conf/);
   assert.doesNotMatch(install, /wg-quick up wg-gridline/);
+});
+
+test("hub peer shell adds one router without rewriting the hub conf", () => {
+  const client = generateWireGuardKeypair();
+  const cmd = hubPeerShell({ publicKey: client.publicKey, address: "10.200.0.2" });
+  assert.equal(cmd.includes(`wg set wg-ispsolutions peer ${client.publicKey} allowed-ips 10.200.0.2/32`), true);
+  assert.match(cmd, /wg-quick save wg-ispsolutions/);
+  assert.equal(hubPeerShell({ publicKey: "bad", address: "10.200.0.2" }), "");
 });
 
 test("client enroll script sets the router private key and hub endpoint", () => {

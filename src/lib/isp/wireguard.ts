@@ -2,6 +2,7 @@ import { diffieHellman, generateKeyPairSync, type KeyObject } from "node:crypto"
 import { APP_NAME, ROS_WG_INTERFACE, ROS_WG_INTERFACE_LEGACY } from "../brand.ts";
 import { nid } from "../utils.ts";
 import { open, seal } from "./secrets.ts";
+import { enrollEndpointHost, publicWgHost, publicWgHubAddress, publicWgPort, WG_DEFAULT_HUB_ADDRESS, WG_DEFAULT_NETWORK, WG_DEFAULT_PUBLIC_PORT } from "./wg-endpoint.ts";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -72,9 +73,9 @@ export type WgHubPublic = {
   ready: boolean;
 };
 
-const DEFAULT_HUB_ADDRESS = "10.200.0.1/24";
-const DEFAULT_HUB_NETWORK = "10.200.0.0/24";
-const DEFAULT_LISTEN_PORT = 51820;
+const DEFAULT_HUB_ADDRESS = `${WG_DEFAULT_HUB_ADDRESS}/24`;
+const DEFAULT_HUB_NETWORK = WG_DEFAULT_NETWORK;
+const DEFAULT_LISTEN_PORT = WG_DEFAULT_PUBLIC_PORT;
 
 export function normalizeWgEndpoint(host: string, port?: number) {
   let raw = (host || "").trim();
@@ -126,6 +127,14 @@ export function buildServerConf(hub: WgHubConfig, peers: WgPeerConfig[]) {
     );
   }
   return lines.join("\n") + "\n";
+}
+
+export function hubPeerShell(peer: { publicKey: string; address: string }) {
+  const pub = peer.publicKey.trim();
+  const addr = (peer.address || "").trim();
+  const cidr = addr.includes("/") ? addr : addr ? `${addr}/32` : "";
+  if (!pub || !cidr || !isWireGuardPublicKey(pub)) return "";
+  return `wg set ${ROS_WG_INTERFACE} peer ${pub} allowed-ips ${cidr}\nwg-quick save ${ROS_WG_INTERFACE}`;
 }
 
 export function buildServerInstallScript(hub: WgHubConfig, peers: WgPeerConfig[]) {
@@ -204,9 +213,9 @@ export async function ensureTenantHub(sql: Sql, tenantId: string): Promise<WgHub
     publicKey: row.wg_public,
     address: row.wg_address || DEFAULT_HUB_ADDRESS,
     network: row.wg_network || DEFAULT_HUB_NETWORK,
-    listenPort: Number(row.wg_listen_port) || DEFAULT_LISTEN_PORT,
-    endpointHost: row.wg_endpoint_host || "",
-    ready: Boolean(row.wg_public && row.wg_endpoint_host),
+    listenPort: Number(row.wg_listen_port) || publicWgPort(),
+    endpointHost: enrollEndpointHost(row.wg_endpoint_host || publicWgHost()),
+    ready: Boolean(row.wg_public && enrollEndpointHost(row.wg_endpoint_host || publicWgHost())),
   };
 }
 
@@ -217,8 +226,9 @@ export async function saveTenantHub(
 ) {
   await ensureTenantHub(sql, tenantId);
   const parsed = normalizeWgEndpoint(input.endpointHost, input.listenPort);
+  const host = enrollEndpointHost(parsed.host);
   await sql`update tenants set
-    wg_endpoint_host = ${parsed.host},
+    wg_endpoint_host = ${host},
     wg_listen_port = ${parsed.port}
     where id = ${tenantId}`;
   return ensureTenantHub(sql, tenantId);
@@ -336,6 +346,7 @@ export async function wgEnrollContext(
     endpointHost: hub.endpointHost,
     endpointPort: hub.listenPort,
     pullUrl: router.pullUrl,
-    serverAddress: overlayIp(hub.address),
+    serverAddress: overlayIp(hub.address) || publicWgHubAddress(),
+    routerId: router.id,
   };
 }

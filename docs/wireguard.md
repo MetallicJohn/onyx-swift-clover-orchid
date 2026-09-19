@@ -7,10 +7,12 @@ Hub-and-spoke overlay `10.200.0.0/24`. The ISP VPS is `10.200.0.1`; each router 
 Settings → Network:
 
 - One X25519 keypair per ISP (`tenants.wg_public` / sealed `wg_private_ref`)
-- Public endpoint hostname or IP + UDP listen port (default 51820)
+- Public endpoint hostname **`wg.ispsolutions.co.ke`** (never the HTTPS apex `ispsolutions.co.ke`) + UDP 51820
 - Download `wg-ispsolutions.conf` (`wg-quick`) and a root install script for the VPS. A previous overlay name on the host is brought down and replaced.
 
 `[Peer]` stanzas are built from live routers. Client private keys are not written into the server file. Rotate hub keys only if the VPS key leaked — then reinstall the server conf and re-copy every enroll script.
+
+The MikroTik peer uses `allowed-address=10.200.0.1/32` (hub only) and `endpoint-address=wg.ispsolutions.co.ke`. Cloudflare stays DNS-only. Do not orange-cloud the WireGuard hostname.
 
 ## Client (MikroTik)
 

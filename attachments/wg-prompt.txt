@@ -1,0 +1,1853 @@
+# ISP SOLUTIONS — PRODUCTION IMPLEMENTATION PROMPT
+
+## MikroTik RouterOS v7 Agent, WireGuard Management Plane, Certificate-Free Enrollment & Router Provisioning
+
+You are implementing the production MikroTik integration for **ISP Solutions**, a multi-tenant ISP management SaaS.
+
+This implementation must be production-ready, secure, idempotent, observable, backward-compatible, and deployable on the existing VPS architecture.
+
+Do not provide a conceptual prototype. Implement the complete functionality in the existing repository while preserving existing working functionality.
+
+---
+
+# 1. NON-NEGOTIABLE ARCHITECTURE DECISIONS
+
+## 1.1 Cloudflare
+
+For now, **ALL Cloudflare DNS records remain DNS-only / gray-clouded**.
+
+Do NOT design around Cloudflare proxying.
+
+Current DNS architecture:
+
+```text
+ispsolutions.co.ke
+    A
+    185.185.126.169
+    DNS-only / gray
+
+www.ispsolutions.co.ke
+    CNAME
+    ispsolutions.co.ke
+    DNS-only / gray
+
+wg.ispsolutions.co.ke
+    A
+    185.185.126.169
+    DNS-only / gray
+```
+
+Do not introduce:
+
+* Cloudflare orange-cloud proxying
+* Cloudflare Tunnel
+* Cloudflare Origin Certificates
+* Cloudflare Access
+* Cloudflare-specific proxy headers
+* Cloudflare-specific WebSocket assumptions
+* Cloudflare-specific WireGuard workarounds
+
+The application must work correctly using direct DNS resolution to the VPS.
+
+---
+
+# 2. MIKROTIK CERTIFICATE REQUIREMENT
+
+## ABSOLUTE REQUIREMENT
+
+The MikroTik integration must NOT depend on the MikroTik certificate store.
+
+Do NOT require users to:
+
+* install a CA certificate
+* import a CA
+* trust a custom CA
+* configure RouterOS certificates
+* enable API-SSL because of certificate requirements
+* use `check-certificate=yes`
+
+All RouterOS bootstrap and persistent HTTPS agent requests must use:
+
+```routeros
+check-certificate=no
+```
+
+The WireGuard tunnel is the trusted management channel.
+
+Do not later "improve security" by introducing certificate requirements.
+
+The implementation must explicitly preserve this architecture.
+
+---
+
+# 3. NETWORK ARCHITECTURE
+
+The production topology is:
+
+```text
+                         INTERNET
+                             |
+                             |
+                  DNS-only / Gray Cloud
+                             |
+              +--------------+--------------+
+              |                             |
+              v                             v
+      ispsolutions.co.ke           wg.ispsolutions.co.ke
+      185.185.126.169              185.185.126.169
+              |                             |
+              | HTTPS                       | UDP 51820
+              v                             v
+            Caddy                    WireGuard Server
+              |                             |
+              |                             |
+              v                             v
+       ISP Solutions API              10.200.0.1
+                                             |
+                                      WireGuard Tunnel
+                                             |
+                                             v
+                                      MikroTik Router
+                                      10.200.x.x/32
+```
+
+WireGuard:
+
+```text
+Public hostname:
+wg.ispsolutions.co.ke
+
+Public IP:
+185.185.126.169
+
+UDP port:
+51820
+
+WireGuard hub:
+10.200.0.1/24
+
+Router overlay:
+10.200.x.x/32
+```
+
+---
+
+# 4. IMPORTANT HOSTNAME RULE
+
+The MikroTik WireGuard endpoint MUST be:
+
+```text
+wg.ispsolutions.co.ke
+```
+
+Never use:
+
+```text
+ispsolutions.co.ke
+```
+
+as the WireGuard endpoint.
+
+Never hard-code the public IP into generated RouterOS peer configuration.
+
+The application must have a single configuration value:
+
+```env
+WIREGUARD_PUBLIC_HOST=wg.ispsolutions.co.ke
+WIREGUARD_PUBLIC_PORT=51820
+WIREGUARD_HUB_ADDRESS=10.200.0.1
+WIREGUARD_NETWORK=10.200.0.0/24
+```
+
+---
+
+# 5. WIREGUARD ROUTER CONFIGURATION
+
+For every router, generate a unique:
+
+* WireGuard private key
+* WireGuard public key
+* overlay address
+
+Example:
+
+```text
+Router:
+nice3
+
+Overlay:
+10.200.0.4/32
+
+Hub:
+10.200.0.1
+
+Server peer:
+wg.ispsolutions.co.ke:51820
+```
+
+The MikroTik configuration must contain:
+
+```routeros
+/interface wireguard
+```
+
+with:
+
+```text
+name=wg-ispsolutions
+```
+
+Use the existing `wg-gridline` naming only for backward compatibility.
+
+Do NOT blindly rename unrelated WireGuard interfaces.
+
+If an existing managed interface is:
+
+```text
+wg-gridline
+```
+
+support it safely.
+
+For new installations use:
+
+```text
+wg-ispsolutions
+```
+
+---
+
+# 6. WIREGUARD PEER
+
+The MikroTik peer must use the ISP Solutions server public key.
+
+Example:
+
+```routeros
+/interface wireguard peers
+add \
+    interface=wg-ispsolutions \
+    public-key="<SERVER_PUBLIC_KEY>" \
+    allowed-address=10.200.0.1/32 \
+    endpoint-address=wg.ispsolutions.co.ke \
+    endpoint-port=51820 \
+    persistent-keepalive=25
+```
+
+IMPORTANT:
+
+Use:
+
+```text
+allowed-address=10.200.0.1/32
+```
+
+Do NOT use:
+
+```text
+10.200.0.0/24
+```
+
+unless the application explicitly requires additional management-plane routes.
+
+The initial implementation must route only to the WireGuard hub.
+
+---
+
+# 7. WIREGUARD SERVER PEER MODEL
+
+Each router must have a server-side WireGuard peer.
+
+Persist:
+
+```text
+router_id
+tenant_id
+wireguard_public_key
+wireguard_overlay_ip
+wireguard_peer_id
+status
+last_handshake_at
+rx_bytes
+tx_bytes
+created_at
+updated_at
+```
+
+The server must identify routers using the WireGuard public key.
+
+Do NOT use the RouterOS comment as the primary identity.
+
+Comments may be used for human readability only.
+
+---
+
+# 8. ROUTEROS API
+
+Each router must receive a dedicated RouterOS API user.
+
+Do NOT use:
+
+```text
+admin
+```
+
+for application access.
+
+Create a dedicated user, for example:
+
+```text
+ispsolutions-agent
+```
+
+Create a dedicated RouterOS group with only the permissions actually required.
+
+At minimum determine permissions required for:
+
+* `/system identity`
+* `/system resource`
+* `/system routerboard`
+* `/interface wireguard`
+* `/interface wireguard peers`
+* `/ip address`
+* `/ip firewall`
+* `/ip service`
+* `/system script`
+* `/system scheduler`
+* configuration deployment
+
+Do not grant unnecessary permissions.
+
+The credentials must be generated uniquely per router.
+
+---
+
+# 9. API TRANSPORT
+
+Because the user explicitly does NOT want MikroTik certificate dependencies:
+
+Use the standard RouterOS API over the WireGuard management network where supported.
+
+Do NOT require API-SSL.
+
+Do NOT require RouterOS certificates.
+
+The API must NOT be reachable from the public WAN.
+
+Restrict API access to the WireGuard management network.
+
+Example conceptual policy:
+
+```text
+RouterOS API
+TCP 8728
+
+Allowed:
+10.200.0.0/24
+
+Denied:
+WAN
+Internet
+customer LAN
+```
+
+Do not expose port 8728 publicly.
+
+---
+
+# 10. ROUTER FIREWALL
+
+Do not install a blanket:
+
+```routeros
+chain=input
+in-interface=wg-ispsolutions
+action=accept
+```
+
+rule without restriction.
+
+Instead implement explicit management rules.
+
+At minimum allow required management traffic from the WireGuard hub:
+
+```text
+TCP 8728
+```
+
+and only other ports genuinely required by the ISP Solutions management plane.
+
+Management access must be restricted to:
+
+```text
+10.200.0.1
+```
+
+or the explicitly configured management subnet.
+
+Do not unnecessarily expose:
+
+* Winbox
+* HTTP
+* HTTPS
+* SSH
+* FTP
+* API
+* API-SSL
+
+through the WireGuard interface.
+
+If Winbox or HTTPS is intentionally enabled for administrative troubleshooting, make it an explicit configurable option.
+
+---
+
+# 11. ROUTEROS HTTPS BOOTSTRAP
+
+The initial bootstrap is delivered through:
+
+```text
+https://ispsolutions.co.ke
+```
+
+The RouterOS fetch MUST use:
+
+```routeros
+check-certificate=no
+```
+
+Example:
+
+```routeros
+/tool fetch \
+    url="https://ispsolutions.co.ke/api/agent/script?token=<TOKEN>" \
+    mode=https \
+    check-certificate=no \
+    http-method=get \
+    dst-path="ispsolutions-pull.rsc"
+```
+
+Never generate:
+
+```text
+check-certificate=yes
+```
+
+Do not require CA installation.
+
+---
+
+# 12. ENROLLMENT TOKEN
+
+The enrollment token is NOT the long-term router credential.
+
+Create separate credentials for:
+
+```text
+Enrollment token
+Agent token
+RouterOS API username
+RouterOS API password
+WireGuard private key
+WireGuard server public key
+```
+
+Enrollment tokens must be:
+
+* cryptographically random
+* high entropy
+* tenant scoped
+* router scoped
+* short lived
+* revocable
+* preferably single-use
+* stored hashed where practical
+* never logged
+* never displayed after initial creation unless explicitly regenerated
+
+Do NOT log:
+
+```text
+token=<TOKEN>
+```
+
+Do not write tokens into application logs.
+
+Do not expose secrets through health endpoints.
+
+---
+
+# 13. ROUTEROS BOOTSTRAP SCRIPT
+
+Generate an idempotent RouterOS v7 `.rsc`.
+
+The bootstrap must:
+
+1. Set router identity.
+2. Create or reconcile WireGuard interface.
+3. Set the correct WireGuard private key.
+4. Create or reconcile the ISP Solutions server peer.
+5. Assign the correct overlay IP.
+6. Create/reconcile the dedicated API user.
+7. Restrict RouterOS API access.
+8. Configure required firewall rules.
+9. Install the persistent ISP Solutions agent.
+10. Install the scheduler.
+11. Register/heartbeat with the server.
+12. Never expose secrets in logs.
+13. Never require certificates.
+
+The script must be safe to execute multiple times.
+
+Running it twice must NOT create duplicate:
+
+* WireGuard interfaces
+* peers
+* IP addresses
+* users
+* firewall rules
+* scripts
+* schedulers
+
+---
+
+# 14. ROUTER IDENTITY
+
+During enrollment collect:
+
+```text
+ISP Solutions router ID
+Tenant ID
+RouterOS identity
+RouterOS version
+Board name
+Architecture
+Serial number where supported
+RouterOS uptime
+WireGuard public key
+WireGuard overlay IP
+API username
+```
+
+Verify that the router communicating over the WireGuard/API channel corresponds to the router being enrolled.
+
+Do not trust only the supplied identity string.
+
+---
+
+# 15. ENROLLMENT STATE MACHINE
+
+Implement explicit states:
+
+```text
+PENDING
+BOOTSTRAP_GENERATED
+BOOTSTRAP_EXECUTED
+WIREGUARD_CONFIGURED
+WIREGUARD_CONNECTED
+API_VERIFIED
+AGENT_CONNECTED
+ENROLLED
+DEGRADED
+REVOKED
+```
+
+Transitions must be recorded.
+
+Do not simply mark a router as "online" because the bootstrap script was generated.
+
+---
+
+# 16. WIREGUARD HANDSHAKE VERIFICATION
+
+After bootstrap:
+
+The server must verify:
+
+```text
+peer exists
+public key matches
+overlay address matches
+last handshake exists
+RX bytes > 0
+TX bytes > 0
+```
+
+Record:
+
+```text
+last_handshake_at
+rx_bytes
+tx_bytes
+```
+
+A router must not be considered fully enrolled until a valid WireGuard handshake is confirmed.
+
+---
+
+# 17. API VERIFICATION
+
+After WireGuard connectivity:
+
+Connect through:
+
+```text
+10.200.x.x
+```
+
+using RouterOS API.
+
+Verify:
+
+```text
+/system identity
+/system resource
+/system routerboard
+```
+
+where supported.
+
+Confirm:
+
+```text
+router identity
+router ID
+WireGuard public key
+overlay IP
+RouterOS version
+```
+
+The API verification result must be persisted.
+
+---
+
+# 18. AGENT
+
+The persistent agent must periodically communicate with ISP Solutions.
+
+Default interval:
+
+```text
+1 minute
+```
+
+However, implement:
+
+* execution lock
+* timeout
+* exponential/backoff retry
+* failure counter
+* last successful execution
+* last failed execution
+* configuration version
+* checksum
+* agent version
+
+Never allow overlapping agent executions.
+
+---
+
+# 19. AGENT SCRIPT
+
+The RouterOS persistent script may use:
+
+```routeros
+/tool fetch
+```
+
+to retrieve its configuration.
+
+Example:
+
+```routeros
+/tool fetch \
+    url="https://ispsolutions.co.ke/api/agent/script?token=<AGENT_TOKEN>" \
+    mode=https \
+    check-certificate=no \
+    http-method=get \
+    dst-path="ispsolutions-pull.rsc"
+```
+
+Again:
+
+```text
+check-certificate=no
+```
+
+is mandatory.
+
+---
+
+# 20. CONFIGURATION DELIVERY
+
+Never allow the agent endpoint to become an unrestricted arbitrary RouterOS script execution endpoint.
+
+The server must generate controlled configuration bundles.
+
+Each bundle should contain:
+
+```text
+router_id
+tenant_id
+configuration_version
+generated_at
+checksum
+operations
+```
+
+The server must validate that the requested configuration belongs to the authenticated router.
+
+Support configuration versioning.
+
+Example:
+
+```text
+Router configuration version:
+42
+
+Current router version:
+41
+
+Agent downloads:
+42
+
+Router applies:
+42
+
+Router reports:
+42
+```
+
+---
+
+# 21. IDEMPOTENCY
+
+Every configuration operation must be idempotent.
+
+Examples:
+
+Do not blindly:
+
+```routeros
+/interface wireguard add
+```
+
+if the interface already exists.
+
+Use:
+
+```text
+find → reconcile → create only if absent
+```
+
+Apply the same pattern to:
+
+* interfaces
+* peers
+* IP addresses
+* firewall rules
+* API users
+* scripts
+* schedulers
+* routes
+* queues
+* IP pools
+
+Never depend on object indexes.
+
+Prefer stable identifiers, names, comments containing managed IDs, or exact property matching.
+
+---
+
+# 22. DATABASE
+
+Create/update database models for:
+
+```text
+routers
+router_enrollments
+router_credentials
+router_wireguard_peers
+router_agent_states
+router_configuration_versions
+router_configuration_deployments
+router_health_snapshots
+router_audit_logs
+```
+
+At minimum:
+
+### routers
+
+```text
+id
+tenant_id
+name
+identity
+serial_number
+routeros_version
+board_name
+architecture
+status
+wireguard_public_key
+wireguard_overlay_ip
+api_username
+last_seen_at
+last_handshake_at
+agent_version
+configuration_version
+created_at
+updated_at
+```
+
+### router_credentials
+
+Store secrets securely.
+
+Never store credentials in plaintext if the existing architecture supports encryption/sealing.
+
+Separate:
+
+```text
+enrollment_secret
+agent_secret
+api_password
+wireguard_private_key
+```
+
+---
+
+# 23. SECRET MANAGEMENT
+
+Use the repository's existing secret/sealing/encryption mechanism.
+
+If one does not exist, implement a production-grade encryption abstraction.
+
+Requirements:
+
+* encryption at rest
+* key supplied through environment/secret manager
+* no secrets in source code
+* no secrets in Git
+* no secrets in logs
+* no secrets in exception messages
+* no secrets in telemetry
+* no secrets in normal API responses
+
+Never commit:
+
+```text
+wg private keys
+API passwords
+agent tokens
+enrollment tokens
+database passwords
+```
+
+---
+
+# 24. AUDIT LOGGING
+
+Record security-sensitive actions:
+
+```text
+router enrolled
+router enrollment regenerated
+router enrollment revoked
+WireGuard peer created
+WireGuard peer removed
+API credential rotated
+configuration generated
+configuration deployed
+configuration failed
+router disconnected
+router reconnected
+router revoked
+router deleted
+```
+
+Include:
+
+```text
+tenant_id
+router_id
+actor
+action
+timestamp
+result
+request_id
+configuration_version
+```
+
+Never include credentials or secret values.
+
+---
+
+# 25. REVOCATION
+
+Implement router revocation.
+
+When a router is revoked:
+
+1. Mark router `REVOKED`.
+2. Disable its agent credential.
+3. Remove/disable its server WireGuard peer.
+4. Reject future API/agent requests.
+5. Preserve audit history.
+6. Do not automatically delete historical metrics/configuration/audit data.
+
+Support credential rotation without deleting the router.
+
+---
+
+# 26. RE-ENROLLMENT
+
+A revoked or lost router must support secure re-enrollment.
+
+Re-enrollment must:
+
+* generate a new enrollment token
+* generate/rotate required credentials
+* rotate WireGuard keys if requested
+* reconcile the router
+* invalidate the previous enrollment credentials
+* preserve historical router records
+
+Do not create duplicate router records for the same managed router unless explicitly requested.
+
+---
+
+# 27. LEGACY COMPATIBILITY
+
+Existing installations may contain:
+
+```text
+wg-gridline
+gridline-controller
+gridline-agent
+gridline-pull
+```
+
+Do not break existing routers.
+
+Implement a migration/reconciliation layer.
+
+Where safe:
+
+```text
+legacy → ISP Solutions
+```
+
+but do not blindly rename unrelated RouterOS objects.
+
+Existing working routers must continue functioning during deployment.
+
+---
+
+# 28. ROUTEROS SCRIPT SAFETY
+
+Generated scripts must:
+
+* use RouterOS v7 syntax
+* use `:do { } on-error={ }` where failure should not abort unrelated operations
+* validate object existence
+* avoid duplicate objects
+* avoid destructive changes unless explicitly required
+* preserve unrelated customer configuration
+* avoid changing WAN configuration unless requested
+* avoid changing default routes unless requested
+* avoid changing customer IP pools unless requested
+* avoid resetting firewall configuration
+* avoid rebooting the router
+* avoid resetting configuration
+* avoid deleting unrelated objects
+
+---
+
+# 29. API SECURITY
+
+Every management endpoint must authenticate and authorize.
+
+Validate:
+
+```text
+tenant ownership
+router ownership
+credential status
+router status
+token validity
+token expiration
+```
+
+Prevent:
+
+* cross-tenant router access
+* token reuse
+* revoked token access
+* unauthorized configuration deployment
+* arbitrary script execution
+* IDOR
+* credential leakage
+
+---
+
+# 30. AGENT ENDPOINTS
+
+Implement dedicated endpoints similar to:
+
+```text
+GET /api/agent/bootstrap
+GET /api/agent/script
+POST /api/agent/heartbeat
+POST /api/agent/enroll
+POST /api/agent/status
+POST /api/agent/configuration/ack
+```
+
+Exact routes may be adapted to the existing application's API conventions.
+
+The endpoints must support:
+
+```text
+router authentication
+configuration versioning
+heartbeat
+health reporting
+deployment acknowledgement
+failure reporting
+```
+
+---
+
+# 31. HEALTH MONITORING
+
+Dashboard must show:
+
+```text
+Router
+Tenant
+Status
+WireGuard status
+Last handshake
+Last agent heartbeat
+Last API check
+RouterOS version
+Agent version
+Configuration version
+CPU
+Memory
+Uptime
+Last error
+```
+
+Statuses:
+
+```text
+ONLINE
+DEGRADED
+OFFLINE
+PENDING
+REVOKED
+```
+
+Do not determine status using only one signal.
+
+Use:
+
+```text
+WireGuard
+API
+Agent heartbeat
+```
+
+as separate health signals.
+
+---
+
+# 32. BACKGROUND WORKERS
+
+Use the existing worker/queue architecture.
+
+Do not perform expensive router operations directly inside synchronous HTTP requests.
+
+Create jobs for:
+
+```text
+router enrollment
+WireGuard peer provisioning
+router API verification
+configuration generation
+configuration deployment
+health checks
+credential rotation
+revocation
+```
+
+Use:
+
+* retries
+* exponential backoff
+* idempotency keys
+* job timeout
+* dead-letter/failure handling
+* structured logging
+
+---
+
+# 33. MULTI-TENANCY
+
+Every router-related database record must be tenant scoped.
+
+Never allow:
+
+```text
+Tenant A
+```
+
+to access:
+
+```text
+Tenant B router
+```
+
+Apply tenant authorization at:
+
+* API
+* service layer
+* database queries
+* background jobs
+* configuration generation
+* audit logging
+
+Do not rely only on frontend filtering.
+
+---
+
+# 34. ADMIN UI
+
+Create/update the router management UI.
+
+Router list:
+
+```text
+Router Name
+Identity
+Tenant
+Status
+WireGuard
+API
+Agent
+Last Seen
+RouterOS
+Configuration
+Actions
+```
+
+Router details:
+
+### Overview
+
+* status
+* identity
+* serial
+* RouterOS version
+* uptime
+* CPU
+* RAM
+
+### Connectivity
+
+* WireGuard public key
+* overlay IP
+* endpoint
+* last handshake
+* RX
+* TX
+
+### API
+
+* API username
+* API status
+* last successful API check
+* rotate credentials
+
+Never display the API password by default.
+
+### Agent
+
+* agent version
+* last heartbeat
+* configuration version
+* last deployment
+* last error
+
+### Configuration
+
+* current version
+* pending version
+* deployment history
+* deploy
+* rollback where supported
+
+### Security
+
+* revoke
+* regenerate enrollment
+* rotate credentials
+
+### Audit
+
+Show all router-related audit events.
+
+---
+
+# 35. ENROLLMENT UI
+
+Create a production enrollment wizard:
+
+```text
+1. Select tenant
+2. Enter router name
+3. Select router type
+4. Allocate WireGuard address
+5. Generate credentials
+6. Generate bootstrap
+7. Copy/download bootstrap
+8. Execute on MikroTik
+9. Detect WireGuard handshake
+10. Verify API
+11. Verify agent
+12. Complete enrollment
+```
+
+Do not mark the router enrolled prematurely.
+
+Display clear status:
+
+```text
+Waiting for router...
+WireGuard detected...
+API verified...
+Agent connected...
+Enrollment complete.
+```
+
+---
+
+# 36. IP ADDRESS ALLOCATION
+
+Implement safe WireGuard overlay allocation.
+
+Reserve:
+
+```text
+10.200.0.1
+```
+
+for the server.
+
+Routers use:
+
+```text
+10.200.0.2+
+```
+
+Do not allocate duplicate overlay addresses.
+
+Use database uniqueness constraints.
+
+Support future configurable management networks.
+
+---
+
+# 37. WIREGUARD SERVER
+
+Verify the existing VPS WireGuard implementation.
+
+Ensure:
+
+```text
+UDP 51820
+```
+
+is reachable from the Internet.
+
+Do not route WireGuard through Caddy.
+
+Do not proxy WireGuard through Cloudflare.
+
+Ensure the host firewall allows:
+
+```text
+UDP/51820
+```
+
+Only the WireGuard service should bind that port.
+
+---
+
+# 38. CADDY
+
+Caddy handles web HTTPS.
+
+Cloudflare is DNS-only.
+
+The application must therefore support direct public HTTPS:
+
+```text
+https://ispsolutions.co.ke
+```
+
+Caddy must proxy to the application web service.
+
+Do not add Cloudflare-specific configuration.
+
+Do not require Cloudflare headers.
+
+---
+
+# 39. CURRENT GENIEACS ARCHITECTURE
+
+Do not mix GenieACS with the MikroTik WireGuard agent architecture.
+
+GenieACS remains a separate service.
+
+The existing NBI is:
+
+```text
+GenieACS NBI
+TCP 7557
+```
+
+The existing CWMP service is:
+
+```text
+TCP 7547
+```
+
+Maintain the existing GenieACS architecture.
+
+If ISP Solutions needs GenieACS integration, communicate through the existing internal service/API layer.
+
+Do not expose GenieACS NBI publicly unless explicitly required.
+
+---
+
+# 40. MIKROTIK CA-STORE RULE — FINAL
+
+This requirement overrides any generic security recommendation suggesting certificates.
+
+DO NOT:
+
+```text
+install CA
+import CA
+configure trusted certificate
+enable check-certificate=yes
+require RouterOS certificate
+require API-SSL
+```
+
+DO:
+
+```text
+WireGuard trusted management channel
+HTTPS bootstrap with check-certificate=no
+RouterOS API restricted to WireGuard
+short-lived enrollment tokens
+per-router credentials
+audit logs
+encryption at rest
+revocation
+rotation
+```
+
+---
+
+# 41. OBSERVABILITY
+
+Use structured logs.
+
+Every router operation must include:
+
+```text
+request_id
+tenant_id
+router_id
+job_id
+operation
+result
+duration
+```
+
+Never log:
+
+```text
+API password
+private key
+agent token
+enrollment token
+session secret
+database credentials
+```
+
+Expose useful metrics:
+
+```text
+router_enrollment_total
+router_enrollment_failed_total
+router_wireguard_online
+router_wireguard_handshake_age
+router_api_success
+router_api_failure
+router_agent_heartbeat_age
+router_configuration_deployments
+router_configuration_failures
+```
+
+---
+
+# 42. TESTING
+
+Create automated tests for:
+
+## Enrollment
+
+* valid token
+* expired token
+* revoked token
+* reused token
+* wrong tenant
+* duplicate enrollment
+
+## WireGuard
+
+* unique key
+* unique IP
+* correct server public key
+* correct endpoint
+* correct allowed address
+* handshake detection
+* peer revocation
+
+## API
+
+* API reachable over WireGuard
+* API blocked from WAN
+* dedicated user exists
+* admin user not used
+* credentials rotation
+
+## Agent
+
+* heartbeat
+* timeout
+* retry
+* lock
+* configuration version
+* checksum
+* acknowledgement
+
+## Security
+
+* tenant isolation
+* IDOR prevention
+* secret redaction
+* revoked router rejection
+* expired token rejection
+
+## Idempotency
+
+Execute the generated RouterOS bootstrap twice and confirm:
+
+```text
+no duplicate interface
+no duplicate peer
+no duplicate IP
+no duplicate user
+no duplicate firewall rule
+no duplicate script
+no duplicate scheduler
+```
+
+---
+
+# 43. GENERATED ROUTEROS BOOTSTRAP
+
+The generated bootstrap should follow this structure:
+
+```routeros
+# ============================================================
+# ISP SOLUTIONS — MIKROTIK ROUTEROS v7 BOOTSTRAP
+# Router: <ROUTER_ID>
+# Generated: <TIMESTAMP>
+# ============================================================
+
+:local routerId "<ROUTER_ID>";
+:local identity "<IDENTITY>";
+
+:local enrollmentToken "<SHORT_LIVED_TOKEN>";
+
+:local wgPrivateKey "<ROUTER_WG_PRIVATE_KEY>";
+:local serverPublicKey "<SERVER_WG_PUBLIC_KEY>";
+
+:local wgInterface "wg-ispsolutions";
+:local wgAddress "<10.200.X.X/32>";
+:local wgHub "10.200.0.1/32";
+
+:local apiUser "ispsolutions-agent";
+:local apiPassword "<GENERATED_PASSWORD>";
+
+/system identity set name=$identity;
+
+# ------------------------------------------------------------
+# WireGuard interface
+# ------------------------------------------------------------
+
+# Reconcile existing managed interface.
+# Do not rename unrelated interfaces.
+
+# ------------------------------------------------------------
+# WireGuard peer
+# ------------------------------------------------------------
+
+# Server endpoint MUST be:
+# wg.ispsolutions.co.ke:51820
+
+# allowed-address MUST initially be:
+# 10.200.0.1/32
+
+# ------------------------------------------------------------
+# Overlay IP
+# ------------------------------------------------------------
+
+# Reconcile exact managed address only.
+
+# ------------------------------------------------------------
+# RouterOS API user
+# ------------------------------------------------------------
+
+# Create/reconcile dedicated user.
+# Never use admin.
+
+# ------------------------------------------------------------
+# Firewall
+# ------------------------------------------------------------
+
+# Allow only required management traffic from 10.200.0.1.
+# Do not blanket-allow the entire WireGuard interface.
+
+# ------------------------------------------------------------
+# Persistent agent
+# ------------------------------------------------------------
+
+# HTTPS fetch MUST use:
+# check-certificate=no
+
+# ------------------------------------------------------------
+# Scheduler
+# ------------------------------------------------------------
+
+# Run every 1 minute with locking/backoff.
+
+# ------------------------------------------------------------
+# Completion
+# ------------------------------------------------------------
+
+# Do NOT log tokens, passwords, or private keys.
+# Report enrollment/heartbeat securely.
+```
+
+The actual generated script must contain complete working RouterOS v7 commands, not comments/placeholders.
+
+---
+
+# 44. IMPORTANT: DO NOT LEAK THE ENROLLMENT TOKEN
+
+Remove any implementation equivalent to:
+
+```routeros
+:log info ("ISP Solutions enrolled token=" . $token);
+```
+
+This is prohibited.
+
+Instead log:
+
+```text
+ISP Solutions enrollment bootstrap initialized for router <router-id>
+```
+
+without credentials.
+
+---
+
+# 45. ACCEPTANCE CRITERIA
+
+The implementation is complete only when all of the following are true:
+
+### DNS
+
+```text
+ispsolutions.co.ke
+www.ispsolutions.co.ke
+wg.ispsolutions.co.ke
+```
+
+all work using DNS-only Cloudflare records.
+
+### Website
+
+```text
+https://ispsolutions.co.ke
+```
+
+works directly through Caddy.
+
+### WireGuard
+
+```text
+wg.ispsolutions.co.ke:51820/UDP
+```
+
+accepts MikroTik peers.
+
+### MikroTik
+
+A new RouterOS v7 router can execute the generated bootstrap without:
+
+```text
+CA installation
+certificate import
+check-certificate=yes
+API-SSL
+```
+
+### Enrollment
+
+The router progresses:
+
+```text
+PENDING
+→ BOOTSTRAP_EXECUTED
+→ WIREGUARD_CONNECTED
+→ API_VERIFIED
+→ AGENT_CONNECTED
+→ ENROLLED
+```
+
+### API
+
+The application can retrieve:
+
+```text
+identity
+RouterOS version
+resource information
+routerboard information
+```
+
+through the WireGuard network.
+
+### Security
+
+RouterOS API is NOT accessible through WAN.
+
+### Agent
+
+The router checks in successfully every minute.
+
+### Configuration
+
+The server can generate and deploy an idempotent RouterOS configuration.
+
+### Multi-tenancy
+
+Tenant isolation is enforced server-side.
+
+### Audit
+
+All security-sensitive router actions are auditable.
+
+### Secrets
+
+No secrets appear in:
+
+```text
+application logs
+RouterOS logs
+Git
+frontend responses
+error messages
+metrics
+```
+
+---
+
+# 46. IMPLEMENTATION PROCESS
+
+Before changing code:
+
+1. Inspect the existing repository.
+2. Identify the existing router/MikroTik integration.
+3. Identify existing WireGuard code.
+4. Identify existing authentication/secrets architecture.
+5. Identify existing worker/queue architecture.
+6. Identify existing database schema/migrations.
+7. Identify existing API conventions.
+8. Identify existing frontend router-management UI.
+9. Identify existing deployment configuration.
+10. Reuse existing abstractions wherever appropriate.
+
+Do not create duplicate implementations when an existing abstraction can be extended.
+
+Then implement in this order:
+
+```text
+1. Database
+2. WireGuard service
+3. Router credential service
+4. Enrollment service
+5. RouterOS API client
+6. Bootstrap generator
+7. Agent/configuration service
+8. Background jobs
+9. Health monitoring
+10. Audit logging
+11. API endpoints
+12. Frontend UI
+13. Tests
+14. Deployment configuration
+15. Documentation
+```
+
+---
+
+# 47. PRODUCTION QUALITY REQUIREMENT
+
+Do not stop after generating UI or database models.
+
+The feature must work end-to-end:
+
+```text
+Create router
+        ↓
+Generate enrollment
+        ↓
+Generate RouterOS bootstrap
+        ↓
+Execute on MikroTik
+        ↓
+WireGuard handshake
+        ↓
+RouterOS API connection
+        ↓
+Identity verification
+        ↓
+Agent heartbeat
+        ↓
+Router becomes ENROLLED
+        ↓
+Configuration deployment
+        ↓
+Configuration acknowledgement
+        ↓
+Continuous health monitoring
+```
+
+Every stage must be implemented.
+
+---
+
+# 48. FINAL NETWORK PARAMETERS
+
+Use these defaults unless already configured in the production environment:
+
+```env
+PUBLIC_HOST=ispsolutions.co.ke
+
+WIREGUARD_PUBLIC_HOST=wg.ispsolutions.co.ke
+WIREGUARD_PUBLIC_PORT=51820
+
+WIREGUARD_HUB_ADDRESS=10.200.0.1
+WIREGUARD_NETWORK=10.200.0.0/24
+
+ROUTEROS_API_PORT=8728
+
+ROUTEROS_API_TLS=false
+
+ROUTEROS_HTTPS_CHECK_CERTIFICATE=false
+```
+
+Cloudflare:
+
+```text
+All DNS records:
+DNS-only / gray-clouded
+```
+
+WireGuard:
+
+```text
+UDP 51820
+Direct VPS
+No Cloudflare proxy
+No Caddy
+```
+
+Web:
+
+```text
+HTTPS 443
+Direct VPS
+Caddy
+DNS-only Cloudflare
+```
+
+---
+
+# 49. FINAL INSTRUCTION TO THE IMPLEMENTATION AGENT
+
+Implement this as a **production ISP router-management subsystem**, not a demonstration.
+
+Do not simplify the architecture.
+
+Do not replace WireGuard with public RouterOS API access.
+
+Do not introduce certificate requirements.
+
+Do not use Cloudflare proxying.
+
+Do not expose RouterOS API to the Internet.
+
+Do not use the MikroTik `admin` account for application automation.
+
+Do not store credentials in plaintext.
+
+Do not log credentials.
+
+Do not create duplicate router records.
+
+Do not create duplicate RouterOS objects.
+
+Do not break existing `wg-gridline`/legacy installations.
+
+Do not silently modify customer WAN, routing, firewall, IP pools, queues, or other production configuration unrelated to the requested operation.
+
+Preserve existing working ISP Solutions functionality.
+
+After implementation, provide:
+
+1. Files changed.
+2. Database migrations created.
+3. Environment variables added.
+4. API endpoints added.
+5. Background jobs added.
+6. RouterOS bootstrap generation logic.
+7. WireGuard implementation.
+8. Security controls.
+9. Tests added.
+10. Deployment instructions.
+11. Exact production verification commands.
+12. Any assumptions or existing repository limitations.
+
+The implementation is considered successful only after the complete enrollment → WireGuard → API → agent → configuration deployment → health monitoring lifecycle works end-to-end.

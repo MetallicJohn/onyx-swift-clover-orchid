@@ -28,6 +28,7 @@ import { groupAssignments, listTags, loadAssignments, setCustomerTags } from "./
 import { assertPermission } from "./rbac";
 import { assertCustomerQuota, assertRouterQuota, assertTenantOperable } from "./saas";
 import { assertFeature, featureForAccess } from "./plans";
+import { seal } from "./secrets";
 import {
   isHotspotDurationUnit,
   validityHoursFromDuration,
@@ -1049,12 +1050,14 @@ export const addRouter = createServerFn({ method: "POST" })
     await sql`insert into routers (
         id, tenant_id, name, location, identity, role, wg_status, last_seen, cpu_pct, uptime_hours,
         enroll_token, wg_public, wg_address, agent_version, wg_private_ref,
-        model, ros_version, site_pop, management_ip, provisioning_status
+        model, ros_version, site_pop, management_ip, provisioning_status,
+        api_user, api_password
       ) values (
         ${id}, ${workspace.tenantId}, ${name}, ${site}, ${identity}, ${data.role || "access"},
         'pending', null, 0, 0, ${enroll.token}, ${enroll.wg_public}, ${wgAddress}, '0.2.0',
         ${enroll.wg_private_sealed}, ${(data.model || "").trim()}, ${(data.ros_version || "").trim()},
-        ${site}, ${(data.management_ip || "").trim()}, 'pending'
+        ${site}, ${(data.management_ip || "").trim()}, 'pending',
+        ${enroll.api_user}, ${seal(enroll.api_password)}
       )`;
     await audit(sql, workspace.tenantId, context.userId, "router.created", "router", id);
     const { issueProvisioningToken, recordProvisionEvent } = await import("./router-provisioning");
@@ -1077,8 +1080,8 @@ export const addRouter = createServerFn({ method: "POST" })
       });
     }
     const base = preview.origin || (await tenantPublicOriginOrEmpty(sql, workspace.tenantId, "public_api"));
-    const script = agentScript(
-      await wgEnrollContext(sql, workspace.tenantId, {
+    const script = agentScript({
+      ...(await wgEnrollContext(sql, workspace.tenantId, {
         id,
         name,
         identity,
@@ -1087,8 +1090,10 @@ export const addRouter = createServerFn({ method: "POST" })
         wg_private_ref: enroll.wg_private_sealed,
         wg_address: wgAddress,
         pullUrl: agentPullUrl(base, enroll.token),
-      }),
-    );
+      })),
+      apiUser: enroll.api_user,
+      apiPassword: enroll.api_password,
+    });
     return {
       id,
       script,

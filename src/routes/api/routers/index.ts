@@ -5,6 +5,7 @@ import { assertFeature } from "@/lib/isp/plans";
 import { assertRouterQuota } from "@/lib/isp/saas";
 import { apiError, json, readJson, requireRouterApi } from "@/lib/isp/router-http";
 import { issueProvisioningToken, listTenantRouters, recordProvisionEvent } from "@/lib/isp/router-provisioning";
+import { seal } from "@/lib/isp/secrets";
 
 export const Route = createFileRoute("/api/routers/")({
   server: {
@@ -34,12 +35,14 @@ export const Route = createFileRoute("/api/routers/")({
           await sql`insert into routers (
               id, tenant_id, name, location, identity, role, wg_status, last_seen, cpu_pct, uptime_hours,
               enroll_token, wg_public, wg_address, agent_version, wg_private_ref,
-              model, ros_version, site_pop, management_ip, provisioning_status
+              model, ros_version, site_pop, management_ip, provisioning_status,
+              api_user, api_password
             ) values (
               ${id}, ${tenantId}, ${name}, ${site}, ${identity}, ${String(body.role || "access")},
               'pending', null, 0, 0, ${enroll.token}, ${enroll.wg_public}, ${wgAddress}, '0.2.0',
               ${enroll.wg_private_sealed}, ${String(body.model || "").trim()}, ${String(body.ros_version || "").trim()},
-              ${site}, ${String(body.management_ip || "").trim()}, 'pending'
+              ${site}, ${String(body.management_ip || "").trim()}, 'pending',
+              ${enroll.api_user}, ${seal(enroll.api_password)}
             )`;
           await recordProvisionEvent(sql, {
             tenantId,

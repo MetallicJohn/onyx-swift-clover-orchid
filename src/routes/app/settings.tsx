@@ -704,9 +704,9 @@ function SettingsPage() {
           <p className="text-sm text-muted">
             This VPS is <span className="font-mono text-fg">{hub?.address || "10.200.0.1/24"}</span> on{" "}
             <span className="font-mono text-fg">{hub?.network || "10.200.0.0/24"}</span>. Routers dial{" "}
-            <span className="font-mono text-fg">wg-ispsolutions</span>. Winbox and API stay on the overlay. Paste the
-            public hostname or IP of the server, then run the install script — it replaces an older hub
-            interface if one is still present.
+            <span className="font-mono text-fg">wg-ispsolutions</span>. API is TCP 8728 on the overlay only. Paste the
+            public WireGuard hostname (never the HTTPS apex). Production default is{" "}
+            <span className="font-mono text-fg">wg.ispsolutions.co.ke</span>. Cloudflare stays DNS-only.
           </p>
           <form
             className="grid gap-3"
@@ -725,7 +725,7 @@ function SettingsPage() {
           >
             <Field label="Public endpoint">
               <Input
-                placeholder="vpn.yourisp.co.ke or 102.68.10.2"
+                placeholder="wg.ispsolutions.co.ke"
                 value={hubForm.endpoint_host}
                 onChange={(e) => setHubForm({ ...hubForm, endpoint_host: e.target.value })}
               />

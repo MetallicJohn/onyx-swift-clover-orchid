@@ -7,6 +7,7 @@ import { loadServiceMaps, mapIdentity, matchRouter, loadRouterIndex } from "./tr
 import { getTrafficSettings, type TrafficSettings } from "./traffic-settings.ts";
 import { readRouterLive, writeRouterLive, type RouterIfaceLive, type RouterLive } from "./traffic-store.ts";
 import { applyRls } from "./rls.ts";
+import { open } from "./secrets.ts";
 import { netflowAdapter, routerosAdapter, snmpAdapter } from "./traffic-sources.ts";
 
 type Sql = {
@@ -128,7 +129,7 @@ export async function defaultRestClient(
   if (!target || !router.api_password) return null;
   const ms = timeoutMs ?? loadServiceConfig().mikrotikTimeoutMs;
   const base = `https://${target.host}:${target.port}`;
-  const auth = Buffer.from(`${router.api_user || "ispsolutions"}:${router.api_password}`).toString("base64");
+  const auth = Buffer.from(`${router.api_user || "ispsolutions-agent"}:${open(router.api_password)}`).toString("base64");
   return async (path: string) => {
     try {
       const res = await fetch(`${base}${path}`, {

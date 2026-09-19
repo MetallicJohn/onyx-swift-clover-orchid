@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { agentPullUrl, agentScript, enrollFields } from "./agent";
+import { apiUserEnsureRos } from "./routeros";
 import { wgEnrollContext } from "./wireguard";
 import { requireWorkspace as requireWs } from "./workspace";
 import { assertPermission, hasPermission } from "./rbac";
@@ -9,6 +10,7 @@ import {
   createIpPool,
   deleteIpPool,
   deleteRouter as removeRouter,
+  ensureRouterApiCredentials,
   ensureTenantProvisioning,
   issueProvisioningToken,
   listAssignedPools,
@@ -49,6 +51,7 @@ async function scriptFor(
 ) {
   const { tenantPublicOriginOrEmpty } = await import("./domain-resolve");
   const base = await tenantPublicOriginOrEmpty(sql, tenantId, "public_api");
+  const api = await ensureRouterApiCredentials(sql, tenantId, r.id);
   const ctx = await wgEnrollContext(sql, tenantId, {
     id: r.id,
     name: r.name,
@@ -59,7 +62,7 @@ async function scriptFor(
     wg_address: r.wg_address || "10.200.0.2/32",
     pullUrl: agentPullUrl(base, r.enroll_token),
   });
-  return agentScript(ctx);
+  return agentScript({ ...ctx, apiUser: api.user, apiPassword: api.password });
 }
 
 export const updateRouter = createServerFn({ method: "POST" })
@@ -115,6 +118,18 @@ export const copyRouterScript = createServerFn({ method: "POST" })
       return { script: await scriptFor(sql, tenantId, next), token: next.enroll_token, rotated: true };
     }
     return { script: await scriptFor(sql, tenantId, r), token: r.enroll_token, rotated: false };
+  });
+
+export const copyRouterApiUser = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
+    const r = await loadEnroll(sql, tenantId, data.id);
+    const api = await ensureRouterApiCredentials(sql, tenantId, r.id);
+    const script = apiUserEnsureRos({ user: api.user, password: api.password });
+    return { script, user: api.user };
   });
 
 export const getRouterDetailFn = createServerFn({ method: "POST" })
