@@ -9,6 +9,7 @@ import {
   nbiPing,
   nbiPostTask,
   nbiTaskBody,
+  normalizeAcsNbiUrl,
   ouiFromGenieDevice,
   productClassFromGenieDevice,
   serialFromGenieDevice,
@@ -39,8 +40,14 @@ export async function loadAcsConfig(sql: Sql, tenantId: string): Promise<AcsNbiC
   const envUser = (process.env.GENIEACS_NBI_USER || process.env.GENIEACS_NBI_USERNAME || "").trim();
   const envPass = (process.env.GENIEACS_NBI_PASS || process.env.GENIEACS_NBI_PASSWORD || "").trim();
   const timeoutMs = Number(process.env.GENIEACS_TIMEOUT_MS || 8000);
+  let nbiUrl = (row?.acs_nbi_url || fromEnv).trim();
+  try {
+    if (nbiUrl) nbiUrl = normalizeAcsNbiUrl(nbiUrl);
+  } catch {
+    /* keep the stored value so a bad URL stays visible */
+  }
   return {
-    nbiUrl: (row?.acs_nbi_url || fromEnv).trim(),
+    nbiUrl,
     user: (row?.acs_nbi_user || envUser).trim(),
     pass: open(row?.acs_nbi_pass_ref || "") || envPass,
     oui: (row?.acs_oui || "").trim(),
@@ -53,7 +60,7 @@ export async function saveAcsConfig(
   tenantId: string,
   data: { nbiUrl: string; user: string; pass?: string; oui: string },
 ) {
-  const url = data.nbiUrl.trim().replace(/\/+$/, "");
+  const url = normalizeAcsNbiUrl(data.nbiUrl);
   const user = data.user.trim();
   const oui = data.oui.replace(/[^0-9A-Fa-f]/g, "").toUpperCase().slice(0, 6);
   if (data.pass && data.pass.trim() && data.pass !== "••••") {
@@ -80,7 +87,7 @@ export async function acsConnection(sql: Sql, tenantId: string, fetchImpl?: NbiF
     user: cfg.user,
     oui: cfg.oui,
     passHint: hint(row?.acs_nbi_pass_ref || ""),
-    error: "error" in ping ? ping.error : ping.ok ? "" : `NBI HTTP ${ping.status}`,
+    error: ping.ok ? "" : ping.error || `NBI HTTP ${ping.status}`,
   };
 }
 

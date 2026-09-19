@@ -7,7 +7,7 @@ GenieACS is a **separate process** (CWMP :7547, NBI :7557, FS :7567, UI on `acs.
 - Docker Compose starts MongoDB 7 + `drumsergio/genieacs:1.2.16.0` beside the web app
 - Per-ISP ACS URL, username, password, and connection-request login (sealed). Unique public CWMP port via cwmp-edge
 - CPE → ACS HTTP digest auth: GenieACS `cwmp.auth` = `AUTH(USERNAME, EXT("ispsolutions", "passwordFor", USERNAME))`. The extension looks up the sealed secret on the private `/api/internal/acs-auth` endpoint. Unknown or disabled ISPs are rejected. Informs are not audited
-- ACS → CPE connection-request auth uses the device's stored connection-request username and password
+- ACS → CPE connection-request auth uses the device's stored connection-request username and password. Basic auth is allowed (`cwmp.connectionRequestAllowBasicAuth`) because many ONUs do not speak digest on connection request
 - Optional HTTPS ACS URLs (`acs_tls`). Default HTTP so existing OLT profiles keep working. Optional TLS on cwmp-edge
 - URL lock preset: on inform, rewrite `ManagementServer.URL` (TR-098 and TR-181) and connection-request credentials for this ISP
 - Service provision preset: on inform, write this assigned service's PPPoE WAN username/password and Wi-Fi SSID/password (both TR-098 and TR-181). Unassigned devices and empty fields are skipped. Default on (`acs_provision_service`)
@@ -15,6 +15,23 @@ GenieACS is a **separate process** (CWMP :7547, NBI :7557, FS :7567, UI on `acs.
 - Inventory sync from `GET /devices/` (filtered by this ISP's ACS username)
 - Tasks stay `queued` until NBI is configured, then `sent` or `error`
 - NBI, Mongo, and `/api/internal/acs-auth` are not published on the host
+
+## CWMP settings (GenieACS)
+
+These are written on first boot (`genieacs-init`) and can be re-applied from **System settings → Apply CWMP settings** or **GenieACS → NBI**:
+
+| Key | Value |
+| --- | --- |
+| `cwmp.auth` | `AUTH(USERNAME, EXT("ispsolutions", "passwordFor", USERNAME))` |
+| `cwmp.connectionRequestAuth` | `AUTH(username, password)` |
+| `cwmp.connectionRequestAllowBasicAuth` | `true` |
+| `cwmp.debug` | `false` |
+| Preset `ispsolutions-lock-url` | Rewrite ACS URL + connection-request login on inform |
+| Preset `ispsolutions-service` | Write assigned WAN/SSID/Wi-Fi on inform |
+
+GenieACS CWMP/NBI/FS/UI each run **one worker**. The image default (`0` = one process per CPU) SIGABRTs a pile of child processes on typical VPS sizes, and NBI never binds 7557. After recreate, `http://genieacs:7557` is the private NBI URL the console should save.
+
+Set the ACS public host (VPS IP or hostname) in System settings, or `ACS_PUBLIC_HOST` in `ispsolutions.env`. Each ISP then gets `http://<host>:<port>/`.
 
 ## What is not proven here
 

@@ -45,7 +45,7 @@ async function genieacsCheck(cfg: AcsNbiConfig): Promise<Probe> {
   if (ping.ok) return { status: "ok", latencyMs: Date.now() - started };
   return {
     status: "error",
-    detail: ("error" in ping ? ping.error : `NBI HTTP ${ping.status}`) || "nbi unavailable",
+    detail: ping.error || `NBI HTTP ${ping.status}` || "nbi unavailable",
     latencyMs: Date.now() - started,
   };
 }

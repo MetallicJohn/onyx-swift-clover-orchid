@@ -58,6 +58,16 @@ export function normalizeAcsScheme(raw: unknown): "http" | "https" {
   return String(raw || "").trim().toLowerCase() === "https" ? "https" : "http";
 }
 
+export function acsHostFromEnv(env: NodeJS.Dict<string> = process.env) {
+  const raw = (env.ACS_PUBLIC_HOST || env.ISPSOLUTIONS_DOMAIN || env.GRIDLINE_DOMAIN || "").trim();
+  if (!raw) return "";
+  try {
+    return normalizeAcsHost(raw);
+  } catch {
+    return "";
+  }
+}
+
 export function parseBoolSetting(raw: unknown, fallback: boolean) {
   const v = String(raw ?? "").trim().toLowerCase();
   if (v === "true" || v === "1" || v === "yes") return true;
@@ -83,7 +93,7 @@ export async function loadAcsPlatformSettings(sql: Sql): Promise<AcsPlatformSett
   for (const r of rows) map[r.key] = r.value;
   const range = parsePortRange(map.acs_port_start || ACS_PORT_RANGE_DEFAULT.start, map.acs_port_end || ACS_PORT_RANGE_DEFAULT.end);
   return {
-    acs_public_host: (map.acs_public_host || "").trim(),
+    acs_public_host: (map.acs_public_host || "").trim() || acsHostFromEnv(),
     acs_dns_host: (map.acs_dns_host || "").trim(),
     acs_port_start: range.start,
     acs_port_end: range.end,
@@ -97,8 +107,6 @@ export async function loadAcsPlatformSettings(sql: Sql): Promise<AcsPlatformSett
 export async function resolveAcsPublicHost(sql: Sql, fallbackBase = "") {
   const cfg = await loadAcsPlatformSettings(sql);
   if (cfg.acs_public_host) return normalizeAcsHost(cfg.acs_public_host);
-  const envHost = (process.env.ACS_PUBLIC_HOST || process.env.ISPSOLUTIONS_DOMAIN || process.env.GRIDLINE_DOMAIN || "").trim();
-  if (envHost) return normalizeAcsHost(envHost);
   if (fallbackBase) {
     try {
       const u = new URL(fallbackBase.includes("://") ? fallbackBase : `https://${fallbackBase}`);

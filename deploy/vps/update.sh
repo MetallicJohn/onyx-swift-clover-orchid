@@ -152,6 +152,10 @@ if ! docker compose -p "$PROJECT" -f "$COMPOSE" --env-file "$ENV_FILE" up -d --b
   exit 1
 fi
 
+echo "[ispsolutions] applying GenieACS CWMP config"
+docker compose -p "$PROJECT" -f "$COMPOSE" --env-file "$ENV_FILE" run --rm --no-deps genieacs-init \
+  || echo "[ispsolutions] genieacs-init skipped (ACS config will apply from the app)"
+
 HEALTH="$INSTALL_DIR/deploy/vps/healthcheck.sh"
 if [[ -x "$HEALTH" ]] || [[ -f "$HEALTH" ]]; then
   chmod +x "$HEALTH" 2>/dev/null || true

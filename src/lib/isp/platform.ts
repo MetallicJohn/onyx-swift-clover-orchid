@@ -65,7 +65,7 @@ export async function getPlatformSettings(sql: Sql) {
     sales_email: (map.sales_email || "").trim(),
     support_email: (map.support_email || "").trim(),
     contact_phone: (map.contact_phone || "").trim(),
-    acs_public_host: (map.acs_public_host || "").trim(),
+    acs_public_host: (map.acs_public_host || "").trim() || (await import("./acs-ports")).acsHostFromEnv(),
     acs_dns_host: (map.acs_dns_host || "").trim(),
     acs_port_start: Number(map.acs_port_start || 7551),
     acs_port_end: Number(map.acs_port_end || 7999),
@@ -202,11 +202,17 @@ export async function savePlatformSettings(
     entityType: "platform_settings",
     metadata: patch,
   });
-  if (patch.acs_tls != null) {
+  if (patch.acs_tls != null || patch.acs_public_host != null) {
     const { rewriteAcsUrls } = await import("./acs-security");
     await rewriteAcsUrls(sql);
   }
-  if (patch.acs_tls != null || patch.acs_require_cpe_auth != null || patch.acs_lock_url != null || patch.acs_provision_service != null) {
+  if (
+    patch.acs_tls != null ||
+    patch.acs_public_host != null ||
+    patch.acs_require_cpe_auth != null ||
+    patch.acs_lock_url != null ||
+    patch.acs_provision_service != null
+  ) {
     try {
       const { applyGenieAcsSecurity } = await import("./acs-security");
       await applyGenieAcsSecurity(sql);

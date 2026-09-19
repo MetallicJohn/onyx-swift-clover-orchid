@@ -133,8 +133,71 @@ function authHeaders(cfg: AcsNbiConfig): Record<string, string> {
   return headers;
 }
 
+export const DEFAULT_GENIEACS_NBI_URL = "http://genieacs:7557";
+
 export function nbiOrigin(cfg: AcsNbiConfig) {
   return (cfg.nbiUrl || "").trim().replace(/\/+$/, "");
+}
+
+function envNbiUrl() {
+  return (process.env.GENIEACS_NBI_URL || "").trim().replace(/\/+$/, "");
+}
+
+function isLoopbackHost(host: string) {
+  const h = host.toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]" || h === "0.0.0.0";
+}
+
+/** Private GenieACS API URL. Not the public ACS URL ONUs use. */
+export function normalizeAcsNbiUrl(raw: string) {
+  const v = (raw || "").trim().replace(/\/+$/, "");
+  if (!v) return envNbiUrl() || DEFAULT_GENIEACS_NBI_URL;
+  let u: URL;
+  try {
+    u = new URL(v.includes("://") ? v : `http://${v}`);
+  } catch {
+    throw new Error("NBI URL must be a full http:// address, for example http://genieacs:7557");
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
+    throw new Error("NBI URL must be http or https");
+  }
+  const port = u.port ? Number(u.port) : u.protocol === "https:" ? 443 : 80;
+  // 7557 is NBI. 7551–7999 otherwise are per-ISP CWMP edge ports — not NBI.
+  if (Number.isFinite(port) && port >= 7551 && port <= 7999 && port !== 7557) {
+    throw new Error(
+      "That is a public ACS/CWMP URL. NBI is the private GenieACS API — use http://genieacs:7557",
+    );
+  }
+  if (port === 7547) u.port = "7557";
+  if (isLoopbackHost(u.hostname)) {
+    const fromEnv = envNbiUrl();
+    if (fromEnv) return fromEnv;
+    u.hostname = "genieacs";
+    u.port = u.port || "7557";
+  }
+  if (!u.port && (u.hostname === "genieacs" || isLoopbackHost(u.hostname))) u.port = "7557";
+  return u.origin;
+}
+
+export function describeNbiError(err: unknown, nbiUrl: string) {
+  const url = (nbiUrl || "").replace(/\/+$/, "") || "the NBI URL";
+  const msg = err instanceof Error ? err.message : String(err);
+  const cause =
+    err instanceof Error && err.cause && typeof err.cause === "object"
+      ? (err.cause as { code?: string; message?: string })
+      : null;
+  const blob = `${msg} ${cause?.code || ""} ${cause?.message || ""}`;
+  if (/abort/i.test(msg)) return `GenieACS NBI timed out at ${url}`;
+  if (/ENOTFOUND|EAI_AGAIN/i.test(blob)) {
+    return `Cannot resolve ${url}. On the VPS use http://genieacs:7557 — not localhost and not the public ACS URL.`;
+  }
+  if (/ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|fetch failed/i.test(blob)) {
+    return `GenieACS NBI is not reachable at ${url}. Use http://genieacs:7557 on a single VPS (private API, port 7557).`;
+  }
+  if (!msg.trim() || msg === "fetch failed") {
+    return `GenieACS NBI is not reachable at ${url}. Use http://genieacs:7557 on a single VPS (private API, port 7557).`;
+  }
+  return `GenieACS NBI error at ${url}: ${msg}`;
 }
 
 export async function nbiRequest(
@@ -170,6 +233,9 @@ export async function nbiRequest(
       }
     }
     return { ok: res.ok, status: res.status, json, text };
+  } catch (err) {
+    if (ctrl.signal.aborted) throw new Error(`GenieACS NBI timed out at ${base}`);
+    throw new Error(describeNbiError(err, base));
   } finally {
     clearTimeout(timer);
   }
@@ -178,11 +244,17 @@ export async function nbiRequest(
 export async function nbiPing(cfg: AcsNbiConfig, fetchImpl: NbiFetch = fetch) {
   try {
     const r = await nbiRequest(cfg, "/devices/?limit=1", { method: "GET" }, fetchImpl);
-    return { ok: r.ok, status: r.status };
+    return { ok: r.ok, status: r.status, error: r.ok ? "" : `NBI HTTP ${r.status}` };
   } catch (err) {
-    return { ok: false, status: 0, error: err instanceof Error ? err.message : String(err) };
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      status: 0,
+      error: /GenieACS NBI/i.test(msg) ? msg : describeNbiError(err, nbiOrigin(cfg)),
+    };
   }
 }
+
 
 export async function nbiListDevices(cfg: AcsNbiConfig, fetchImpl: NbiFetch = fetch) {
   const r = await nbiRequest(cfg, "/devices/", { method: "GET" }, fetchImpl);

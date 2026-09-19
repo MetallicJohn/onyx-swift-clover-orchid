@@ -13,6 +13,8 @@ type Sql = {
 export const CWMP_AUTH_DIGEST = 'AUTH(USERNAME, EXT("ispsolutions", "passwordFor", USERNAME))';
 export const CWMP_AUTH_OPEN = "true";
 export const CWMP_CONNECTION_REQUEST_AUTH = "AUTH(username, password)";
+export const CWMP_CONNECTION_REQUEST_ALLOW_BASIC = "true";
+export const CWMP_DEBUG = "false";
 export const LOCK_URL_PROVISION = "ispsolutions-lock-url";
 export const LOCK_URL_PRESET = "ispsolutions-lock-url";
 
@@ -367,29 +369,82 @@ export async function applyGenieAcsSecurity(
   if (auth.ok) steps.push("cwmp.auth");
   const cr = await putCwmpConfig(cfg, "cwmp.connectionRequestAuth", CWMP_CONNECTION_REQUEST_AUTH, fetchImpl);
   if (cr.ok) steps.push("cwmp.connectionRequestAuth");
+  const basic = await putCwmpConfig(cfg, "cwmp.connectionRequestAllowBasicAuth", CWMP_CONNECTION_REQUEST_ALLOW_BASIC, fetchImpl);
+  if (basic.ok) steps.push("cwmp.connectionRequestAllowBasicAuth");
+  const debug = await putCwmpConfig(cfg, "cwmp.debug", CWMP_DEBUG, fetchImpl);
+  if (debug.ok) steps.push("cwmp.debug");
   const ok =
     steps.includes("provision") &&
     steps.includes("service-provision") &&
+    steps.includes("cwmp.auth") &&
+    steps.includes("cwmp.connectionRequestAuth") &&
     (plat.acs_lock_url ? steps.includes("preset") : true) &&
     (plat.acs_provision_service ? steps.includes("service-preset") : true);
   return {
     ok,
     steps,
     auth: auth.ok,
-    error: ok ? "" : "GenieACS did not accept the full security config. Digest auth still applies on the VPS from the ACS sidecar.",
+    error: ok ? "" : "GenieACS did not accept the full CWMP config. Digest auth still applies on the VPS from the ACS sidecar.",
   };
 }
 
 export async function rewriteAcsUrls(sql: Sql) {
   const plat = await loadAcsPlatformSettings(sql);
+  const host = plat.acs_public_host || plat.acs_dns_host;
   const rows = await sql<{ tenant_id: string; public_host: string; cwmp_port: number | null }>`
     select tenant_id, public_host, cwmp_port from acs_isp_credentials where cwmp_port is not null`;
   let n = 0;
   for (const row of rows) {
-    const url = buildAcsUrl(row.public_host || plat.acs_public_host, row.cwmp_port, plat.acs_tls);
+    const nextHost = host || row.public_host;
+    const url = buildAcsUrl(nextHost, row.cwmp_port, plat.acs_tls);
     if (!url) continue;
-    await sql`update acs_isp_credentials set cwmp_url = ${url}, updated_at = now() where tenant_id = ${row.tenant_id}`;
+    await sql`update acs_isp_credentials
+      set cwmp_url = ${url}, public_host = ${nextHost}, updated_at = now()
+      where tenant_id = ${row.tenant_id}`;
     n += 1;
   }
   return n;
+}
+
+export type GenieAcsCwmpSnapshot = {
+  ok: boolean;
+  error: string;
+  values: Record<string, string>;
+};
+
+function parseConfigRows(json: unknown) {
+  const values: Record<string, string> = {};
+  const rows = Array.isArray(json) ? json : [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const id = String((row as { _id?: unknown })._id || "");
+    if (!id.startsWith("cwmp.")) continue;
+    values[id] = String((row as { value?: unknown }).value ?? "");
+  }
+  return values;
+}
+
+export async function loadGenieAcsCwmp(
+  opts: { fetchImpl?: NbiFetch; nbi?: AcsNbiConfig } = {},
+): Promise<GenieAcsCwmpSnapshot> {
+  const cfg = opts.nbi && nbiOrigin(opts.nbi) ? opts.nbi : platformNbi();
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  if (!nbiOrigin(cfg)) return { ok: false, error: "GenieACS NBI URL is not set", values: {} };
+  try {
+    const r = await nbiRequest(cfg, "/config/", { method: "GET" }, fetchImpl);
+    if (!r.ok) return { ok: false, error: `GenieACS NBI HTTP ${r.status}`, values: {} };
+    return { ok: true, error: "", values: parseConfigRows(r.json) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err), values: {} };
+  }
+}
+
+export async function applyGenieAcsCwmp(
+  sql: Sql,
+  opts: { fetchImpl?: NbiFetch; nbi?: AcsNbiConfig } = {},
+) {
+  const rewritten = await rewriteAcsUrls(sql);
+  const applied = await applyGenieAcsSecurity(sql, opts);
+  const cwmp = await loadGenieAcsCwmp(opts);
+  return { ...applied, rewritten, cwmp };
 }

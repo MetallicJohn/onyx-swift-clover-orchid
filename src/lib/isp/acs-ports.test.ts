@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   ACS_RESERVED_PORTS,
+  acsHostFromEnv,
   allocateAcsPort,
   assertAllocatablePort,
   buildAcsUrl,
+  loadAcsPlatformSettings,
   nextAcsPort,
   normalizeAcsHost,
   parsePortRange,
@@ -22,6 +24,9 @@ test("port range and reserved ports reject unsafe values", () => {
   assert.equal(normalizeAcsHost("https://acs.example.com:443/path"), "acs.example.com");
   assert.equal(buildAcsUrl("10.0.0.5", 7552), "http://10.0.0.5:7552/");
   assert.equal(buildAcsUrl("10.0.0.5", 7552, "https"), "https://10.0.0.5:7552/");
+  assert.equal(acsHostFromEnv({ ACS_PUBLIC_HOST: "https://acs.isp.example/path" }), "acs.isp.example");
+  assert.equal(acsHostFromEnv({ ISPSOLUTIONS_DOMAIN: "ops.imani.ke" }), "ops.imani.ke");
+  assert.equal(acsHostFromEnv({}), "");
 });
 
 test("automatic port allocation is unique and concurrent-safe", async () => {
@@ -71,6 +76,21 @@ test("existing tenants keep credentials when a port is backfilled", async () => 
     assert.equal(typeof again.cwmp_port, "number");
     assert.ok(port);
   } finally {
+    await close();
+  }
+});
+
+test("platform ACS host falls back to ACS_PUBLIC_HOST when unset", async () => {
+  const { sql, bypass, close } = await openTestDb();
+  const prev = process.env.ACS_PUBLIC_HOST;
+  process.env.ACS_PUBLIC_HOST = "edge.example.net";
+  try {
+    await bypass();
+    const plat = await loadAcsPlatformSettings(sql);
+    assert.equal(plat.acs_public_host, "edge.example.net");
+  } finally {
+    if (prev == null) delete process.env.ACS_PUBLIC_HOST;
+    else process.env.ACS_PUBLIC_HOST = prev;
     await close();
   }
 });

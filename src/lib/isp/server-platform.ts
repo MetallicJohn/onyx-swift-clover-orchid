@@ -382,6 +382,29 @@ export const saveSaasSettings = createServerFn({ method: "POST" })
     return savePlatformSettings(sql, context.userId, data);
   });
 
+export const getSaasGenieAcsCwmp = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    await platformSql(context.userId);
+    const { loadGenieAcsCwmp } = await import("./acs-security");
+    return loadGenieAcsCwmp();
+  });
+
+export const applySaasGenieAcsCwmp = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql } = await platformSql(context.userId);
+    const { applyGenieAcsCwmp } = await import("./acs-security");
+    const result = await applyGenieAcsCwmp(sql);
+    await writePlatformAudit(sql, {
+      actorUserId: context.userId,
+      action: "acs.cwmp_configured",
+      entityType: "platform_settings",
+      metadata: { ok: result.ok, steps: result.steps, rewritten: result.rewritten },
+    });
+    return result;
+  });
+
 export const saveSaasRouterProvisioning = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(

@@ -46,6 +46,13 @@ append RADIUS_ACCOUNTING_PORT "1813"
 append GENIEACS_CWMP_URL "http://genieacs:7547"
 append MONGODB_URL "mongodb://mongo:27017/genieacs"
 
+if ! grep -q '^ACS_PUBLIC_HOST=' "$ENV_FILE"; then
+  domain="$(grep '^ISPSOLUTIONS_DOMAIN=' "$ENV_FILE" 2>/dev/null | head -n1 | cut -d= -f2- || true)"
+  if [[ -n "$domain" ]]; then
+    echo "ACS_PUBLIC_HOST=$domain" >>"$ENV_FILE"
+  fi
+fi
+
 if ! grep -q '^REDIS_URL=' "$ENV_FILE"; then
   pass="$(grep '^REDIS_PASSWORD=' "$ENV_FILE" | head -n1 | cut -d= -f2-)"
   echo "REDIS_URL=redis://:${pass}@redis:6379/0" >>"$ENV_FILE"

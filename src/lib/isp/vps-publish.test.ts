@@ -60,6 +60,7 @@ test("publish pack names docker compose, health, and WireGuard", () => {
   assert.match(update, /--from-ci|--apply/);
   assert.match(update, /ISPSOLUTIONS_AUTO_DEPLOY/);
   assert.match(update, /docker compose/);
+  assert.match(update, /genieacs-init/);
   assert.match(timer, /OnUnitActiveSec=5min/);
   assert.match(timer, /AUTO_DEPLOY/);
   assert.match(compose, /postgres:16-alpine/);
@@ -83,6 +84,15 @@ test("publish pack names docker compose, health, and WireGuard", () => {
   const init = readFileSync(new URL("../../../deploy/vps/genieacs/init-config.js", import.meta.url), "utf8");
   assert.match(init, /cwmp\.auth/);
   assert.match(init, /connectionRequestAuth/);
+  assert.match(init, /connectionRequestAllowBasicAuth/);
+  assert.match(init, /cwmp\.debug/);
+  assert.match(init, /ispsolutions-lock-url/);
+  assert.match(init, /ispsolutions-service/);
+  assert.match(init, /acsUrlFor/);
+  assert.match(init, /serviceFor/);
+  assert.match(compose, /GENIEACS_CWMP_WORKER_PROCESSES: "1"/);
+  assert.match(compose, /GENIEACS_NBI_WORKER_PROCESSES: "1"/);
+  assert.doesNotMatch(compose, /GENIEACS_DEBUG/);
   assert.match(install, /7551:7999\/tcp/);
   assert.match(install, /ACS_EDGE_TOKEN/);
   assert.match(compose, /mongo:7/);

@@ -554,7 +554,7 @@ export const testAcsConnectionFn = createServerFn({ method: "POST" })
       return { ok: false, error: "GenieACS NBI is not configured. Save the NBI connection first.", credentials: row ? packAcsCredentials(row) : null };
     }
     const ping = await nbiPing(cfg);
-    const error = ping.ok ? "" : "error" in ping ? ping.error : `GenieACS NBI HTTP ${ping.status}`;
+    const error = ping.ok ? "" : ping.error || `GenieACS NBI HTTP ${ping.status}`;
     const row = await recordAcsVerify(sql, tenantId, { ok: ping.ok, error }, context.userId);
     if (ping.ok) {
       try {
@@ -568,6 +568,26 @@ export const testAcsConnectionFn = createServerFn({ method: "POST" })
       error: error || "",
       credentials: row ? packAcsCredentials(row) : null,
     };
+  });
+
+export const getGenieAcsCwmpFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "acs.devices.view");
+    const { loadGenieAcsCwmp } = await import("./acs-security");
+    const cfg = await loadAcsConfig(sql, tenantId);
+    return loadGenieAcsCwmp({ nbi: nbiOrigin(cfg) ? cfg : undefined });
+  });
+
+export const applyGenieAcsCwmpFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "acs.connection.test");
+    const { applyGenieAcsCwmp } = await import("./acs-security");
+    const cfg = await loadAcsConfig(sql, tenantId);
+    return applyGenieAcsCwmp(sql, { nbi: nbiOrigin(cfg) ? cfg : undefined });
   });
 
 

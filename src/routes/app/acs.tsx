@@ -1,12 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AcsCredentialsPanel } from "@/components/isp/acs-credentials-panel";
+import { AcsCwmpPanel, type CwmpApplyResult, type CwmpSnapshot } from "@/components/isp/acs-cwmp-panel";
 import { AcsDeviceDesk } from "@/components/isp/acs-device-desk";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { getAcsCredentialsFn, listAcs, saveAcsSettings, syncAcsFromNbi } from "@/lib/isp/server-ops";
+import {
+  applyGenieAcsCwmpFn,
+  getAcsCredentialsFn,
+  getGenieAcsCwmpFn,
+  listAcs,
+  saveAcsSettings,
+  syncAcsFromNbi,
+} from "@/lib/isp/server-ops";
 
 type TabId = "devices" | "credentials" | "nbi";
 
@@ -34,6 +42,9 @@ function AcsPage() {
   const [security, setSecurity] = useState<Security | null>(null);
   const [nbiConfigured, setNbiConfigured] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [cwmp, setCwmp] = useState<CwmpSnapshot | null>(null);
+  const [cwmpApply, setCwmpApply] = useState<CwmpApplyResult | null>(null);
+  const [cwmpBusy, setCwmpBusy] = useState(false);
 
   async function loadMeta() {
     const [r, c] = await Promise.all([listAcs().catch(() => null), getAcsCredentialsFn().catch(() => null)]);
@@ -52,6 +63,8 @@ function AcsPage() {
       setSecurity(c.security);
       setNbiConfigured(c.nbi_configured);
     }
+    const snap = await getGenieAcsCwmpFn().catch(() => null);
+    if (snap) setCwmp(snap);
   }
 
   useEffect(() => {
@@ -120,18 +133,36 @@ function AcsPage() {
       ) : null}
 
       {tab === "nbi" ? (
-        <form
-          className="grid max-w-3xl gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2 md:p-5"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const next = await saveAcsSettings({ data: nbi });
-            setConnection(next);
-            setNote(next.reachable ? "NBI reachable." : next.error || "Saved. NBI not reachable yet.");
-          }}
-        >
+        <div className="grid max-w-3xl gap-3">
+          <form
+            className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2 md:p-5"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setBusy(true);
+              setNote(null);
+              try {
+                const next = await saveAcsSettings({ data: nbi });
+                setConnection(next);
+                setNbi((prev) => ({
+                  ...prev,
+                  nbiUrl: next.nbiUrl || prev.nbiUrl,
+                  user: next.user,
+                  oui: next.oui,
+                }));
+                if (next.reachable) setNote("Saved. NBI reachable.");
+                else setNote(next.error ? `Saved. ${next.error}` : "Saved. NBI not reachable yet.");
+              } catch (err) {
+                setNote(err instanceof Error ? err.message : "Could not save NBI");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
           <h2 className="font-medium md:col-span-2">NBI connection</h2>
           <p className="text-sm text-muted md:col-span-2">
             Northbound API this console uses to list CPEs and queue reboot/SSID tasks. ONUs do not use these fields.
+            On a single VPS the URL is <span className="font-mono text-fg">http://genieacs:7557</span> — not localhost
+            and not the public ACS URL.
           </p>
           <Field label="NBI URL">
             <Input
@@ -155,13 +186,23 @@ function AcsPage() {
             />
           </Field>
           <div className="flex flex-wrap items-center gap-2 md:col-span-2">
-            <Button type="submit">Save NBI</Button>
+            <Button type="submit" disabled={busy}>
+              {busy ? "Saving…" : "Save NBI"}
+            </Button>
             <Button
               type="button"
               variant="secondary"
               onClick={async () => {
-                const r = await syncAcsFromNbi();
-                setNote(`Synced ${r.upserted} CPE(s) from GenieACS.`);
+                setBusy(true);
+                setNote(null);
+                try {
+                  const r = await syncAcsFromNbi();
+                  setNote(`Synced ${r.upserted} CPE(s) from GenieACS.`);
+                } catch (err) {
+                  setNote(err instanceof Error ? err.message : "Could not sync from GenieACS");
+                } finally {
+                  setBusy(false);
+                }
               }}
             >
               Sync from ACS
@@ -171,6 +212,31 @@ function AcsPage() {
             </Badge>
           </div>
         </form>
+        <AcsCwmpPanel
+          snapshot={cwmp}
+          apply={cwmpApply}
+          busy={cwmpBusy}
+          hint="Applies digest login, connection-request auth, URL lock, and WAN/Wi-Fi provision on the shared GenieACS. ONUs do not use NBI."
+          onApply={async () => {
+            setCwmpBusy(true);
+            setNote(null);
+            try {
+              const result = await applyGenieAcsCwmpFn();
+              setCwmpApply(result);
+              if (result.cwmp) setCwmp(result.cwmp);
+              setNote(
+                result.ok
+                  ? "CWMP settings applied on GenieACS."
+                  : result.error || "GenieACS did not accept the full CWMP config.",
+              );
+            } catch (err) {
+              setNote(err instanceof Error ? err.message : "Could not apply CWMP settings");
+            } finally {
+              setCwmpBusy(false);
+            }
+          }}
+        />
+        </div>
       ) : null}
     </div>
   );

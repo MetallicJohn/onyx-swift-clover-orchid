@@ -6,7 +6,15 @@ import {
   saveAcsConfig,
   syncAcsDevices,
 } from "./acs.ts";
-import { acsUsernameFromGenieDevice, genieDeviceId, nbiTaskBody, serialFromGenieDevice } from "./acs-nbi.ts";
+import {
+  acsUsernameFromGenieDevice,
+  describeNbiError,
+  genieDeviceId,
+  nbiPing,
+  nbiTaskBody,
+  normalizeAcsNbiUrl,
+  serialFromGenieDevice,
+} from "./acs-nbi.ts";
 import { openTestDb } from "./test-db.ts";
 
 test("GenieACS device id and SSID task body", () => {
@@ -20,6 +28,38 @@ test("GenieACS device id and SSID task body", () => {
     }),
     "tenant_alpha",
   );
+});
+
+test("NBI URL is the private GenieACS API, not localhost or the public ACS port", () => {
+  const prev = process.env.GENIEACS_NBI_URL;
+  delete process.env.GENIEACS_NBI_URL;
+  try {
+    assert.equal(normalizeAcsNbiUrl("http://genieacs:7557"), "http://genieacs:7557");
+    assert.equal(normalizeAcsNbiUrl("http://nbi.local"), "http://nbi.local");
+    assert.equal(normalizeAcsNbiUrl("http://127.0.0.1:7557"), "http://genieacs:7557");
+    assert.equal(normalizeAcsNbiUrl("http://localhost:7557/"), "http://genieacs:7557");
+    assert.equal(normalizeAcsNbiUrl("http://genieacs:7547"), "http://genieacs:7557");
+    assert.throws(() => normalizeAcsNbiUrl("http://acs.example.com:7551/"), /public ACS/);
+    process.env.GENIEACS_NBI_URL = "http://genieacs:7557";
+    assert.equal(normalizeAcsNbiUrl("http://127.0.0.1:7557"), "http://genieacs:7557");
+  } finally {
+    if (prev == null) delete process.env.GENIEACS_NBI_URL;
+    else process.env.GENIEACS_NBI_URL = prev;
+  }
+});
+
+test("NBI ping maps fetch failed to a reachable URL hint", async () => {
+  assert.match(describeNbiError(new Error("fetch failed"), "http://genieacs:7557"), /not reachable/);
+  assert.doesNotMatch(describeNbiError(new Error("fetch failed"), "http://genieacs:7557"), /^fetch failed$/);
+  const ping = await nbiPing(
+    { nbiUrl: "http://genieacs:7557", user: "", pass: "", oui: "" },
+    async () => {
+      throw new Error("fetch failed");
+    },
+  );
+  assert.equal(ping.ok, false);
+  assert.match(ping.error || "", /not reachable/);
+  assert.doesNotMatch(ping.error || "", /^fetch failed$/);
 });
 
 function mockNbi(opts?: { failPost?: boolean; devices?: Record<string, unknown>[] }) {
@@ -48,6 +88,32 @@ async function seed(sql: Awaited<ReturnType<typeof openTestDb>>["sql"]) {
   await sql`insert into cpe_devices (id, tenant_id, serial, product_class, ssid)
     values ('cpe_1', 'ten_acs', 'SN001', 'F670L', 'Old')`;
 }
+
+test("save NBI rewrites localhost and does not surface fetch failed when GenieACS is down", async () => {
+  const { sql, bypass, close } = await openTestDb();
+  try {
+    await bypass();
+    await sql`insert into tenants (id, name, slug) values ('ten_nbi_down', 'NBI', 'nbi-down')`;
+    const prev = process.env.GENIEACS_NBI_URL;
+    delete process.env.GENIEACS_NBI_URL;
+    try {
+      await saveAcsConfig(sql, "ten_nbi_down", { nbiUrl: "http://127.0.0.1:7557", user: "", oui: "" });
+      const conn = await acsConnection(sql, "ten_nbi_down", async () => {
+        throw new Error("fetch failed");
+      });
+      assert.equal(conn.configured, true);
+      assert.equal(conn.reachable, false);
+      assert.equal(conn.nbiUrl, "http://genieacs:7557");
+      assert.match(conn.error || "", /not reachable/);
+      assert.doesNotMatch(conn.error || "", /^fetch failed$/);
+    } finally {
+      if (prev == null) delete process.env.GENIEACS_NBI_URL;
+      else process.env.GENIEACS_NBI_URL = prev;
+    }
+  } finally {
+    await close();
+  }
+});
 
 test("queued reboot stays queued until NBI is configured, then dispatches", async () => {
   const { sql, bypass, close } = await openTestDb();

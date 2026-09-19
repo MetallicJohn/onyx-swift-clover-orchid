@@ -142,6 +142,12 @@ services:
       GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
       GENIEACS_EXT_DIR: /opt/genieacs/ext
       GENIEACS_EXT_TIMEOUT: "8000"
+      # One worker each. Default 0 = one per CPU and the image then SIGABRTs
+      # a pile of child processes (NBI never binds 7557).
+      GENIEACS_CWMP_WORKER_PROCESSES: "1"
+      GENIEACS_NBI_WORKER_PROCESSES: "1"
+      GENIEACS_FS_WORKER_PROCESSES: "1"
+      GENIEACS_UI_WORKER_PROCESSES: "1"
       ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL:-http://web:3000}
       ACS_EDGE_TOKEN: ${ACS_EDGE_TOKEN}
     volumes:

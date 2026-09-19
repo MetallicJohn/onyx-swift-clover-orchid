@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { AcsCwmpPanel, type CwmpApplyResult, type CwmpSnapshot } from "@/components/isp/acs-cwmp-panel";
 import { PageHead, Panel } from "@/components/platform/ui";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { APP_NAME } from "@/lib/brand";
-import { getSaasSettings, saveSaasSettings } from "@/lib/isp/server-platform";
+import { applySaasGenieAcsCwmp, getSaasGenieAcsCwmp, getSaasSettings, saveSaasSettings } from "@/lib/isp/server-platform";
 
 export const Route = createFileRoute("/platform/settings")({ component: SettingsPage });
 
@@ -38,13 +39,19 @@ function SettingsPage() {
     central_domain_only: false,
   });
   const [busy, setBusy] = useState(false);
+  const [cwmpBusy, setCwmpBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [cwmp, setCwmp] = useState<CwmpSnapshot | null>(null);
+  const [cwmpApply, setCwmpApply] = useState<CwmpApplyResult | null>(null);
 
   useEffect(() => {
     getSaasSettings()
       .then(setForm)
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load"));
+    getSaasGenieAcsCwmp()
+      .then(setCwmp)
+      .catch(() => setCwmp({ ok: false, error: "GenieACS is not reachable yet", values: {} }));
   }, []);
 
   return (
@@ -66,6 +73,8 @@ function SettingsPage() {
               const saved = await saveSaasSettings({ data: form });
               setForm(saved);
               setOk("Saved");
+              const snap = await getSaasGenieAcsCwmp().catch(() => null);
+              if (snap) setCwmp(snap);
             } catch (err) {
               setError(err instanceof Error ? err.message : "Could not save");
             } finally {
@@ -158,6 +167,11 @@ function SettingsPage() {
             These appear on the public homepage contact section. Leave blank to hide them. Enquiries from the form are stored on the platform.
           </p>
           <p className="mt-4 text-xs font-medium tracking-wide text-muted uppercase">TR-069 / ACS</p>
+          <p className="text-xs text-muted">
+            ONUs connect to a unique port on this host (7551–7999). The TR-069 edge forwards them to the shared GenieACS
+            CWMP listener. Digest login, URL lock, and service provision are written onto GenieACS when you save or
+            apply CWMP settings.
+          </p>
           <Field label="ACS public host (VPS IP or hostname)">
             <Input
               placeholder="203.0.113.10 or acs.example.com"
@@ -243,6 +257,26 @@ function SettingsPage() {
             />
             <span>Provision WAN, SSID, and Wi-Fi password from the assigned service on inform</span>
           </label>
+          <AcsCwmpPanel
+            snapshot={cwmp}
+            apply={cwmpApply}
+            busy={cwmpBusy}
+            hint="Save the host and flags above first if you changed them. Then apply digest login, connection-request auth, URL lock, and WAN/Wi-Fi provision onto GenieACS."
+            onApply={async () => {
+              setCwmpBusy(true);
+              setError(null);
+              try {
+                const result = await applySaasGenieAcsCwmp();
+                setCwmpApply(result);
+                if (result.cwmp) setCwmp(result.cwmp);
+                if (!result.ok && result.error) setError(result.error);
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Could not apply CWMP settings");
+              } finally {
+                setCwmpBusy(false);
+              }
+            }}
+          />
           <p className="mt-4 text-xs font-medium tracking-wide text-muted uppercase">Traffic monitoring</p>
           <p className="text-xs text-muted">
             Realtime rates stay in Redis. PostgreSQL only stores minute/hourly/daily aggregates. Billing still uses RADIUS
