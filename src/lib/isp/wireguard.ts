@@ -3,6 +3,7 @@ import { APP_NAME, ROS_WG_INTERFACE, ROS_WG_INTERFACE_LEGACY } from "../brand.ts
 import { nid } from "../utils.ts";
 import { open, seal } from "./secrets.ts";
 import { enrollEndpointHost, publicWgHost, publicWgHubAddress, publicWgPort, WG_DEFAULT_HUB_ADDRESS, WG_DEFAULT_NETWORK, WG_DEFAULT_PUBLIC_PORT } from "./wg-endpoint.ts";
+import { applyHostPeer, persistWantedHubPeersFromSql } from "./wg-host.ts";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -261,14 +262,16 @@ export async function syncRouterWgPeer(
       address = ${address},
       status = 'pending'
       where id = ${existing[0].id}`;
-    return;
+  } else {
+    await sql`insert into wireguard_peers
+      (id, tenant_id, router_id, public_key, private_key_sealed, allowed_ips, address, listen_port, persistent_keepalive, status)
+      values (
+        ${nid("wgp")}, ${tenantId}, ${router.id}, ${router.wg_public}, ${router.wg_private_ref || ""},
+        ${address}, ${address}, 13231, 25, 'pending'
+      )`;
   }
-  await sql`insert into wireguard_peers
-    (id, tenant_id, router_id, public_key, private_key_sealed, allowed_ips, address, listen_port, persistent_keepalive, status)
-    values (
-      ${nid("wgp")}, ${tenantId}, ${router.id}, ${router.wg_public}, ${router.wg_private_ref || ""},
-      ${address}, ${address}, 13231, 25, 'pending'
-    )`;
+  await applyHostPeer({ publicKey: router.wg_public, address });
+  await persistWantedHubPeersFromSql(sql).catch(() => 0);
 }
 
 export async function loadHubPeers(sql: Sql, tenantId: string): Promise<WgPeerConfig[]> {

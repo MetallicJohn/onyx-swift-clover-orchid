@@ -95,10 +95,17 @@ fi
 if command -v systemctl >/dev/null 2>&1 && [[ -f "$INSTALL_DIR/deploy/vps/systemd/ispsolutions-update.service" ]]; then
   sed "s|/opt/ispsolutions|$INSTALL_DIR|g" "$INSTALL_DIR/deploy/vps/systemd/ispsolutions-update.service" >/etc/systemd/system/ispsolutions-update.service
   sed "s|/opt/ispsolutions|$INSTALL_DIR|g" "$INSTALL_DIR/deploy/vps/systemd/ispsolutions-update.timer" >/etc/systemd/system/ispsolutions-update.timer
+  if [[ -f "$INSTALL_DIR/deploy/vps/systemd/ispsolutions-wg-sync.service" ]]; then
+    mkdir -p /var/lib/ispsolutions/wg /run/ispsolutions
+    chmod +x "$INSTALL_DIR/deploy/vps/wg-sync.sh" 2>/dev/null || true
+    sed "s|/opt/ispsolutions|$INSTALL_DIR|g" "$INSTALL_DIR/deploy/vps/systemd/ispsolutions-wg-sync.service" >/etc/systemd/system/ispsolutions-wg-sync.service
+    cp "$INSTALL_DIR/deploy/vps/systemd/ispsolutions-wg-sync.timer" /etc/systemd/system/ispsolutions-wg-sync.timer
+  fi
   systemctl disable --now gridline-update.timer >/dev/null 2>&1 || true
   rm -f /etc/systemd/system/gridline-update.service /etc/systemd/system/gridline-update.timer
   systemctl daemon-reload
   systemctl enable --now ispsolutions-update.timer >/dev/null
+  systemctl enable --now ispsolutions-wg-sync.timer >/dev/null 2>&1 || true
 fi
 
 if [[ "$APPLY" -ne 1 ]]; then

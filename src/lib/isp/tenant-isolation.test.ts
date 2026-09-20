@@ -27,3 +27,18 @@ test("platform console never accepts a client tenant without an admin check", ()
   assert.match(src, /applyRls\(sql, \{ bypass: true \}\)/);
   assert.doesNotMatch(src, /requireTenant\(/);
 });
+
+test("Postgres requests pin one client so RLS GUCs cannot leak across the pool", () => {
+  const db = readFileSync(new URL("../db.ts", import.meta.url), "utf8");
+  const start = readFileSync(new URL("../../start.ts", import.meta.url), "utf8");
+  const rls = readFileSync(new URL("./rls.ts", import.meta.url), "utf8");
+  const jobs = readFileSync(new URL("./jobs.ts", import.meta.url), "utf8");
+  assert.match(db, /withDbSession/);
+  assert.match(db, /pool\.connect\(/);
+  assert.doesNotMatch(db, /pool\.query\(/);
+  assert.match(start, /requestMiddleware/);
+  assert.match(start, /withDbSession/);
+  assert.match(rls, /set_config\('app.tenant_id'/);
+  assert.match(rls, /set_config\('app.bypass_rls'/);
+  assert.match(jobs, /withDbSession\(\(\) => processQueuedJobsOnSession/);
+});

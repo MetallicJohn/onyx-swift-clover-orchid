@@ -1,4 +1,5 @@
 import { pendingMigrations } from "../../scripts/migration-plan.mjs";
+import { dbSession, registerDbSessionPinner } from "./db-session.ts";
 
 /** Which database backend is active. */
 export type DbSource = "neon" | "pglite";
@@ -46,9 +47,15 @@ export interface Sql {
  */
 const globalRef = globalThis as typeof globalThis & {
   __pgSqlPromise__?: Promise<Sql>;
+  __pgPool__?: import("pg").Pool;
   __pgliteInstance__?: Promise<import("@electric-sql/pglite").PGlite>;
   __pgliteMigrateChain__?: Promise<void>;
 };
+
+async function resetRlsGucs(query: (text: string, params?: unknown[]) => Promise<unknown>) {
+  await query("select set_config('app.tenant_id', $1, false)", [""]);
+  await query("select set_config('app.bypass_rls', $1, false)", ["off"]);
+}
 
 /**
  * Result-type parity: Postgres sends every value as text plus a type OID — the
@@ -96,9 +103,27 @@ function createNeonSql(): Promise<Sql> {
     types.setTypeParser(OID_INTERVAL, identity);
     const cfg = loadServiceConfig();
     const pool = new Pool({ connectionString: databaseUrl, ...postgresPoolOptions(cfg) });
+    globalRef.__pgPool__ = pool;
     return toSql(async <T>(text: string, params: unknown[]) => {
-      const res = await pool.query(text, params);
-      return res.rows as T[];
+      const pinned = dbSession.getStore();
+      if (pinned && pinned !== "pglite") {
+        const res = await pinned.query(text, params);
+        return res.rows as T[];
+      }
+      // No request session: one-shot checkout and always clear RLS GUCs so a
+      // leftover tenant/bypass cannot leak onto the next borrower of this client.
+      const client = await pool.connect();
+      try {
+        const res = await client.query(text, params);
+        return res.rows as T[];
+      } finally {
+        try {
+          await resetRlsGucs((q, p) => client.query(q, p));
+        } catch {
+          /* still release */
+        }
+        client.release();
+      }
     });
   })().catch((err) => {
     globalRef.__pgSqlPromise__ = undefined;
@@ -205,6 +230,31 @@ export function getSql(): Promise<Sql> {
       throw err;
     });
   return sqlPromise;
+}
+
+export { dbSessionActive, withDbSession } from "./db-session.ts";
+
+async function withNeonDbSession<T>(fn: () => Promise<T>): Promise<T> {
+  if (dbSession.getStore()) return fn();
+  await createNeonSql();
+  const pool = globalRef.__pgPool__;
+  if (!pool) return fn();
+  const client = await pool.connect();
+  try {
+    await resetRlsGucs((q, p) => client.query(q, p));
+    return await dbSession.run(client, fn);
+  } finally {
+    try {
+      await resetRlsGucs((q, p) => client.query(q, p));
+    } catch {
+      /* connection may already be dead */
+    }
+    client.release();
+  }
+}
+
+if (typeof window === "undefined" && dbSource === "neon") {
+  registerDbSessionPinner(withNeonDbSession);
 }
 
 /**

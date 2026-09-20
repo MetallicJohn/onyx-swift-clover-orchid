@@ -248,7 +248,8 @@ export async function executeJob(sql: Sql, job: JobRow) {
   if (job.kind === "mikrotik.health" || job.kind === "mikrotik.api_verify") {
     await applyRls(sql, { bypass: true });
     const { persistHandshake, snapshotHealth, verifyRouterApi } = await import("./router-health.ts");
-    const { readHostWgDump } = await import("./wg-host.ts");
+    const { persistWantedHubPeersFromSql, readHostWgDump } = await import("./wg-host.ts");
+    await persistWantedHubPeersFromSql(sql).catch(() => 0);
     const dump = await readHostWgDump();
     const rows = await sql.query<{
       id: string;
@@ -295,6 +296,14 @@ export async function executeJob(sql: Sql, job: JobRow) {
 export async function processQueuedJobs(
   sql: Sql,
   opts: { workerId?: string; queue?: string; limit?: number } = {},
+) {
+  const { withDbSession } = await import("../db-session.ts");
+  return withDbSession(() => processQueuedJobsOnSession(sql, opts));
+}
+
+async function processQueuedJobsOnSession(
+  sql: Sql,
+  opts: { workerId?: string; queue?: string; limit?: number },
 ) {
   await applyRls(sql, { bypass: true });
   const claimed = await claimJobs(sql, {

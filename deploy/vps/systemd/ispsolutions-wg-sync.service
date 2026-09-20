@@ -1,0 +1,8 @@
+[Unit]
+Description=Sync ISP Solutions WireGuard hub peers from wanted.json
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/ispsolutions/deploy/vps/wg-sync.sh
+Nice=10

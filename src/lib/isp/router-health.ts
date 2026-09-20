@@ -35,7 +35,7 @@ export function signalFresh(iso: string | null | undefined, now = Date.now(), ma
 
 export function applyDumpToHealth(row: RouterHealthRow, dump: WgDumpPeer[], now = Date.now()) {
   const peer = findDumpPeer(dump, row.wg_public);
-  const handshake = Boolean(peer && handshakeFresh(peer.lastHandshakeUnix, now) && peer.rxBytes > 0);
+  const handshake = Boolean(peer && handshakeFresh(peer.lastHandshakeUnix, now));
   return {
     handshake,
     lastHandshakeAt: peer?.lastHandshakeAt || null,

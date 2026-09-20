@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep ISP Solutions WireGuard hub peers in sync
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=15s
+AccuracySec=5s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
