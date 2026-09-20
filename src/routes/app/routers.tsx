@@ -12,6 +12,7 @@ import {
   type RouterActions,
   type RouterPerms,
 } from "@/components/isp/router-desk-ui";
+import { RosScriptDialog, type RosScriptPack } from "@/components/isp/ros-script-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
@@ -27,12 +28,13 @@ import {
 import { addRouter } from "@/lib/isp/server";
 import {
   archiveRouterFn,
+  copyRouterScript,
+  issueRouterTokenFn,
   queryRoutersDeskFn,
   reconfigureRouterFn,
   setRouterEnabledFn,
   testRouterConnectionFn,
 } from "@/lib/isp/server-routers";
-import { cn } from "@/lib/utils";
 
 type Search = {
   q?: string;
@@ -106,15 +108,6 @@ function RoutersGate() {
   return <RoutersPage />;
 }
 
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function RoutersPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
@@ -127,9 +120,7 @@ function RoutersPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
-  const [script, setScript] = useState<string | null>(null);
-  const [scriptLabel, setScriptLabel] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [pack, setPack] = useState<RosScriptPack | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmSync, setConfirmSync] = useState<RouterDeskRow | null>(null);
   const [confirmArchive, setConfirmArchive] = useState<RouterDeskRow | null>(null);
@@ -205,6 +196,27 @@ function RoutersPage() {
       }
     },
     onSync: (r) => setConfirmSync(r),
+    onCopyBootstrap: async (r) => {
+      try {
+        const out = await issueRouterTokenFn({ data: { id: r.id } });
+        setPack({
+          title: `Bootstrap · ${r.name}`,
+          bootstrap: out.bootstrap,
+          enroll: out.enroll,
+        });
+        await load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not generate bootstrap");
+      }
+    },
+    onCopyEnroll: async (r) => {
+      try {
+        const out = await copyRouterScript({ data: { id: r.id } });
+        setPack({ title: `Enroll · ${r.name}`, enroll: out.script });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not generate enroll script");
+      }
+    },
     onPools: (r) =>
       void navigate({ to: "/app/routers/$routerId", params: { routerId: r.id }, search: { tab: "pools" } }),
     onMonitor: (r) =>
@@ -307,11 +319,12 @@ function RoutersPage() {
               const created = await addRouter({ data: { ...form, location: form.site_pop } });
               setAddOpen(false);
               setForm(EMPTY_FORM);
-              if (created.bootstrap) {
-                setScript(created.bootstrap);
-                setScriptLabel(`Bootstrap · paste on ${created.router?.name || form.name}`);
-                const ok = await copyText(created.bootstrap);
-                setCopied(ok);
+              if (created.bootstrap || created.script) {
+                setPack({
+                  title: `Scripts · ${created.router?.name || form.name}`,
+                  bootstrap: created.bootstrap,
+                  enroll: created.script,
+                });
               } else {
                 setNotice(created.domain_error || "Router saved. Configure a public domain before generating a bootstrap script.");
               }
@@ -360,38 +373,7 @@ function RoutersPage() {
         </form>
       </Dialog>
 
-      <Dialog
-        open={Boolean(script)}
-        onOpenChange={(open) => {
-          if (!open) setScript(null);
-        }}
-        title={scriptLabel || "RouterOS v7 script"}
-        description="Paste in New Terminal. Certificate validation stays on."
-        className="sm:max-w-2xl"
-      >
-        <div className="space-y-3">
-          {desk?.domain?.ok ? (
-            <p className={cn("font-mono text-xs text-muted")}>{desk.domain.origin}</p>
-          ) : desk?.domain?.error ? (
-            <p className="text-sm text-danger">{desk.domain.error}</p>
-          ) : null}
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={async () => {
-                if (!script) return;
-                setCopied(await copyText(script));
-              }}
-            >
-              {copied ? "Copied" : "Copy script"}
-            </Button>
-          </div>
-          <pre className="max-h-80 overflow-auto rounded-xl border border-border bg-elevated p-4 font-mono text-xs leading-relaxed text-fg">
-            {script}
-          </pre>
-        </div>
-      </Dialog>
+      <RosScriptDialog pack={pack} onClose={() => setPack(null)} />
 
       <Dialog
         open={Boolean(confirmSync)}
@@ -413,8 +395,11 @@ function RoutersPage() {
               setBusy(true);
               try {
                 const out = await reconfigureRouterFn({ data: { id: confirmSync.id } });
-                setScript(out.bootstrap);
-                setScriptLabel(`Re-provision · ${confirmSync.name}`);
+                setPack({
+                  title: `Re-provision · ${confirmSync.name}`,
+                  bootstrap: out.bootstrap,
+                  enroll: out.enroll,
+                });
                 setConfirmSync(null);
                 await load();
               } catch (err) {

@@ -32,6 +32,8 @@ export type RouterActions = {
   onEdit: (r: RouterDeskRow) => void;
   onTest: (r: RouterDeskRow) => void;
   onSync: (r: RouterDeskRow) => void;
+  onCopyBootstrap?: (r: RouterDeskRow) => void;
+  onCopyEnroll?: (r: RouterDeskRow) => void;
   onPools: (r: RouterDeskRow) => void;
   onMonitor: (r: RouterDeskRow) => void;
   onToggleEnabled: (r: RouterDeskRow) => void;
@@ -215,6 +217,12 @@ export function RouterOverflowMenu({
         <DropdownMenuItem onSelect={() => actions.onDetails(r)}>View details</DropdownMenuItem>
         {perms.canManage ? <DropdownMenuItem onSelect={() => actions.onEdit(r)}>Edit router</DropdownMenuItem> : null}
         {perms.canManage ? <DropdownMenuItem onSelect={() => actions.onTest(r)}>Test connection</DropdownMenuItem> : null}
+        {perms.canManage && actions.onCopyBootstrap ? (
+          <DropdownMenuItem onSelect={() => actions.onCopyBootstrap?.(r)}>Copy bootstrap script</DropdownMenuItem>
+        ) : null}
+        {perms.canManage && actions.onCopyEnroll ? (
+          <DropdownMenuItem onSelect={() => actions.onCopyEnroll?.(r)}>Copy enroll script</DropdownMenuItem>
+        ) : null}
         {perms.canManage ? <DropdownMenuItem onSelect={() => actions.onSync(r)}>Synchronize</DropdownMenuItem> : null}
         <DropdownMenuItem onSelect={() => actions.onPools(r)}>View IP pools</DropdownMenuItem>
         {perms.canMonitor ? <DropdownMenuItem onSelect={() => actions.onMonitor(r)}>View monitoring</DropdownMenuItem> : null}

@@ -131,6 +131,8 @@ test("issue, fetch bootstrap over token, revoke, and isolate tenants", async () 
     const issued = await issueProvisioningToken(sql, { tenantId: "ten_pv", routerId: "rtr_ten_pv", actorUserId: "usr_a" });
     assert.match(issued.token, /^prv_/);
     assert.match(issued.bootstrap, /check-certificate=no/);
+    assert.match(issued.enroll, /interface wireguard/);
+    assert.match(issued.enroll, /\/user add name=/);
     assert.doesNotMatch(issued.bootstrap, /check-certificate=yes/);
     assert.doesNotMatch(issued.bootstrap, /YOUR-PUBLIC-URL/);
     assert.doesNotMatch(issued.bootstrap, /\{\{BOOTSTRAP_URL\}\}/);

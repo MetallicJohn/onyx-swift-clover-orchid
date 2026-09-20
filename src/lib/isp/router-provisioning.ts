@@ -557,13 +557,14 @@ export async function issueProvisioningToken(
   const url = bootstrapFetchUrl(domain.origin, token, settings.require_https);
   const bootstrap = bootstrapPasteScript({ url, identity: next.identity || next.name });
   assertReleaseableScript(bootstrap);
-  await generateRouterConfig(sql, opts.tenantId, next, "bootstrap", opts.actorUserId || "");
+  const generated = await generateRouterConfig(sql, opts.tenantId, next, "bootstrap", opts.actorUserId || "");
   return {
     token,
     hint: provisionTokenHint(token),
     expires_at: expires,
     ttl_hours: settings.token_ttl_hours,
     bootstrap,
+    enroll: generated.script,
     fetch_url: url,
     domain_source: domain.source,
     domain_source_label: domain.source_label,

@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 import { RouterMonitor } from "@/components/isp/router-monitor";
+import { RosScriptDialog, type RosScriptPack } from "@/components/isp/ros-script-dialog";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -37,6 +38,7 @@ import {
   updateRouterPoolFn,
 } from "@/lib/isp/server-routers";
 import { cn } from "@/lib/utils";
+import { copyText } from "@/lib/copy-text";
 
 type Search = { tab?: "pools" | "monitoring"; action?: "edit" };
 
@@ -65,15 +67,6 @@ const EMPTY_POOL = {
   status: "active",
 };
 
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function RouterRecordPage() {
   const { routerId } = Route.useParams();
   const search = Route.useSearch();
@@ -100,9 +93,7 @@ function RouterRecordPage() {
   const [assignments, setAssignments] = useState<{ customer_name: string; address: string; status: string; username: string | null }[]>([]);
   const [removePool, setRemovePool] = useState<RouterPoolRow | null>(null);
   const [showMonitoring, setShowMonitoring] = useState(search.tab === "monitoring");
-  const [script, setScript] = useState<string | null>(null);
-  const [scriptLabel, setScriptLabel] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [pack, setPack] = useState<RosScriptPack | null>(null);
   const [confirmSync, setConfirmSync] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [apiForm, setApiForm] = useState({
@@ -349,9 +340,11 @@ function RouterRecordPage() {
                 onClick={async () => {
                   try {
                     const out = await issueRouterTokenFn({ data: { id: router.id } });
-                    setScript(out.bootstrap);
-                    setScriptLabel(`Bootstrap · ${router.name}`);
-                    setCopied(await copyText(out.bootstrap));
+                    setPack({
+                      title: `Bootstrap · ${router.name}`,
+                      bootstrap: out.bootstrap,
+                      enroll: out.enroll,
+                    });
                     await load();
                   } catch (err) {
                     setError(err instanceof Error ? err.message : "Could not generate bootstrap");
@@ -376,8 +369,7 @@ function RouterRecordPage() {
                 variant="secondary"
                 onClick={async () => {
                   const out = await copyRouterScript({ data: { id: router.id } });
-                  setScript(out.script);
-                  setScriptLabel(`Full enroll · ${router.name}`);
+                  setPack({ title: `Enroll · ${router.name}`, enroll: out.script });
                 }}
               >
                 Copy enroll
@@ -387,9 +379,11 @@ function RouterRecordPage() {
                 variant="secondary"
                 onClick={async () => {
                   const out = await copyRouterApiUser({ data: { id: router.id } });
-                  setScript(out.script);
-                  setScriptLabel(`API user · ${out.user}`);
-                  setCopied(await copyText(out.script));
+                  setPack({
+                    title: `API user · ${out.user}`,
+                    extraLabel: "API user",
+                    extra: out.script,
+                  });
                 }}
               >
                 Copy API user
@@ -833,8 +827,11 @@ function RouterRecordPage() {
               setBusy(true);
               try {
                 const out = await reconfigureRouterFn({ data: { id: routerId } });
-                setScript(out.bootstrap);
-                setScriptLabel("Re-provision");
+                setPack({
+                  title: "Re-provision",
+                  bootstrap: out.bootstrap,
+                  enroll: out.enroll,
+                });
                 setConfirmSync(false);
                 await load();
               } catch (err) {
@@ -870,17 +867,7 @@ function RouterRecordPage() {
         </div>
       </Dialog>
 
-      <Dialog
-        open={Boolean(script)}
-        onOpenChange={(open) => {
-          if (!open) setScript(null);
-        }}
-        title={scriptLabel || "RouterOS v7 script"}
-        description="Paste in New Terminal. Certificate validation stays on."
-        className="sm:max-w-2xl"
-      >
-        <pre className="max-h-80 overflow-auto rounded-xl border border-border bg-elevated p-4 font-mono text-xs">{script}</pre>
-      </Dialog>
+      <RosScriptDialog pack={pack} onClose={() => setPack(null)} />
     </div>
   );
 }
