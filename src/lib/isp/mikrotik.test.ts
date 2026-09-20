@@ -58,9 +58,11 @@ test("router enrollment script is RouterOS v7 and names ISP Solutions", () => {
   assert.doesNotMatch(script, /www-ssl/);
   assert.doesNotMatch(script, /\/ip service set winbox/);
   assert.doesNotMatch(script, /in-interface=wg-ispsolutions action=accept;/);
-  assert.match(script, /persistent-keepalive=00:00:25/);
+  assert.match(script, /persistent-keepalive=25/);
   assert.match(script, /check-certificate=no/);
   assert.doesNotMatch(script, /check-certificate=yes/);
+  assert.doesNotMatch(script, /http-method=get/);
+  assert.doesNotMatch(script, /persistent-keepalive=00:00:25/);
   assert.equal(duplicateRisks(script).length, 0);
 });
 

@@ -38,10 +38,11 @@ export function enrollRosScript(opts: {
   const endpointPort = opts.endpointPort || 51820;
   const hubIp = opts.serverAddress || "10.200.0.1";
   const allowed = WG_HUB_ALLOWED;
-
-  const endpointSet = endpointHost
-    ? `  endpoint-address=${rosQuote(endpointHost)} endpoint-port=${endpointPort} \\`
-    : "  \\";
+  const wgPriv = rosQuote(opts.wgPrivate || "");
+  const peerPub = rosQuote(peerKey);
+  const peerEndpoint = endpointHost
+    ? ` endpoint-address=${rosQuote(endpointHost)} endpoint-port=${endpointPort}`
+    : "";
   const missingEndpoint = endpointHost
     ? ""
     : `# No hub endpoint saved — the router cannot start the handshake.
@@ -53,19 +54,18 @@ export function enrollRosScript(opts: {
   const apiUserBlock = apiPass
     ? `
 :do {
-  :if ([:len [/user group find where name=${rosQuote(apiGroup)}]] = 0) do={
-    /user group add name=${rosQuote(apiGroup)} policy=local,read,write,api,test,password,sensitive comment=${rosQuote(APP_NAME)};
-  } else={
-    /user group set [find where name=${rosQuote(apiGroup)}] policy=local,read,write,api,test,password,sensitive;
+  /user group add name=${rosQuote(apiGroup)} policy="read,write,api,test,password,sensitive" comment=${rosQuote(APP_NAME)};
+} on-error={
+  :do { /user group add name=${rosQuote(apiGroup)} policy="read,write,api,test" comment=${rosQuote(APP_NAME)} } on-error={
+    :do { /user group set [find where name=${rosQuote(apiGroup)}] policy="read,write,api,test" } on-error={}
   }
-} on-error={ :log error ${rosQuote(`${APP_NAME}: API group failed`)} }
+}
 :do {
-  :if ([:len [/user find where name=${rosQuote(apiUser)}]] = 0) do={
-    /user add name=${rosQuote(apiUser)} password=${rosQuote(apiPass)} group=${rosQuote(apiGroup)} address=10.200.0.0/24 comment=${rosQuote(APP_NAME)};
-  } else={
-    /user set [find where name=${rosQuote(apiUser)}] password=${rosQuote(apiPass)} group=${rosQuote(apiGroup)} address=10.200.0.0/24 comment=${rosQuote(APP_NAME)};
-  }
-} on-error={ :log error ${rosQuote(`${APP_NAME}: API user failed`)} }
+  /user add name=${rosQuote(apiUser)} password=${rosQuote(apiPass)} group=${rosQuote(apiGroup)} comment=${rosQuote(APP_NAME)};
+} on-error={
+  :do { /user set [find where name=${rosQuote(apiUser)}] password=${rosQuote(apiPass)} group=${rosQuote(apiGroup)} comment=${rosQuote(APP_NAME)} } on-error={ :log error ${rosQuote(`${APP_NAME}: API user failed`)} }
+}
+:do { /user set [find where name=${rosQuote(apiUser)}] address=10.200.0.0/24 } on-error={}
 `
     : "";
 
@@ -80,15 +80,22 @@ export function enrollRosScript(opts: {
   } else={
     :set ispSolLock true;
     :do {
-      /tool fetch url=${rosQuote(pull)} mode=https check-certificate=no http-method=get dst-path=${rosQuote(ROS_PULL_FILE)};
+      :do { /file remove [find where name~${rosQuote(ROS_PULL_FILE)}] } on-error={}
+      /tool fetch url=${rosQuote(pull)} check-certificate=no dst-path=${rosQuote(ROS_PULL_FILE)};
       :delay 2s;
       :local pullFile "";
       :foreach i in=[/file find] do={
         :local n [/file get \$i name];
         :if ([:typeof [:find \$n ${rosQuote(ROS_PULL_FILE)}]] != "nil") do={ :set pullFile \$n };
       }
-      :if (\$pullFile != "") do={
-        /import file-name=\$pullFile;
+      :if (\$pullFile = "") do={
+        :log warning ${rosQuote(`${APP_NAME} agent fetch failed`)};
+      } else={
+        :do {
+          /import file-name=\$pullFile;
+        } on-error={
+          :log warning ${rosQuote(`${APP_NAME} agent import failed`)};
+        }
       }
     } on-error={
       :log warning ${rosQuote(`${APP_NAME} agent fetch failed`)};
@@ -99,14 +106,11 @@ export function enrollRosScript(opts: {
 
 :do { /system scheduler remove [find where name="gridline-agent"] } on-error={}
 :do { /system scheduler remove [find where name=${rosQuote(ROS_AGENT_SCHEDULER)}] } on-error={}
-/system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup \\
-  policy=read,write,policy,test,password,sensitive \\
-  on-event="/system script run ${ROS_PULL_SCRIPT}";`
+/system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup policy=read,write,policy,test,password,sensitive on-event="/system script run ${ROS_PULL_SCRIPT}";`
     : `
 :do { /system scheduler remove [find where name="gridline-agent"] } on-error={}
 :do { /system scheduler remove [find where name=${rosQuote(ROS_AGENT_SCHEDULER)}] } on-error={}
-/system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup \\
-  on-event={ :log info ${rosQuote(`${APP_NAME} agent waiting for pull URL`)} };`;
+/system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup on-event={ :log info ${rosQuote(`${APP_NAME} agent waiting for pull URL`)} };`;
 
   return `# ${APP_NAME} agent enroll — RouterOS v7 script
 # Paste in New Terminal, or: /import file-name=${ROS_ENROLL_FILE}
@@ -117,29 +121,18 @@ ${missingEndpoint}
 
 :do { /interface wireguard set [find where name="${ROS_WG_INTERFACE_LEGACY}"] name=${ROS_WG_INTERFACE} } on-error={}
 
-:if ([:len [/interface wireguard find where name="${ROS_WG_INTERFACE}"]] = 0) do={
-  :do {
-    /interface wireguard add name=${ROS_WG_INTERFACE} listen-port=13231 private-key=${rosQuote(opts.wgPrivate || "")} comment=${rosQuote(`${APP_NAME} agent`)};
-  } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard interface failed — need RouterOS v7`)} }
-} else={
-  :do {
-    /interface wireguard set [find where name="${ROS_WG_INTERFACE}"] private-key=${rosQuote(opts.wgPrivate || "")} listen-port=13231 comment=${rosQuote(`${APP_NAME} agent`)};
-  } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard interface update failed`)} }
+:do {
+  /interface wireguard add name=${ROS_WG_INTERFACE} listen-port=13231 private-key=${wgPriv} comment=${rosQuote(`${APP_NAME} agent`)};
+} on-error={
+  :do { /interface wireguard set [find where name="${ROS_WG_INTERFACE}"] private-key=${wgPriv} listen-port=13231 comment=${rosQuote(`${APP_NAME} agent`)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard interface failed — need RouterOS v7`)} }
 }
 
-:if ([:len [/interface wireguard peers find where interface="${ROS_WG_INTERFACE}" and (comment="gridline-controller" or comment=${rosQuote(`${APP_NAME} controller`)})]] = 0) do={
+:do {
+  /interface wireguard peers add interface=${ROS_WG_INTERFACE} public-key=${peerPub} allowed-address=${rosQuote(allowed)}${peerEndpoint} persistent-keepalive=25 comment=${rosQuote(`${APP_NAME} controller`)};
+} on-error={
   :do {
-    /interface wireguard peers add interface=${ROS_WG_INTERFACE} public-key=${rosQuote(peerKey)} allowed-address=${rosQuote(allowed)} \\
-${endpointSet}
-      persistent-keepalive=00:00:25 comment=${rosQuote(`${APP_NAME} controller`)};
+    /interface wireguard peers set [find where interface="${ROS_WG_INTERFACE}"] public-key=${peerPub} allowed-address=${rosQuote(allowed)}${peerEndpoint} persistent-keepalive=25 comment=${rosQuote(`${APP_NAME} controller`)};
   } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard peer failed`)} }
-} else={
-  :do {
-    /interface wireguard peers set [find where interface="${ROS_WG_INTERFACE}" and (comment="gridline-controller" or comment=${rosQuote(`${APP_NAME} controller`)})] \\
-      public-key=${rosQuote(peerKey)} allowed-address=${rosQuote(allowed)} comment=${rosQuote(`${APP_NAME} controller`)} \\
-${endpointSet}
-      persistent-keepalive=00:00:25;
-  } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard peer update failed`)} }
 }
 
 :if ([:len [/ip address find where interface="${ROS_WG_INTERFACE}"]] = 0) do={
@@ -173,19 +166,16 @@ export function apiUserEnsureRos(opts: { user?: string; password: string }) {
   if (!password) return "";
   return `# ${APP_NAME} API user — RouterOS v7
 :do {
-  :if ([:len [/user group find where name=${rosQuote(ROS_API_GROUP)}]] = 0) do={
-    /user group add name=${rosQuote(ROS_API_GROUP)} policy=local,read,write,api,test,password,sensitive comment=${rosQuote(APP_NAME)};
-  } else={
-    /user group set [find where name=${rosQuote(ROS_API_GROUP)}] policy=local,read,write,api,test,password,sensitive;
-  }
-} on-error={ :log error ${rosQuote(`${APP_NAME}: API group failed`)} }
+  /user group add name=${rosQuote(ROS_API_GROUP)} policy="read,write,api,test,password,sensitive" comment=${rosQuote(APP_NAME)};
+} on-error={
+  :do { /user group set [find where name=${rosQuote(ROS_API_GROUP)}] policy="read,write,api,test,password,sensitive" } on-error={}
+}
 :do {
-  :if ([:len [/user find where name=${rosQuote(user)}]] = 0) do={
-    /user add name=${rosQuote(user)} password=${rosQuote(password)} group=${rosQuote(ROS_API_GROUP)} address=10.200.0.0/24 comment=${rosQuote(APP_NAME)};
-  } else={
-    /user set [find where name=${rosQuote(user)}] password=${rosQuote(password)} group=${rosQuote(ROS_API_GROUP)} address=10.200.0.0/24 comment=${rosQuote(APP_NAME)};
-  }
-} on-error={ :log error ${rosQuote(`${APP_NAME}: API user failed`)} }
+  /user add name=${rosQuote(user)} password=${rosQuote(password)} group=${rosQuote(ROS_API_GROUP)} comment=${rosQuote(APP_NAME)};
+} on-error={
+  :do { /user set [find where name=${rosQuote(user)}] password=${rosQuote(password)} group=${rosQuote(ROS_API_GROUP)} comment=${rosQuote(APP_NAME)} } on-error={ :log error ${rosQuote(`${APP_NAME}: API user failed`)} }
+}
+:do { /user set [find where name=${rosQuote(user)}] address=10.200.0.0/24 } on-error={}
 :do { /ip service set api disabled=no port=${ROS_API_PORT} address=10.200.0.0/24 } on-error={}
 :do { /ip service set api-ssl disabled=yes } on-error={}
 :log info ${rosQuote(`${APP_NAME} API user ready`)};

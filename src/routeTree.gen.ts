@@ -85,6 +85,7 @@ import { Route as AppServicesServiceIdRouteImport } from './routes/app/services.
 import { Route as PlatformSettingsSmsRouteImport } from './routes/platform/settings.sms'
 import { Route as PlatformTenantsTenantIdRouteImport } from './routes/platform/tenants.$tenantId'
 import { Route as PlatformUsersUserIdRouteImport } from './routes/platform/users.$userId'
+import { Route as ApiAgentScriptTokenRouteImport } from './routes/api/agent/script/$token'
 import { Route as ApiRoutersIdIndexRouteImport } from './routes/api/routers/$id/index'
 import { Route as ApiRoutersIdConfigurationHistoryRouteImport } from './routes/api/routers/$id/configuration-history'
 import { Route as ApiRoutersIdPoolsRouteImport } from './routes/api/routers/$id/pools'
@@ -483,6 +484,11 @@ const PlatformUsersUserIdRoute = PlatformUsersUserIdRouteImport.update({
   path: '/$userId',
   getParentRoute: () => PlatformUsersRoute,
 } as any)
+const ApiAgentScriptTokenRoute = ApiAgentScriptTokenRouteImport.update({
+  id: '/$token',
+  path: '/$token',
+  getParentRoute: () => ApiAgentScriptRoute,
+} as any)
 const ApiRoutersIdIndexRoute = ApiRoutersIdIndexRouteImport.update({
   id: '/api/routers/$id/',
   path: '/api/routers/$id/',
@@ -634,7 +640,7 @@ export interface FileRoutesByFullPath {
   '/api/agent/ack': typeof ApiAgentAckRoute
   '/api/agent/heartbeat': typeof ApiAgentHeartbeatRoute
   '/api/agent/pull': typeof ApiAgentPullRoute
-  '/api/agent/script': typeof ApiAgentScriptRoute
+  '/api/agent/script': typeof ApiAgentScriptRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/internal/acs-auth': typeof ApiInternalAcsAuthRoute
   '/api/internal/acs-ports': typeof ApiInternalAcsPortsRoute
@@ -651,6 +657,7 @@ export interface FileRoutesByFullPath {
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/platform/users/$userId': typeof PlatformUsersUserIdRoute
   '/api/routers/': typeof ApiRoutersIndexRoute
+  '/api/agent/script/$token': typeof ApiAgentScriptTokenRoute
   '/api/routers/$id/configuration-history': typeof ApiRoutersIdConfigurationHistoryRoute
   '/api/routers/$id/pools': typeof ApiRoutersIdPoolsRoute
   '/api/routers/$id/provisioning-token': typeof ApiRoutersIdProvisioningTokenRoute
@@ -725,7 +732,7 @@ export interface FileRoutesByTo {
   '/api/agent/ack': typeof ApiAgentAckRoute
   '/api/agent/heartbeat': typeof ApiAgentHeartbeatRoute
   '/api/agent/pull': typeof ApiAgentPullRoute
-  '/api/agent/script': typeof ApiAgentScriptRoute
+  '/api/agent/script': typeof ApiAgentScriptRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/internal/acs-auth': typeof ApiInternalAcsAuthRoute
   '/api/internal/acs-ports': typeof ApiInternalAcsPortsRoute
@@ -742,6 +749,7 @@ export interface FileRoutesByTo {
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/platform/users/$userId': typeof PlatformUsersUserIdRoute
   '/api/routers': typeof ApiRoutersIndexRoute
+  '/api/agent/script/$token': typeof ApiAgentScriptTokenRoute
   '/api/routers/$id/configuration-history': typeof ApiRoutersIdConfigurationHistoryRoute
   '/api/routers/$id/pools': typeof ApiRoutersIdPoolsRoute
   '/api/routers/$id/provisioning-token': typeof ApiRoutersIdProvisioningTokenRoute
@@ -821,7 +829,7 @@ export interface FileRoutesById {
   '/api/agent/ack': typeof ApiAgentAckRoute
   '/api/agent/heartbeat': typeof ApiAgentHeartbeatRoute
   '/api/agent/pull': typeof ApiAgentPullRoute
-  '/api/agent/script': typeof ApiAgentScriptRoute
+  '/api/agent/script': typeof ApiAgentScriptRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/internal/acs-auth': typeof ApiInternalAcsAuthRoute
   '/api/internal/acs-ports': typeof ApiInternalAcsPortsRoute
@@ -838,6 +846,7 @@ export interface FileRoutesById {
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/platform/users/$userId': typeof PlatformUsersUserIdRoute
   '/api/routers/': typeof ApiRoutersIndexRoute
+  '/api/agent/script/$token': typeof ApiAgentScriptTokenRoute
   '/api/routers/$id/configuration-history': typeof ApiRoutersIdConfigurationHistoryRoute
   '/api/routers/$id/pools': typeof ApiRoutersIdPoolsRoute
   '/api/routers/$id/provisioning-token': typeof ApiRoutersIdProvisioningTokenRoute
@@ -935,6 +944,7 @@ export interface FileRouteTypes {
     | '/platform/tenants/$tenantId'
     | '/platform/users/$userId'
     | '/api/routers/'
+    | '/api/agent/script/$token'
     | '/api/routers/$id/configuration-history'
     | '/api/routers/$id/pools'
     | '/api/routers/$id/provisioning-token'
@@ -1026,6 +1036,7 @@ export interface FileRouteTypes {
     | '/platform/tenants/$tenantId'
     | '/platform/users/$userId'
     | '/api/routers'
+    | '/api/agent/script/$token'
     | '/api/routers/$id/configuration-history'
     | '/api/routers/$id/pools'
     | '/api/routers/$id/provisioning-token'
@@ -1121,6 +1132,7 @@ export interface FileRouteTypes {
     | '/platform/tenants/$tenantId'
     | '/platform/users/$userId'
     | '/api/routers/'
+    | '/api/agent/script/$token'
     | '/api/routers/$id/configuration-history'
     | '/api/routers/$id/pools'
     | '/api/routers/$id/provisioning-token'
@@ -1160,7 +1172,7 @@ export interface RootRouteChildren {
   ApiAgentAckRoute: typeof ApiAgentAckRoute
   ApiAgentHeartbeatRoute: typeof ApiAgentHeartbeatRoute
   ApiAgentPullRoute: typeof ApiAgentPullRoute
-  ApiAgentScriptRoute: typeof ApiAgentScriptRoute
+  ApiAgentScriptRoute: typeof ApiAgentScriptRouteWithChildren
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiInternalAcsAuthRoute: typeof ApiInternalAcsAuthRoute
   ApiInternalAcsPortsRoute: typeof ApiInternalAcsPortsRoute
@@ -1723,6 +1735,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlatformUsersUserIdRouteImport
       parentRoute: typeof PlatformUsersRoute
     }
+    '/api/agent/script/$token': {
+      id: '/api/agent/script/$token'
+      path: '/$token'
+      fullPath: '/api/agent/script/$token'
+      preLoaderRoute: typeof ApiAgentScriptTokenRouteImport
+      parentRoute: typeof ApiAgentScriptRoute
+    }
     '/api/routers/$id/': {
       id: '/api/routers/$id/'
       path: '/api/routers/$id'
@@ -2045,6 +2064,18 @@ const ResellerRouteWithChildren = ResellerRoute._addFileChildren(
   ResellerRouteChildren,
 )
 
+interface ApiAgentScriptRouteChildren {
+  ApiAgentScriptTokenRoute: typeof ApiAgentScriptTokenRoute
+}
+
+const ApiAgentScriptRouteChildren: ApiAgentScriptRouteChildren = {
+  ApiAgentScriptTokenRoute: ApiAgentScriptTokenRoute,
+}
+
+const ApiAgentScriptRouteWithChildren = ApiAgentScriptRoute._addFileChildren(
+  ApiAgentScriptRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
@@ -2065,7 +2096,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAgentAckRoute: ApiAgentAckRoute,
   ApiAgentHeartbeatRoute: ApiAgentHeartbeatRoute,
   ApiAgentPullRoute: ApiAgentPullRoute,
-  ApiAgentScriptRoute: ApiAgentScriptRoute,
+  ApiAgentScriptRoute: ApiAgentScriptRouteWithChildren,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiInternalAcsAuthRoute: ApiInternalAcsAuthRoute,
   ApiInternalAcsPortsRoute: ApiInternalAcsPortsRoute,

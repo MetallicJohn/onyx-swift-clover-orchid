@@ -127,7 +127,7 @@ export async function enqueuePackageProfiles(
 export function agentPullUrl(base: string, token: string) {
   const root = (base || "").replace(/\/$/, "");
   if (!root || !token) return "";
-  return `${root}/api/agent/script?token=${encodeURIComponent(token)}`;
+  return `${root}/api/agent/script/${encodeURIComponent(token)}`;
 }
 
 export function agentScript(opts: {

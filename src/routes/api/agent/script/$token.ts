@@ -2,12 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { renderAgentScript } from "@/lib/isp/mikrotik";
 
-export const Route = createFileRoute("/api/agent/script")({
+export const Route = createFileRoute("/api/agent/script/$token")({
   server: {
     handlers: {
-      GET: async ({ request }) => {
-        const url = new URL(request.url);
-        const token = url.searchParams.get("token") || "";
+      GET: async ({ params }) => {
+        const token = params.token || "";
         try {
           const sql = await getSql();
           const out = await renderAgentScript(sql, token);

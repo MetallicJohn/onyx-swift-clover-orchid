@@ -43,7 +43,7 @@ export const getRouterApi = createServerFn({ method: "GET" })
       api_password_set: Boolean(r.api_password),
       api_password_hint: hint(open(r.api_password) || r.api_password),
       json_pull: base ? `${base}/api/agent/pull?token=${encodeURIComponent(r.enroll_token)}` : "",
-      script_pull: base ? `${base}/api/agent/script?token=${encodeURIComponent(r.enroll_token)}` : "",
+      script_pull: base ? `${base}/api/agent/script/${encodeURIComponent(r.enroll_token)}` : "",
     };
   });
 
