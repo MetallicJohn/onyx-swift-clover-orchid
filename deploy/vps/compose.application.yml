@@ -44,10 +44,10 @@ services:
       MONGODB_URL: ${MONGODB_URL:-}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${ACS_EDGE_TOKEN}}
       ISPSOLUTIONS_BACKUP_DIR: /opt/ispsolutions/backups
+      ISPSOLUTIONS_WG_DIR: /opt/ispsolutions/wg
     volumes:
       - ../../backups:/opt/ispsolutions/backups
-      - /var/lib/ispsolutions/wg:/var/lib/ispsolutions/wg
-      - /run/ispsolutions:/run/ispsolutions
+      - ../../wg:/opt/ispsolutions/wg
     depends_on:
       redis:
         condition: service_healthy
@@ -76,9 +76,9 @@ services:
       ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL:-http://web:3000}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${ACS_EDGE_TOKEN}}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      ISPSOLUTIONS_WG_DIR: /opt/ispsolutions/wg
     volumes:
-      - /var/lib/ispsolutions/wg:/var/lib/ispsolutions/wg
-      - /run/ispsolutions:/run/ispsolutions
+      - ../../wg:/opt/ispsolutions/wg
     depends_on:
       web:
         condition: service_healthy

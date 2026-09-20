@@ -3,9 +3,9 @@
 # Safe to run every few seconds. Does not rewrite the hub private key.
 set -euo pipefail
 IFACE="${WG_INTERFACE:-wg-ispsolutions}"
-WANTED="${ISPSOLUTIONS_WG_DIR:-/var/lib/ispsolutions/wg}/wanted.json"
-DUMP="${ISPSOLUTIONS_WG_DUMP:-/run/ispsolutions/wg.dump}"
-mkdir -p "$(dirname "$DUMP")" /var/lib/ispsolutions/wg
+WANTED="${ISPSOLUTIONS_WG_DIR:-/opt/ispsolutions/wg}/wanted.json"
+DUMP="${ISPSOLUTIONS_WG_DUMP:-${ISPSOLUTIONS_WG_DIR:-/opt/ispsolutions/wg}/wg.dump}"
+mkdir -p "$(dirname "$DUMP")" "$(dirname "$WANTED")"
 if ! command -v wg >/dev/null 2>&1; then
   exit 0
 fi

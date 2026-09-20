@@ -149,8 +149,8 @@ fi
 
 bash "$INSTALL_DIR/deploy/vps/ensure-env.sh" "$ENV_FILE"
 
-mkdir -p /var/lib/ispsolutions/wg /run/ispsolutions
-chmod 700 /var/lib/ispsolutions/wg
+mkdir -p /opt/ispsolutions/wg /opt/ispsolutions/backups /var/lib/ispsolutions/wg /run/ispsolutions
+chmod 700 /opt/ispsolutions/wg /var/lib/ispsolutions/wg 2>/dev/null || true
 
 if command -v ufw >/dev/null 2>&1; then
   ufw allow OpenSSH || true

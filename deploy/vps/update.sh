@@ -92,6 +92,8 @@ if [[ "$auto_deploy" == "1" || "$auto_deploy" == "true" ]]; then
   APPLY=1
 fi
 
+mkdir -p "$INSTALL_DIR/backups" "$INSTALL_DIR/wg" /var/lib/ispsolutions/wg /run/ispsolutions 2>/dev/null || true
+
 if command -v systemctl >/dev/null 2>&1 && [[ -f "$INSTALL_DIR/deploy/vps/systemd/ispsolutions-update.service" ]]; then
   sed "s|/opt/ispsolutions|$INSTALL_DIR|g" "$INSTALL_DIR/deploy/vps/systemd/ispsolutions-update.service" >/etc/systemd/system/ispsolutions-update.service
   sed "s|/opt/ispsolutions|$INSTALL_DIR|g" "$INSTALL_DIR/deploy/vps/systemd/ispsolutions-update.timer" >/etc/systemd/system/ispsolutions-update.timer

@@ -27,11 +27,11 @@ function isPublicKey(value: string) {
 export type WantedHubPeer = { publicKey: string; allowedIps: string; name?: string };
 
 export function wgStateDir() {
-  return (process.env.ISPSOLUTIONS_WG_DIR || "/var/lib/ispsolutions/wg").trim() || "/var/lib/ispsolutions/wg";
+  return (process.env.ISPSOLUTIONS_WG_DIR || "/opt/ispsolutions/wg").trim() || "/opt/ispsolutions/wg";
 }
 
 export function wgDumpPath() {
-  return (process.env.ISPSOLUTIONS_WG_DUMP || "/run/ispsolutions/wg.dump").trim() || "/run/ispsolutions/wg.dump";
+  return (process.env.ISPSOLUTIONS_WG_DUMP || "").trim() || `${wgStateDir()}/wg.dump`;
 }
 
 export function parseWgDump(text: string): WgDumpPeer[] {
@@ -124,7 +124,7 @@ export async function persistWantedHubPeersFromSql(sql: {
   const rows = await sql<{ name: string; public_key: string; wg_address: string }>`
     select r.name, r.wg_public as public_key, r.wg_address
     from routers r
-    where coalesce(r.wg_public,'') <> '' and r.archived_at is null
+    where coalesce(r.wg_public,'') <> ''
       and coalesce(r.enroll_state,'') <> 'REVOKED'
     order by r.name`;
   const peers = rows.map((r) => ({
