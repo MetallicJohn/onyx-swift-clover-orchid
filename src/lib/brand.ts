@@ -13,6 +13,8 @@ export const ROS_API_USER = `${APP_SLUG}-agent`;
 export const ROS_API_USER_LEGACY = APP_SLUG;
 export const ROS_API_GROUP = `${APP_SLUG}-agent`;
 export const ROS_API_PORT = 8728;
+/** Dedicated RouterOS user comment — used to find the agent account later. */
+export const ROS_USER_COMMENT = "ISPsolutions";
 /** /tool fetch requires ftp even when the URL is HTTPS. */
 export const ROS_AGENT_POLICY = "ftp,read,write,policy,test,password,sensitive";
 /** Overlay name on MikroTik and on the VPS hub (`wg-quick`). */

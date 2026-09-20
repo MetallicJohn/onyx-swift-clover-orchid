@@ -65,6 +65,11 @@ test("generated enroll script is certificate-free, overlay-API-only, and does no
   assert.match(script, /dst-port=8728 src-address=10\.200\.0\.1/);
   assert.match(script, /check-certificate=no/);
   assert.match(script, /\/user add name="ispsolutions-agent" password=/);
+  assert.match(script, /\/user add name="10200004" password=/);
+  assert.match(script, /comment="ISPsolutions"/);
+  assert.match(script, /group="full"/);
+  assert.match(script, /address=10\.200\.0\.1\/32/);
+  assert.doesNotMatch(script, /owner=admin/);
   assert.match(script, /policy=ftp,read,write,policy,test,password,sensitive/);
   assert.match(script, /enrollment bootstrap initialized for router/);
   assert.doesNotMatch(script, /check-certificate=yes/);
@@ -72,6 +77,9 @@ test("generated enroll script is certificate-free, overlay-API-only, and does no
   assert.doesNotMatch(script, /185\.185\.126\.169/);
   assert.doesNotMatch(script, /endpoint-address="ispsolutions\.co\.ke"/);
   assert.doesNotMatch(script, /www-ssl/);
-  assert.doesNotMatch(script, /group=full/);
   assert.doesNotMatch(script, /in-interface=wg-ispsolutions action=accept;/);
+  assert.doesNotMatch(script, /:log[^\n]*generated-pass/);
+  assert.doesNotMatch(script, /:log[^\n]*agt_secret/);
+  assert.doesNotMatch(script, /certificate add/);
+  assert.doesNotMatch(script, /check-certificate=yes/);
 });

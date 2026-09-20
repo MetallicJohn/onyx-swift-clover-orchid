@@ -2,7 +2,7 @@ import { ROS_API_USER } from "../brand.ts";
 import { nid } from "../utils.ts";
 import { initialCommandStatus } from "./command-policy";
 import { ensureOpsSchema } from "./ops-schema";
-import { enrollRosScript } from "./routeros";
+import { enrollRosScript, rosOverlayUserName } from "./routeros";
 import { generateWireGuardKeypair } from "./wireguard";
 
 type Sql = {
@@ -36,14 +36,14 @@ export function generateRouterApiPassword() {
   return Buffer.from(bytes).toString("base64url").replace(/[-_]/g, "x").slice(0, 22);
 }
 
-export function enrollFields(_name: string) {
+export function enrollFields(_name: string, wgAddress?: string) {
   const token = `agt_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
   const keys = generateWireGuardKeypair();
   return {
     token,
     wg_public: keys.publicKey,
     wg_private_sealed: keys.privateKeySealed,
-    api_user: ROS_API_USER,
+    api_user: rosOverlayUserName(wgAddress || "") || ROS_API_USER,
     api_password: generateRouterApiPassword(),
   };
 }

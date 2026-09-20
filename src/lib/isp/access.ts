@@ -94,12 +94,12 @@ export async function seedOpsForTenant(sql: Sql, tenantId: string) {
   for (const r of routers) {
     i += 1;
     if (r.enroll_token) continue;
-    const enroll = enrollFields(r.name);
+    const address = r.wg_address || wgAddressForIndex(i);
+    const enroll = enrollFields(r.name, address);
     if (r.wg_public) {
       await sql`update routers set enroll_token = ${enroll.token} where id = ${r.id} and tenant_id = ${tenantId}`;
       continue;
     }
-    const address = r.wg_address || wgAddressForIndex(i);
     await sql`update routers set enroll_token = ${enroll.token}, wg_public = ${enroll.wg_public}, wg_private_ref = ${enroll.wg_private_sealed}, wg_address = ${address}, agent_version = '0.2.0'
       where id = ${r.id} and tenant_id = ${tenantId} and coalesce(wg_public, '') = ''`;
     await syncRouterWgPeer(sql, tenantId, {

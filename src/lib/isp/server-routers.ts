@@ -18,6 +18,7 @@ import {
   listProvisionEvents,
   listTenantRouters,
   reconfigureRouter,
+  recordProvisionEvent,
   revokeProvisioningToken,
   routerStatus,
   setRouterPools,
@@ -104,19 +105,37 @@ export const copyRouterScript = createServerFn({ method: "POST" })
     assertPermission(role, "routers.manage");
     const r = await loadEnroll(sql, tenantId, data.id);
     if (data.rotate) {
-      const enroll = enrollFields(r.name);
+      const enroll = enrollFields(r.name, r.wg_address);
       await sql`update routers set enroll_token = ${enroll.token}, wg_public = ${enroll.wg_public}, wg_private_ref = ${enroll.wg_private_sealed}, wg_status = 'pending'
         where id = ${r.id} and tenant_id = ${tenantId}`;
       const next = await loadEnroll(sql, tenantId, r.id);
+      await recordProvisionEvent(sql, {
+        tenantId,
+        routerId: r.id,
+        event: "enroll_script_generated",
+        detail: { rotated: true },
+      });
       return { script: await scriptFor(sql, tenantId, next), token: next.enroll_token, rotated: true };
     }
     if (!r.enroll_token) {
-      const enroll = enrollFields(r.name);
+      const enroll = enrollFields(r.name, r.wg_address);
       await sql`update routers set enroll_token = ${enroll.token}, wg_public = ${enroll.wg_public}, wg_private_ref = ${enroll.wg_private_sealed}
         where id = ${r.id} and tenant_id = ${tenantId}`;
       const next = await loadEnroll(sql, tenantId, r.id);
+      await recordProvisionEvent(sql, {
+        tenantId,
+        routerId: r.id,
+        event: "enroll_script_generated",
+        detail: { rotated: true },
+      });
       return { script: await scriptFor(sql, tenantId, next), token: next.enroll_token, rotated: true };
     }
+    await recordProvisionEvent(sql, {
+      tenantId,
+      routerId: r.id,
+      event: "enroll_script_generated",
+      detail: { rotated: false },
+    });
     return { script: await scriptFor(sql, tenantId, r), token: r.enroll_token, rotated: false };
   });
 
@@ -128,7 +147,13 @@ export const copyRouterApiUser = createServerFn({ method: "POST" })
     assertPermission(role, "routers.manage");
     const r = await loadEnroll(sql, tenantId, data.id);
     const api = await ensureRouterApiCredentials(sql, tenantId, r.id);
-    const script = apiUserEnsureRos({ user: api.user, password: api.password });
+    const script = apiUserEnsureRos({ user: api.user, password: api.password, wgAddress: r.wg_address });
+    await recordProvisionEvent(sql, {
+      tenantId,
+      routerId: r.id,
+      event: "api_user_script",
+      detail: { api_user: api.user },
+    });
     return { script, user: api.user };
   });
 

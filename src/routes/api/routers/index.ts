@@ -28,8 +28,8 @@ export const Route = createFileRoute("/api/routers/")({
           const name = String(body.name || "").trim();
           if (!name) return json({ error: "Name is required" }, 400);
           const id = nid("rtr");
-          const enroll = enrollFields(name);
           const wgAddress = await nextWgAddress(sql, tenantId);
+          const enroll = enrollFields(name, wgAddress);
           const site = String(body.site_pop || body.location || "").trim();
           const identity = String(body.identity || "").trim() || name.toLowerCase();
           await sql`insert into routers (

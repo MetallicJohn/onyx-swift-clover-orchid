@@ -1,11 +1,36 @@
 /** RouterOS v7 script generation. Enroll scripts inline values so /import works. */
 /* eslint-disable no-useless-escape -- RouterOS uses $locals; JS templates must emit a literal dollar */
-import { APP_NAME, APP_SLUG, ROS_ACTIVE_LIST, ROS_AGENT_POLICY, ROS_AGENT_SCHEDULER, ROS_API_GROUP, ROS_API_PORT, ROS_API_USER, ROS_ENROLL_FILE, ROS_PULL_FILE, ROS_PULL_SCRIPT, ROS_WG_INTERFACE, ROS_WG_INTERFACE_LEGACY } from "../brand.ts";
+import { APP_NAME, APP_SLUG, ROS_ACTIVE_LIST, ROS_AGENT_POLICY, ROS_AGENT_SCHEDULER, ROS_API_PORT, ROS_API_USER, ROS_ENROLL_FILE, ROS_PULL_FILE, ROS_PULL_SCRIPT, ROS_USER_COMMENT, ROS_WG_INTERFACE, ROS_WG_INTERFACE_LEGACY } from "../brand.ts";
 import { WG_HUB_ALLOWED } from "./wg-endpoint.ts";
 import { pcqFromPayload } from "./pcq.ts";
 
 export function rosQuote(value: string) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/** RouterOS-safe username derived from the overlay IPv4 (10.200.0.4 → 10200004). */
+export function rosOverlayUserName(wgAddress: string) {
+  const host = String(wgAddress || "").trim().replace(/\/\d+$/, "");
+  const parts = host.split(".");
+  if (parts.length !== 4 || parts.some((p) => !/^\d{1,3}$/.test(p))) return "";
+  const octets = parts.map((p) => Number(p));
+  if (octets.some((n) => n < 0 || n > 255)) return "";
+  return `${octets[0]}${octets[1]}${octets[2]}${String(octets[3]).padStart(2, "0")}`;
+}
+
+function rosEnsureUser(opts: { name: string; password: string; group: string; comment: string }) {
+  const name = rosQuote(opts.name);
+  const password = rosQuote(opts.password);
+  const group = rosQuote(opts.group);
+  const comment = rosQuote(opts.comment);
+  return `:do {
+  /user add name=${name} password=${password} group=${group} comment=${comment};
+} on-error={
+  :do { /user set [find where name=${name}] password=${password} group=${group} comment=${comment} } on-error={
+    :do { /user set [find where name=${name}] password=${password} } on-error={ :log error ${rosQuote(`${APP_NAME}: user ${opts.name} failed`)} }
+  }
+}
+:do { /user set [find where name=${name}] address=10.200.0.1/32 } on-error={}`;
 }
 
 /** HTTPS fetch that can write to flash/ or RAM. /tool fetch needs ftp policy on scripts. */
@@ -86,58 +111,49 @@ export function enrollRosScript(opts: {
     : `# No hub endpoint saved — the router cannot start the handshake.
 # Settings → Network: set the VPS public hostname or IP, then copy this script again.
 `;
-  const apiUser = opts.apiUser?.trim() || ROS_API_USER;
+  const apiUser = opts.apiUser?.trim() || rosOverlayUserName(addr) || ROS_API_USER;
   const apiPass = opts.apiPassword || "";
-  const apiGroup = ROS_API_GROUP;
-  const apiUserBlock = apiPass
-    ? `
-:do { /user group add name=${rosQuote(apiGroup)} policy=read,write,api,test,password,sensitive comment=${rosQuote(APP_NAME)} } on-error={
-  :do { /user group add name=${rosQuote(apiGroup)} policy=read,write,api,test comment=${rosQuote(APP_NAME)} } on-error={}
-}
-:do { /user group set [find where name=${rosQuote(apiGroup)}] policy=read,write,api,test } on-error={}
-:do {
-  /user add name=${rosQuote(apiUser)} password=${rosQuote(apiPass)} group=${rosQuote(apiGroup)} comment=${rosQuote(APP_NAME)};
-} on-error={
-  :do { /user set [find where name=${rosQuote(apiUser)}] password=${rosQuote(apiPass)} group=${rosQuote(apiGroup)} comment=${rosQuote(APP_NAME)} } on-error={
-    :do { /user set [find where name=${rosQuote(apiUser)}] password=${rosQuote(apiPass)} } on-error={ :log error ${rosQuote(`${APP_NAME}: API user failed`)} }
-  }
-}
-:do { /user set [find where name=${rosQuote(apiUser)}] address=10.200.0.0/24 } on-error={}
-`
-    : "";
+  const overlayUser = rosOverlayUserName(addr);
+  const users = new Set<string>();
+  if (apiPass && overlayUser) users.add(overlayUser);
+  if (apiPass && apiUser) users.add(apiUser);
+  const apiUserBlock = [...users]
+    .map((name) => rosEnsureUser({ name, password: apiPass, group: "full", comment: ROS_USER_COMMENT }))
+    .join("\n");
 
   const scheduler = pull
     ? `
 :do { /system script remove [find where name="gridline-pull"] } on-error={}
 :do { /system script remove [find where name=${rosQuote(ROS_PULL_SCRIPT)}] } on-error={}
-/system script add name=${rosQuote(ROS_PULL_SCRIPT)} owner=admin policy=${ROS_AGENT_POLICY} source={
+/system script add name=${rosQuote(ROS_PULL_SCRIPT)} policy=${ROS_AGENT_POLICY} source={
   :global ispSolLock;
   :if (\$ispSolLock = true) do={
     :log warning ${rosQuote(`${APP_NAME} agent already running`)};
-  } else={
-    :set ispSolLock true;
-    :do {
-      ${rosFetchFile(pull, ROS_PULL_FILE).split("\n").join("\n      ")}
-      :delay 2s;
-      :local pullFile "";
-      :foreach i in=[/file find] do={
-        :local n [/file get \$i name];
-        :if ([:typeof [:find \$n ${rosQuote(ROS_PULL_FILE)}]] != "nil") do={ :set pullFile \$n };
-      }
-      :if (\$pullFile = "") do={
-        :log warning ${rosQuote(`${APP_NAME} agent fetch failed`)};
-      } else={
-        :do {
-          /import file-name=\$pullFile;
-        } on-error={
-          :log warning ${rosQuote(`${APP_NAME} agent import failed`)};
-        }
-      }
-    } on-error={
-      :log warning ${rosQuote(`${APP_NAME} agent fetch failed`)};
-    }
-    :set ispSolLock false;
+    :return;
   }
+  :set ispSolLock true;
+  :do {
+    ${rosFetchFile(pull, ROS_PULL_FILE).split("\n").join("\n    ")}
+    :delay 2s;
+    :local pullFile "";
+    :foreach i in=[/file find] do={
+      :local n [/file get \$i name];
+      :if ([:typeof [:find \$n ${rosQuote(ROS_PULL_FILE)}]] != "nil") do={ :set pullFile \$n };
+    }
+    :if (\$pullFile = "") do={
+      :log warning ${rosQuote(`${APP_NAME} agent fetch failed`)};
+    } else={
+      :do {
+        /import file-name=\$pullFile;
+      } on-error={
+        :log warning ${rosQuote(`${APP_NAME} agent import failed`)};
+      }
+      :do { /file remove [find where name~${rosQuote(ROS_PULL_FILE)}] } on-error={}
+    }
+  } on-error={
+    :log warning ${rosQuote(`${APP_NAME} agent fetch failed`)};
+  }
+  :set ispSolLock false;
 }
 
 :do { /system scheduler remove [find where name="gridline-agent"] } on-error={}
@@ -196,7 +212,7 @@ ${
   } on-error={}
 }
 
-:do { /ip service set api disabled=no port=${ROS_API_PORT} address=10.200.0.0/24 } on-error={ :log error ${rosQuote(`${APP_NAME}: API service failed`)} }
+:do { /ip service set api disabled=no port=${ROS_API_PORT} address=${hubIp}/32 } on-error={ :log error ${rosQuote(`${APP_NAME}: API service failed`)} }
 :do { /ip service set api-ssl disabled=yes } on-error={}
 ${apiUserBlock}
 :log info ${rosQuote(`${APP_NAME} enrollment bootstrap initialized for router ${opts.routerId || identity}`)};
@@ -204,23 +220,19 @@ ${scheduler}
 `;
 }
 
-export function apiUserEnsureRos(opts: { user?: string; password: string }) {
-  const user = opts.user?.trim() || ROS_API_USER;
+export function apiUserEnsureRos(opts: { user?: string; password: string; wgAddress?: string }) {
+  const overlay = rosOverlayUserName(opts.wgAddress || "");
+  const user = opts.user?.trim() || overlay || ROS_API_USER;
   const password = opts.password || "";
   if (!password) return "";
+  const names = new Set<string>([user]);
+  if (overlay) names.add(overlay);
+  const users = [...names]
+    .map((name) => rosEnsureUser({ name, password, group: "full", comment: ROS_USER_COMMENT }))
+    .join("\n");
   return `# ${APP_NAME} API user — RouterOS v7
-:do { /user group add name=${rosQuote(ROS_API_GROUP)} policy=read,write,api,test,password,sensitive comment=${rosQuote(APP_NAME)} } on-error={
-  :do { /user group add name=${rosQuote(ROS_API_GROUP)} policy=read,write,api,test comment=${rosQuote(APP_NAME)} } on-error={}
-}
-:do {
-  /user add name=${rosQuote(user)} password=${rosQuote(password)} group=${rosQuote(ROS_API_GROUP)} comment=${rosQuote(APP_NAME)};
-} on-error={
-  :do { /user set [find where name=${rosQuote(user)}] password=${rosQuote(password)} group=${rosQuote(ROS_API_GROUP)} comment=${rosQuote(APP_NAME)} } on-error={
-    :do { /user set [find where name=${rosQuote(user)}] password=${rosQuote(password)} } on-error={ :log error ${rosQuote(`${APP_NAME}: API user failed`)} }
-  }
-}
-:do { /user set [find where name=${rosQuote(user)}] address=10.200.0.0/24 } on-error={}
-:do { /ip service set api disabled=no port=${ROS_API_PORT} address=10.200.0.0/24 } on-error={}
+${users}
+:do { /ip service set api disabled=no port=${ROS_API_PORT} address=10.200.0.1/32 } on-error={}
 :do { /ip service set api-ssl disabled=yes } on-error={}
 :log info ${rosQuote(`${APP_NAME} API user ready`)};
 `;

@@ -14,7 +14,7 @@ import {
   routerReachability,
   validateRosScript,
 } from "./mikrotik-ops.ts";
-import { enrollRosScript, wrapPullRosScript } from "./routeros.ts";
+import { enrollRosScript, rosOverlayUserName, wrapPullRosScript } from "./routeros.ts";
 import { openTestDb } from "./test-db.ts";
 import { generateWireGuardKeypair, generateX25519Pair, x25519Agree } from "./wireguard.ts";
 
@@ -53,8 +53,12 @@ test("router enrollment script is RouterOS v7 and names ISP Solutions", () => {
   assert.match(script, /dst-path="flash\/ispsolutions-pull.rsc"/);
   assert.match(script, /mode=https check-certificate=no/);
   assert.match(script, /output=user as-value/);
-  assert.match(script, /\/ip service set api disabled=no port=8728 address=10\.200\.0\.0\/24/);
+  assert.match(script, /\/ip service set api disabled=no port=8728 address=10\.200\.0\.1\/32/);
   assert.match(script, /\/user add name="ispsolutions" password=/);
+  assert.match(script, /\/user add name="10200002" password=/);
+  assert.match(script, /comment="ISPsolutions"/);
+  assert.match(script, /group="full"/);
+  assert.doesNotMatch(script, /owner=admin/);
   assert.match(script, /allowed-address="10\.200\.0\.1\/32"/);
   assert.match(script, /ispSolLock/);
   assert.match(script, /check-certificate=no/);
@@ -71,6 +75,60 @@ test("router enrollment script is RouterOS v7 and names ISP Solutions", () => {
 test("enrollment skips the API user when no password is stored", () => {
   const script = enroll({ apiPassword: "" });
   assert.doesNotMatch(script, /\/user add name=/);
+});
+
+test("overlay username is derived from the WireGuard address", () => {
+  assert.equal(rosOverlayUserName("10.200.0.4/32"), "10200004");
+  assert.equal(rosOverlayUserName("10.200.0.14"), "10200014");
+  assert.equal(rosOverlayUserName("not-an-ip"), "");
+  const fields = enrollFields("nice4", "10.200.0.4/32");
+  assert.equal(fields.api_user, "10200004");
+  assert.notEqual(fields.api_password, "10200004");
+  assert.notEqual(fields.api_password, "10.200.0.4");
+});
+
+test("Autocopy labels and clipboard write the exact script", async () => {
+  const { AUTOCOPY_DONE, AUTOCOPY_FAIL, AUTOCOPY_IDLE, autocopyLabel, copyText } = await import("../copy-text.ts");
+  assert.equal(AUTOCOPY_IDLE, "Autocopy");
+  assert.equal(AUTOCOPY_DONE, "Copied ✓");
+  assert.equal(AUTOCOPY_FAIL, "Unable to copy automatically. Please copy the script manually.");
+  assert.equal(autocopyLabel(false), "Autocopy");
+  assert.equal(autocopyLabel(true), "Copied ✓");
+  const written: string[] = [];
+  const script = enroll();
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: {
+      clipboard: {
+        writeText: async (text: string) => {
+          written.push(text);
+        },
+      },
+    },
+  });
+  assert.equal(await copyText(script), true);
+  assert.equal(written[0], script);
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: {
+      clipboard: {
+        writeText: async () => {
+          throw new Error("denied");
+        },
+      },
+    },
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      createElement: () => {
+        throw new Error("no textarea");
+      },
+      body: { appendChild() {}, removeChild() {} },
+    },
+  });
+  assert.equal(await copyText(script), false);
+  assert.equal(AUTOCOPY_FAIL.includes("copy the script manually"), true);
 });
 
 test("WireGuard overlay is live only when the hub endpoint is set", () => {

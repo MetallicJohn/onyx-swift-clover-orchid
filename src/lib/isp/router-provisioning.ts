@@ -14,7 +14,7 @@ import { parseV4Cidr } from "./ipam.ts";
 import { routerReachability, validateRosScript } from "./mikrotik-ops.ts";
 import { applyRls } from "./rls.ts";
 import { recordEnrollState } from "./router-enroll-state.ts";
-import { enrollRosScript, poolPushRosScript, rosFetchFile, rosQuote, type RosPool } from "./routeros.ts";
+import { enrollRosScript, poolPushRosScript, rosFetchFile, rosOverlayUserName, rosQuote, type RosPool } from "./routeros.ts";
 import { open, seal } from "./secrets.ts";
 import { ensureTenantHub, syncRouterWgPeer, wgEnrollContext } from "./wireguard.ts";
 
@@ -346,11 +346,12 @@ export async function loadRouter(sql: Sql, tenantId: string, id: string) {
 export { loadRouter as getRouter };
 
 export async function ensureRouterApiCredentials(sql: Sql, tenantId: string, routerId: string) {
-  const [row] = await sql<{ api_user: string; api_password: string }>`
-    select coalesce(api_user, '') as api_user, coalesce(api_password, '') as api_password
+  const [row] = await sql<{ api_user: string; api_password: string; wg_address: string }>`
+    select coalesce(api_user, '') as api_user, coalesce(api_password, '') as api_password,
+      coalesce(wg_address, '') as wg_address
     from routers where id = ${routerId} and tenant_id = ${tenantId}`;
   if (!row) throw new Error("Router not found");
-  const user = row.api_user.trim() || ROS_API_USER;
+  const user = row.api_user.trim() || rosOverlayUserName(row.wg_address) || ROS_API_USER;
   const existing = open(row.api_password);
   if (existing) return { user, password: existing };
   const password = generateRouterApiPassword();
@@ -360,6 +361,12 @@ export async function ensureRouterApiCredentials(sql: Sql, tenantId: string, rou
   await sql`insert into router_credentials (id, tenant_id, router_id, kind, secret_sealed)
     values (${nid("rcr")}, ${tenantId}, ${routerId}, 'api_password', ${sealed})
     on conflict (router_id, kind) do update set secret_sealed = excluded.secret_sealed, rotated_at = now()`;
+  await recordProvisionEvent(sql, {
+    tenantId,
+    routerId,
+    event: "api_credentials_created",
+    detail: { api_user: user },
+  });
   return { user, password };
 }
 

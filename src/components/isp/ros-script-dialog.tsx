@@ -2,7 +2,7 @@ import { Copy } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { copyText } from "@/lib/copy-text";
+import { AUTOCOPY_FAIL, autocopyLabel, copyText } from "@/lib/copy-text";
 import {
   primaryScript,
   scriptSections,
@@ -15,12 +15,10 @@ export { primaryScript, scriptSections };
 
 function CopyButton({
   body,
-  label,
   copied,
   onCopied,
 }: {
   body: string;
-  label: string;
   copied: boolean;
   onCopied: (ok: boolean) => void;
 }) {
@@ -34,7 +32,7 @@ function CopyButton({
       }}
     >
       <Copy className="size-4" />
-      {copied ? "Copied" : `Copy ${label}`}
+      {autocopyLabel(copied)}
     </Button>
   );
 }
@@ -52,7 +50,7 @@ function ScriptBlock({
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium">{section.label}</p>
-        <CopyButton body={section.body} label={section.label} copied={copied} onCopied={onCopied} />
+        <CopyButton body={section.body} copied={copied} onCopied={onCopied} />
       </div>
       <div className="relative">
         <Button
@@ -64,9 +62,9 @@ function ScriptBlock({
           }}
         >
           <Copy className="size-3.5" />
-          {copied ? "Copied" : "Copy"}
+          {autocopyLabel(copied)}
         </Button>
-        <pre className="max-h-64 overflow-auto rounded-xl border border-border bg-elevated p-4 pr-24 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all text-fg">
+        <pre className="max-h-64 overflow-auto rounded-xl border border-border bg-elevated p-4 pr-28 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all text-fg">
           {section.body}
         </pre>
       </div>
@@ -83,9 +81,11 @@ export function RosScriptDialog({
 }) {
   const sections = useMemo(() => scriptSections(pack), [pack]);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState("");
 
   useEffect(() => {
     setCopiedKey(null);
+    setCopyError("");
     const first = sections[0];
     if (!first) return;
     void copyText(first.body).then((ok) => {
@@ -96,14 +96,24 @@ export function RosScriptDialog({
     });
   }, [sections]);
 
+  function markCopied(key: string, ok: boolean) {
+    if (!ok) {
+      setCopyError(AUTOCOPY_FAIL);
+      return;
+    }
+    setCopyError("");
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 2500);
+  }
+
   return (
     <Dialog
       open={Boolean(pack)}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={pack?.title || "RouterOS v7 scripts"}
-      description="Paste in New Terminal. Each script has a Copy button."
+      title={pack?.title || "Generate RouterOS Script"}
+      description="Paste in New Terminal. Autocopy copies the exact script shown."
       className="sm:max-w-2xl"
       footer={
         sections.length ? (
@@ -112,13 +122,8 @@ export function RosScriptDialog({
               <CopyButton
                 key={section.key}
                 body={section.body}
-                label={section.label}
                 copied={copiedKey === section.key}
-                onCopied={(ok) => {
-                  if (!ok) return;
-                  setCopiedKey(section.key);
-                  setTimeout(() => setCopiedKey((k) => (k === section.key ? null : k)), 2500);
-                }}
+                onCopied={(ok) => markCopied(section.key, ok)}
               />
             ))}
           </div>
@@ -129,16 +134,13 @@ export function RosScriptDialog({
         <p className="text-sm text-muted">No script to copy.</p>
       ) : (
         <div className="space-y-5">
+          {copyError ? <p className="text-sm text-danger">{copyError}</p> : null}
           {sections.map((section) => (
             <ScriptBlock
               key={section.key}
               section={section}
               copied={copiedKey === section.key}
-              onCopied={(ok) => {
-                if (!ok) return;
-                setCopiedKey(section.key);
-                setTimeout(() => setCopiedKey((k) => (k === section.key ? null : k)), 2500);
-              }}
+              onCopied={(ok) => markCopied(section.key, ok)}
             />
           ))}
         </div>

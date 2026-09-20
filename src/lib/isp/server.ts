@@ -1163,8 +1163,8 @@ export const addRouter = createServerFn({ method: "POST" })
     await assertRouterQuota(sql, workspace.tenantId);
     await assertFeature(sql, workspace.tenantId, "mikrotik");
     const id = nid("rtr");
-    const enroll = enrollFields(data.name);
     const wgAddress = await nextWgAddress(sql, workspace.tenantId);
+    const enroll = enrollFields(data.name, wgAddress);
     const name = data.name.trim();
     const site = (data.site_pop || data.location || "").trim();
     const identity = (data.identity || "").trim() || name.toLowerCase();

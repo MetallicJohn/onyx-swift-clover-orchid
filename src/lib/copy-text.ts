@@ -1,4 +1,13 @@
 /** Copy text to the clipboard. Falls back to a hidden textarea when the Clipboard API is blocked. */
+
+export const AUTOCOPY_IDLE = "Autocopy";
+export const AUTOCOPY_DONE = "Copied ✓";
+export const AUTOCOPY_FAIL = "Unable to copy automatically. Please copy the script manually.";
+
+export function autocopyLabel(copied: boolean) {
+  return copied ? AUTOCOPY_DONE : AUTOCOPY_IDLE;
+}
+
 export async function copyText(text: string) {
   const value = String(text || "");
   if (!value) return false;
