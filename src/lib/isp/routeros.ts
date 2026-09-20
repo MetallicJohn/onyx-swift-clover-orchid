@@ -40,9 +40,6 @@ export function enrollRosScript(opts: {
   const allowed = WG_HUB_ALLOWED;
   const wgPriv = rosQuote(opts.wgPrivate || "");
   const peerPub = rosQuote(peerKey);
-  const peerEndpoint = endpointHost
-    ? ` endpoint-address=${rosQuote(endpointHost)} endpoint-port=${endpointPort}`
-    : "";
   const missingEndpoint = endpointHost
     ? ""
     : `# No hub endpoint saved — the router cannot start the handshake.
@@ -53,17 +50,16 @@ export function enrollRosScript(opts: {
   const apiGroup = ROS_API_GROUP;
   const apiUserBlock = apiPass
     ? `
-:do {
-  /user group add name=${rosQuote(apiGroup)} policy="read,write,api,test,password,sensitive" comment=${rosQuote(APP_NAME)};
-} on-error={
-  :do { /user group add name=${rosQuote(apiGroup)} policy="read,write,api,test" comment=${rosQuote(APP_NAME)} } on-error={
-    :do { /user group set [find where name=${rosQuote(apiGroup)}] policy="read,write,api,test" } on-error={}
-  }
+:do { /user group add name=${rosQuote(apiGroup)} policy=read,write,api,test,password,sensitive comment=${rosQuote(APP_NAME)} } on-error={
+  :do { /user group add name=${rosQuote(apiGroup)} policy=read,write,api,test comment=${rosQuote(APP_NAME)} } on-error={}
 }
+:do { /user group set [find where name=${rosQuote(apiGroup)}] policy=read,write,api,test } on-error={}
 :do {
   /user add name=${rosQuote(apiUser)} password=${rosQuote(apiPass)} group=${rosQuote(apiGroup)} comment=${rosQuote(APP_NAME)};
 } on-error={
-  :do { /user set [find where name=${rosQuote(apiUser)}] password=${rosQuote(apiPass)} group=${rosQuote(apiGroup)} comment=${rosQuote(APP_NAME)} } on-error={ :log error ${rosQuote(`${APP_NAME}: API user failed`)} }
+  :do { /user set [find where name=${rosQuote(apiUser)}] password=${rosQuote(apiPass)} group=${rosQuote(apiGroup)} comment=${rosQuote(APP_NAME)} } on-error={
+    :do { /user set [find where name=${rosQuote(apiUser)}] password=${rosQuote(apiPass)} } on-error={ :log error ${rosQuote(`${APP_NAME}: API user failed`)} }
+  }
 }
 :do { /user set [find where name=${rosQuote(apiUser)}] address=10.200.0.0/24 } on-error={}
 `
@@ -128,11 +124,19 @@ ${missingEndpoint}
 }
 
 :do {
-  /interface wireguard peers add interface=${ROS_WG_INTERFACE} public-key=${peerPub} allowed-address=${rosQuote(allowed)}${peerEndpoint} persistent-keepalive=25 comment=${rosQuote(`${APP_NAME} controller`)};
+  /interface wireguard peers add interface=${ROS_WG_INTERFACE} public-key=${peerPub} allowed-address=${rosQuote(allowed)} comment=${rosQuote(`${APP_NAME} controller`)};
 } on-error={
-  :do {
-    /interface wireguard peers set [find where interface="${ROS_WG_INTERFACE}"] public-key=${peerPub} allowed-address=${rosQuote(allowed)}${peerEndpoint} persistent-keepalive=25 comment=${rosQuote(`${APP_NAME} controller`)};
-  } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard peer failed`)} }
+  :do { /interface wireguard peers set [find where interface="${ROS_WG_INTERFACE}"] public-key=${peerPub} allowed-address=${rosQuote(allowed)} comment=${rosQuote(`${APP_NAME} controller`)} } on-error={
+    :log error ${rosQuote(`${APP_NAME}: WireGuard peer failed`)};
+  }
+}
+:do { /interface wireguard peers set [find where interface="${ROS_WG_INTERFACE}"] persistent-keepalive=25s } on-error={
+  :do { /interface wireguard peers set [find where interface="${ROS_WG_INTERFACE}"] persistent-keepalive=00:00:25 } on-error={}
+}
+${
+  endpointHost
+    ? `:do { /interface wireguard peers set [find where interface="${ROS_WG_INTERFACE}"] endpoint-address=${rosQuote(endpointHost)} endpoint-port=${endpointPort} } on-error={ :log warning ${rosQuote(`${APP_NAME}: peer endpoint not set — check DNS for ${endpointHost}`)} }`
+    : ""
 }
 
 :if ([:len [/ip address find where interface="${ROS_WG_INTERFACE}"]] = 0) do={
@@ -165,15 +169,15 @@ export function apiUserEnsureRos(opts: { user?: string; password: string }) {
   const password = opts.password || "";
   if (!password) return "";
   return `# ${APP_NAME} API user — RouterOS v7
-:do {
-  /user group add name=${rosQuote(ROS_API_GROUP)} policy="read,write,api,test,password,sensitive" comment=${rosQuote(APP_NAME)};
-} on-error={
-  :do { /user group set [find where name=${rosQuote(ROS_API_GROUP)}] policy="read,write,api,test,password,sensitive" } on-error={}
+:do { /user group add name=${rosQuote(ROS_API_GROUP)} policy=read,write,api,test,password,sensitive comment=${rosQuote(APP_NAME)} } on-error={
+  :do { /user group add name=${rosQuote(ROS_API_GROUP)} policy=read,write,api,test comment=${rosQuote(APP_NAME)} } on-error={}
 }
 :do {
   /user add name=${rosQuote(user)} password=${rosQuote(password)} group=${rosQuote(ROS_API_GROUP)} comment=${rosQuote(APP_NAME)};
 } on-error={
-  :do { /user set [find where name=${rosQuote(user)}] password=${rosQuote(password)} group=${rosQuote(ROS_API_GROUP)} comment=${rosQuote(APP_NAME)} } on-error={ :log error ${rosQuote(`${APP_NAME}: API user failed`)} }
+  :do { /user set [find where name=${rosQuote(user)}] password=${rosQuote(password)} group=${rosQuote(ROS_API_GROUP)} comment=${rosQuote(APP_NAME)} } on-error={
+    :do { /user set [find where name=${rosQuote(user)}] password=${rosQuote(password)} } on-error={ :log error ${rosQuote(`${APP_NAME}: API user failed`)} }
+  }
 }
 :do { /user set [find where name=${rosQuote(user)}] address=10.200.0.0/24 } on-error={}
 :do { /ip service set api disabled=no port=${ROS_API_PORT} address=10.200.0.0/24 } on-error={}
