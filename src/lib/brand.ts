@@ -13,6 +13,8 @@ export const ROS_API_USER = `${APP_SLUG}-agent`;
 export const ROS_API_USER_LEGACY = APP_SLUG;
 export const ROS_API_GROUP = `${APP_SLUG}-agent`;
 export const ROS_API_PORT = 8728;
+/** /tool fetch requires ftp even when the URL is HTTPS. */
+export const ROS_AGENT_POLICY = "ftp,read,write,policy,test,password,sensitive";
 /** Overlay name on MikroTik and on the VPS hub (`wg-quick`). */
 export const ROS_WG_INTERFACE = `wg-${APP_SLUG}`;
 /** Previous overlay name — enroll/hub scripts still rename this if present. */

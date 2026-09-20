@@ -1,11 +1,24 @@
 /** RouterOS v7 script generation. Enroll scripts inline values so /import works. */
 /* eslint-disable no-useless-escape -- RouterOS uses $locals; JS templates must emit a literal dollar */
-import { APP_NAME, APP_SLUG, ROS_ACTIVE_LIST, ROS_AGENT_SCHEDULER, ROS_API_GROUP, ROS_API_PORT, ROS_API_USER, ROS_ENROLL_FILE, ROS_PULL_FILE, ROS_PULL_SCRIPT, ROS_WG_INTERFACE, ROS_WG_INTERFACE_LEGACY } from "../brand.ts";
+import { APP_NAME, APP_SLUG, ROS_ACTIVE_LIST, ROS_AGENT_POLICY, ROS_AGENT_SCHEDULER, ROS_API_GROUP, ROS_API_PORT, ROS_API_USER, ROS_ENROLL_FILE, ROS_PULL_FILE, ROS_PULL_SCRIPT, ROS_WG_INTERFACE, ROS_WG_INTERFACE_LEGACY } from "../brand.ts";
 import { WG_HUB_ALLOWED } from "./wg-endpoint.ts";
 import { pcqFromPayload } from "./pcq.ts";
 
 export function rosQuote(value: string) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/** HTTPS fetch that can write to flash/ or RAM. /tool fetch needs ftp policy on scripts. */
+export function rosFetchFile(url: string, fileName: string) {
+  const quotedUrl = rosQuote(url);
+  const root = rosQuote(fileName);
+  const flash = rosQuote(`flash/${fileName}`);
+  return `:do { /file remove [find where name~${root}] } on-error={}
+:do {
+  /tool fetch url=${quotedUrl} check-certificate=no dst-path=${flash};
+} on-error={
+  /tool fetch url=${quotedUrl} check-certificate=no dst-path=${root};
+}`;
 }
 
 function localBlock(vars: Record<string, string>) {
@@ -69,15 +82,14 @@ export function enrollRosScript(opts: {
     ? `
 :do { /system script remove [find where name="gridline-pull"] } on-error={}
 :do { /system script remove [find where name=${rosQuote(ROS_PULL_SCRIPT)}] } on-error={}
-/system script add name=${rosQuote(ROS_PULL_SCRIPT)} owner=admin policy=read,write,policy,test,password,sensitive source={
+/system script add name=${rosQuote(ROS_PULL_SCRIPT)} owner=admin policy=${ROS_AGENT_POLICY} source={
   :global ispSolLock;
   :if (\$ispSolLock = true) do={
     :log warning ${rosQuote(`${APP_NAME} agent already running`)};
   } else={
     :set ispSolLock true;
     :do {
-      :do { /file remove [find where name~${rosQuote(ROS_PULL_FILE)}] } on-error={}
-      /tool fetch url=${rosQuote(pull)} check-certificate=no dst-path=${rosQuote(ROS_PULL_FILE)};
+      ${rosFetchFile(pull, ROS_PULL_FILE).split("\n").join("\n      ")}
       :delay 2s;
       :local pullFile "";
       :foreach i in=[/file find] do={
@@ -102,7 +114,7 @@ export function enrollRosScript(opts: {
 
 :do { /system scheduler remove [find where name="gridline-agent"] } on-error={}
 :do { /system scheduler remove [find where name=${rosQuote(ROS_AGENT_SCHEDULER)}] } on-error={}
-/system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup policy=read,write,policy,test,password,sensitive on-event="/system script run ${ROS_PULL_SCRIPT}";`
+/system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup policy=${ROS_AGENT_POLICY} on-event="/system script run ${ROS_PULL_SCRIPT}";`
     : `
 :do { /system scheduler remove [find where name="gridline-agent"] } on-error={}
 :do { /system scheduler remove [find where name=${rosQuote(ROS_AGENT_SCHEDULER)}] } on-error={}

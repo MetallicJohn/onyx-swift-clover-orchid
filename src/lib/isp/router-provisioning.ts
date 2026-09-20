@@ -14,7 +14,7 @@ import { parseV4Cidr } from "./ipam.ts";
 import { routerReachability, validateRosScript } from "./mikrotik-ops.ts";
 import { applyRls } from "./rls.ts";
 import { recordEnrollState } from "./router-enroll-state.ts";
-import { enrollRosScript, poolPushRosScript, rosQuote, type RosPool } from "./routeros.ts";
+import { enrollRosScript, poolPushRosScript, rosFetchFile, rosQuote, type RosPool } from "./routeros.ts";
 import { open, seal } from "./secrets.ts";
 import { ensureTenantHub, syncRouterWgPeer, wgEnrollContext } from "./wireguard.ts";
 
@@ -193,7 +193,7 @@ ${opts.identity ? `# identity: ${opts.identity}` : ""}
   :do { /system ntp client set enabled=yes } on-error={};
   :delay 5s;
   :do {
-    /tool fetch url=${rosQuote(url)} mode=https check-certificate=no http-method=get dst-path=${rosQuote(file)};
+    ${rosFetchFile(url, file).split("\n").join("\n    ")}
     :delay 2s;
     :local bootFile "";
     :foreach i in=[/file find] do={

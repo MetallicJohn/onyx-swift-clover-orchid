@@ -49,6 +49,8 @@ test("router enrollment script is RouterOS v7 and names ISP Solutions", () => {
   assert.match(script, /interface wireguard add name=wg-ispsolutions/);
   assert.match(script, /system script add name="ispsolutions-pull"/);
   assert.match(script, /system scheduler add name="ispsolutions-agent"/);
+  assert.match(script, /policy=ftp,read,write,policy,test,password,sensitive/);
+  assert.match(script, /dst-path="flash\/ispsolutions-pull.rsc"/);
   assert.match(script, /\/ip service set api disabled=no port=8728 address=10\.200\.0\.0\/24/);
   assert.match(script, /\/user add name="ispsolutions" password=/);
   assert.match(script, /allowed-address="10\.200\.0\.1\/32"/);

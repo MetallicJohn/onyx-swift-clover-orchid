@@ -130,13 +130,7 @@ export function buildServerConf(hub: WgHubConfig, peers: WgPeerConfig[]) {
   return lines.join("\n") + "\n";
 }
 
-export function hubPeerShell(peer: { publicKey: string; address: string }) {
-  const pub = peer.publicKey.trim();
-  const addr = (peer.address || "").trim();
-  const cidr = addr.includes("/") ? addr : addr ? `${addr}/32` : "";
-  if (!pub || !cidr || !isWireGuardPublicKey(pub)) return "";
-  return `wg set ${ROS_WG_INTERFACE} peer ${pub} allowed-ips ${cidr}\nwg-quick save ${ROS_WG_INTERFACE}`;
-}
+export { hubPeerShell } from "./wg-peer-shell.ts";
 
 export function buildServerInstallScript(hub: WgHubConfig, peers: WgPeerConfig[]) {
   const conf = buildServerConf(hub, peers);

@@ -1,61 +1,75 @@
 import { Copy } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { copyText } from "@/lib/copy-text";
-import { cn } from "@/lib/utils";
+import {
+  primaryScript,
+  scriptSections,
+  type RosScriptPack,
+  type RosScriptSection,
+} from "@/lib/isp/ros-script-pack";
 
-export type RosScriptPack = {
-  title?: string;
-  bootstrap?: string;
-  enroll?: string;
-  extraLabel?: string;
-  extra?: string;
-};
+export type { RosScriptPack, RosScriptSection };
+export { primaryScript, scriptSections };
+
+function CopyButton({
+  body,
+  label,
+  copied,
+  onCopied,
+}: {
+  body: string;
+  label: string;
+  copied: boolean;
+  onCopied: (ok: boolean) => void;
+}) {
+  return (
+    <Button
+      type="button"
+      size="md"
+      className="h-11 shrink-0"
+      onClick={async () => {
+        onCopied(await copyText(body));
+      }}
+    >
+      <Copy className="size-4" />
+      {copied ? "Copied" : `Copy ${label}`}
+    </Button>
+  );
+}
 
 function ScriptBlock({
-  label,
-  hint,
-  body,
-  auto,
+  section,
+  copied,
+  onCopied,
 }: {
-  label: string;
-  hint: string;
-  body: string;
-  auto: boolean;
+  section: RosScriptSection;
+  copied: boolean;
+  onCopied: (ok: boolean) => void;
 }) {
-  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
-
-  async function copy(now = false) {
-    const ok = await copyText(body);
-    setState(ok ? "copied" : "failed");
-    if (!now) setTimeout(() => setState("idle"), 2500);
-    return ok;
-  }
-
-  useEffect(() => {
-    if (!auto || !body) return;
-    void copy(true).then(() => {
-      setTimeout(() => setState((s) => (s === "copied" ? "idle" : s)), 2500);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [body, auto]);
-
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-sm font-medium">{label}</p>
-          <p className="text-xs text-muted">{hint}</p>
-        </div>
-        <Button type="button" size="sm" onClick={() => void copy()}>
-          <Copy className="size-3.5" />
-          {state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : `Copy ${label.toLowerCase()}`}
-        </Button>
+        <p className="text-sm font-medium">{section.label}</p>
+        <CopyButton body={section.body} label={section.label} copied={copied} onCopied={onCopied} />
       </div>
-      <pre className="max-h-64 overflow-auto rounded-xl border border-border bg-elevated p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all text-fg">
-        {body}
-      </pre>
+      <div className="relative">
+        <Button
+          type="button"
+          size="sm"
+          className="absolute top-2 right-2 z-10 h-9 shadow-card"
+          onClick={async () => {
+            onCopied(await copyText(section.body));
+          }}
+        >
+          <Copy className="size-3.5" />
+          {copied ? "Copied" : "Copy"}
+        </Button>
+        <pre className="max-h-64 overflow-auto rounded-xl border border-border bg-elevated p-4 pr-24 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all text-fg">
+          {section.body}
+        </pre>
+      </div>
     </div>
   );
 }
@@ -67,10 +81,20 @@ export function RosScriptDialog({
   pack: RosScriptPack | null;
   onClose: () => void;
 }) {
-  const bootstrap = pack?.bootstrap?.trim() || "";
-  const enroll = pack?.enroll?.trim() || "";
-  const extra = pack?.extra?.trim() || "";
-  const autoTarget = bootstrap ? "bootstrap" : enroll ? "enroll" : extra ? "extra" : "";
+  const sections = useMemo(() => scriptSections(pack), [pack]);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCopiedKey(null);
+    const first = sections[0];
+    if (!first) return;
+    void copyText(first.body).then((ok) => {
+      if (ok) {
+        setCopiedKey(first.key);
+        setTimeout(() => setCopiedKey((k) => (k === first.key ? null : k)), 2500);
+      }
+    });
+  }, [sections]);
 
   return (
     <Dialog
@@ -79,35 +103,46 @@ export function RosScriptDialog({
         if (!open) onClose();
       }}
       title={pack?.title || "RouterOS v7 scripts"}
-      description="Paste in New Terminal. HTTPS fetch uses check-certificate=no."
+      description="Paste in New Terminal. Each script has a Copy button."
       className="sm:max-w-2xl"
+      footer={
+        sections.length ? (
+          <div className="flex flex-wrap gap-2">
+            {sections.map((section) => (
+              <CopyButton
+                key={section.key}
+                body={section.body}
+                label={section.label}
+                copied={copiedKey === section.key}
+                onCopied={(ok) => {
+                  if (!ok) return;
+                  setCopiedKey(section.key);
+                  setTimeout(() => setCopiedKey((k) => (k === section.key ? null : k)), 2500);
+                }}
+              />
+            ))}
+          </div>
+        ) : null
+      }
     >
-      <div className={cn("space-y-5")}>
-        {bootstrap ? (
-          <ScriptBlock
-            label="Bootstrap"
-            hint="Short paste. Downloads the full enroll file over HTTPS."
-            body={bootstrap}
-            auto={autoTarget === "bootstrap"}
-          />
-        ) : null}
-        {enroll ? (
-          <ScriptBlock
-            label="Enroll"
-            hint="Full script: WireGuard, hub peer, API user, agent pull."
-            body={enroll}
-            auto={autoTarget === "enroll"}
-          />
-        ) : null}
-        {extra ? (
-          <ScriptBlock
-            label={pack?.extraLabel || "Script"}
-            hint="Paste in New Terminal."
-            body={extra}
-            auto={autoTarget === "extra"}
-          />
-        ) : null}
-      </div>
+      {sections.length === 0 ? (
+        <p className="text-sm text-muted">No script to copy.</p>
+      ) : (
+        <div className="space-y-5">
+          {sections.map((section) => (
+            <ScriptBlock
+              key={section.key}
+              section={section}
+              copied={copiedKey === section.key}
+              onCopied={(ok) => {
+                if (!ok) return;
+                setCopiedKey(section.key);
+                setTimeout(() => setCopiedKey((k) => (k === section.key ? null : k)), 2500);
+              }}
+            />
+          ))}
+        </div>
+      )}
     </Dialog>
   );
 }

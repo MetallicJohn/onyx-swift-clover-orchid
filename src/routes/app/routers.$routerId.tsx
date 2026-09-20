@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 import { RouterMonitor } from "@/components/isp/router-monitor";
-import { RosScriptDialog, type RosScriptPack } from "@/components/isp/ros-script-dialog";
+import { RosScriptDialog, type RosScriptPack, primaryScript } from "@/components/isp/ros-script-dialog";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -19,7 +19,7 @@ import { formatDateTime } from "@/lib/isp/display";
 import { hasPermission } from "@/lib/isp/rbac";
 import type { RouterPoolRow } from "@/lib/isp/router-desk";
 import { getRouterApi, saveRouterApi } from "@/lib/isp/server-mikrotik";
-import { hubPeerShell } from "@/lib/isp/wireguard";
+import { hubPeerShell } from "@/lib/isp/wg-peer-shell";
 import {
   archiveRouterFn,
   archiveRouterPoolFn,
@@ -94,6 +94,7 @@ function RouterRecordPage() {
   const [removePool, setRemovePool] = useState<RouterPoolRow | null>(null);
   const [showMonitoring, setShowMonitoring] = useState(search.tab === "monitoring");
   const [pack, setPack] = useState<RosScriptPack | null>(null);
+  const [copiedBtn, setCopiedBtn] = useState<string | null>(null);
   const [confirmSync, setConfirmSync] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [apiForm, setApiForm] = useState({
@@ -104,6 +105,14 @@ function RouterRecordPage() {
     api_password_set: false,
     api_password_hint: "",
   });
+
+  async function openPack(next: RosScriptPack, btn: string) {
+    setPack(next);
+    const first = primaryScript(next);
+    const ok = first ? await copyText(first.body) : false;
+    setCopiedBtn(ok ? btn : null);
+    if (ok) setTimeout(() => setCopiedBtn((b) => (b === btn ? null : b)), 2500);
+  }
 
   async function load() {
     const rec = await getRouterDeskFn({ data: { id: routerId } });
@@ -340,18 +349,21 @@ function RouterRecordPage() {
                 onClick={async () => {
                   try {
                     const out = await issueRouterTokenFn({ data: { id: router.id } });
-                    setPack({
-                      title: `Bootstrap · ${router.name}`,
-                      bootstrap: out.bootstrap,
-                      enroll: out.enroll,
-                    });
+                    await openPack(
+                      {
+                        title: `Bootstrap · ${router.name}`,
+                        bootstrap: out.bootstrap,
+                        enroll: out.enroll,
+                      },
+                      "bootstrap",
+                    );
                     await load();
                   } catch (err) {
                     setError(err instanceof Error ? err.message : "Could not generate bootstrap");
                   }
                 }}
               >
-                Generate bootstrap
+                {copiedBtn === "bootstrap" ? "Copied bootstrap" : "Generate bootstrap"}
               </Button>
               <Button
                 size="sm"
@@ -367,26 +379,36 @@ function RouterRecordPage() {
               <Button
                 size="sm"
                 variant="secondary"
+                onClick={() => setConfirmSync(true)}
+              >
+                Synchronize
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
                 onClick={async () => {
                   const out = await copyRouterScript({ data: { id: router.id } });
-                  setPack({ title: `Enroll · ${router.name}`, enroll: out.script });
+                  await openPack({ title: `Enroll · ${router.name}`, enroll: out.script }, "enroll");
                 }}
               >
-                Copy enroll
+                {copiedBtn === "enroll" ? "Copied enroll" : "Copy enroll"}
               </Button>
               <Button
                 size="sm"
                 variant="secondary"
                 onClick={async () => {
                   const out = await copyRouterApiUser({ data: { id: router.id } });
-                  setPack({
-                    title: `API user · ${out.user}`,
-                    extraLabel: "API user",
-                    extra: out.script,
-                  });
+                  await openPack(
+                    {
+                      title: `API user · ${out.user}`,
+                      extraLabel: "API user",
+                      extra: out.script,
+                    },
+                    "api",
+                  );
                 }}
               >
-                Copy API user
+                {copiedBtn === "api" ? "Copied API user" : "Copy API user"}
               </Button>
             </div>
           ) : null}
@@ -827,11 +849,14 @@ function RouterRecordPage() {
               setBusy(true);
               try {
                 const out = await reconfigureRouterFn({ data: { id: routerId } });
-                setPack({
-                  title: "Re-provision",
-                  bootstrap: out.bootstrap,
-                  enroll: out.enroll,
-                });
+                await openPack(
+                  {
+                    title: "Re-provision",
+                    bootstrap: out.bootstrap,
+                    enroll: out.enroll,
+                  },
+                  "sync",
+                );
                 setConfirmSync(false);
                 await load();
               } catch (err) {

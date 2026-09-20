@@ -65,7 +65,7 @@ test("generated enroll script is certificate-free, overlay-API-only, and does no
   assert.match(script, /dst-port=8728 src-address=10\.200\.0\.1/);
   assert.match(script, /check-certificate=no/);
   assert.match(script, /\/user add name="ispsolutions-agent" password=/);
-  assert.match(script, /ispSolLock/);
+  assert.match(script, /policy=ftp,read,write,policy,test,password,sensitive/);
   assert.match(script, /enrollment bootstrap initialized for router/);
   assert.doesNotMatch(script, /check-certificate=yes/);
   assert.doesNotMatch(script, /enrolled token=/);
