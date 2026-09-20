@@ -51,6 +51,9 @@ test("bootstrap paste checks internet, fetches HTTPS, and skips MikroTik CA veri
   assert.match(script, /\/system ntp client set enabled=yes/);
   assert.match(script, /check-certificate=no/);
   assert.match(script, /dst-path="flash\/ispsolutions-bootstrap.rsc"/);
+  assert.match(script, /mode=https check-certificate=no/);
+  assert.match(script, /output=user as-value/);
+  assert.match(script, /Copy enroll/);
   assert.match(script, /https:\/\/ops\.imani\.ke\/api\/vpn\/routers\//);
   assert.match(script, /\/import file-name=\$bootFile/);
   assert.match(script, /:find \$n /);

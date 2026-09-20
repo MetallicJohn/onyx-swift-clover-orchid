@@ -51,6 +51,8 @@ test("router enrollment script is RouterOS v7 and names ISP Solutions", () => {
   assert.match(script, /system scheduler add name="ispsolutions-agent"/);
   assert.match(script, /policy=ftp,read,write,policy,test,password,sensitive/);
   assert.match(script, /dst-path="flash\/ispsolutions-pull.rsc"/);
+  assert.match(script, /mode=https check-certificate=no/);
+  assert.match(script, /output=user as-value/);
   assert.match(script, /\/ip service set api disabled=no port=8728 address=10\.200\.0\.0\/24/);
   assert.match(script, /\/user add name="ispsolutions" password=/);
   assert.match(script, /allowed-address="10\.200\.0\.1\/32"/);
@@ -63,7 +65,6 @@ test("router enrollment script is RouterOS v7 and names ISP Solutions", () => {
   assert.match(script, /persistent-keepalive=25s/);
   assert.match(script, /check-certificate=no/);
   assert.doesNotMatch(script, /check-certificate=yes/);
-  assert.doesNotMatch(script, /http-method=get/);
   assert.equal(duplicateRisks(script).length, 0);
 });
 

@@ -13,11 +13,39 @@ export function rosFetchFile(url: string, fileName: string) {
   const quotedUrl = rosQuote(url);
   const root = rosQuote(fileName);
   const flash = rosQuote(`flash/${fileName}`);
-  return `:do { /file remove [find where name~${root}] } on-error={}
+  return `:local ispSolFetched false;
+:do { /file remove [find where name~${root}] } on-error={}
 :do {
-  /tool fetch url=${quotedUrl} check-certificate=no dst-path=${flash};
-} on-error={
-  /tool fetch url=${quotedUrl} check-certificate=no dst-path=${root};
+  /tool fetch url=${quotedUrl} mode=https check-certificate=no dst-path=${flash};
+  :set ispSolFetched true;
+} on-error={}
+:if ($ispSolFetched != true) do={
+  :do {
+    /tool fetch url=${quotedUrl} mode=https check-certificate=no dst-path=${root};
+    :set ispSolFetched true;
+  } on-error={}
+}
+:if ($ispSolFetched != true) do={
+  :do {
+    :local dnsSrv [/ip dns get servers];
+    :if ([:len $dnsSrv] = 0) do={ /ip dns set servers=1.1.1.1,8.8.8.8 };
+  } on-error={ :do { /ip dns set servers=1.1.1.1,8.8.8.8 } on-error={} }
+  :do {
+    :local r [/tool fetch url=${quotedUrl} mode=https check-certificate=no http-method=get output=user as-value];
+    :if ([:typeof ($r->"data")] = "str") do={
+      :if ([:len ($r->"data")] > 20) do={
+        :do { /file add name=${flash} contents=($r->"data") } on-error={
+          :do { /file add name=${root} contents=($r->"data") } on-error={
+            :do { /file set [find where name~${root}] contents=($r->"data") } on-error={}
+          }
+        }
+        :set ispSolFetched true;
+      }
+    }
+  } on-error={}
+}
+:if ($ispSolFetched != true) do={
+  :log error ${rosQuote(`${APP_NAME}: HTTPS fetch failed — cannot write file or resolve host. Set /ip dns servers=1.1.1.1,8.8.8.8 and use Copy enroll`)}
 }`;
 }
 

@@ -191,27 +191,23 @@ ${opts.identity ? `# identity: ${opts.identity}` : ""}
 } else={
   :do { /ip cloud set update-time=yes } on-error={};
   :do { /system ntp client set enabled=yes } on-error={};
-  :delay 5s;
-  :do {
-    ${rosFetchFile(url, file).split("\n").join("\n    ")}
-    :delay 2s;
-    :local bootFile "";
-    :foreach i in=[/file find] do={
-      :local n [/file get $i name];
-      :if ([:typeof [:find $n ${rosQuote(file)}]] != "nil") do={ :set bootFile $n };
+  :delay 3s;
+  ${rosFetchFile(url, file)}
+  :delay 2s;
+  :local bootFile "";
+  :foreach i in=[/file find] do={
+    :local n [/file get $i name];
+    :if ([:typeof [:find $n ${rosQuote(file)}]] != "nil") do={ :set bootFile $n };
+  }
+  :if ($bootFile != "") do={
+    :do {
+      /import file-name=$bootFile;
+      :log info ${rosQuote(`${APP_NAME} bootstrap imported`)};
+    } on-error={
+      :log error ${rosQuote(`${APP_NAME}: import failed — open Log and paste Copy enroll in New Terminal`)};
     }
-    :if ($bootFile != "") do={
-      :do {
-        /import file-name=$bootFile;
-        :log info ${rosQuote(`${APP_NAME} bootstrap imported`)};
-      } on-error={
-        :log error ${rosQuote(`${APP_NAME}: import failed — open Log and paste the enroll script in New Terminal`)};
-      }
-    } else={
-      :log error ${rosQuote(`${APP_NAME}: bootstrap file missing after fetch`)};
-    }
-  } on-error={
-    :log error ${rosQuote(`${APP_NAME}: HTTPS fetch failed — check URL and internet`)};
+  } else={
+    :log error ${rosQuote(`${APP_NAME}: bootstrap file missing after fetch — use Copy enroll`)};
   }
 }
 `;
