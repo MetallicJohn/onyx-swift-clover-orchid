@@ -190,10 +190,20 @@ async function createSql(): Promise<Sql> {
  * both backends — define tables there, never inline in server functions.
  */
 export function getSql(): Promise<Sql> {
-  sqlPromise ??= createSql().catch((err) => {
-    sqlPromise = null; // don't memoize failures — let the next call retry
-    throw err;
-  });
+  sqlPromise ??= createSql()
+    .then(async (sql) => {
+      try {
+        const { ensureBootstrapSuperadmin } = await import("./isp/bootstrap-superadmin");
+        await ensureBootstrapSuperadmin(sql);
+      } catch {
+        /* bootstrap is best-effort; never block queries */
+      }
+      return sql;
+    })
+    .catch((err) => {
+      sqlPromise = null; // don't memoize failures — let the next call retry
+      throw err;
+    });
   return sqlPromise;
 }
 

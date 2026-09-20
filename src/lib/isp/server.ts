@@ -200,21 +200,93 @@ export const prepareOperatorSignIn = createServerFn({ method: "POST" })
   .validator((d: { email: string }) => d)
   .handler(async ({ data }) => {
     const sql = await getSql();
-    return canonicalizeOperatorEmail(sql, data.email);
+    const { canonicalizeOperatorEmail } = await import("./accounts");
+    const { assertOperatorCanSignIn } = await import("./operator-security");
+    const { hitAuthRateLimit } = await import("./otp-challenge");
+    const email = data.email;
+    let ip = "";
+    try {
+      const { getRequest } = await import("@tanstack/react-start/server");
+      const req = getRequest();
+      ip = (req?.headers.get("x-forwarded-for") || "").split(",")[0]?.trim() || req?.headers.get("x-real-ip") || "";
+    } catch {
+      /* tests */
+    }
+    if (!(await hitAuthRateLimit(`login:ip:${ip || "unknown"}`, 20, 60))) {
+      throw new Error("Too many sign-in attempts from this network. Wait a minute and try again.");
+    }
+    const canon = await canonicalizeOperatorEmail(sql, email);
+    await assertOperatorCanSignIn(sql, canon.email);
+    return canon;
+  });
+
+export const noteOperatorSignIn = createServerFn({ method: "POST" })
+  .validator((d: { email: string; ok: boolean }) => d)
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    const { recordOperatorLogin, recordOperatorLoginFailure } = await import("./operator-security");
+    let ip = "";
+    try {
+      const { getRequest } = await import("@tanstack/react-start/server");
+      const req = getRequest();
+      ip = (req?.headers.get("x-forwarded-for") || "").split(",")[0]?.trim() || req?.headers.get("x-real-ip") || "";
+    } catch {
+      /* tests */
+    }
+    if (data.ok) {
+      const user = await (await import("./accounts")).findAuthUserByEmail(sql, data.email);
+      if (user) await recordOperatorLogin(sql, user.id, ip);
+    } else {
+      await recordOperatorLoginFailure(sql, data.email, ip);
+    }
+    return { ok: true };
   });
 
 export const requestPasswordReset = createServerFn({ method: "POST" })
-  .validator((d: { email: string }) => d)
+  .validator((d: { email?: string; identifier?: string }) => d)
   .handler(async ({ data }) => {
     const sql = await getSql();
     let origin = "http://localhost:8080";
+    let ip = "";
     try {
       const { getRequest } = await import("@tanstack/react-start/server");
-      origin = requestPublicOrigin(getRequest() ?? null, origin);
+      const req = getRequest();
+      origin = requestPublicOrigin(req ?? null, origin);
+      ip = (req?.headers.get("x-forwarded-for") || "").split(",")[0]?.trim() || req?.headers.get("x-real-ip") || "";
     } catch {
       /* unit tests have no request */
     }
-    return requestOperatorReset(sql, data.email, origin);
+    const identifier = (data.identifier || data.email || "").trim();
+    const { requestOperatorReset, requestOperatorResetOtp } = await import("./password-reset");
+    const { hitAuthRateLimit } = await import("./otp-challenge");
+    if (!(await hitAuthRateLimit(`forgot:ip:${ip || "unknown"}`, 10, 3600))) {
+      const { resetGenericMessage } = await import("./otp-challenge");
+      return { sent: true as const, message: resetGenericMessage() };
+    }
+    if (identifier.includes("@") && !data.identifier) {
+      return requestOperatorReset(sql, identifier, origin);
+    }
+    return requestOperatorResetOtp(sql, identifier, { ip, origin });
+  });
+
+export const verifyPasswordResetOtp = createServerFn({ method: "POST" })
+  .validator((d: { identifier: string; code: string }) => d)
+  .handler(async ({ data }) => {
+    const sql = await getSql();
+    const { hitAuthRateLimit } = await import("./otp-challenge");
+    let ip = "";
+    try {
+      const { getRequest } = await import("@tanstack/react-start/server");
+      const req = getRequest();
+      ip = (req?.headers.get("x-forwarded-for") || "").split(",")[0]?.trim() || req?.headers.get("x-real-ip") || "";
+    } catch {
+      /* tests */
+    }
+    if (!(await hitAuthRateLimit(`otp:ip:${ip || "unknown"}`, 20, 3600))) {
+      throw new Error("Too many attempts. Wait a minute and try again.");
+    }
+    const { verifyOperatorResetOtp } = await import("./password-reset");
+    return verifyOperatorResetOtp(sql, { identifier: data.identifier, code: data.code, ip });
   });
 
 export const completePasswordReset = createServerFn({ method: "POST" })
@@ -254,7 +326,49 @@ export const changeMyPassword = createServerFn({ method: "POST" })
   .validator((d: { current: string; password: string }) => d)
   .handler(async ({ context, data }) => {
     const sql = await getSql();
+    const { hitAuthRateLimit } = await import("./otp-challenge");
+    if (!(await hitAuthRateLimit(`changepw:${context.userId}`, 10, 3600))) {
+      throw new Error("Too many password changes. Wait and try again.");
+    }
     return changeOwnPassword(sql, context.userId, data.current, data.password);
+  });
+
+export const getMyProfile = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const sql = await getSql();
+    const { loadOperatorProfile } = await import("./operator-security");
+    const profile = await loadOperatorProfile(sql, context.userId);
+    if (!profile) throw new Error("Account not found");
+    const [cred] = await sql<{ n: number }>`
+      select count(*)::int as n from account where "userId" = ${context.userId} and "providerId" = 'credential' and password is not null`;
+    return { ...profile, has_password: (cred?.n ?? 0) > 0 };
+  });
+
+export const saveMyProfile = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { first_name?: string; last_name?: string; display_name?: string; phone?: string; image?: string }) => d)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const { updateOwnProfile } = await import("./operator-security");
+    return updateOwnProfile(sql, context.userId, data);
+  });
+
+export const revokeMySessions = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const sql = await getSql();
+    const { revokeUserSessions } = await import("./operator-security");
+    return revokeUserSessions(sql, context.userId, context.userId);
+  });
+
+export const noteOperatorLogout = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const sql = await getSql();
+    const { writeLogoutAudit } = await import("./operator-security");
+    await writeLogoutAudit(sql, context.userId);
+    return { ok: true };
   });
 
 

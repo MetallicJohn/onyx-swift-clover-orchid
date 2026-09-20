@@ -12,6 +12,7 @@ import {
   Server,
   Settings,
   Shield,
+  Users,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -31,6 +32,8 @@ const NAV: SidebarNavItem[] = [
   { to: "/platform/domains", label: "Domains", icon: Globe },
   { to: "/platform/reports", label: "Insights", icon: BarChart3 },
   { to: "/platform/activity", label: "Platform Activity", icon: Activity },
+  { to: "/platform/users", label: "Users", icon: Users },
+  { to: "/platform/settings/sms", label: "SMS Gateway", icon: Radio },
   { to: "/platform/settings", label: "System Settings", icon: Settings },
 ];
 
@@ -41,13 +44,14 @@ type Hit = {
   nodes: { id: string; name: string; tenant_id: string; tenant_name: string }[];
 };
 
-export function PlatformShell({ email }: { email?: string }) {
+export function PlatformShell({ email, defaultPassword = false }: { email?: string; defaultPassword?: boolean }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const { collapsed, toggle } = useSidebarCollapsed();
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit | null>(null);
+  const [hideDefaultPassword, setHideDefaultPassword] = useState(false);
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -101,6 +105,22 @@ export function PlatformShell({ email }: { email?: string }) {
       ) : null}
 
       <div className="app-shell-body">
+        {defaultPassword && !hideDefaultPassword ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">
+            <div>
+              <p className="font-semibold">Security Warning</p>
+              <p>You are using Default Password, Change Immediately</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link to="/app/profile/security" className="font-medium text-danger underline hover:no-underline">
+                Change Password
+              </Link>
+              <button type="button" className="text-muted hover:text-fg" onClick={() => setHideDefaultPassword(true)}>
+                Dismiss
+              </button>
+            </div>
+          </div>
+        ) : null}
         <header className="app-topbar">
           <button className="app-topbar-menu" onClick={() => setOpen(true)} aria-label="Open menu">
             <Menu className="size-5" />

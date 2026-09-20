@@ -1,15 +1,28 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AcsCwmpPanel, type CwmpApplyResult, type CwmpSnapshot } from "@/components/isp/acs-cwmp-panel";
+import { BackupsPanel } from "@/components/platform/backups-panel";
 import { PageHead, Panel } from "@/components/platform/ui";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { APP_NAME } from "@/lib/brand";
 import { applySaasGenieAcsCwmp, getSaasGenieAcsCwmp, getSaasSettings, saveSaasSettings } from "@/lib/isp/server-platform";
+import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/platform/settings")({ component: SettingsPage });
+type TabId = "system" | "backups";
+
+export const Route = createFileRoute("/platform/settings")({
+  validateSearch: (search: Record<string, unknown>): { tab?: TabId } => ({
+    tab: search.tab === "backups" ? "backups" : "system",
+  }),
+  component: SettingsPage,
+});
 
 function SettingsPage() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = Route.useNavigate();
+  const { tab: tabParam } = Route.useSearch();
+  const tab: TabId = tabParam === "backups" ? "backups" : "system";
   const [form, setForm] = useState({
     grace_days: 3,
     past_due_days: 7,
@@ -54,6 +67,8 @@ function SettingsPage() {
       .catch(() => setCwmp({ ok: false, error: "GenieACS is not reachable yet", values: {} }));
   }, []);
 
+  if (pathname !== "/platform/settings") return <Outlet />;
+
   return (
     <div>
       <PageHead
@@ -61,6 +76,35 @@ function SettingsPage() {
         title="System settings"
         hint={`${APP_NAME} defaults for trials, dunning, and optional support access. Tenant branding is never edited here.`}
       />
+      <div
+        role="tablist"
+        aria-label="Settings sections"
+        className="mb-6 flex gap-1 overflow-x-auto rounded-xl border border-border bg-surface p-1"
+      >
+        {(
+          [
+            { id: "system" as const, label: "System" },
+            { id: "backups" as const, label: "Backups" },
+          ] as const
+        ).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className={cn(
+              "h-11 shrink-0 rounded-lg px-4 text-sm font-medium transition-colors",
+              tab === t.id ? "bg-accent text-accent-fg" : "text-muted hover:bg-elevated hover:text-fg",
+            )}
+            onClick={() => {
+              void navigate({ search: { tab: t.id }, replace: true });
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === "backups" ? <BackupsPanel /> : (
       <Panel>
         <form
           className="grid max-w-xl gap-3"
@@ -350,6 +394,7 @@ function SettingsPage() {
           </Button>
         </form>
       </Panel>
+      )}
     </div>
   );
 }

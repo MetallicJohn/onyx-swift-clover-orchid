@@ -2,6 +2,13 @@ import { createHash } from "node:crypto";
 import { nid } from "../utils.ts";
 import { isPlatformAdmin, loadAuthUser } from "./accounts";
 import {
+  DEFAULT_BACKUP_KEEP,
+  deleteBackupFile,
+  listBackupFiles,
+  parseBackupKeep,
+  resolveBackupDir,
+} from "./backups";
+import {
   listPlans,
   type PlanInput,
   upsertPlan as writePlan,
@@ -221,6 +228,53 @@ export async function savePlatformSettings(
     }
   }
   return getPlatformSettings(sql);
+}
+
+export async function getBackupKeep(sql: Sql) {
+  const [row] = await sql<{ value: string }>`select value from platform_settings where key = ${"backup_keep"}`;
+  try {
+    return parseBackupKeep(row?.value ?? DEFAULT_BACKUP_KEEP);
+  } catch {
+    return DEFAULT_BACKUP_KEEP;
+  }
+}
+
+export async function listPlatformBackups(sql: Sql, userId: string) {
+  await requirePlatformActor(sql, userId);
+  const listed = listBackupFiles(resolveBackupDir());
+  return { ...listed, backup_keep: await getBackupKeep(sql) };
+}
+
+export async function deletePlatformBackup(sql: Sql, userId: string, name: string) {
+  const actor = await requirePlatformActor(sql, userId);
+  const result = deleteBackupFile(String(name || ""), resolveBackupDir());
+  await writePlatformAudit(sql, {
+    actorUserId: actor.userId,
+    actorEmail: actor.email,
+    action: "DELETE_BACKUP",
+    entityType: "backup",
+    entityId: result.deleted,
+    metadata: { filename: result.deleted },
+  });
+  return result;
+}
+
+export async function saveBackupRetention(sql: Sql, userId: string, keep: unknown) {
+  const actor = await requirePlatformActor(sql, userId);
+  const next = parseBackupKeep(keep);
+  const previous = await getBackupKeep(sql);
+  const value = String(next);
+  await sql`insert into platform_settings (key, value, updated_at) values (${"backup_keep"}, ${value}, now())
+    on conflict (key) do update set value = ${value}, updated_at = now()`;
+  await writePlatformAudit(sql, {
+    actorUserId: actor.userId,
+    actorEmail: actor.email,
+    action: "BACKUP_RETENTION",
+    entityType: "platform_settings",
+    entityId: "backup_keep",
+    metadata: { previous, next },
+  });
+  return { backup_keep: next };
 }
 
 const HEARTBEAT_MS = 10 * 60_000;

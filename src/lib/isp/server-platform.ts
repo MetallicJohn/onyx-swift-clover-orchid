@@ -17,7 +17,9 @@ import {
   extendTrial,
   getPlatformSettings,
   listInfrastructure,
-  listPlatformActivity,
+  deletePlatformBackup,
+  listPlatformBackups,
+  saveBackupRetention,
   listPlatformTenantsPage,
   listSubscriptionsDesk,
   loadPlatformOverview,
@@ -52,9 +54,16 @@ export const getPlatformGate = createServerFn({ method: "GET" })
     const sql = await getSql();
     await applyRls(sql, { bypass: true });
     const admin = await isPlatformAdmin(sql, context.userId);
-    if (!admin) return { admin: false as const, email: "", name: "" };
+    if (!admin) return { admin: false as const, email: "", name: "", defaultPassword: false };
     const user = await loadAuthUser(sql, context.userId);
-    return { admin: true as const, email: user?.email || "", name: user?.name || "" };
+    const { loadOperatorProfile } = await import("./operator-security");
+    const profile = await loadOperatorProfile(sql, context.userId);
+    return {
+      admin: true as const,
+      email: user?.email || "",
+      name: user?.name || "",
+      defaultPassword: Boolean(profile?.is_default_password),
+    };
   });
 
 export const getPlatformOverview = createServerFn({ method: "GET" })
@@ -382,6 +391,29 @@ export const saveSaasSettings = createServerFn({ method: "POST" })
     return savePlatformSettings(sql, context.userId, data);
   });
 
+export const listSaasBackups = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql } = await platformSql(context.userId);
+    return listPlatformBackups(sql, context.userId);
+  });
+
+export const deleteSaasBackup = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { name: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql } = await platformSql(context.userId);
+    return deletePlatformBackup(sql, context.userId, data.name);
+  });
+
+export const saveSaasBackupRetention = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { keep: number | string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql } = await platformSql(context.userId);
+    return saveBackupRetention(sql, context.userId, data.keep);
+  });
+
 export const getSaasGenieAcsCwmp = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
@@ -469,4 +501,133 @@ export const getMyEntitlements = createServerFn({ method: "GET" })
     const { entitlementsForTenant } = await import("./plans");
     const features = await entitlementsForTenant(sql, tenantId);
     return { features, supportMode: Boolean(workspace.supportMode), supportReason: workspace.supportReason || "", supportExpiresAt: workspace.supportExpiresAt || "", tenantStatus: workspace.status };
+  });
+
+export const getSaasSmsSettings = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { sql } = await platformSql(context.userId);
+    const { getSaasSmsSettings: load } = await import("./saas-sms");
+    return load(sql);
+  });
+
+export const saveSaasSmsGateway = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(
+    (d: {
+      provider?: string;
+      api_url?: string;
+      username?: string;
+      sender_id?: string;
+      country?: string;
+      enabled?: boolean;
+      otp_enabled?: boolean;
+      notify_enabled?: boolean;
+      otp_template?: string;
+      otp_ttl_minutes?: number;
+      otp_max_attempts?: number;
+      reset_per_hour?: number;
+      api_key?: string;
+      api_secret?: string;
+    }) => d,
+  )
+  .handler(async ({ context, data }) => {
+    const { sql } = await platformSql(context.userId);
+    const { saveSaasSmsSettings } = await import("./saas-sms");
+    return saveSaasSmsSettings(sql, context.userId, data);
+  });
+
+export const testSaasSmsGateway = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { to: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql } = await platformSql(context.userId);
+    const { testSaasSms } = await import("./saas-sms");
+    return testSaasSms(sql, context.userId, data.to);
+  });
+
+export const listSaasSmsLog = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { page?: number }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql } = await platformSql(context.userId);
+    const { listSaasSmsMessages } = await import("./saas-sms");
+    return listSaasSmsMessages(sql, { page: data.page });
+  });
+
+export const listSaasUsers = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { q?: string; status?: string; page?: number }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql } = await platformSql(context.userId);
+    const { listPlatformUsers } = await import("./operator-users");
+    return listPlatformUsers(sql, context.userId, data);
+  });
+
+export const getSaasUser = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { user_id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql } = await platformSql(context.userId);
+    const { getPlatformUser } = await import("./operator-users");
+    return getPlatformUser(sql, context.userId, data.user_id);
+  });
+
+export const createSaasUser = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(
+    (d: {
+      email: string;
+      name: string;
+      password: string;
+      phone?: string;
+      tenant_id?: string;
+      role?: string;
+      platform_admin?: boolean;
+    }) => d,
+  )
+  .handler(async ({ context, data }) => {
+    const { sql } = await platformSql(context.userId);
+    const { createPlatformUser } = await import("./operator-users");
+    return createPlatformUser(sql, context.userId, data);
+  });
+
+export const updateSaasUser = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(
+    (d: {
+      user_id: string;
+      first_name?: string;
+      last_name?: string;
+      display_name?: string;
+      phone?: string;
+      status?: string;
+      platform_admin?: boolean;
+      tenant_id?: string;
+      role?: string;
+    }) => d,
+  )
+  .handler(async ({ context, data }) => {
+    const { sql } = await platformSql(context.userId);
+    const { updatePlatformUser } = await import("./operator-users");
+    const { user_id, ...patch } = data;
+    return updatePlatformUser(sql, context.userId, user_id, patch);
+  });
+
+export const forceSaasUserPassword = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { user_id: string; password: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql } = await platformSql(context.userId);
+    const { forcePasswordReset } = await import("./operator-users");
+    return forcePasswordReset(sql, context.userId, data.user_id, data.password);
+  });
+
+export const revokeSaasUserSessions = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { user_id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql } = await platformSql(context.userId);
+    const { revokePlatformUserSessions } = await import("./operator-users");
+    return revokePlatformUserSessions(sql, context.userId, data.user_id);
   });

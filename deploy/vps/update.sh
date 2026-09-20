@@ -161,8 +161,6 @@ if [[ -n "$EXISTING_VOLUME" ]]; then
   echo "[ispsolutions] backup $BACKUP"
   snapshot_counts "$BEFORE_COUNTS" >/dev/null
   echo "[ispsolutions] pre-deploy counts $(cat "$BEFORE_COUNTS")"
-  find "$INSTALL_DIR/backups" -name 'ispsolutions-*.dump' -mtime +14 -delete 2>/dev/null || true
-  find "$INSTALL_DIR/backups" -name 'ispsolutions-*.sql.gz' -mtime +14 -delete 2>/dev/null || true
 else
   echo "[ispsolutions] no postgres volume yet — first install, skip backup"
 fi

@@ -3,8 +3,19 @@ import { APP_NAME } from "../brand.ts";
 import { nid } from "../utils.ts";
 import { findAuthUserByEmail, setCredentialPassword } from "./accounts.ts";
 import { queueEmail } from "./inbox.ts";
+import {
+  assertOperatorCanSignIn,
+  assertPasswordPolicy,
+  ensureOperatorProfile,
+  findOperatorByIdentifier,
+  loadOperatorProfile,
+  markPasswordChanged,
+} from "./operator-security.ts";
+import { hitAuthRateLimit, issueOtpChallenge, resetGenericMessage, verifyOtpChallenge } from "./otp-challenge.ts";
+import { writePlatformAudit } from "./platform.ts";
 import { issuePortalOtp, setPortalPassword, verifyPortalOtp } from "./portal.ts";
 import { applyRls } from "./rls.ts";
+import { loadOtpPolicy } from "./saas-sms.ts";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -70,16 +81,107 @@ export async function requestOperatorReset(
 
 export async function completeOperatorReset(sql: Sql, token: string, password: string) {
   await applyRls(sql, { bypass: true });
+  assertPasswordPolicy(password);
   const hash = hashResetToken(token.trim());
   const [row] = await sql<{ id: string; email: string; user_id: string }>`
     select id, email, user_id from password_resets
     where token_hash = ${hash} and audience = 'operator' and used = false and expires_at > now()`;
   if (!row) throw new Error("This reset link is invalid or has expired.");
   await setCredentialPassword(sql, row.email, password);
+  await markPasswordChanged(sql, row.user_id);
   await sql`update password_resets set used = true where id = ${row.id}`;
   await sql`update password_resets set used = true where user_id = ${row.user_id} and used = false`;
   await sql`delete from session where "userId" = ${row.user_id}`;
+  await writePlatformAudit(sql, {
+    actorUserId: row.user_id,
+    action: "PASSWORD_RESET_COMPLETED",
+    entityType: "user",
+    entityId: row.user_id,
+  });
   return { email: row.email };
+}
+
+export async function requestOperatorResetOtp(
+  sql: Sql,
+  identifier: string,
+  opts: { ip?: string; origin?: string } = {},
+) {
+  await applyRls(sql, { bypass: true });
+  const generic = { sent: true as const, message: resetGenericMessage() };
+  const trimmed = identifier.trim();
+  const ip = opts.ip || "";
+  const policy = await loadOtpPolicy(sql);
+  if (!(await hitAuthRateLimit(`reset:ip:${ip || "unknown"}`, 10, 3600))) return generic;
+  if (!(await hitAuthRateLimit(`reset:id:${trimmed.toLowerCase()}`, policy.resetPerHour, 3600))) return generic;
+  const user = await findOperatorByIdentifier(sql, trimmed);
+  if (!user) {
+    await writePlatformAudit(sql, {
+      actorUserId: "",
+      action: "PASSWORD_RESET_REQUESTED",
+      metadata: { found: false },
+    });
+    return generic;
+  }
+  try {
+    await assertOperatorCanSignIn(sql, user.email);
+  } catch {
+    return generic;
+  }
+  await ensureOperatorProfile(sql, user.id);
+  const profile = await loadOperatorProfile(sql, user.id);
+  const phone = profile?.phone || "";
+  if (!phone) {
+    await requestOperatorReset(sql, user.email, opts.origin);
+    await writePlatformAudit(sql, {
+      actorUserId: user.id,
+      action: "PASSWORD_RESET_REQUESTED",
+      entityType: "user",
+      entityId: user.id,
+      metadata: { found: true, phone: false, fallback: "email" },
+    });
+    return generic;
+  }
+  const [mem] = await sql<{ tenant_id: string }>`
+    select tenant_id from tenant_members where user_id = ${user.id} limit 1`;
+  await issueOtpChallenge(sql, {
+    userId: user.id,
+    tenantId: mem?.tenant_id,
+    email: user.email,
+    phone,
+    purpose: "PASSWORD_RESET",
+    ip,
+  });
+  await writePlatformAudit(sql, {
+    actorUserId: user.id,
+    action: "PASSWORD_RESET_REQUESTED",
+    entityType: "user",
+    entityId: user.id,
+    tenantId: mem?.tenant_id,
+    metadata: { channel: "sms" },
+  });
+  return generic;
+}
+
+export async function verifyOperatorResetOtp(
+  sql: Sql,
+  opts: { identifier: string; code: string; ip?: string },
+) {
+  await applyRls(sql, { bypass: true });
+  const identifier = opts.identifier.trim();
+  const email = identifier.includes("@") ? identifier.toLowerCase() : "";
+  const phone = identifier.includes("@") ? "" : identifier;
+  const verified = await verifyOtpChallenge(sql, {
+    email,
+    phone,
+    purpose: "PASSWORD_RESET",
+    code: opts.code,
+    ip: opts.ip,
+  });
+  const raw = newToken();
+  await sql`insert into password_resets
+    (id, audience, email, user_id, tenant_id, token_hash, expires_at)
+    values (${nid("rst")}, 'operator', ${verified.email}, ${verified.userId}, ${verified.tenantId}, ${hashResetToken(raw)}, now() + interval '10 minutes')`;
+  return { token: raw, email: verified.email };
 }
 
 export async function requestPortalPasswordReset(sql: Sql, slug: string, phone: string) {

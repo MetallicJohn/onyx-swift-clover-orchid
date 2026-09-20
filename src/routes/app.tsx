@@ -1,4 +1,4 @@
-import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { createFileRoute, Navigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { useTheme } from "@/components/theme-provider";
@@ -16,6 +16,7 @@ export const Route = createFileRoute("/app")({ component: AppLayout });
 function AppLayout() {
   const { user, isPending } = useCurrentUserState();
   const { apply } = useTheme();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
   const [activeTenantId, setActiveTenantId] = useState("");
@@ -63,6 +64,9 @@ function AppLayout() {
     return <div className="min-h-dvh bg-bg" />;
   }
   if (!user) return <RedirectToSignIn />;
+  if (platformOnly && (pathname === "/app/profile" || pathname.startsWith("/app/profile/"))) {
+    return <AppShell platformAdmin displayName="SaaS Management" tenantName="ISP Solutions" />;
+  }
   if (platformOnly) return <Navigate to="/platform" />;
 
   return (

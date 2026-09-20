@@ -13,14 +13,17 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as AcceptableUseRouteImport } from './routes/acceptable-use'
 import { Route as AppRouteImport } from './routes/app'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PlatformRouteImport } from './routes/platform'
 import { Route as PortalRouteImport } from './routes/portal'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as ResellerRouteImport } from './routes/reseller'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SuperadminRouteImport } from './routes/superadmin'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as VerifyOtpRouteImport } from './routes/verify-otp'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AppAcsRouteImport } from './routes/app/acs'
 import { Route as AppAdminRouteImport } from './routes/app/admin'
@@ -33,6 +36,7 @@ import { Route as AppImportRouteImport } from './routes/app/import'
 import { Route as AppNotificationsRouteImport } from './routes/app/notifications'
 import { Route as AppPackagesRouteImport } from './routes/app/packages'
 import { Route as AppPartnersRouteImport } from './routes/app/partners'
+import { Route as AppProfileRouteImport } from './routes/app/profile'
 import { Route as AppRadiusRouteImport } from './routes/app/radius'
 import { Route as AppRecycleBinRouteImport } from './routes/app/recycle-bin'
 import { Route as AppReportsRouteImport } from './routes/app/reports'
@@ -51,6 +55,7 @@ import { Route as PlatformRevenueRouteImport } from './routes/platform/revenue'
 import { Route as PlatformSettingsRouteImport } from './routes/platform/settings'
 import { Route as PlatformSubscriptionsRouteImport } from './routes/platform/subscriptions'
 import { Route as PlatformTenantsRouteImport } from './routes/platform/tenants'
+import { Route as PlatformUsersRouteImport } from './routes/platform/users'
 import { Route as PortalIndexRouteImport } from './routes/portal/index'
 import { Route as PortalInvoicesRouteImport } from './routes/portal/invoices'
 import { Route as PortalPayRouteImport } from './routes/portal/pay'
@@ -74,9 +79,12 @@ import { Route as ApiRoutersIndexRouteImport } from './routes/api/routers/index'
 import { Route as ApiV1HealthRouteImport } from './routes/api/v1/health'
 import { Route as ApiV1ReadyRouteImport } from './routes/api/v1/ready'
 import { Route as AppCustomersCustomerIdRouteImport } from './routes/app/customers.$customerId'
+import { Route as AppProfileSecurityRouteImport } from './routes/app/profile.security'
 import { Route as AppRoutersRouterIdRouteImport } from './routes/app/routers.$routerId'
 import { Route as AppServicesServiceIdRouteImport } from './routes/app/services.$serviceId'
+import { Route as PlatformSettingsSmsRouteImport } from './routes/platform/settings.sms'
 import { Route as PlatformTenantsTenantIdRouteImport } from './routes/platform/tenants.$tenantId'
+import { Route as PlatformUsersUserIdRouteImport } from './routes/platform/users.$userId'
 import { Route as ApiRoutersIdIndexRouteImport } from './routes/api/routers/$id/index'
 import { Route as ApiRoutersIdConfigurationHistoryRouteImport } from './routes/api/routers/$id/configuration-history'
 import { Route as ApiRoutersIdPoolsRouteImport } from './routes/api/routers/$id/pools'
@@ -115,6 +123,11 @@ const AppRoute = AppRouteImport.update({
   path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -135,6 +148,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResellerRoute = ResellerRouteImport.update({
   id: '/reseller',
   path: '/reseller',
@@ -153,6 +171,11 @@ const SuperadminRoute = SuperadminRouteImport.update({
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VerifyOtpRoute = VerifyOtpRouteImport.update({
+  id: '/verify-otp',
+  path: '/verify-otp',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -213,6 +236,11 @@ const AppPackagesRoute = AppPackagesRouteImport.update({
 const AppPartnersRoute = AppPartnersRouteImport.update({
   id: '/partners',
   path: '/partners',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProfileRoute = AppProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => AppRoute,
 } as any)
 const AppRadiusRoute = AppRadiusRouteImport.update({
@@ -303,6 +331,11 @@ const PlatformSubscriptionsRoute = PlatformSubscriptionsRouteImport.update({
 const PlatformTenantsRoute = PlatformTenantsRouteImport.update({
   id: '/tenants',
   path: '/tenants',
+  getParentRoute: () => PlatformRoute,
+} as any)
+const PlatformUsersRoute = PlatformUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
   getParentRoute: () => PlatformRoute,
 } as any)
 const PortalIndexRoute = PortalIndexRouteImport.update({
@@ -420,6 +453,11 @@ const AppCustomersCustomerIdRoute = AppCustomersCustomerIdRouteImport.update({
   path: '/$customerId',
   getParentRoute: () => AppCustomersRoute,
 } as any)
+const AppProfileSecurityRoute = AppProfileSecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => AppProfileRoute,
+} as any)
 const AppRoutersRouterIdRoute = AppRoutersRouterIdRouteImport.update({
   id: '/$routerId',
   path: '/$routerId',
@@ -430,10 +468,20 @@ const AppServicesServiceIdRoute = AppServicesServiceIdRouteImport.update({
   path: '/$serviceId',
   getParentRoute: () => AppServicesRoute,
 } as any)
+const PlatformSettingsSmsRoute = PlatformSettingsSmsRouteImport.update({
+  id: '/sms',
+  path: '/sms',
+  getParentRoute: () => PlatformSettingsRoute,
+} as any)
 const PlatformTenantsTenantIdRoute = PlatformTenantsTenantIdRouteImport.update({
   id: '/$tenantId',
   path: '/$tenantId',
   getParentRoute: () => PlatformTenantsRoute,
+} as any)
+const PlatformUsersUserIdRoute = PlatformUsersUserIdRouteImport.update({
+  id: '/$userId',
+  path: '/$userId',
+  getParentRoute: () => PlatformUsersRoute,
 } as any)
 const ApiRoutersIdIndexRoute = ApiRoutersIdIndexRouteImport.update({
   id: '/api/routers/$id/',
@@ -531,14 +579,17 @@ export interface FileRoutesByFullPath {
   '/about': typeof AboutRoute
   '/acceptable-use': typeof AcceptableUseRoute
   '/app': typeof AppRouteWithChildren
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/platform': typeof PlatformRouteWithChildren
   '/portal': typeof PortalRouteWithChildren
   '/privacy': typeof PrivacyRoute
+  '/profile': typeof ProfileRoute
   '/reseller': typeof ResellerRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/superadmin': typeof SuperadminRoute
   '/terms': typeof TermsRoute
+  '/verify-otp': typeof VerifyOtpRoute
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
@@ -550,6 +601,7 @@ export interface FileRoutesByFullPath {
   '/app/notifications': typeof AppNotificationsRoute
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
+  '/app/profile': typeof AppProfileRouteWithChildren
   '/app/radius': typeof AppRadiusRoute
   '/app/recycle-bin': typeof AppRecycleBinRoute
   '/app/reports': typeof AppReportsRoute
@@ -564,9 +616,10 @@ export interface FileRoutesByFullPath {
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/reports': typeof PlatformReportsRoute
   '/platform/revenue': typeof PlatformRevenueRoute
-  '/platform/settings': typeof PlatformSettingsRoute
+  '/platform/settings': typeof PlatformSettingsRouteWithChildren
   '/platform/subscriptions': typeof PlatformSubscriptionsRoute
   '/platform/tenants': typeof PlatformTenantsRouteWithChildren
+  '/platform/users': typeof PlatformUsersRouteWithChildren
   '/portal/invoices': typeof PortalInvoicesRoute
   '/portal/pay': typeof PortalPayRoute
   '/portal/payments': typeof PortalPaymentsRoute
@@ -591,9 +644,12 @@ export interface FileRoutesByFullPath {
   '/api/v1/health': typeof ApiV1HealthRoute
   '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/app/profile/security': typeof AppProfileSecurityRoute
   '/app/routers/$routerId': typeof AppRoutersRouterIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
+  '/platform/settings/sms': typeof PlatformSettingsSmsRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
+  '/platform/users/$userId': typeof PlatformUsersUserIdRoute
   '/api/routers/': typeof ApiRoutersIndexRoute
   '/api/routers/$id/configuration-history': typeof ApiRoutersIdConfigurationHistoryRoute
   '/api/routers/$id/pools': typeof ApiRoutersIdPoolsRoute
@@ -617,11 +673,14 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/acceptable-use': typeof AcceptableUseRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
+  '/profile': typeof ProfileRoute
   '/reset-password': typeof ResetPasswordRoute
   '/superadmin': typeof SuperadminRoute
   '/terms': typeof TermsRoute
+  '/verify-otp': typeof VerifyOtpRoute
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
@@ -633,6 +692,7 @@ export interface FileRoutesByTo {
   '/app/notifications': typeof AppNotificationsRoute
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
+  '/app/profile': typeof AppProfileRouteWithChildren
   '/app/radius': typeof AppRadiusRoute
   '/app/recycle-bin': typeof AppRecycleBinRoute
   '/app/reports': typeof AppReportsRoute
@@ -647,9 +707,10 @@ export interface FileRoutesByTo {
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/reports': typeof PlatformReportsRoute
   '/platform/revenue': typeof PlatformRevenueRoute
-  '/platform/settings': typeof PlatformSettingsRoute
+  '/platform/settings': typeof PlatformSettingsRouteWithChildren
   '/platform/subscriptions': typeof PlatformSubscriptionsRoute
   '/platform/tenants': typeof PlatformTenantsRouteWithChildren
+  '/platform/users': typeof PlatformUsersRouteWithChildren
   '/portal/invoices': typeof PortalInvoicesRoute
   '/portal/pay': typeof PortalPayRoute
   '/portal/payments': typeof PortalPaymentsRoute
@@ -674,9 +735,12 @@ export interface FileRoutesByTo {
   '/api/v1/health': typeof ApiV1HealthRoute
   '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/app/profile/security': typeof AppProfileSecurityRoute
   '/app/routers/$routerId': typeof AppRoutersRouterIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
+  '/platform/settings/sms': typeof PlatformSettingsSmsRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
+  '/platform/users/$userId': typeof PlatformUsersUserIdRoute
   '/api/routers': typeof ApiRoutersIndexRoute
   '/api/routers/$id/configuration-history': typeof ApiRoutersIdConfigurationHistoryRoute
   '/api/routers/$id/pools': typeof ApiRoutersIdPoolsRoute
@@ -702,14 +766,17 @@ export interface FileRoutesById {
   '/about': typeof AboutRoute
   '/acceptable-use': typeof AcceptableUseRoute
   '/app': typeof AppRouteWithChildren
+  '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/platform': typeof PlatformRouteWithChildren
   '/portal': typeof PortalRouteWithChildren
   '/privacy': typeof PrivacyRoute
+  '/profile': typeof ProfileRoute
   '/reseller': typeof ResellerRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/superadmin': typeof SuperadminRoute
   '/terms': typeof TermsRoute
+  '/verify-otp': typeof VerifyOtpRoute
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
@@ -721,6 +788,7 @@ export interface FileRoutesById {
   '/app/notifications': typeof AppNotificationsRoute
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
+  '/app/profile': typeof AppProfileRouteWithChildren
   '/app/radius': typeof AppRadiusRoute
   '/app/recycle-bin': typeof AppRecycleBinRoute
   '/app/reports': typeof AppReportsRoute
@@ -735,9 +803,10 @@ export interface FileRoutesById {
   '/platform/plans': typeof PlatformPlansRoute
   '/platform/reports': typeof PlatformReportsRoute
   '/platform/revenue': typeof PlatformRevenueRoute
-  '/platform/settings': typeof PlatformSettingsRoute
+  '/platform/settings': typeof PlatformSettingsRouteWithChildren
   '/platform/subscriptions': typeof PlatformSubscriptionsRoute
   '/platform/tenants': typeof PlatformTenantsRouteWithChildren
+  '/platform/users': typeof PlatformUsersRouteWithChildren
   '/portal/invoices': typeof PortalInvoicesRoute
   '/portal/pay': typeof PortalPayRoute
   '/portal/payments': typeof PortalPaymentsRoute
@@ -762,9 +831,12 @@ export interface FileRoutesById {
   '/api/v1/health': typeof ApiV1HealthRoute
   '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/app/profile/security': typeof AppProfileSecurityRoute
   '/app/routers/$routerId': typeof AppRoutersRouterIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
+  '/platform/settings/sms': typeof PlatformSettingsSmsRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
+  '/platform/users/$userId': typeof PlatformUsersUserIdRoute
   '/api/routers/': typeof ApiRoutersIndexRoute
   '/api/routers/$id/configuration-history': typeof ApiRoutersIdConfigurationHistoryRoute
   '/api/routers/$id/pools': typeof ApiRoutersIdPoolsRoute
@@ -791,14 +863,17 @@ export interface FileRouteTypes {
     | '/about'
     | '/acceptable-use'
     | '/app'
+    | '/forgot-password'
     | '/login'
     | '/platform'
     | '/portal'
     | '/privacy'
+    | '/profile'
     | '/reseller'
     | '/reset-password'
     | '/superadmin'
     | '/terms'
+    | '/verify-otp'
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
@@ -810,6 +885,7 @@ export interface FileRouteTypes {
     | '/app/notifications'
     | '/app/packages'
     | '/app/partners'
+    | '/app/profile'
     | '/app/radius'
     | '/app/recycle-bin'
     | '/app/reports'
@@ -827,6 +903,7 @@ export interface FileRouteTypes {
     | '/platform/settings'
     | '/platform/subscriptions'
     | '/platform/tenants'
+    | '/platform/users'
     | '/portal/invoices'
     | '/portal/pay'
     | '/portal/payments'
@@ -851,9 +928,12 @@ export interface FileRouteTypes {
     | '/api/v1/health'
     | '/api/v1/ready'
     | '/app/customers/$customerId'
+    | '/app/profile/security'
     | '/app/routers/$routerId'
     | '/app/services/$serviceId'
+    | '/platform/settings/sms'
     | '/platform/tenants/$tenantId'
+    | '/platform/users/$userId'
     | '/api/routers/'
     | '/api/routers/$id/configuration-history'
     | '/api/routers/$id/pools'
@@ -877,11 +957,14 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/acceptable-use'
+    | '/forgot-password'
     | '/login'
     | '/privacy'
+    | '/profile'
     | '/reset-password'
     | '/superadmin'
     | '/terms'
+    | '/verify-otp'
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
@@ -893,6 +976,7 @@ export interface FileRouteTypes {
     | '/app/notifications'
     | '/app/packages'
     | '/app/partners'
+    | '/app/profile'
     | '/app/radius'
     | '/app/recycle-bin'
     | '/app/reports'
@@ -910,6 +994,7 @@ export interface FileRouteTypes {
     | '/platform/settings'
     | '/platform/subscriptions'
     | '/platform/tenants'
+    | '/platform/users'
     | '/portal/invoices'
     | '/portal/pay'
     | '/portal/payments'
@@ -934,9 +1019,12 @@ export interface FileRouteTypes {
     | '/api/v1/health'
     | '/api/v1/ready'
     | '/app/customers/$customerId'
+    | '/app/profile/security'
     | '/app/routers/$routerId'
     | '/app/services/$serviceId'
+    | '/platform/settings/sms'
     | '/platform/tenants/$tenantId'
+    | '/platform/users/$userId'
     | '/api/routers'
     | '/api/routers/$id/configuration-history'
     | '/api/routers/$id/pools'
@@ -961,14 +1049,17 @@ export interface FileRouteTypes {
     | '/about'
     | '/acceptable-use'
     | '/app'
+    | '/forgot-password'
     | '/login'
     | '/platform'
     | '/portal'
     | '/privacy'
+    | '/profile'
     | '/reseller'
     | '/reset-password'
     | '/superadmin'
     | '/terms'
+    | '/verify-otp'
     | '/app/acs'
     | '/app/admin'
     | '/app/ai'
@@ -980,6 +1071,7 @@ export interface FileRouteTypes {
     | '/app/notifications'
     | '/app/packages'
     | '/app/partners'
+    | '/app/profile'
     | '/app/radius'
     | '/app/recycle-bin'
     | '/app/reports'
@@ -997,6 +1089,7 @@ export interface FileRouteTypes {
     | '/platform/settings'
     | '/platform/subscriptions'
     | '/platform/tenants'
+    | '/platform/users'
     | '/portal/invoices'
     | '/portal/pay'
     | '/portal/payments'
@@ -1021,9 +1114,12 @@ export interface FileRouteTypes {
     | '/api/v1/health'
     | '/api/v1/ready'
     | '/app/customers/$customerId'
+    | '/app/profile/security'
     | '/app/routers/$routerId'
     | '/app/services/$serviceId'
+    | '/platform/settings/sms'
     | '/platform/tenants/$tenantId'
+    | '/platform/users/$userId'
     | '/api/routers/'
     | '/api/routers/$id/configuration-history'
     | '/api/routers/$id/pools'
@@ -1049,14 +1145,17 @@ export interface RootRouteChildren {
   AboutRoute: typeof AboutRoute
   AcceptableUseRoute: typeof AcceptableUseRoute
   AppRoute: typeof AppRouteWithChildren
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   PlatformRoute: typeof PlatformRouteWithChildren
   PortalRoute: typeof PortalRouteWithChildren
   PrivacyRoute: typeof PrivacyRoute
+  ProfileRoute: typeof ProfileRoute
   ResellerRoute: typeof ResellerRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
   SuperadminRoute: typeof SuperadminRoute
   TermsRoute: typeof TermsRoute
+  VerifyOtpRoute: typeof VerifyOtpRoute
   WifiSlugRoute: typeof WifiSlugRoute
   ApiAgentAckRoute: typeof ApiAgentAckRoute
   ApiAgentHeartbeatRoute: typeof ApiAgentHeartbeatRoute
@@ -1120,6 +1219,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -1148,6 +1254,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reseller': {
       id: '/reseller'
       path: '/reseller'
@@ -1174,6 +1287,13 @@ declare module '@tanstack/react-router' {
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/verify-otp': {
+      id: '/verify-otp'
+      path: '/verify-otp'
+      fullPath: '/verify-otp'
+      preLoaderRoute: typeof VerifyOtpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/': {
@@ -1258,6 +1378,13 @@ declare module '@tanstack/react-router' {
       path: '/partners'
       fullPath: '/app/partners'
       preLoaderRoute: typeof AppPartnersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/profile': {
+      id: '/app/profile'
+      path: '/profile'
+      fullPath: '/app/profile'
+      preLoaderRoute: typeof AppProfileRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/radius': {
@@ -1384,6 +1511,13 @@ declare module '@tanstack/react-router' {
       path: '/tenants'
       fullPath: '/platform/tenants'
       preLoaderRoute: typeof PlatformTenantsRouteImport
+      parentRoute: typeof PlatformRoute
+    }
+    '/platform/users': {
+      id: '/platform/users'
+      path: '/users'
+      fullPath: '/platform/users'
+      preLoaderRoute: typeof PlatformUsersRouteImport
       parentRoute: typeof PlatformRoute
     }
     '/portal/': {
@@ -1547,6 +1681,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCustomersCustomerIdRouteImport
       parentRoute: typeof AppCustomersRoute
     }
+    '/app/profile/security': {
+      id: '/app/profile/security'
+      path: '/security'
+      fullPath: '/app/profile/security'
+      preLoaderRoute: typeof AppProfileSecurityRouteImport
+      parentRoute: typeof AppProfileRoute
+    }
     '/app/routers/$routerId': {
       id: '/app/routers/$routerId'
       path: '/$routerId'
@@ -1561,12 +1702,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppServicesServiceIdRouteImport
       parentRoute: typeof AppServicesRoute
     }
+    '/platform/settings/sms': {
+      id: '/platform/settings/sms'
+      path: '/sms'
+      fullPath: '/platform/settings/sms'
+      preLoaderRoute: typeof PlatformSettingsSmsRouteImport
+      parentRoute: typeof PlatformSettingsRoute
+    }
     '/platform/tenants/$tenantId': {
       id: '/platform/tenants/$tenantId'
       path: '/$tenantId'
       fullPath: '/platform/tenants/$tenantId'
       preLoaderRoute: typeof PlatformTenantsTenantIdRouteImport
       parentRoute: typeof PlatformTenantsRoute
+    }
+    '/platform/users/$userId': {
+      id: '/platform/users/$userId'
+      path: '/$userId'
+      fullPath: '/platform/users/$userId'
+      preLoaderRoute: typeof PlatformUsersUserIdRouteImport
+      parentRoute: typeof PlatformUsersRoute
     }
     '/api/routers/$id/': {
       id: '/api/routers/$id/'
@@ -1702,6 +1857,18 @@ const AppCustomersRouteWithChildren = AppCustomersRoute._addFileChildren(
   AppCustomersRouteChildren,
 )
 
+interface AppProfileRouteChildren {
+  AppProfileSecurityRoute: typeof AppProfileSecurityRoute
+}
+
+const AppProfileRouteChildren: AppProfileRouteChildren = {
+  AppProfileSecurityRoute: AppProfileSecurityRoute,
+}
+
+const AppProfileRouteWithChildren = AppProfileRoute._addFileChildren(
+  AppProfileRouteChildren,
+)
+
 interface AppRoutersRouteChildren {
   AppRoutersRouterIdRoute: typeof AppRoutersRouterIdRoute
 }
@@ -1738,6 +1905,7 @@ interface AppRouteChildren {
   AppNotificationsRoute: typeof AppNotificationsRoute
   AppPackagesRoute: typeof AppPackagesRoute
   AppPartnersRoute: typeof AppPartnersRoute
+  AppProfileRoute: typeof AppProfileRouteWithChildren
   AppRadiusRoute: typeof AppRadiusRoute
   AppRecycleBinRoute: typeof AppRecycleBinRoute
   AppReportsRoute: typeof AppReportsRoute
@@ -1761,6 +1929,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppNotificationsRoute: AppNotificationsRoute,
   AppPackagesRoute: AppPackagesRoute,
   AppPartnersRoute: AppPartnersRoute,
+  AppProfileRoute: AppProfileRouteWithChildren,
   AppRadiusRoute: AppRadiusRoute,
   AppRecycleBinRoute: AppRecycleBinRoute,
   AppReportsRoute: AppReportsRoute,
@@ -1774,6 +1943,17 @@ const AppRouteChildren: AppRouteChildren = {
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
+interface PlatformSettingsRouteChildren {
+  PlatformSettingsSmsRoute: typeof PlatformSettingsSmsRoute
+}
+
+const PlatformSettingsRouteChildren: PlatformSettingsRouteChildren = {
+  PlatformSettingsSmsRoute: PlatformSettingsSmsRoute,
+}
+
+const PlatformSettingsRouteWithChildren =
+  PlatformSettingsRoute._addFileChildren(PlatformSettingsRouteChildren)
+
 interface PlatformTenantsRouteChildren {
   PlatformTenantsTenantIdRoute: typeof PlatformTenantsTenantIdRoute
 }
@@ -1786,6 +1966,18 @@ const PlatformTenantsRouteWithChildren = PlatformTenantsRoute._addFileChildren(
   PlatformTenantsRouteChildren,
 )
 
+interface PlatformUsersRouteChildren {
+  PlatformUsersUserIdRoute: typeof PlatformUsersUserIdRoute
+}
+
+const PlatformUsersRouteChildren: PlatformUsersRouteChildren = {
+  PlatformUsersUserIdRoute: PlatformUsersUserIdRoute,
+}
+
+const PlatformUsersRouteWithChildren = PlatformUsersRoute._addFileChildren(
+  PlatformUsersRouteChildren,
+)
+
 interface PlatformRouteChildren {
   PlatformActivityRoute: typeof PlatformActivityRoute
   PlatformDomainsRoute: typeof PlatformDomainsRoute
@@ -1793,9 +1985,10 @@ interface PlatformRouteChildren {
   PlatformPlansRoute: typeof PlatformPlansRoute
   PlatformReportsRoute: typeof PlatformReportsRoute
   PlatformRevenueRoute: typeof PlatformRevenueRoute
-  PlatformSettingsRoute: typeof PlatformSettingsRoute
+  PlatformSettingsRoute: typeof PlatformSettingsRouteWithChildren
   PlatformSubscriptionsRoute: typeof PlatformSubscriptionsRoute
   PlatformTenantsRoute: typeof PlatformTenantsRouteWithChildren
+  PlatformUsersRoute: typeof PlatformUsersRouteWithChildren
   PlatformIndexRoute: typeof PlatformIndexRoute
 }
 
@@ -1806,9 +1999,10 @@ const PlatformRouteChildren: PlatformRouteChildren = {
   PlatformPlansRoute: PlatformPlansRoute,
   PlatformReportsRoute: PlatformReportsRoute,
   PlatformRevenueRoute: PlatformRevenueRoute,
-  PlatformSettingsRoute: PlatformSettingsRoute,
+  PlatformSettingsRoute: PlatformSettingsRouteWithChildren,
   PlatformSubscriptionsRoute: PlatformSubscriptionsRoute,
   PlatformTenantsRoute: PlatformTenantsRouteWithChildren,
+  PlatformUsersRoute: PlatformUsersRouteWithChildren,
   PlatformIndexRoute: PlatformIndexRoute,
 }
 
@@ -1856,14 +2050,17 @@ const rootRouteChildren: RootRouteChildren = {
   AboutRoute: AboutRoute,
   AcceptableUseRoute: AcceptableUseRoute,
   AppRoute: AppRouteWithChildren,
+  ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   PlatformRoute: PlatformRouteWithChildren,
   PortalRoute: PortalRouteWithChildren,
   PrivacyRoute: PrivacyRoute,
+  ProfileRoute: ProfileRoute,
   ResellerRoute: ResellerRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
   SuperadminRoute: SuperadminRoute,
   TermsRoute: TermsRoute,
+  VerifyOtpRoute: VerifyOtpRoute,
   WifiSlugRoute: WifiSlugRoute,
   ApiAgentAckRoute: ApiAgentAckRoute,
   ApiAgentHeartbeatRoute: ApiAgentHeartbeatRoute,

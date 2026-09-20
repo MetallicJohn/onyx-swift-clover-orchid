@@ -24,6 +24,11 @@ test("login emails are trimmed and lowercased", () => {
   assert.equal(normalizeLoginEmail("  Jane@ISP.co.ke "), "jane@isp.co.ke");
 });
 
+test("platform bootstrap username lands on SaaS management", () => {
+  assert.equal(loginDestination("", "in", "superadmin"), "/platform");
+  assert.equal(normalizeLoginEmail("superadmin"), "superadmin@ispsolutions.internal");
+});
+
 test("sign-in errors tell operators to use the public HTTPS URL", () => {
   assert.match(signInErrorMessage(new Error("Invalid origin")), /HTTPS/);
   assert.match(signInErrorMessage(new Error("Invalid email or password")), /Forgot password/);

@@ -217,6 +217,9 @@ export function AppShell({
                 ISP login
               </Link>
             ) : null}
+            <Link to="/app/profile" className="text-sm text-muted transition-colors duration-150 hover:text-fg">
+              Profile
+            </Link>
             <UserButton />
           </div>
         </header>

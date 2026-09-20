@@ -43,7 +43,7 @@ function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const dest = loginDestination(search, mode);
+  const dest = loginDestination(search, mode, email);
   const platformIntent = dest === "/platform" && mode === "in";
 
   const action = loginPageAction({
@@ -89,8 +89,22 @@ function Login() {
           /* still attempt sign-in */
         }
         const result = await authClient.signIn.email({ email: loginEmail, password, fetchOptions });
-        if (result.error) throw new Error(result.error.message || "Invalid email or password");
+        if (result.error) {
+          try {
+            const { noteOperatorSignIn } = await import("@/lib/isp/server");
+            await noteOperatorSignIn({ data: { email: loginEmail, ok: false } });
+          } catch {
+            /* audit is best-effort */
+          }
+          throw new Error(result.error.message || "Invalid email or password");
+        }
         rememberAuthSession(result);
+        try {
+          const { noteOperatorSignIn } = await import("@/lib/isp/server");
+          await noteOperatorSignIn({ data: { email: loginEmail, ok: true } });
+        } catch {
+          /* audit is best-effort */
+        }
       }
       window.location.assign(dest);
     } catch (err) {
@@ -177,11 +191,11 @@ function Login() {
                   </Field>
                 </>
               ) : null}
-              <Field label="Email">
+              <Field label={mode === "in" ? "Email or username" : "Email"}>
                 <Input
-                  type="email"
+                  type={mode === "up" ? "email" : "text"}
                   required
-                  placeholder="you@isp.co.ke"
+                  placeholder={mode === "in" ? "you@isp.co.ke" : "you@isp.co.ke"}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="username"
@@ -209,8 +223,8 @@ function Login() {
               </Button>
             </form>
             {mode === "in" ? (
-              <Link to="/reset-password" className="block w-full text-center text-sm text-muted hover:text-fg">
-                Forgot password
+              <Link to="/forgot-password" className="block w-full text-center text-sm text-muted hover:text-fg">
+                Forgot password?
               </Link>
             ) : null}
             <button

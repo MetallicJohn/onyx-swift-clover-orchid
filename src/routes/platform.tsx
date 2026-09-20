@@ -13,7 +13,7 @@ export const Route = createFileRoute("/platform")({ component: PlatformLayout })
 function PlatformLayout() {
   const { user, isPending } = useCurrentUserState();
   const { apply } = useTheme();
-  const [gate, setGate] = useState<{ admin: boolean; email: string } | null>(null);
+  const [gate, setGate] = useState<{ admin: boolean; email: string; defaultPassword?: boolean } | null>(null);
 
   useEffect(() => {
     clearThemeCache();
@@ -28,7 +28,7 @@ function PlatformLayout() {
         if (!cancelled) setGate(g);
       })
       .catch(() => {
-        if (!cancelled) setGate({ admin: false, email: "" });
+        if (!cancelled) setGate({ admin: false, email: "", defaultPassword: false });
       });
     return () => {
       cancelled = true;
@@ -42,5 +42,5 @@ function PlatformLayout() {
   }
   if (!gate) return <div className="min-h-dvh bg-bg" />;
 
-  return <PlatformShell email={gate.email || APP_NAME} />;
+  return <PlatformShell email={gate.email || APP_NAME} defaultPassword={Boolean(gate.defaultPassword)} />;
 }

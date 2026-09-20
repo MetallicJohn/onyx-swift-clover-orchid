@@ -1,16 +1,22 @@
 import { createFileRoute, Link, useRouterState } from "@tanstack/react-router";
 import { Activity } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { APP_NAME } from "@/lib/brand";
 import { completePasswordReset, requestPasswordReset } from "@/lib/isp/server";
 
-export const Route = createFileRoute("/reset-password")({ component: ResetPassword });
+export const Route = createFileRoute("/reset-password")({
+  validateSearch: (search: Record<string, unknown>): { token?: string } => ({
+    token: typeof search.token === "string" ? search.token : undefined,
+  }),
+  component: ResetPassword,
+});
 
 function ResetPassword() {
+  const { token: tokenParam } = Route.useSearch();
   const search = useRouterState({ select: (s) => s.location.searchStr });
-  const token = useMemo(() => new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("token") ?? "", [search]);
+  const token = tokenParam || new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("token") || "";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");

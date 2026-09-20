@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -12,6 +15,8 @@ import {
   assignTenantPlan,
   archiveCatalogPlan,
   ingestNodeTelemetry,
+  listPlatformBackups,
+  deletePlatformBackup,
   listPlatformTenantsPage,
   loadPlatformOverview,
   loadTenantDetail,
@@ -19,6 +24,7 @@ import {
   reactivateTenant,
   registerInfraNode,
   requirePlatformActor,
+  saveBackupRetention,
   saveCatalogPlan,
   savePlatformSettings,
   startSupportAccess,
@@ -43,6 +49,44 @@ async function ownerAndAdmin(sql: Awaited<ReturnType<typeof openTestDb>>["sql"])
   });
   return { admin, ws, other };
 }
+
+test("superadmin can list and delete backups; tenant admin cannot", async () => {
+  const { sql, close } = await openTestDb();
+  const dir = mkdtempSync(join(tmpdir(), "isp-plat-backups-"));
+  const previous = process.env.ISPSOLUTIONS_BACKUP_DIR;
+  process.env.ISPSOLUTIONS_BACKUP_DIR = dir;
+  try {
+    const { admin, other } = await ownerAndAdmin(sql);
+    writeFileSync(join(dir, "ispsolutions-20260920T180000Z.dump"), "dump");
+    writeFileSync(join(dir, "ispsolutions-20260920T180000Z.dump.meta"), "meta");
+    await assert.rejects(() => listPlatformBackups(sql, other.owner_id), /Forbidden/);
+    await assert.rejects(() => deletePlatformBackup(sql, other.owner_id, "ispsolutions-20260920T180000Z.dump"), /Forbidden/);
+    await assert.rejects(() => saveBackupRetention(sql, other.owner_id, 7), /Forbidden/);
+
+    const listed = await listPlatformBackups(sql, admin.id);
+    assert.equal(listed.available, true);
+    assert.equal(listed.backups[0]?.name, "ispsolutions-20260920T180000Z.dump");
+    assert.equal(listed.backup_keep, 14);
+
+    await assert.rejects(() => saveBackupRetention(sql, admin.id, 0), /at least 1/);
+    const saved = await saveBackupRetention(sql, admin.id, 7);
+    assert.equal(saved.backup_keep, 7);
+    assert.equal((await listPlatformBackups(sql, admin.id)).backup_keep, 7);
+
+    await assert.rejects(() => deletePlatformBackup(sql, admin.id, "../../etc/passwd"), /Invalid filename/);
+    await deletePlatformBackup(sql, admin.id, "ispsolutions-20260920T180000Z.dump");
+    assert.equal((await listPlatformBackups(sql, admin.id)).backups.length, 0);
+
+    const audits = await sql<{ action: string; metadata: string }>`
+      select action, metadata from platform_audit_log where actor_user_id = ${admin.id} order by created_at`;
+    assert.ok(audits.some((a) => a.action === "DELETE_BACKUP" && a.metadata.includes("ispsolutions-20260920T180000Z.dump")));
+    assert.ok(audits.some((a) => a.action === "BACKUP_RETENTION" && a.metadata.includes('"previous":14') && a.metadata.includes('"next":7')));
+  } finally {
+    if (previous === undefined) delete process.env.ISPSOLUTIONS_BACKUP_DIR;
+    else process.env.ISPSOLUTIONS_BACKUP_DIR = previous;
+    await close();
+  }
+});
 
 test("tenant administrator is not a platform admin after bootstrap", async () => {
   const { sql, close } = await openTestDb();

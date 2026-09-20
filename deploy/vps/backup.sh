@@ -45,4 +45,6 @@ backup_timestamp=$STAMP
 backup_file=$FILE
 counts=$COUNTS
 EOF
+KEEP="$(protect_psql -tAc "select coalesce((select value from platform_settings where key='backup_keep'), '14')" 2>/dev/null | tr -d '[:space:]' || true)"
+prune_old_backups "$OUT_DIR" "${KEEP:-14}"
 echo "$FILE"

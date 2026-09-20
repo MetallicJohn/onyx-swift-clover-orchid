@@ -1,4 +1,4 @@
-/** Only exact in-app destinations. Rejects open redirects. */
+import { isBootstrapSuperadminLogin, resolveBootstrapLoginId } from "./bootstrap-login";
 const ALLOWED = new Set(["/app", "/platform", "/superadmin"]);
 
 export function loginModeFromSearch(search: string): "in" | "up" {
@@ -6,8 +6,9 @@ export function loginModeFromSearch(search: string): "in" | "up" {
   return q.get("mode") === "up" ? "up" : "in";
 }
 
-export function loginDestination(search: string, mode: "in" | "up"): "/app" | "/platform" {
+export function loginDestination(search: string, mode: "in" | "up", identifier = ""): "/app" | "/platform" {
   if (mode === "up") return "/app";
+  if (isBootstrapSuperadminLogin(identifier)) return "/platform";
   const q = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   const next = q.get("next") || "";
   if (next === "/platform" || next === "/superadmin") return "/platform";
@@ -19,7 +20,7 @@ export function isAllowedLoginNext(path: string) {
 }
 
 export function normalizeLoginEmail(email: string) {
-  return email.trim().toLowerCase();
+  return resolveBootstrapLoginId(email);
 }
 
 export function signInErrorMessage(err: unknown, appName = "ISP Solutions") {

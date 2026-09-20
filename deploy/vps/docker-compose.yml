@@ -59,6 +59,9 @@ services:
       MONGODB_URL: ${MONGODB_URL:-mongodb://mongo:27017/genieacs}
       RADIUS_HOST: ${RADIUS_HOST:-freeradius}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${ACS_EDGE_TOKEN}}
+      ISPSOLUTIONS_BACKUP_DIR: /opt/ispsolutions/backups
+    volumes:
+      - ../../backups:/opt/ispsolutions/backups
     depends_on:
       postgres:
         condition: service_healthy

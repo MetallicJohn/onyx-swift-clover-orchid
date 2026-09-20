@@ -184,3 +184,21 @@ write_deploy_meta() {
     printf '%s\n' "$@"
   } >"$file"
 }
+
+prune_old_backups() {
+  local dir="${1:?}"
+  local keep="${2:-14}"
+  [[ "$keep" =~ ^[1-9][0-9]*$ ]] || keep=14
+  if (( keep > 365 )); then keep=365; fi
+  [[ -d "$dir" ]] || return 0
+  local i=0
+  local f
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    i=$((i + 1))
+    if (( i > keep )); then
+      rm -f "$f" "${f}.meta" "${f}.counts.json"
+      echo "[ispsolutions] pruned old backup $(basename "$f")" >&2
+    fi
+  done < <(find "$dir" -maxdepth 1 -type f \( -name 'ispsolutions-*.dump' -o -name 'ispsolutions-*.sql.gz' \) -printf '%T@\t%p\n' 2>/dev/null | sort -nr | cut -f2-)
+}

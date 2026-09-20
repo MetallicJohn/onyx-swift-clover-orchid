@@ -1,5 +1,6 @@
 import { hashPassword, verifyPassword } from "better-auth/crypto";
 import { nid, slugify } from "../utils.ts";
+import { resolveBootstrapLoginId } from "./bootstrap-login.ts";
 import { isTenantRole } from "./members.ts";
 import { permissionsFor } from "./rbac.ts";
 import { applyRls } from "./rls.ts";
@@ -22,14 +23,14 @@ export async function loadAuthUser(sql: Sql, userId: string): Promise<AuthUser |
 }
 
 export async function findAuthUserByEmail(sql: Sql, email: string): Promise<AuthUser | null> {
-  const trimmed = email.trim().toLowerCase();
+  const trimmed = resolveBootstrapLoginId(email);
   const [row] = await sql<AuthUser>`
     select id, name, email from "user" where lower(email) = ${trimmed}`;
   return row ?? null;
 }
 
 export function normalizeLoginEmail(email: string) {
-  return email.trim().toLowerCase();
+  return resolveBootstrapLoginId(email);
 }
 
 export async function canonicalizeOperatorEmail(sql: Sql, email: string) {
@@ -117,6 +118,12 @@ export async function setCredentialPassword(sql: Sql, email: string, password: s
     throw new Error("Could not store the new password");
   }
   await sql`delete from session where "userId" = ${user.id}`;
+  try {
+    const { markPasswordChanged } = await import("./operator-security");
+    await markPasswordChanged(sql, user.id);
+  } catch {
+    /* profile table may not exist on very old DBs */
+  }
   return user;
 }
 
@@ -128,6 +135,8 @@ export async function changeOwnPassword(
 ) {
   if (next.length < 8) throw new Error("Password must be at least 8 characters");
   if (current === next) throw new Error("Pick a different password");
+  const { assertPasswordPolicy } = await import("./operator-security");
+  assertPasswordPolicy(next);
   const user = await loadAuthUser(sql, userId);
   if (!user) throw new Error("Account not found");
   const [cred] = await sql<{ password: string }>`
@@ -140,6 +149,19 @@ export async function changeOwnPassword(
     where "userId" = ${user.id} and "providerId" = 'credential'`;
   if (!(await passwordVerifies(sql, user.email, next))) {
     throw new Error("Could not store the new password");
+  }
+  try {
+    const { markPasswordChanged } = await import("./operator-security");
+    await markPasswordChanged(sql, userId);
+    const { writePlatformAudit } = await import("./platform");
+    await writePlatformAudit(sql, {
+      actorUserId: userId,
+      action: "PASSWORD_CHANGED",
+      entityType: "user",
+      entityId: userId,
+    });
+  } catch {
+    /* optional */
   }
   return { email: user.email };
 }
@@ -202,6 +224,12 @@ export async function provisionTenant(
   await sql`insert into tenant_members (id, tenant_id, user_id, role)
     values (${nid("mem")}, ${tenantId}, ${userId}, 'isp_owner')`;
   await setActiveTenant(sql, userId, tenantId);
+  try {
+    const { ensureOperatorProfile } = await import("./operator-security");
+    await ensureOperatorProfile(sql, userId, { phone, displayName: person });
+  } catch {
+    /* profiles added in 0065 */
+  }
   await ensureFirstPlatformAdmin(sql, userId);
   const { ensureSubscription } = await import("./saas");
   await ensureSubscription(sql, tenantId);
