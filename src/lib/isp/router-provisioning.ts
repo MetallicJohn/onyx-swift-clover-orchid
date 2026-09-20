@@ -201,8 +201,12 @@ ${opts.identity ? `# identity: ${opts.identity}` : ""}
       :if ([:typeof [:find $n ${rosQuote(file)}]] != "nil") do={ :set bootFile $n };
     }
     :if ($bootFile != "") do={
-      /import file-name=$bootFile;
-      :log info ${rosQuote(`${APP_NAME} bootstrap imported`)};
+      :do {
+        /import file-name=$bootFile;
+        :log info ${rosQuote(`${APP_NAME} bootstrap imported`)};
+      } on-error={
+        :log error ${rosQuote(`${APP_NAME}: import failed — open Log and paste the enroll script in New Terminal`)};
+      }
     } else={
       :log error ${rosQuote(`${APP_NAME}: bootstrap file missing after fetch`)};
     }

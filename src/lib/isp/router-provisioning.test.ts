@@ -164,7 +164,7 @@ test("issue, fetch bootstrap over token, revoke, and isolate tenants", async () 
     assert.match(served.body, /interface wireguard/);
     assert.match(served.body, /\/ip pool/);
     assert.match(served.body, /nanyuki/);
-    assert.match(served.body, /\/user add name=\$apiUser password=\$apiPass group=\$apiGroup/);
+    assert.match(served.body, /\/user add name=/);
     assert.match(served.body, /check-certificate=no/);
     assert.doesNotMatch(served.body, /check-certificate=yes/);
 

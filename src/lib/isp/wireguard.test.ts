@@ -117,11 +117,11 @@ test("client enroll script sets the router private key and hub endpoint", () => 
   assert.match(script, /ISP Solutions agent/);
   assert.doesNotMatch(script, /\/system script add name=gridline-pull/);
   assert.doesNotMatch(script, /interface wireguard add name=wg-gridline/);
-  assert.match(script, /private-key=\$wgPriv/);
-  assert.equal(script.includes(`:local wgPriv "${client.privateKey}"`), true);
-  assert.equal(script.includes(`:local srvKey "${hub.publicKey}"`), true);
+  assert.match(script, /private-key="/);
+  assert.equal(script.includes(`private-key="${client.privateKey}"`), true);
+  assert.equal(script.includes(`public-key="${hub.publicKey}"`), true);
   assert.match(script, /endpoint-address="vpn.imani.ke" endpoint-port=51820/);
-  assert.match(script, /allowed-address=\$allowed/);
+  assert.match(script, /allowed-address="10.200.0.1\/32"/);
   assert.doesNotMatch(script, /cannot start the handshake/);
 });
 

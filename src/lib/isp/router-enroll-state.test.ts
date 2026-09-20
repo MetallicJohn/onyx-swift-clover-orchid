@@ -61,10 +61,10 @@ test("generated enroll script is certificate-free, overlay-API-only, and does no
     apiPassword: "generated-pass",
   });
   assert.match(script, /endpoint-address="wg\.ispsolutions\.co\.ke" endpoint-port=51820/);
-  assert.match(script, /:local allowed "10\.200\.0\.1\/32"/);
+  assert.match(script, /allowed-address="10\.200\.0\.1\/32"/);
   assert.match(script, /dst-port=8728 src-address=10\.200\.0\.1/);
   assert.match(script, /check-certificate=no/);
-  assert.match(script, /name=\$apiUser password=\$apiPass group=\$apiGroup/);
+  assert.match(script, /\/user add name="ispsolutions-agent" password=/);
   assert.match(script, /ispSolLock/);
   assert.match(script, /enrollment bootstrap initialized for router/);
   assert.doesNotMatch(script, /check-certificate=yes/);
