@@ -30,7 +30,11 @@ import {
   issueRouterTokenFn,
   listRouterPoolAssignmentsFn,
   reconfigureRouterFn,
+  regenerateRouterAgentFn,
+  repairRouterConnectionFn,
   revokeRouterTokenFn,
+  rotateRouterApiFn,
+  rotateRouterWireGuardFn,
   setPoolEnabledFn,
   setRouterEnabledFn,
   testRouterConnectionFn,
@@ -97,6 +101,7 @@ function RouterRecordPage() {
   const [copiedBtn, setCopiedBtn] = useState<string | null>(null);
   const [confirmSync, setConfirmSync] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [probe, setProbe] = useState<Awaited<ReturnType<typeof testRouterConnectionFn>> | null>(null);
   const [apiForm, setApiForm] = useState({
     api_user: "ispsolutions-agent",
     api_password: "",
@@ -226,10 +231,13 @@ function RouterRecordPage() {
               <DropdownMenuItem
                 onSelect={async () => {
                   const out = await testRouterConnectionFn({ data: { id: router.id } });
+                  setProbe(out);
                   setNote(
-                    out.online
-                      ? `Agent evidence present (${out.reachability}).`
-                      : `Not claimed online${out.last_seen ? "" : " — no heartbeat yet"}.`,
+                    `${out.wireguard.status === "connected" ? "WireGuard connected" : "WireGuard not connected"} · ${
+                      out.api.status === "connected" ? "API connected" : out.api.status === "failed" ? "API failed" : "API not verified"
+                    } · ${
+                      out.agent.status === "connected" ? "Agent connected" : "Agent not verified"
+                    }`,
                   );
                 }}
               >
@@ -274,7 +282,7 @@ function RouterRecordPage() {
             </Info>
             <Info label="Enrollment">
               <Badge tone={statusTone(router.enroll_state === "ENROLLED" ? "active" : router.enroll_state === "DEGRADED" ? "warning" : "pending")}>
-                {router.enroll_state || "PENDING"}
+                {router.connection_status || router.enroll_state || "Pending"}
               </Badge>
               <div className="mt-1 text-xs text-muted">
                 WG {router.last_handshake_at ? "up" : "waiting"} · API {router.api_verified_at ? "verified" : "pending"} · Agent{" "}
@@ -352,6 +360,9 @@ function RouterRecordPage() {
                     await openPack(
                       {
                         title: `Bootstrap · ${router.name}`,
+                        identity: router.identity || router.name,
+                        routerId: router.id,
+                        kind: "bootstrap",
                         bootstrap: out.bootstrap,
                         enroll: out.enroll,
                       },
@@ -363,7 +374,108 @@ function RouterRecordPage() {
                   }
                 }}
               >
-                {copiedBtn === "bootstrap" ? "Copied bootstrap" : "Generate bootstrap"}
+                {copiedBtn === "bootstrap" ? "Copied ✓" : "Generate bootstrap"}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={async () => {
+                  const out = await copyRouterScript({ data: { id: router.id } });
+                  await openPack(
+                    {
+                      title: out.title || `Enrollment · ${router.name}`,
+                      description: out.description,
+                      identity: out.identity || router.identity,
+                      routerId: out.routerId || router.id,
+                      kind: "enroll",
+                      enroll: out.script,
+                    },
+                    "enroll",
+                  );
+                }}
+              >
+                {copiedBtn === "enroll" ? "Copied ✓" : "Generate Enrollment Script"}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={async () => {
+                  const out = await repairRouterConnectionFn({ data: { id: router.id } });
+                  await openPack(
+                    {
+                      title: out.title,
+                      description: out.description,
+                      identity: out.identity,
+                      routerId: out.routerId,
+                      kind: "repair",
+                      enroll: out.script,
+                    },
+                    "repair",
+                  );
+                }}
+              >
+                {copiedBtn === "repair" ? "Copied ✓" : "Repair Connection"}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={async () => {
+                  const out = await rotateRouterWireGuardFn({ data: { id: router.id } });
+                  await openPack(
+                    {
+                      title: out.title,
+                      description: out.description,
+                      identity: out.identity,
+                      routerId: out.routerId,
+                      kind: "wireguard-rotate",
+                      enroll: out.script,
+                    },
+                    "wg",
+                  );
+                  await load();
+                }}
+              >
+                {copiedBtn === "wg" ? "Copied ✓" : "Rotate WireGuard"}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={async () => {
+                  const out = await rotateRouterApiFn({ data: { id: router.id } });
+                  await openPack(
+                    {
+                      title: out.title,
+                      description: out.description,
+                      identity: out.identity,
+                      routerId: out.routerId,
+                      kind: "api-rotate",
+                      enroll: out.script,
+                    },
+                    "api-rotate",
+                  );
+                }}
+              >
+                {copiedBtn === "api-rotate" ? "Copied ✓" : "Rotate API Credentials"}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={async () => {
+                  const out = await regenerateRouterAgentFn({ data: { id: router.id } });
+                  await openPack(
+                    {
+                      title: out.title,
+                      description: out.description,
+                      identity: out.identity,
+                      routerId: out.routerId,
+                      kind: "agent",
+                      enroll: out.script,
+                    },
+                    "agent",
+                  );
+                }}
+              >
+                {copiedBtn === "agent" ? "Copied ✓" : "Regenerate Agent"}
               </Button>
               <Button
                 size="sm"
@@ -376,22 +488,8 @@ function RouterRecordPage() {
               >
                 Revoke token
               </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setConfirmSync(true)}
-              >
+              <Button size="sm" variant="secondary" onClick={() => setConfirmSync(true)}>
                 Synchronize
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={async () => {
-                  const out = await copyRouterScript({ data: { id: router.id } });
-                  await openPack({ title: `Enroll · ${router.name}`, enroll: out.script }, "enroll");
-                }}
-              >
-                {copiedBtn === "enroll" ? "Copied enroll" : "Copy enroll"}
               </Button>
               <Button
                 size="sm"
@@ -401,6 +499,8 @@ function RouterRecordPage() {
                   await openPack(
                     {
                       title: `API user · ${out.user}`,
+                      identity: router.identity,
+                      routerId: router.id,
                       extraLabel: "API user",
                       extra: out.script,
                     },
@@ -408,9 +508,34 @@ function RouterRecordPage() {
                   );
                 }}
               >
-                {copiedBtn === "api" ? "Copied API user" : "Copy API user"}
+                {copiedBtn === "api" ? "Copied ✓" : "Copy API user"}
               </Button>
             </div>
+          ) : null}
+
+          {canManage ? (
+            <section className="rounded-xl border border-border bg-surface p-4">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 className="font-medium">Connection</h2>
+                  <p className="text-sm text-muted">WireGuard, RouterOS API, and agent are checked separately.</p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    const out = await testRouterConnectionFn({ data: { id: router.id } });
+                    setProbe(out);
+                  }}
+                >
+                  Test Connection
+                </Button>
+              </div>
+              <ul className="mt-3 grid gap-2 sm:grid-cols-3">
+                <ProbeRow label="WireGuard" channel={probe?.wireguard} fallback={router.last_handshake_at ? "connected" : "not_verified"} />
+                <ProbeRow label="RouterOS API" channel={probe?.api} fallback={router.api_verified_at ? "connected" : "not_verified"} />
+                <ProbeRow label="Agent" channel={probe?.agent} fallback={router.agent_last_ok_at || router.last_seen ? "connected" : "not_verified"} />
+              </ul>
+            </section>
           ) : null}
 
           {canManage ? (
@@ -903,5 +1028,29 @@ function Info({ label, children }: { label: string; children: React.ReactNode })
       <dt className="text-xs text-muted">{label}</dt>
       <dd className="mt-1 text-sm">{children}</dd>
     </div>
+  );
+}
+
+function ProbeRow({
+  label,
+  channel,
+  fallback,
+}: {
+  label: string;
+  channel?: { ok: boolean; status: string; detail: string } | null;
+  fallback: string;
+}) {
+  const status = channel?.status || fallback;
+  const mark = status === "connected" ? "✓" : status === "failed" ? "✕" : "—";
+  const text =
+    channel?.detail ||
+    (status === "connected" ? "Connected" : status === "failed" ? "Failed" : "Not verified");
+  return (
+    <li className="rounded-lg border border-border bg-elevated px-3 py-2 text-sm">
+      <div className="text-xs text-muted">{label}</div>
+      <div className="mt-1 font-medium">
+        {mark} {text}
+      </div>
+    </li>
   );
 }

@@ -55,6 +55,8 @@ test("router enrollment script is RouterOS v7 and names ISP Solutions", () => {
   assert.match(script, /output=file dst-path="ispsolutions-pull.rsc" as-value/);
   assert.match(script, /ispSolStatus/);
   assert.match(script, /configuration imported successfully/);
+  assert.match(script, /Download from /);
+  assert.match(script, /HTTP /);
   assert.match(script, /downloaded /);
   assert.doesNotMatch(script, /:foreach i in=\[\/file find\]/);
   assert.doesNotMatch(script, /HTTPS fetch failed — check URL/);

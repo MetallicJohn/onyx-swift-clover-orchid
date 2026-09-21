@@ -186,11 +186,10 @@ function RoutersPage() {
     onTest: async (r) => {
       try {
         const out = await testRouterConnectionFn({ data: { id: r.id } });
-        setNotice(
-          out.online
-            ? `${out.name} has agent evidence (${out.reachability}). Last seen is stored, not invented.`
-            : `${out.name} is not claimed online. ${out.source === "none" ? "No heartbeat yet." : `Last evidence: ${out.reachability}.`}`,
-        );
+        const wg = out.wireguard?.status === "connected" ? "✓ Connected" : out.wireguard?.status === "failed" ? "✕ Failed" : "— Not verified";
+        const api = out.api?.status === "connected" ? "✓ Connected" : out.api?.status === "failed" ? "✕ Failed" : "— Not verified";
+        const agent = out.agent?.status === "connected" ? "✓ Connected" : out.agent?.status === "failed" ? "✕ Failed" : "— Not verified";
+        setNotice(`${out.name}: WireGuard ${wg} · RouterOS API ${api} · Agent ${agent}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Test failed");
       }
@@ -201,6 +200,9 @@ function RoutersPage() {
         const out = await issueRouterTokenFn({ data: { id: r.id } });
         setPack({
           title: `Bootstrap · ${r.name}`,
+          identity: r.identity || r.name,
+          routerId: r.id,
+          kind: "bootstrap",
           bootstrap: out.bootstrap,
           enroll: out.enroll,
         });
@@ -212,7 +214,14 @@ function RoutersPage() {
     onCopyEnroll: async (r) => {
       try {
         const out = await copyRouterScript({ data: { id: r.id } });
-        setPack({ title: `Enroll · ${r.name}`, enroll: out.script });
+        setPack({
+          title: out.title || `Enrollment · ${r.name}`,
+          description: out.description,
+          identity: out.identity || r.identity,
+          routerId: out.routerId || r.id,
+          kind: "enroll",
+          enroll: out.script,
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not generate enroll script");
       }
@@ -321,7 +330,11 @@ function RoutersPage() {
               setForm(EMPTY_FORM);
               if (created.bootstrap || created.script) {
                 setPack({
-                  title: `Scripts · ${created.router?.name || form.name}`,
+                  title: `RouterOS Enrollment Script`,
+                  description: `Router: ${created.router?.name || form.name}. Overlay ${created.router?.wg_address || ""}. Status: Pending.`,
+                  identity: created.router?.identity || form.identity || form.name,
+                  routerId: created.id,
+                  kind: "enroll",
                   bootstrap: created.bootstrap,
                   enroll: created.script,
                 });

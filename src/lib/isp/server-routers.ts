@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { agentPullUrl, agentScript, enrollFields } from "./agent";
+import { agentPullUrl, agentScript } from "./agent";
 import { apiUserEnsureRos } from "./routeros";
 import { wgEnrollContext } from "./wireguard";
 import { requireWorkspace as requireWs } from "./workspace";
@@ -103,40 +103,31 @@ export const copyRouterScript = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "routers.manage");
-    const r = await loadEnroll(sql, tenantId, data.id);
-    if (data.rotate) {
-      const enroll = enrollFields(r.name, r.wg_address);
-      await sql`update routers set enroll_token = ${enroll.token}, wg_public = ${enroll.wg_public}, wg_private_ref = ${enroll.wg_private_sealed}, wg_status = 'pending'
-        where id = ${r.id} and tenant_id = ${tenantId}`;
-      const next = await loadEnroll(sql, tenantId, r.id);
-      await recordProvisionEvent(sql, {
-        tenantId,
-        routerId: r.id,
-        event: "enroll_script_generated",
-        detail: { rotated: true },
-      });
-      return { script: await scriptFor(sql, tenantId, next), token: next.enroll_token, rotated: true };
-    }
-    if (!r.enroll_token) {
-      const enroll = enrollFields(r.name, r.wg_address);
-      await sql`update routers set enroll_token = ${enroll.token}, wg_public = ${enroll.wg_public}, wg_private_ref = ${enroll.wg_private_sealed}
-        where id = ${r.id} and tenant_id = ${tenantId}`;
-      const next = await loadEnroll(sql, tenantId, r.id);
-      await recordProvisionEvent(sql, {
-        tenantId,
-        routerId: r.id,
-        event: "enroll_script_generated",
-        detail: { rotated: true },
-      });
-      return { script: await scriptFor(sql, tenantId, next), token: next.enroll_token, rotated: true };
-    }
-    await recordProvisionEvent(sql, {
-      tenantId,
-      routerId: r.id,
-      event: "enroll_script_generated",
-      detail: { rotated: false },
-    });
-    return { script: await scriptFor(sql, tenantId, r), token: r.enroll_token, rotated: false };
+    const { issueNewRouterEnrollmentScript, issueWireGuardRotationScript } = await import("./router-connection");
+    const issued = data.rotate
+      ? await issueWireGuardRotationScript(sql, {
+          tenantId,
+          routerId: data.id,
+          actorUserId: context.userId,
+        })
+      : await issueNewRouterEnrollmentScript(sql, {
+          tenantId,
+          routerId: data.id,
+          actorUserId: context.userId,
+        });
+    return {
+      script: issued.script,
+      token: "",
+      rotated: issued.rotated,
+      kind: issued.kind,
+      title: issued.title,
+      description: issued.description,
+      identity: issued.identity,
+      routerId: issued.routerId,
+      wg_address: issued.wg_address,
+      wg_public: issued.wg_public,
+      connection_status: issued.connection_status,
+    };
   });
 
 export const copyRouterApiUser = createServerFn({ method: "POST" })
@@ -155,6 +146,62 @@ export const copyRouterApiUser = createServerFn({ method: "POST" })
       detail: { api_user: api.user },
     });
     return { script, user: api.user };
+  });
+
+export const repairRouterConnectionFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
+    const { issueExistingRouterRepairScript } = await import("./router-connection");
+    return issueExistingRouterRepairScript(sql, {
+      tenantId,
+      routerId: data.id,
+      actorUserId: context.userId,
+    });
+  });
+
+export const rotateRouterWireGuardFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
+    const { issueWireGuardRotationScript } = await import("./router-connection");
+    return issueWireGuardRotationScript(sql, {
+      tenantId,
+      routerId: data.id,
+      actorUserId: context.userId,
+    });
+  });
+
+export const rotateRouterApiFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
+    const { issueApiCredentialRotationScript } = await import("./router-connection");
+    return issueApiCredentialRotationScript(sql, {
+      tenantId,
+      routerId: data.id,
+      actorUserId: context.userId,
+    });
+  });
+
+export const regenerateRouterAgentFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "routers.manage");
+    const { issueAgentScript } = await import("./router-connection");
+    return issueAgentScript(sql, {
+      tenantId,
+      routerId: data.id,
+      actorUserId: context.userId,
+    });
   });
 
 export const getRouterDetailFn = createServerFn({ method: "POST" })
@@ -507,7 +554,7 @@ export const testRouterConnectionFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "routers.manage");
-    const { testRouterConnection } = await import("./router-desk");
-    return testRouterConnection(sql, tenantId, data.id);
+    const { probeRouterConnection } = await import("./router-connection");
+    return probeRouterConnection(sql, tenantId, data.id, context.userId);
   });
 

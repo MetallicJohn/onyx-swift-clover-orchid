@@ -673,6 +673,7 @@ export async function routerStatus(sql: Sql, tenantId: string, id: string) {
     provisioning_enabled: settings.enabled,
     allow_pool_push: settings.allow_pool_push,
     enroll_state: row.enroll_state || "PENDING",
+    connection_status: (await import("./router-enroll-state.ts")).connectionStatusLabel(row.enroll_state),
     last_handshake_at: row.last_handshake_at || null,
     api_verified_at: row.api_verified_at || null,
     agent_last_ok_at: row.agent_last_ok_at || null,

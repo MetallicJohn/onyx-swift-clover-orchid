@@ -62,6 +62,11 @@ export function handshakeFresh(unix: number, now = Date.now(), maxAgeMs = 180_00
   return now - unix * 1000 <= maxAgeMs && unix * 1000 <= now + 5_000;
 }
 
+export function handshakeLive(peer: WgDumpPeer | null | undefined, now = Date.now()) {
+  if (!peer) return false;
+  return handshakeFresh(peer.lastHandshakeUnix, now) && peer.rxBytes > 0 && peer.txBytes > 0;
+}
+
 export function findDumpPeer(peers: WgDumpPeer[], publicKey: string) {
   return peers.find((p) => p.publicKey === publicKey) || null;
 }
@@ -87,6 +92,18 @@ export async function applyHostPeer(peer: { publicKey: string; address: string }
   if (!pub || !cidr || !isPublicKey(pub)) return { ok: false as const, reason: "invalid" };
   try {
     await execFileAsync("wg", ["set", ROS_WG_INTERFACE, "peer", pub, "allowed-ips", cidr], { timeout: 4000 });
+    await execFileAsync("wg-quick", ["save", ROS_WG_INTERFACE], { timeout: 4000 }).catch(() => null);
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const, reason: "host" };
+  }
+}
+
+export async function removeHostPeer(publicKey: string) {
+  const pub = publicKey.trim();
+  if (!pub || !isPublicKey(pub)) return { ok: false as const, reason: "invalid" };
+  try {
+    await execFileAsync("wg", ["set", ROS_WG_INTERFACE, "peer", pub, "remove"], { timeout: 4000 });
     await execFileAsync("wg-quick", ["save", ROS_WG_INTERFACE], { timeout: 4000 }).catch(() => null);
     return { ok: true as const };
   } catch {
@@ -121,17 +138,28 @@ export async function writeWantedHubPeers(peers: WantedHubPeer[]) {
 export async function persistWantedHubPeersFromSql(sql: {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
 }) {
-  const rows = await sql<{ name: string; public_key: string; wg_address: string }>`
-    select r.name, r.wg_public as public_key, r.wg_address
+  const rows = await sql<{
+    name: string;
+    public_key: string;
+    previous_key: string;
+    wg_address: string;
+  }>`
+    select r.name,
+           r.wg_public as public_key,
+           coalesce(r.wg_public_previous, '') as previous_key,
+           r.wg_address
     from routers r
     where coalesce(r.wg_public,'') <> ''
       and coalesce(r.enroll_state,'') <> 'REVOKED'
     order by r.name`;
-  const peers = rows.map((r) => ({
-    name: r.name,
-    publicKey: r.public_key,
-    allowedIps: r.wg_address.includes("/") ? r.wg_address : `${r.wg_address}/32`,
-  }));
+  const peers: WantedHubPeer[] = [];
+  for (const r of rows) {
+    const allowed = r.wg_address.includes("/") ? r.wg_address : `${r.wg_address}/32`;
+    if (r.public_key) peers.push({ name: r.name, publicKey: r.public_key, allowedIps: allowed });
+    if (r.previous_key && r.previous_key !== r.public_key) {
+      peers.push({ name: `${r.name} previous`, publicKey: r.previous_key, allowedIps: allowed });
+    }
+  }
   await writeWantedHubPeers(peers);
   return peers.length;
 }

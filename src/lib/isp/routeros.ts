@@ -18,6 +18,33 @@ export function rosOverlayUserName(wgAddress: string) {
   return `${octets[0]}${octets[1]}${octets[2]}${String(octets[3]).padStart(2, "0")}`;
 }
 
+export type RosConnectionOpts = {
+  name: string;
+  identity: string;
+  token: string;
+  wgPublic: string;
+  wgAddress: string;
+  pullUrl?: string;
+  wgPrivate?: string;
+  serverPublic?: string;
+  endpointHost?: string;
+  endpointPort?: number;
+  serverAddress?: string;
+  apiUser?: string;
+  apiPassword?: string;
+  routerId?: string;
+};
+
+export type RosConnectionKind = "enroll" | "repair" | "wireguard-rotate" | "api-rotate" | "agent";
+
+function fetchHostname(url: string) {
+  try {
+    return new URL(url).hostname || "ispsolutions.co.ke";
+  } catch {
+    return "ispsolutions.co.ke";
+  }
+}
+
 function rosEnsureUser(opts: { name: string; password: string; group: string; comment: string }) {
   const name = rosQuote(opts.name);
   const password = rosQuote(opts.password);
@@ -41,6 +68,7 @@ export function rosHttpsFetchBlock(url: string, fileName: string, kind: "agent" 
   const quotedUrl = rosQuote(url);
   const qRoot = rosQuote(fileName);
   const qFlash = rosQuote(`flash/${fileName}`);
+  const host = fetchHostname(url);
   const logInfoFetch = rosQuote(`${prefix}: fetching configuration`);
   const logDns = rosQuote(`${prefix}: DNS/connection error`);
   const logHttps = rosQuote(`${prefix}: HTTPS request failed`);
@@ -54,6 +82,7 @@ export function rosHttpsFetchBlock(url: string, fileName: string, kind: "agent" 
   const logImportFail = rosQuote(`${prefix}: configuration import failed`);
   const logImportOk = rosQuote(`${prefix}: configuration imported successfully`);
   const logStatus = rosQuote(`${prefix}: HTTPS fetch failed status=`);
+  const logFinished = rosQuote(`Download from ${host} FINISHED`);
   return `:local ispSolResult;
 :do { /file remove [find where name=${qRoot}] } on-error={}
 :do { /file remove [find where name=${qFlash}] } on-error={}
@@ -101,6 +130,10 @@ export function rosHttpsFetchBlock(url: string, fileName: string, kind: "agent" 
       :log warning ${logEmpty};
       :do { /file remove [find where name=$ispSolFile] } on-error={}
     } else={
+      :log info ${logFinished};
+      :local ispSolHttp $ispSolCode;
+      :if (($ispSolHttp = 0) || ($ispSolHttp = "")) do={ :set ispSolHttp 200 };
+      :log info ("${prefix}: HTTP " . $ispSolHttp);
       :log info ("${prefix}: downloaded " . $ispSolSize . " bytes");
       :do {
         /import file-name=$ispSolFile;
@@ -127,24 +160,13 @@ function localBlock(vars: Record<string, string>) {
     .join("\n");
 }
 
-export function enrollRosScript(opts: {
-  name: string;
-  identity: string;
-  token: string;
-  wgPublic: string;
-  wgAddress: string;
-  pullUrl?: string;
-  wgPrivate?: string;
-  serverPublic?: string;
-  endpointHost?: string;
-  endpointPort?: number;
-  serverAddress?: string;
-  apiUser?: string;
-  apiPassword?: string;
-  routerId?: string;
-}) {
+function normalizedAddr(wgAddress: string) {
+  return wgAddress.includes("/") ? wgAddress : `${wgAddress}/32`;
+}
+
+function connectionParts(opts: RosConnectionOpts) {
   const identity = opts.identity || opts.name;
-  const addr = opts.wgAddress.includes("/") ? opts.wgAddress : `${opts.wgAddress}/32`;
+  const addr = normalizedAddr(opts.wgAddress);
   const pull = opts.pullUrl || "";
   const peerKey = opts.serverPublic || opts.wgPublic;
   const endpointHost = (opts.endpointHost || "").trim();
@@ -153,23 +175,94 @@ export function enrollRosScript(opts: {
   const allowed = WG_HUB_ALLOWED;
   const wgPriv = rosQuote(opts.wgPrivate || "");
   const peerPub = rosQuote(peerKey);
-  const missingEndpoint = endpointHost
-    ? ""
-    : `# No hub endpoint saved — the router cannot start the handshake.
-# Settings → Network: set the VPS public hostname or IP, then copy this script again.
-`;
   const apiUser = opts.apiUser?.trim() || rosOverlayUserName(addr) || ROS_API_USER;
   const apiPass = opts.apiPassword || "";
   const overlayUser = rosOverlayUserName(addr);
-  const users = new Set<string>();
-  if (apiPass && overlayUser) users.add(overlayUser);
-  if (apiPass && apiUser) users.add(apiUser);
-  const apiUserBlock = [...users]
-    .map((name) => rosEnsureUser({ name, password: apiPass, group: "full", comment: ROS_USER_COMMENT }))
-    .join("\n");
+  return {
+    identity,
+    addr,
+    pull,
+    peerKey,
+    endpointHost,
+    endpointPort,
+    hubIp,
+    allowed,
+    wgPriv,
+    peerPub,
+    apiUser,
+    apiPass,
+    overlayUser,
+    routerId: opts.routerId || identity,
+  };
+}
 
-  const scheduler = pull
-    ? `
+function rosIdentityBlock(identity: string) {
+  return `:do { /system identity set name=${rosQuote(identity)} } on-error={ :log error ${rosQuote(`${APP_NAME}: identity failed`)} }`;
+}
+
+function rosWireGuardInterfaceBlock(wgPriv: string) {
+  return `:do { /interface wireguard set [find where name="${ROS_WG_INTERFACE_LEGACY}"] name=${ROS_WG_INTERFACE} } on-error={}
+:if ([:len [/interface wireguard find where name="${ROS_WG_INTERFACE}"]] = 0) do={
+  :do { /interface wireguard add name=${ROS_WG_INTERFACE} listen-port=13231 private-key=${wgPriv} comment=${rosQuote(APP_NAME)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard interface failed — need RouterOS v7`)} }
+} else={
+  :do { /interface wireguard set [find where name="${ROS_WG_INTERFACE}"] private-key=${wgPriv} listen-port=13231 comment=${rosQuote(APP_NAME)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard interface failed — need RouterOS v7`)} }
+}`;
+}
+
+function rosWireGuardPeerBlock(opts: {
+  peerPub: string;
+  allowed: string;
+  endpointHost: string;
+  endpointPort: number;
+}) {
+  const endpoint = opts.endpointHost
+    ? `:do { /interface wireguard peers set [find where public-key=${opts.peerPub}] endpoint-address=${rosQuote(opts.endpointHost)} endpoint-port=${opts.endpointPort} } on-error={ :log warning ${rosQuote(`${APP_NAME}: peer endpoint not set — check DNS for ${opts.endpointHost}`)} }`
+    : "";
+  return `:if ([:len [/interface wireguard peers find where public-key=${opts.peerPub}]] = 0) do={
+  :do { /interface wireguard peers add interface=${ROS_WG_INTERFACE} public-key=${opts.peerPub} allowed-address=${rosQuote(opts.allowed)} comment=${rosQuote(`${APP_NAME} controller`)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard peer failed`)} }
+} else={
+  :do { /interface wireguard peers set [find where public-key=${opts.peerPub}] interface=${ROS_WG_INTERFACE} public-key=${opts.peerPub} allowed-address=${rosQuote(opts.allowed)} comment=${rosQuote(`${APP_NAME} controller`)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard peer failed`)} }
+}
+:do { /interface wireguard peers set [find where public-key=${opts.peerPub}] persistent-keepalive=25s } on-error={
+  :do { /interface wireguard peers set [find where public-key=${opts.peerPub}] persistent-keepalive=00:00:25 } on-error={}
+}
+${endpoint}`;
+}
+
+function rosOverlayAddressBlock(addr: string) {
+  return `:if ([:len [/ip address find where interface="${ROS_WG_INTERFACE}" and address=${rosQuote(addr)}]] = 0) do={
+  :foreach a in=[/ip address find where interface="${ROS_WG_INTERFACE}"] do={
+    :do { /ip address remove \$a } on-error={}
+  }
+  :do { /ip address add address=${rosQuote(addr)} interface=${ROS_WG_INTERFACE} } on-error={ :log error ${rosQuote(`${APP_NAME}: overlay address failed`)} }
+}`;
+}
+
+function rosApiFirewallBlock(hubIp: string) {
+  return `:do { /ip firewall filter remove [find where comment="gridline-agent" or comment=${rosQuote(`${APP_NAME} agent`)}] } on-error={}
+:if ([:len [/ip firewall filter find where comment=${rosQuote(`${APP_NAME} api`)}]] = 0) do={
+  :do { /ip firewall filter add chain=input in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${hubIp} action=accept comment=${rosQuote(`${APP_NAME} api`)} place-before=0 } on-error={ :log error ${rosQuote(`${APP_NAME}: API firewall rule failed`)} }
+} else={
+  :do { /ip firewall filter set [find where comment=${rosQuote(`${APP_NAME} api`)}] in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${hubIp} action=accept } on-error={}
+}
+
+:do { /ip service set api disabled=no port=${ROS_API_PORT} address=${hubIp}/32 } on-error={ :log error ${rosQuote(`${APP_NAME}: API service failed`)} }
+:do { /ip service set api-ssl disabled=yes } on-error={}`;
+}
+
+function rosApiUserBlock(opts: { apiUser: string; apiPass: string; overlayUser: string }) {
+  if (!opts.apiPass) return "";
+  const users = new Set<string>();
+  if (opts.overlayUser) users.add(opts.overlayUser);
+  if (opts.apiUser) users.add(opts.apiUser);
+  return [...users]
+    .map((name) => rosEnsureUser({ name, password: opts.apiPass, group: "full", comment: ROS_USER_COMMENT }))
+    .join("\n");
+}
+
+function rosAgentBlock(pull: string) {
+  if (pull) {
+    return `
 :do { /system script remove [find where name="gridline-pull"] } on-error={}
 :do { /system script remove [find where name=${rosQuote(ROS_PULL_SCRIPT)}] } on-error={}
 /system script add name=${rosQuote(ROS_PULL_SCRIPT)} policy=${ROS_AGENT_POLICY} source={
@@ -189,65 +282,93 @@ export function enrollRosScript(opts: {
 
 :do { /system scheduler remove [find where name="gridline-agent"] } on-error={}
 :do { /system scheduler remove [find where name=${rosQuote(ROS_AGENT_SCHEDULER)}] } on-error={}
-/system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup policy=${ROS_AGENT_POLICY} on-event="/system script run ${ROS_PULL_SCRIPT}";`
-    : `
+/system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup policy=${ROS_AGENT_POLICY} on-event="/system script run ${ROS_PULL_SCRIPT}";`;
+  }
+  return `
 :do { /system scheduler remove [find where name="gridline-agent"] } on-error={}
 :do { /system scheduler remove [find where name=${rosQuote(ROS_AGENT_SCHEDULER)}] } on-error={}
 /system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup on-event={ :log info ${rosQuote(`${APP_NAME} agent waiting for pull URL`)} };`;
+}
 
-  return `# ${APP_NAME} RouterOS v7 Enrollment
-# Router: ${identity}
-# Router ID: ${opts.routerId || identity}
-# Overlay: ${addr} → hub ${hubIp} (UDP ${endpointPort})
+function rosHeader(kind: RosConnectionKind, parts: ReturnType<typeof connectionParts>) {
+  const titles: Record<RosConnectionKind, string> = {
+    enroll: "Enrollment",
+    repair: "Repair",
+    "wireguard-rotate": "WireGuard rotation",
+    "api-rotate": "API credential rotation",
+    agent: "Agent",
+  };
+  const missingEndpoint =
+    parts.endpointHost || kind === "api-rotate" || kind === "agent"
+      ? ""
+      : `# No hub endpoint saved — the router cannot start the handshake.
+# Settings → Network: set the VPS public hostname or IP, then copy this script again.
+`;
+  return `# ${APP_NAME} RouterOS v7 ${titles[kind]}
+# Router: ${parts.identity}
+# Router ID: ${parts.routerId}
+# Overlay: ${parts.addr} → hub ${parts.hubIp} (UDP ${parts.endpointPort})
 # IMPORTANT:
 # - No MikroTik CA certificate required
 # - HTTPS uses check-certificate=no
 # - RouterOS API is accessible only through WireGuard
 # Paste in New Terminal, or: /import file-name=${ROS_ENROLL_FILE}
-${missingEndpoint}
-:do { /system identity set name=${rosQuote(identity)} } on-error={ :log error ${rosQuote(`${APP_NAME}: identity failed`)} }
-
-:do { /interface wireguard set [find where name="${ROS_WG_INTERFACE_LEGACY}"] name=${ROS_WG_INTERFACE} } on-error={}
-:if ([:len [/interface wireguard find where name="${ROS_WG_INTERFACE}"]] = 0) do={
-  :do { /interface wireguard add name=${ROS_WG_INTERFACE} listen-port=13231 private-key=${wgPriv} comment=${rosQuote(`${APP_NAME} agent`)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard interface failed — need RouterOS v7`)} }
-} else={
-  :do { /interface wireguard set [find where name="${ROS_WG_INTERFACE}"] private-key=${wgPriv} listen-port=13231 comment=${rosQuote(`${APP_NAME} agent`)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard interface failed — need RouterOS v7`)} }
+${missingEndpoint}`;
 }
 
-:if ([:len [/interface wireguard peers find where public-key=${peerPub}]] = 0) do={
-  :do { /interface wireguard peers add interface=${ROS_WG_INTERFACE} public-key=${peerPub} allowed-address=${rosQuote(allowed)} comment=${rosQuote(`${APP_NAME} controller`)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard peer failed`)} }
-} else={
-  :do { /interface wireguard peers set [find where public-key=${peerPub}] interface=${ROS_WG_INTERFACE} public-key=${peerPub} allowed-address=${rosQuote(allowed)} comment=${rosQuote(`${APP_NAME} controller`)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard peer failed`)} }
-}
-:do { /interface wireguard peers set [find where public-key=${peerPub}] persistent-keepalive=25s } on-error={
-  :do { /interface wireguard peers set [find where public-key=${peerPub}] persistent-keepalive=00:00:25 } on-error={}
-}
-${
-  endpointHost
-    ? `:do { /interface wireguard peers set [find where public-key=${peerPub}] endpoint-address=${rosQuote(endpointHost)} endpoint-port=${endpointPort} } on-error={ :log warning ${rosQuote(`${APP_NAME}: peer endpoint not set — check DNS for ${endpointHost}`)} }`
-    : ""
-}
-
-:if ([:len [/ip address find where interface="${ROS_WG_INTERFACE}" and address=${rosQuote(addr)}]] = 0) do={
-  :foreach a in=[/ip address find where interface="${ROS_WG_INTERFACE}"] do={
-    :do { /ip address remove \$a } on-error={}
+function renderRosConnectionScript(opts: RosConnectionOpts, kind: RosConnectionKind) {
+  const parts = connectionParts(opts);
+  const includeWg = kind === "enroll" || kind === "repair" || kind === "wireguard-rotate";
+  const includeApi = kind === "enroll" || kind === "repair" || kind === "api-rotate";
+  const includeAgent = kind === "enroll" || kind === "repair" || kind === "agent";
+  const includeIdentity = kind !== "api-rotate" && kind !== "agent";
+  const chunks = [rosHeader(kind, parts)];
+  if (includeIdentity) chunks.push(rosIdentityBlock(parts.identity));
+  if (includeWg) {
+    chunks.push(rosWireGuardInterfaceBlock(parts.wgPriv));
+    chunks.push(
+      rosWireGuardPeerBlock({
+        peerPub: parts.peerPub,
+        allowed: parts.allowed,
+        endpointHost: parts.endpointHost,
+        endpointPort: parts.endpointPort,
+      }),
+    );
+    chunks.push(rosOverlayAddressBlock(parts.addr));
   }
-  :do { /ip address add address=${rosQuote(addr)} interface=${ROS_WG_INTERFACE} } on-error={ :log error ${rosQuote(`${APP_NAME}: overlay address failed`)} }
+  if (includeApi) {
+    chunks.push(rosApiFirewallBlock(parts.hubIp));
+    chunks.push(rosApiUserBlock({ apiUser: parts.apiUser, apiPass: parts.apiPass, overlayUser: parts.overlayUser }));
+  }
+  if (kind === "enroll" || kind === "repair") {
+    chunks.push(`:log info ("${APP_NAME} enrollment initialized router=" . ${rosQuote(parts.routerId)});`);
+  }
+  if (includeAgent) chunks.push(rosAgentBlock(parts.pull));
+  return chunks.filter(Boolean).join("\n") + "\n";
 }
 
-:do { /ip firewall filter remove [find where comment="gridline-agent" or comment=${rosQuote(`${APP_NAME} agent`)}] } on-error={}
-:if ([:len [/ip firewall filter find where comment=${rosQuote(`${APP_NAME} api`)}]] = 0) do={
-  :do { /ip firewall filter add chain=input in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${hubIp} action=accept comment=${rosQuote(`${APP_NAME} api`)} place-before=0 } on-error={ :log error ${rosQuote(`${APP_NAME}: API firewall rule failed`)} }
-} else={
-  :do { /ip firewall filter set [find where comment=${rosQuote(`${APP_NAME} api`)}] in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${hubIp} action=accept } on-error={}
+export function generateNewRouterEnrollmentScript(opts: RosConnectionOpts) {
+  return renderRosConnectionScript(opts, "enroll");
 }
 
-:do { /ip service set api disabled=no port=${ROS_API_PORT} address=${hubIp}/32 } on-error={ :log error ${rosQuote(`${APP_NAME}: API service failed`)} }
-:do { /ip service set api-ssl disabled=yes } on-error={}
-${apiUserBlock}
-:log info ("${APP_NAME} enrollment initialized router=" . ${rosQuote(opts.routerId || identity)});
-${scheduler}
-`;
+export function generateExistingRouterRepairScript(opts: RosConnectionOpts) {
+  return renderRosConnectionScript(opts, "repair");
+}
+
+export function generateWireGuardRotationScript(opts: RosConnectionOpts) {
+  return renderRosConnectionScript(opts, "wireguard-rotate");
+}
+
+export function generateApiCredentialRotationScript(opts: RosConnectionOpts) {
+  return renderRosConnectionScript(opts, "api-rotate");
+}
+
+export function generateAgentScript(opts: RosConnectionOpts) {
+  return renderRosConnectionScript(opts, "agent");
+}
+
+export function enrollRosScript(opts: RosConnectionOpts) {
+  return generateNewRouterEnrollmentScript(opts);
 }
 
 export function apiUserEnsureRos(opts: { user?: string; password: string; wgAddress?: string }) {

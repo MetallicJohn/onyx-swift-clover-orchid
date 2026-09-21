@@ -4,7 +4,7 @@ import { logEvent } from "./obs.ts";
 import { attr, routerosApiCommand } from "./routeros-api.ts";
 import { compositeEnrollState, recordEnrollState, type EnrollState } from "./router-enroll-state.ts";
 import { open } from "./secrets.ts";
-import { findDumpPeer, handshakeFresh, parseWgDump, type WgDumpPeer } from "./wg-host.ts";
+import { findDumpPeer, handshakeLive, parseWgDump, removeHostPeer, type WgDumpPeer } from "./wg-host.ts";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -25,6 +25,8 @@ export type RouterHealthRow = {
   agent_last_ok_at: string | null;
   wg_rx_bytes: number;
   wg_tx_bytes: number;
+  wg_public_previous?: string;
+  api_password_previous?: string;
 };
 
 export function signalFresh(iso: string | null | undefined, now = Date.now(), maxAgeMs = 180_000) {
@@ -34,14 +36,20 @@ export function signalFresh(iso: string | null | undefined, now = Date.now(), ma
 }
 
 export function applyDumpToHealth(row: RouterHealthRow, dump: WgDumpPeer[], now = Date.now()) {
-  const peer = findDumpPeer(dump, row.wg_public);
-  const handshake = Boolean(peer && handshakeFresh(peer.lastHandshakeUnix, now));
+  const current = findDumpPeer(dump, row.wg_public);
+  const previous = row.wg_public_previous ? findDumpPeer(dump, row.wg_public_previous) : null;
+  const currentLive = handshakeLive(current, now);
+  const previousLive = handshakeLive(previous, now);
+  const peer = currentLive ? current : previousLive ? previous : current || previous;
+  const overlayHost = row.wg_address.replace(/\/\d+$/, "");
   return {
-    handshake,
+    handshake: currentLive || previousLive,
+    handshakeCurrent: currentLive,
+    handshakePrevious: previousLive,
     lastHandshakeAt: peer?.lastHandshakeAt || null,
     rx: peer?.rxBytes || 0,
     tx: peer?.txBytes || 0,
-    overlayMatch: peer ? peer.allowedIps.includes(row.wg_address.replace(/\/\d+$/, "")) : false,
+    overlayMatch: peer ? peer.allowedIps.includes(overlayHost) : false,
   };
 }
 
@@ -63,6 +71,11 @@ export async function persistHandshake(
     tx_bytes = ${applied.tx},
     status = ${applied.handshake ? "connected" : "pending"}
     where tenant_id = ${row.tenant_id} and router_id = ${row.id}`;
+  if (applied.handshakeCurrent && row.wg_public_previous) {
+    await removeHostPeer(row.wg_public_previous).catch(() => null);
+    await sql`update routers set wg_public_previous = '', wg_private_ref_previous = ''
+      where id = ${row.id} and tenant_id = ${row.tenant_id}`;
+  }
   if (applied.handshake) {
     await recordEnrollState(sql, {
       tenantId: row.tenant_id,
@@ -76,36 +89,62 @@ export async function persistHandshake(
   return applied;
 }
 
-export async function verifyRouterApi(sql: Sql, row: RouterHealthRow) {
+export async function verifyRouterApi(
+  sql: Sql,
+  row: RouterHealthRow,
+  opts?: { timeoutMs?: number; retirePrevious?: boolean },
+) {
   const host = (row.wg_address || "").replace(/\/\d+$/, "");
   const user = row.api_user || "ispsolutions-agent";
-  const password = open(row.api_password);
+  const current = open(row.api_password);
+  const previous = open(row.api_password_previous || "");
   const started = Date.now();
-  try {
-    if (!host || !password) throw new Error("API credentials or overlay missing");
+  const timeoutMs = opts?.timeoutMs;
+  async function attempt(password: string) {
     const identity = await routerosApiCommand(
-      { host, user, password, port: row.api_port || 8728 },
+      { host, user, password, port: row.api_port || 8728, timeoutMs },
       ["/system/identity/print"],
     );
     const resource = await routerosApiCommand(
-      { host, user, password, port: row.api_port || 8728 },
+      { host, user, password, port: row.api_port || 8728, timeoutMs },
       ["/system/resource/print"],
     );
-    const name = attr(identity, "name");
-    const version = attr(resource, "version");
-    const board = attr(resource, "board-name") || attr(resource, "architecture-name");
+    const board = await routerosApiCommand(
+      { host, user, password, port: row.api_port || 8728, timeoutMs },
+      ["/system/routerboard/print"],
+    ).catch(() => null);
+    return {
+      identity: attr(identity, "name"),
+      version: attr(resource, "version"),
+      board: attr(resource, "board-name") || attr(resource, "architecture-name") || (board ? attr(board, "model") : ""),
+    };
+  }
+  try {
+    if (!host || !current) throw new Error("API credentials or overlay missing");
+    let usedPrevious = false;
+    let result: { identity: string; version: string; board: string };
+    try {
+      result = await attempt(current);
+    } catch (err) {
+      if (!previous || previous === current) throw err;
+      result = await attempt(previous);
+      usedPrevious = true;
+    }
     await sql`update routers set
       api_verified_at = now(),
       last_api_check_at = now(),
       api_last_error = '',
-      ros_version = case when ${version} = '' then ros_version else ${version} end,
-      board_name = case when ${board} = '' then board_name else ${board} end
+      ros_version = case when ${result.version} = '' then ros_version else ${result.version} end,
+      board_name = case when ${result.board} = '' then board_name else ${result.board} end
       where id = ${row.id}`;
+    if (!usedPrevious && opts?.retirePrevious !== false && row.api_password_previous) {
+      await sql`update routers set api_password_previous = '' where id = ${row.id} and tenant_id = ${row.tenant_id}`;
+    }
     await recordEnrollState(sql, {
       tenantId: row.tenant_id,
       routerId: row.id,
       state: "API_VERIFIED",
-      detail: { identity: name, version },
+      detail: { identity: result.identity, version: result.version },
     });
     metricIncr("router_api_success");
     logEvent("info", "router.api.verified", {
@@ -115,7 +154,7 @@ export async function verifyRouterApi(sql: Sql, row: RouterHealthRow) {
       result: "ok",
       category: "mikrotik",
     });
-    return { ok: true, identity: name, version, board };
+    return { ok: true, identity: result.identity, version: result.version, board: result.board, error: "" };
   } catch (err) {
     const message = err instanceof Error ? err.message : "API failed";
     await sql`update routers set last_api_check_at = now(), api_last_error = ${message.slice(0, 400)}
@@ -129,7 +168,7 @@ export async function verifyRouterApi(sql: Sql, row: RouterHealthRow) {
       error: message.slice(0, 200),
       category: "mikrotik",
     });
-    return { ok: false, error: message };
+    return { ok: false, error: message, identity: "", version: "", board: "" };
   }
 }
 

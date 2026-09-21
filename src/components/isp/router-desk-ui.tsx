@@ -218,10 +218,10 @@ export function RouterOverflowMenu({
         {perms.canManage ? <DropdownMenuItem onSelect={() => actions.onEdit(r)}>Edit router</DropdownMenuItem> : null}
         {perms.canManage ? <DropdownMenuItem onSelect={() => actions.onTest(r)}>Test connection</DropdownMenuItem> : null}
         {perms.canManage && actions.onCopyBootstrap ? (
-          <DropdownMenuItem onSelect={() => actions.onCopyBootstrap?.(r)}>Copy bootstrap script</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => actions.onCopyBootstrap?.(r)}>Generate bootstrap</DropdownMenuItem>
         ) : null}
         {perms.canManage && actions.onCopyEnroll ? (
-          <DropdownMenuItem onSelect={() => actions.onCopyEnroll?.(r)}>Copy enroll script</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => actions.onCopyEnroll?.(r)}>Generate Enrollment Script</DropdownMenuItem>
         ) : null}
         {perms.canManage ? <DropdownMenuItem onSelect={() => actions.onSync(r)}>Synchronize</DropdownMenuItem> : null}
         <DropdownMenuItem onSelect={() => actions.onPools(r)}>View IP pools</DropdownMenuItem>

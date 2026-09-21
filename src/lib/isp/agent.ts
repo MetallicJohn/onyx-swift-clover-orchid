@@ -2,7 +2,7 @@ import { ROS_API_USER } from "../brand.ts";
 import { nid } from "../utils.ts";
 import { initialCommandStatus } from "./command-policy";
 import { ensureOpsSchema } from "./ops-schema";
-import { enrollRosScript, rosOverlayUserName } from "./routeros";
+import { generateNewRouterEnrollmentScript, rosOverlayUserName, type RosConnectionOpts } from "./routeros";
 import { generateWireGuardKeypair } from "./wireguard";
 
 type Sql = {
@@ -20,9 +20,11 @@ function overlayLastOctet(address: string) {
   return Number.isInteger(last) ? last : 0;
 }
 
-export async function nextWgAddress(sql: Sql, tenantId: string) {
+/** Unique overlay in 10.200.0.2–254. Never 10.200.0.1. Never reuse a live router's address. */
+export async function nextWgAddress(sql: Sql, _tenantId: string) {
   const rows = await sql<{ wg_address: string }>`
-    select wg_address from routers where tenant_id = ${tenantId} and wg_address <> ''`;
+    select wg_address from routers
+    where coalesce(wg_address,'') <> '' and archived_at is null`;
   const used = new Set(rows.map((r) => overlayLastOctet(r.wg_address)));
   used.add(1);
   for (let i = 2; i <= 254; i += 1) {
@@ -130,21 +132,6 @@ export function agentPullUrl(base: string, token: string) {
   return `${root}/api/agent/script/${encodeURIComponent(token)}`;
 }
 
-export function agentScript(opts: {
-  name: string;
-  identity: string;
-  token: string;
-  wgPublic: string;
-  wgAddress: string;
-  pullUrl?: string;
-  wgPrivate?: string;
-  serverPublic?: string;
-  endpointHost?: string;
-  endpointPort?: number;
-  serverAddress?: string;
-  apiUser?: string;
-  apiPassword?: string;
-  routerId?: string;
-}) {
-  return enrollRosScript(opts);
+export function agentScript(opts: RosConnectionOpts) {
+  return generateNewRouterEnrollmentScript(opts);
 }

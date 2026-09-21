@@ -186,6 +186,10 @@ async function readTenantHub(sql: Sql, tenantId: string): Promise<TenantHubRow |
   return row ?? null;
 }
 
+export function wireguardServerPublicKey(tenantPublic: string, env: NodeJS.ProcessEnv = process.env) {
+  return (env.WIREGUARD_SERVER_PUBLIC_KEY || "").trim() || tenantPublic;
+}
+
 export async function ensureTenantHub(sql: Sql, tenantId: string): Promise<WgHubPublic> {
   let row = await readTenantHub(sql, tenantId);
   if (!row) throw new Error("ISP not found");
@@ -205,7 +209,7 @@ export async function ensureTenantHub(sql: Sql, tenantId: string): Promise<WgHub
     if (!row) throw new Error("ISP not found");
   }
   return {
-    publicKey: row.wg_public,
+    publicKey: wireguardServerPublicKey(row.wg_public),
     address: row.wg_address || DEFAULT_HUB_ADDRESS,
     network: row.wg_network || DEFAULT_HUB_NETWORK,
     listenPort: Number(row.wg_listen_port) || publicWgPort(),
@@ -242,7 +246,13 @@ export async function rotateTenantHub(sql: Sql, tenantId: string) {
 export async function syncRouterWgPeer(
   sql: Sql,
   tenantId: string,
-  router: { id: string; wg_public: string; wg_private_ref?: string; wg_address: string },
+  router: {
+    id: string;
+    wg_public: string;
+    wg_private_ref?: string;
+    wg_address: string;
+    wg_public_previous?: string;
+  },
 ) {
   if (!router.wg_public) return;
   const address = router.wg_address.includes("/") ? router.wg_address : `${router.wg_address}/32`;
@@ -265,20 +275,32 @@ export async function syncRouterWgPeer(
       )`;
   }
   await applyHostPeer({ publicKey: router.wg_public, address });
+  if (router.wg_public_previous && router.wg_public_previous !== router.wg_public) {
+    await applyHostPeer({ publicKey: router.wg_public_previous, address });
+  }
   await persistWantedHubPeersFromSql(sql).catch(() => 0);
 }
 
 export async function loadHubPeers(sql: Sql, tenantId: string): Promise<WgPeerConfig[]> {
-  const rows = await sql<{ name: string; public_key: string; wg_address: string }>`
-    select r.name, r.wg_public as public_key, r.wg_address
+  const rows = await sql<{
+    name: string;
+    public_key: string;
+    previous_key: string;
+    wg_address: string;
+  }>`
+    select r.name, r.wg_public as public_key, coalesce(r.wg_public_previous,'') as previous_key, r.wg_address
     from routers r
     where r.tenant_id = ${tenantId} and r.wg_public <> ''
     order by r.name`;
-  return rows.map((r) => ({
-    name: r.name,
-    publicKey: r.public_key,
-    address: r.wg_address.includes("/") ? r.wg_address : `${r.wg_address}/32`,
-  }));
+  const peers: WgPeerConfig[] = [];
+  for (const r of rows) {
+    const address = r.wg_address.includes("/") ? r.wg_address : `${r.wg_address}/32`;
+    peers.push({ name: r.name, publicKey: r.public_key, address });
+    if (r.previous_key && r.previous_key !== r.public_key) {
+      peers.push({ name: `${r.name} previous`, publicKey: r.previous_key, address });
+    }
+  }
+  return peers;
 }
 
 export async function renderServerConfig(sql: Sql, tenantId: string) {
@@ -321,6 +343,7 @@ export async function wgEnrollContext(
     wg_address: string;
     id?: string;
     pullUrl?: string;
+    wg_public_previous?: string;
   },
 ) {
   const hub = await ensureTenantHub(sql, tenantId);
@@ -330,6 +353,7 @@ export async function wgEnrollContext(
       wg_public: router.wg_public,
       wg_private_ref: router.wg_private_ref,
       wg_address: router.wg_address,
+      wg_public_previous: router.wg_public_previous,
     });
   }
   return {

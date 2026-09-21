@@ -15,6 +15,21 @@ export const ENROLL_STATES = [
 
 export type EnrollState = (typeof ENROLL_STATES)[number];
 
+export const CONNECTION_STATUS_LABELS = [
+  "Pending",
+  "Provisioning",
+  "Waiting for connection",
+  "WireGuard connected",
+  "API connected",
+  "Agent connected",
+  "Online",
+  "Degraded",
+  "Offline",
+  "Revoked",
+] as const;
+
+export type ConnectionStatusLabel = (typeof CONNECTION_STATUS_LABELS)[number];
+
 const RANK: Record<EnrollState, number> = {
   PENDING: 0,
   BOOTSTRAP_GENERATED: 1,
@@ -106,4 +121,32 @@ export function healthLabel(state: EnrollState) {
   if (state === "REVOKED") return "REVOKED";
   if (state === "PENDING" || state === "BOOTSTRAP_GENERATED") return "PENDING";
   return "OFFLINE";
+}
+
+/** Staff-facing connection status. Script generation never yields Online. */
+export function connectionStatusLabel(state: EnrollState | string | null | undefined): ConnectionStatusLabel {
+  const parsed = parseEnrollState(state);
+  switch (parsed) {
+    case "PENDING":
+      return "Pending";
+    case "BOOTSTRAP_GENERATED":
+      return "Provisioning";
+    case "BOOTSTRAP_EXECUTED":
+    case "WIREGUARD_CONFIGURED":
+      return "Waiting for connection";
+    case "WIREGUARD_CONNECTED":
+      return "WireGuard connected";
+    case "API_VERIFIED":
+      return "API connected";
+    case "AGENT_CONNECTED":
+      return "Agent connected";
+    case "ENROLLED":
+      return "Online";
+    case "DEGRADED":
+      return "Degraded";
+    case "REVOKED":
+      return "Revoked";
+    default:
+      return "Offline";
+  }
 }

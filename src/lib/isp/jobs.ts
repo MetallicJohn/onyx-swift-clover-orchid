@@ -256,9 +256,11 @@ export async function executeJob(sql: Sql, job: JobRow) {
       tenant_id: string;
       enroll_state: string;
       wg_public: string;
+      wg_public_previous: string;
       wg_address: string;
       api_user: string;
       api_password: string;
+      api_password_previous: string;
       api_port: number;
       last_seen: string | null;
       last_handshake_at: string | null;
@@ -268,7 +270,9 @@ export async function executeJob(sql: Sql, job: JobRow) {
       wg_tx_bytes: number;
     }>(
       `select id, tenant_id, coalesce(enroll_state,'PENDING') as enroll_state, coalesce(wg_public,'') as wg_public,
+              coalesce(wg_public_previous,'') as wg_public_previous,
               coalesce(wg_address,'') as wg_address, coalesce(api_user,'') as api_user, coalesce(api_password,'') as api_password,
+              coalesce(api_password_previous,'') as api_password_previous,
               coalesce(api_port,8728) as api_port, last_seen::text as last_seen, last_handshake_at::text as last_handshake_at,
               api_verified_at::text as api_verified_at, agent_last_ok_at::text as agent_last_ok_at,
               coalesce(wg_rx_bytes,0)::bigint as wg_rx_bytes, coalesce(wg_tx_bytes,0)::bigint as wg_tx_bytes

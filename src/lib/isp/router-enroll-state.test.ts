@@ -4,6 +4,7 @@ import { enrollRosScript } from "./routeros.ts";
 import {
   canTransition,
   compositeEnrollState,
+  connectionStatusLabel,
   healthLabel,
   parseEnrollState,
 } from "./router-enroll-state.ts";
@@ -28,6 +29,9 @@ test("enrollment state machine does not skip to ENROLLED", () => {
   );
   assert.equal(healthLabel("ENROLLED"), "ONLINE");
   assert.equal(healthLabel("REVOKED"), "REVOKED");
+  assert.equal(connectionStatusLabel("ENROLLED"), "Online");
+  assert.equal(connectionStatusLabel("DEGRADED"), "Degraded");
+  assert.equal(connectionStatusLabel("BOOTSTRAP_GENERATED"), "Provisioning");
 });
 
 test("wg dump handshake requires bytes and a fresh timestamp", () => {

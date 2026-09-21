@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { primaryScript, scriptSections } from "./ros-script-pack.ts";
+import { primaryScript, rscFilename, scriptSections } from "./ros-script-pack.ts";
 
 test("script dialog exposes copy targets for bootstrap, enroll, API user, and sync", () => {
   const both = scriptSections({
@@ -21,6 +21,14 @@ test("script dialog exposes copy targets for bootstrap, enroll, API user, and sy
   const api = scriptSections({ extraLabel: "API user", extra: "/user add name=ispsolutions-agent" });
   assert.equal(api[0]?.label, "API user");
   assert.match(api[0]?.body || "", /ispsolutions-agent/);
+
+  const enrollFirst = scriptSections({
+    kind: "enroll",
+    bootstrap: "# b",
+    enroll: "# e",
+  });
+  assert.equal(enrollFirst[0]?.label, "Enroll");
+  assert.equal(rscFilename({ routerId: "rtr_x", kind: "repair" }), "ispsolutions-rtr_x-repair.rsc");
 
   assert.deepEqual(scriptSections(null), []);
   assert.equal(primaryScript({ bootstrap: "   " }), null);

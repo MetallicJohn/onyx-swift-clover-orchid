@@ -260,6 +260,10 @@ test("RBAC: technicians cannot manage routers or IP pools; support can read", ()
   assert.match(server, /export const getRouterDeskFn[\s\S]+?assertPermission\(role, "routers.read"\)/);
   assert.match(server, /export const createRouterPoolFn[\s\S]+?assertPermission\(role, "routers.manage"\)/);
   assert.match(server, /export const copyRouterApiUser[\s\S]+?assertPermission\(role, "routers.manage"\)/);
+  assert.match(server, /export const repairRouterConnectionFn[\s\S]+?assertPermission\(role, "routers.manage"\)/);
+  assert.match(server, /export const rotateRouterWireGuardFn[\s\S]+?assertPermission\(role, "routers.manage"\)/);
+  assert.match(server, /export const rotateRouterApiFn[\s\S]+?assertPermission\(role, "routers.manage"\)/);
+  assert.match(server, /export const regenerateRouterAgentFn[\s\S]+?assertPermission\(role, "routers.manage"\)/);
   assert.match(server, /export const updateRouterPoolFn[\s\S]+?assertPermission\(role, "routers.manage"\)/);
   assert.match(server, /export const archiveRouterPoolFn[\s\S]+?assertPermission\(role, "routers.manage"\)/);
 });
@@ -277,6 +281,12 @@ test("list page does not load details, pools, or monitoring", () => {
   assert.match(detail, /Show monitoring/);
   assert.match(detail, /Hide monitoring/);
   assert.match(detail, /createFileRoute\("\/app\/routers\/\$routerId"\)/);
+  assert.match(detail, /Repair Connection/);
+  assert.match(detail, /Rotate WireGuard/);
+  assert.match(detail, /Rotate API Credentials/);
+  assert.match(detail, /Regenerate Agent/);
+  assert.match(detail, /Test Connection/);
+  assert.match(detail, /Generate Enrollment Script/);
 });
 
 test("setPoolEnabled toggles without deleting assignments", async () => {

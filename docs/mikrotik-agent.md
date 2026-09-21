@@ -9,7 +9,9 @@ Protocol (token = enroll_token):
 
 Command statuses: `proposed → queued → sent → acked|failed`. Service upserts auto-queue. `raw.script` and reboot start as **proposed** and need Approve before the agent can pull them.
 
-Agent scripts are RouterOS v7 (`:local`, `:if`, `find where`). HTTPS fetches use `check-certificate=no` so boxes without a CA store can still pull. The trusted channel is WireGuard, not the MikroTik certificate store. RouterOS API is TCP 8728 on the overlay (`ispsolutions-agent`), never API-SSL, never WAN.
+Agent scripts are RouterOS v7. HTTPS fetches use `check-certificate=no` so boxes without a CA store can still pull. The trusted channel is WireGuard, not the MikroTik certificate store. RouterOS API is TCP 8728 on the overlay, never API-SSL, never WAN.
+
+A `/tool fetch` result of `status=finished` with a non-empty file is success. Never report `HTTPS fetch failed` after `Download … FINISHED`.
 
 ## Bootstrap provisioning
 
@@ -18,12 +20,19 @@ First install uses a **provisioning token** (`prv_…`), not the enroll token:
 1. Admin adds the router (or clicks Generate bootstrap).
 2. Paste the short script in New Terminal. It pings 1.1.1.1 / 8.8.8.8, then:
    `GET /api/vpn/routers/{token}/bootstrap.rsc`
-3. The file is generated from templates (WireGuard overlay + API user `ispsolutions` + agent scheduler + assigned IP pools) and validated before release.
+3. The file is generated from templates (WireGuard overlay + overlay API user + agent scheduler + assigned IP pools) and validated before release.
 4. Tokens are SHA-256 hashed at rest, expire (default 72 hours), and can be revoked.
 
-The enroll token remains the agent pull credential. `wg_status=connected` is set only after heartbeat or pull.
+The enroll token remains the agent pull credential. Status becomes Online only after WireGuard handshake, API verification, and agent evidence.
 
-If the public CA is missing on RouterOS, install it — do not disable certificate checks.
+## Connection flow
+
+```
+CREATE ROUTER → ALLOCATE 10.200.x.x/32 → KEYS → HUB PEER → SCRIPT
+  → PASTE ON MIKROTIK → HANDSHAKE → API 8728 → AGENT PULL → ONLINE
+```
+
+Repair reconcilies WireGuard, overlay IP, API, firewall, user, and agent without rotating keys.
 
 Bandwidth is **PCQ per package**, not a simple queue per customer:
 

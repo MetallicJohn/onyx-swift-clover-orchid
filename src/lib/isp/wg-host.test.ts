@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { generateWireGuardKeypair } from "./wireguard.ts";
-import { applyHostPeer, parseWgDump, writeWantedHubPeers } from "./wg-host.ts";
+import { applyHostPeer, handshakeLive, parseWgDump, writeWantedHubPeers } from "./wg-host.ts";
 
 test("applyHostPeer rejects a non-key and does not throw when wg is missing", async () => {
   assert.deepEqual(await applyHostPeer({ publicKey: "nope", address: "10.200.0.2/32" }), { ok: false, reason: "invalid" });
@@ -42,4 +42,6 @@ test("wg dump parser skips the interface line", () => {
   assert.equal(peers.length, 1);
   assert.equal(peers[0]?.publicKey, keys.publicKey);
   assert.equal(peers[0]?.rxBytes, 100);
+  assert.equal(handshakeLive(peers[0], 1_700_000_000_000), true);
+  assert.equal(handshakeLive({ ...peers[0]!, rxBytes: 0 }, 1_700_000_000_000), false);
 });

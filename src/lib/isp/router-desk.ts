@@ -698,29 +698,6 @@ export async function archiveRouter(
 }
 
 export async function testRouterConnection(sql: Sql, tenantId: string, routerId: string) {
-  const [row] = await sql.query<{
-    id: string;
-    name: string;
-    wg_status: string;
-    last_seen: string | null;
-    provisioning_status: string;
-    enabled: boolean;
-  }>(
-    `select id, name, wg_status, last_seen::text as last_seen,
-            coalesce(provisioning_status,'pending') as provisioning_status,
-            coalesce(enabled, true) as enabled
-     from routers where id = $1 and tenant_id = $2`,
-    [routerId, tenantId],
-  );
-  if (!row) throw new Error("Router not found");
-  const { reachability, online } = publicOnlineStatus(row.last_seen, row.enabled === false ? "offline" : row.wg_status);
-  return {
-    id: row.id,
-    name: row.name,
-    online: row.enabled !== false && online,
-    reachability: row.enabled === false ? "disabled" : reachability,
-    last_seen: row.last_seen,
-    provisioning_status: row.provisioning_status,
-    source: row.last_seen ? "agent_heartbeat" : "none",
-  };
+  const { probeRouterConnection } = await import("./router-connection.ts");
+  return probeRouterConnection(sql, tenantId, routerId);
 }
