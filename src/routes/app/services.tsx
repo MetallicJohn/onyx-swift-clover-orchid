@@ -17,6 +17,7 @@ import {
 } from "@/components/isp/service-desk-ui";
 import { TrafficDrawer } from "@/components/isp/traffic-drawer";
 import { OnboardWizard } from "@/components/isp/onboard-wizard";
+import { PppoeCredentialFields } from "@/components/isp/pppoe-credential-fields";
 import { ReassignServiceDialog } from "@/components/isp/reassign-service-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -34,6 +35,8 @@ import {
   setServiceStatus,
 } from "@/lib/isp/server";
 import { deleteServiceFn, getServiceFn, reassignServiceFn, updateServiceFn } from "@/lib/isp/server-lifecycle";
+import { suggestPppoeCredentialsFn } from "@/lib/isp/server-onboard";
+import { generatePppoePassword } from "@/lib/isp/pppoe-format";
 import { broadcastCustomersFn } from "@/lib/isp/server-tags";
 import { reassignInfoFromRow } from "@/lib/isp/reassign-format";
 import {
@@ -183,7 +186,8 @@ function ServicesPage() {
   const [pkgFor, setPkgFor] = useState<ServiceDeskRow | null>(null);
   const [pkgId, setPkgId] = useState("");
   const [editFor, setEditFor] = useState<ServiceDeskRow | null>(null);
-  const [edit, setEdit] = useState({ username: "", static_ip: "", mac_address: "", notes: "" });
+  const [edit, setEdit] = useState({ username: "", password: "", static_ip: "", mac_address: "", notes: "" });
+  const [editPassLoaded, setEditPassLoaded] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState<"sms" | "package" | "grace" | null>(null);
   const [bulkPkg, setBulkPkg] = useState("");
@@ -323,8 +327,17 @@ function ServicesPage() {
     onPreview: setPreviewFor,
     onEdit: (s) => {
       setEditFor(s);
-      setEdit({ username: s.username || "", static_ip: s.static_ip || "", mac_address: s.mac_address, notes: s.notes });
+      setEdit({ username: s.username || "", password: "", static_ip: s.static_ip || "", mac_address: s.mac_address, notes: s.notes });
+      setEditPassLoaded("");
       setPreviewFor(null);
+      if (s.access_method === "pppoe") {
+        void revealPppoePasswordFn({ data: { id: s.id } })
+          .then((r) => {
+            setEdit((prev) => ({ ...prev, username: r.username || prev.username, password: r.password }));
+            setEditPassLoaded(r.password);
+          })
+          .catch(() => undefined);
+      }
     },
     onPackage: (s) => {
       setPkgFor(s);
@@ -974,6 +987,12 @@ function ServicesPage() {
                   data: {
                     id: editFor.id,
                     username: edit.username,
+                    password:
+                      editFor.access_method === "pppoe" && edit.password
+                        ? edit.password !== editPassLoaded || edit.username !== (editFor.username || "")
+                          ? edit.password
+                          : undefined
+                        : undefined,
                     static_ip: edit.static_ip,
                     mac_address: edit.mac_address,
                     notes: edit.notes,
@@ -989,9 +1008,32 @@ function ServicesPage() {
               }
             }}
           >
-            <Field label="Username">
-              <Input value={edit.username} onChange={(e) => setEdit({ ...edit, username: e.target.value })} />
-            </Field>
+            {editFor.access_method === "pppoe" ? (
+              <PppoeCredentialFields
+                username={edit.username}
+                password={edit.password}
+                busy={busy}
+                onUsername={(username) => setEdit({ ...edit, username })}
+                onPassword={(password) => setEdit({ ...edit, password })}
+                onRegenUsername={() => {
+                  void suggestPppoeCredentialsFn({
+                    data: {
+                      customer_id: editFor.customer_id,
+                      name: editFor.customer_name,
+                      except_service_id: editFor.id,
+                      skip_username: edit.username,
+                    },
+                  })
+                    .then((r) => setEdit((prev) => ({ ...prev, username: r.username })))
+                    .catch(() => setEdit((prev) => ({ ...prev, username: prev.username })));
+                }}
+                onRegenPassword={() => setEdit({ ...edit, password: generatePppoePassword() })}
+              />
+            ) : (
+              <Field label="Username">
+                <Input value={edit.username} onChange={(e) => setEdit({ ...edit, username: e.target.value })} />
+              </Field>
+            )}
             <Field label="Static IP">
               <Input value={edit.static_ip} onChange={(e) => setEdit({ ...edit, static_ip: e.target.value })} />
             </Field>

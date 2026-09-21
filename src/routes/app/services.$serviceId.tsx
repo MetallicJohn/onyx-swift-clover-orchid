@@ -6,6 +6,7 @@ import { PartialPaymentPanel } from "@/components/isp/partial-payment-panel";
 import { BusinessCreditPanel } from "@/components/isp/business-credit-panel";
 import { TrafficDrawer } from "@/components/isp/traffic-drawer";
 import { ReassignServiceDialog } from "@/components/isp/reassign-service-dialog";
+import { PppoeCredentialFields } from "@/components/isp/pppoe-credential-fields";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -14,9 +15,11 @@ import { accessMethodLabel, formatBytes, formatDate, formatDateTime, formatMac, 
 import { hasPermission } from "@/lib/isp/rbac";
 import { extendGraceFn, grantGraceFn, revokeGraceFn } from "@/lib/isp/server-grace";
 import { setServiceExpiryFn } from "@/lib/isp/server-expiry";
-import { disconnectService, rotateServiceSecret, setServiceStatus } from "@/lib/isp/server";
+import { disconnectService, revealPppoePasswordFn, rotateServiceSecret, setServiceStatus } from "@/lib/isp/server";
 import { changeServiceAccountNumberFn, getAccountNumberSettingsFn } from "@/lib/isp/server-account-numbers";
 import { deleteServiceFn, getServiceFn, reassignServiceFn, updateServiceFn } from "@/lib/isp/server-lifecycle";
+import { suggestPppoeCredentialsFn } from "@/lib/isp/server-onboard";
+import { generatePppoePassword } from "@/lib/isp/pppoe-format";
 import { reassignInfoFromRow } from "@/lib/isp/reassign-format";
 import { effectiveAccessIso, expirySourceLabel, openExpiryForm } from "@/lib/isp/service-expiry-format";
 import { onboardingTypeLabel } from "@/lib/isp/onboard-import-format";
@@ -43,11 +46,13 @@ function ServiceRecordPage() {
   const [form, setForm] = useState({
     package_id: "",
     username: "",
+    password: "",
     static_ip: "",
     mac_address: "",
     notes: "",
     account_number: "",
   });
+  const [loadedPassword, setLoadedPassword] = useState("");
   const [allowManualAccount, setAllowManualAccount] = useState(false);
 
   async function load() {
@@ -56,11 +61,13 @@ function ServiceRecordPage() {
     setForm({
       package_id: rec.service.package_id,
       username: rec.service.username || "",
+      password: "",
       static_ip: rec.service.static_ip || "",
       mac_address: rec.service.mac_address || "",
       notes: rec.service.notes || "",
       account_number: rec.service.account_number || "",
     });
+    setLoadedPassword("");
     try {
       const acc = await getAccountNumberSettingsFn();
       setAllowManualAccount(Boolean(acc.allow_manual));
@@ -152,7 +159,23 @@ function ServiceRecordPage() {
             </Button>
           ) : null}
           {canManage ? (
-            <Button variant="secondary" onClick={() => setEditing((v) => !v)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setEditing((v) => {
+                  const next = !v;
+                  if (next && s.access_method === "pppoe") {
+                    void revealPppoePasswordFn({ data: { id: s.id } })
+                      .then((r) => {
+                        setForm((prev) => ({ ...prev, username: r.username || prev.username, password: r.password }));
+                        setLoadedPassword(r.password);
+                      })
+                      .catch(() => undefined);
+                  }
+                  return next;
+                });
+              }}
+            >
               {editing ? "Close editor" : "Edit"}
             </Button>
           ) : null}
@@ -350,6 +373,12 @@ function ServiceRecordPage() {
                   id: s.id,
                   package_id: form.package_id,
                   username: form.username,
+                  password:
+                    s.access_method === "pppoe" && form.password
+                      ? form.password !== loadedPassword || form.username !== (s.username || "")
+                        ? form.password
+                        : undefined
+                      : undefined,
                   static_ip: form.static_ip,
                   mac_address: form.mac_address,
                   notes: form.notes,
@@ -381,9 +410,34 @@ function ServiceRecordPage() {
               Manual editing of service account numbers is turned off.
             </p>
           ) : null}
-          <Field label="Username">
-            <Input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
-          </Field>
+          {s.access_method === "pppoe" ? (
+            <div className="md:col-span-2">
+              <PppoeCredentialFields
+                username={form.username}
+                password={form.password}
+                busy={busy}
+                onUsername={(username) => setForm({ ...form, username })}
+                onPassword={(password) => setForm({ ...form, password })}
+                onRegenUsername={() => {
+                  void suggestPppoeCredentialsFn({
+                    data: {
+                      customer_id: s.customer_id,
+                      name: s.customer_name,
+                      except_service_id: s.id,
+                      skip_username: form.username,
+                    },
+                  })
+                    .then((r) => setForm((prev) => ({ ...prev, username: r.username })))
+                    .catch(() => undefined);
+                }}
+                onRegenPassword={() => setForm({ ...form, password: generatePppoePassword() })}
+              />
+            </div>
+          ) : (
+            <Field label="Username">
+              <Input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+            </Field>
+          )}
           <Field label="Static IP">
             <Input value={form.static_ip} onChange={(e) => setForm({ ...form, static_ip: e.target.value })} />
           </Field>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TagPicker } from "@/components/isp/tag-picker";
 import { CustomerIdSetupForm } from "@/components/isp/customer-id-setup-dialog";
+import { PppoeCredentialFields } from "@/components/isp/pppoe-credential-fields";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
@@ -37,8 +38,10 @@ import {
   findOnboardDuplicatesFn,
   loadOnboardCatalogFn,
   searchOnboardCustomersFn,
+  suggestPppoeCredentialsFn,
 } from "@/lib/isp/server-onboard";
 import type { DuplicateMatch } from "@/lib/isp/onboard";
+import { generatePppoePassword, pppoeUsernameFromName } from "@/lib/isp/pppoe-format";
 import { kesPercent, previewPartial, validityLabel } from "@/lib/isp/partial-payment-format";
 import type { AccessMethod, PackageRow } from "@/lib/isp/types";
 import { cn, kes } from "@/lib/utils";
@@ -188,6 +191,9 @@ export function OnboardWizard({
   const [result, setResult] = useState<OnboardCreated | null>(null);
   const submitLock = useRef(false);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const usernameDirty = useRef(false);
+  const passwordDirty = useRef(false);
+  const credSeq = useRef(0);
 
   const canCustomer = catalog?.canCreateCustomer ?? mode === "customer";
   const canService = catalog?.canCreateService ?? true;
@@ -209,6 +215,8 @@ export function OnboardWizard({
     setService(EMPTY_SERVICE);
     setExpiryDirty(false);
     setNameDirty(false);
+    usernameDirty.current = false;
+    passwordDirty.current = false;
     setQuery("");
     setHits([]);
     setDupes([]);
@@ -219,13 +227,17 @@ export function OnboardWizard({
     loadOnboardCatalogFn()
       .then((res) => {
         setCatalog(res);
+        const name = (lockedCustomer?.name || "").trim();
         setService((s) => {
-          if (s.package_id && res.packages.some((p) => p.id === s.package_id)) return s;
           const first =
-            res.packages.find((p) => p.access_method === s.access_method) || res.packages[0];
-          if (!first) return s;
+            (s.package_id && res.packages.find((p) => p.id === s.package_id)) ||
+            res.packages.find((p) => p.access_method === s.access_method) ||
+            res.packages[0];
+          if (!first) {
+            return s.access_method === "pppoe" ? stripIncompatibleFields({ ...s, ...seedPppoe(name, s) }) : s;
+          }
           const activation = defaultActivation(first.price_kes);
-          return stripIncompatibleFields({
+          const next = stripIncompatibleFields({
             ...s,
             access_method: first.access_method,
             package_id: first.id,
@@ -234,8 +246,11 @@ export function OnboardWizard({
             expiry_ymd: s.expiry_ymd || defaultExpiryYmd(first, activation),
             pool_id: s.pool_id || res.pools[0]?.id || "",
           });
+          if (next.access_method === "pppoe") return stripIncompatibleFields({ ...next, ...seedPppoe(name, next) });
+          return next;
         });
         if (lockedCustomer && mode === "service") setStep("plan");
+        if (name) void uniquePppoeUsername(name);
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Could not load"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -267,12 +282,68 @@ export function OnboardWizard({
     setService((prev) => stripIncompatibleFields({ ...prev, ...patch }));
   }
 
+  function customerName(nextSelected?: OnboardLockedCustomer | null, nextCustomer?: OnboardCustomerDraft) {
+    return (nextSelected?.name || nextCustomer?.name || selected?.name || customer.name || "").trim();
+  }
+
+  function seedPppoe(name: string, prev: OnboardServiceDraft): Partial<OnboardServiceDraft> {
+    const patch: Partial<OnboardServiceDraft> = {};
+    if (!usernameDirty.current) {
+      const generated = pppoeUsernameFromName(name);
+      if (generated) {
+        patch.username = generated;
+        patch.auto_username = true;
+      }
+    }
+    if (!passwordDirty.current) {
+      patch.pppoe_password = prev.pppoe_password || generatePppoePassword();
+    }
+    return patch;
+  }
+
+  async function uniquePppoeUsername(name: string, opts?: { skip?: string; force?: boolean }) {
+    if (!opts?.force && usernameDirty.current) return;
+    const seq = ++credSeq.current;
+    try {
+      const sug = await suggestPppoeCredentialsFn({
+        data: {
+          customer_id: selected?.id,
+          name,
+          skip_username: opts?.skip,
+        },
+      });
+      if (seq !== credSeq.current) return;
+      if (!opts?.force && usernameDirty.current) return;
+      setService((prev) => {
+        if (prev.access_method !== "pppoe") return prev;
+        return stripIncompatibleFields({
+          ...prev,
+          username: sug.username,
+          auto_username: !usernameDirty.current,
+          pppoe_password: passwordDirty.current ? prev.pppoe_password : prev.pppoe_password || sug.password,
+        });
+      });
+    } catch {
+      if (seq !== credSeq.current) return;
+      setService((prev) => {
+        if (prev.access_method !== "pppoe") return prev;
+        return stripIncompatibleFields({ ...prev, ...seedPppoe(name, prev) });
+      });
+    }
+  }
+
   function chooseMethod(method: AccessMethod) {
     const first = packages.find((p) => p.access_method === method);
     const migrating = isMigratingOnboard(service.onboarding_type);
     const activation = migrating ? "active" : first ? defaultActivation(first.price_kes) : "after_payment";
-    setService((prev) =>
-      stripIncompatibleFields({
+    const name = customerName();
+    if (method !== "pppoe") {
+      usernameDirty.current = false;
+      passwordDirty.current = false;
+    }
+    setService((prev) => {
+      const seeded = method === "pppoe" ? seedPppoe(name, prev) : {};
+      return stripIncompatibleFields({
         ...prev,
         access_method: method,
         package_id: first?.id || "",
@@ -283,12 +354,14 @@ export function OnboardWizard({
           : first
             ? defaultExpiryYmd(first, activation)
             : "",
-        username: "",
-        auto_username: true,
+        username: method === "pppoe" ? (seeded.username ?? prev.username) : "",
+        auto_username: method === "pppoe" ? seeded.auto_username ?? true : true,
+        pppoe_password: method === "pppoe" ? (seeded.pppoe_password ?? prev.pppoe_password) : "",
         static_ip: "",
         pool_id: catalog?.pools[0]?.id || "",
-      }),
-    );
+      });
+    });
+    if (method === "pppoe") void uniquePppoeUsername(name);
   }
 
   function choosePackage(pkg: PackageRow) {
@@ -417,6 +490,15 @@ export function OnboardWizard({
         patchService({ expiry_ymd: defaultExpiryYmd(selectedPkg, service.activation) });
       }
       if (!service.activation) patchService({ activation: defaultActivation(selectedPkg.price_kes) });
+      if (service.access_method === "pppoe") {
+        const name = customerName();
+        if (!service.pppoe_password && !passwordDirty.current) {
+          patchService({ pppoe_password: generatePppoePassword() });
+        }
+        if (name && (!service.username || !usernameDirty.current)) {
+          void uniquePppoeUsername(name);
+        }
+      }
       setStep("details");
       return;
     }
@@ -580,6 +662,10 @@ export function OnboardWizard({
                               onClick={() => {
                                 setSelected(h);
                                 setCustomerMode("existing");
+                                if (service.access_method === "pppoe") {
+                                  setService((prev) => stripIncompatibleFields({ ...prev, ...seedPppoe(h.name, prev) }));
+                                  void uniquePppoeUsername(h.name);
+                                }
                               }}
                             >
                               <span className="min-w-0">
@@ -618,7 +704,19 @@ export function OnboardWizard({
               {mode === "customer" && customerMode === "new" ? (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Name">
-                    <Input required value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} autoFocus />
+                    <Input
+                      required
+                      value={customer.name}
+                      onChange={(e) => {
+                        const name = e.target.value;
+                        setCustomer({ ...customer, name });
+                        if (service.access_method === "pppoe" && !usernameDirty.current) {
+                          const generated = pppoeUsernameFromName(name);
+                          if (generated) patchService({ username: generated, auto_username: true });
+                        }
+                      }}
+                      autoFocus
+                    />
                   </Field>
                   <Field label="Type">
                     <Select value={customer.type} onChange={(e) => setCustomer({ ...customer, type: e.target.value })}>
@@ -664,6 +762,10 @@ export function OnboardWizard({
                         setCustomerMode("existing");
                         setDupes([]);
                         setError(null);
+                        if (service.access_method === "pppoe") {
+                          setService((prev) => stripIncompatibleFields({ ...prev, ...seedPppoe(d.name, prev) }));
+                          void uniquePppoeUsername(d.name);
+                        }
                       }}
                     >
                       <span>
@@ -773,24 +875,30 @@ export function OnboardWizard({
                 </Field>
               </div>
               {service.access_method === "pppoe" ? (
-                <div className="grid gap-3">
-                  <label className="flex min-h-11 items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      className="size-4"
-                      checked={service.auto_username}
-                      onChange={(e) => patchService({ auto_username: e.target.checked, username: e.target.checked ? "" : service.username })}
-                    />
-                    Auto-generate PPPoE credentials
-                  </label>
-                  {!service.auto_username ? (
-                    <Field label="PPPoE username">
-                      <Input value={service.username} onChange={(e) => patchService({ username: e.target.value })} />
-                    </Field>
-                  ) : (
-                    <p className="text-xs text-muted">A unique username and password are generated on save. The password is shown once.</p>
-                  )}
-                </div>
+                <PppoeCredentialFields
+                  username={service.username}
+                  password={service.pppoe_password || ""}
+                  busy={busy}
+                  onUsername={(username) => {
+                    usernameDirty.current = true;
+                    patchService({ username, auto_username: false });
+                  }}
+                  onPassword={(pppoe_password) => {
+                    passwordDirty.current = true;
+                    patchService({ pppoe_password });
+                  }}
+                  onRegenUsername={() => {
+                    usernameDirty.current = false;
+                    const name = customerName();
+                    const generated = pppoeUsernameFromName(name);
+                    if (generated) patchService({ username: generated, auto_username: true });
+                    void uniquePppoeUsername(name, { skip: service.username, force: true });
+                  }}
+                  onRegenPassword={() => {
+                    passwordDirty.current = true;
+                    patchService({ pppoe_password: generatePppoePassword() });
+                  }}
+                />
               ) : null}
               {service.access_method === "static" ? (
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -1083,7 +1191,10 @@ export function OnboardWizard({
                   <Row label="Package" value={selectedPkg.name} />
                   <Row label="Price" value={`${kes(selectedPkg.price_kes)} · ${billingPeriodLabel(selectedPkg.billing_interval, selectedPkg.validity_hours)}`} />
                   {service.access_method === "pppoe" ? (
-                    <Row label="PPPoE" value={service.auto_username ? "Auto-generated credentials" : service.username} />
+                    <>
+                      <Row label="PPPoE Username" value={service.username || "Generated on save"} />
+                      <Row label="PPPoE Password" value={service.pppoe_password || "Generated on save"} />
+                    </>
                   ) : null}
                   {service.access_method === "static" ? (
                     <Row
@@ -1210,7 +1321,7 @@ function SuccessPanel({
         ) : null}
       </dl>
       {result.password ? (
-        <p className="text-xs text-muted">Copy the password now. It is not shown again.</p>
+        <p className="text-xs text-muted">These credentials stay visible on the service record for authorised staff.</p>
       ) : null}
       {service.cpe_id && result.provision_overall && result.provision_overall !== "verified" ? (
         <p className="text-xs text-muted">The CPE was attached. Provisioning is {provisionStatusLabel(result.provision_overall).toLowerCase()} — not yet verified.</p>

@@ -123,6 +123,7 @@ export const updateServiceFn = createServerFn({ method: "POST" })
       id: string;
       package_id?: string;
       username?: string | null;
+      password?: string | null;
       static_ip?: string | null;
       mac_address?: string;
       customer_id?: string;
@@ -138,10 +139,17 @@ export const updateServiceFn = createServerFn({ method: "POST" })
       }
     }
     const out = await updateService(sql, tenantId, data);
-    await writeAudit(sql, tenantId, context.userId, "service.updated", "service", data.id, JSON.stringify({
+    const details: Record<string, string> = {
       package_id: data.package_id || "",
       customer_id: data.customer_id || "",
-    }));
+    };
+    if (out.credentials_changed) {
+      await writeAudit(sql, tenantId, context.userId, "service.pppoe.credentials", "service", data.id, JSON.stringify({
+        service_id: data.id,
+        username: data.username || "",
+      }));
+    }
+    await writeAudit(sql, tenantId, context.userId, "service.updated", "service", data.id, JSON.stringify(details));
     return out;
   });
 

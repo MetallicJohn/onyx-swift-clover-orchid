@@ -7,6 +7,7 @@ import { createOnboard, findCustomerDuplicates, loadOnboardCatalog, searchOnboar
 import { confirmCustomerImport, previewCustomerImport } from "./onboard-import";
 import { importTemplateCsv, isImportMode, type ImportColumnKey, type ImportMode } from "./onboard-import-format";
 import { sanitizeCustomer, sanitizePayload, type OnboardPayload } from "./onboard";
+import { allocatePppoeUsername, generatePppoePassword, pppoeUsernameFromName, suggestPppoeUsername } from "./pppoe-credentials";
 import { requireWorkspace } from "./workspace";
 
 export const loadOnboardCatalogFn = createServerFn({ method: "GET" })
@@ -47,6 +48,31 @@ export const findOnboardDuplicatesFn = createServerFn({ method: "POST" })
     assertPermission(role, "customers.manage");
     const matches = await findCustomerDuplicates(sql, tenantId, sanitizeCustomer(data));
     return { matches };
+  });
+
+export const suggestPppoeCredentialsFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { customer_id?: string; name?: string; except_service_id?: string; skip_username?: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWorkspace(context.userId);
+    if (!hasPermission(role, "services.manage") && !hasPermission(role, "customers.manage")) {
+      throw new Error("Forbidden");
+    }
+    let name = String(data.name || "").trim();
+    if (data.customer_id) {
+      const [cus] = await sql<{ name: string }>`
+        select name from customers where id = ${data.customer_id} and tenant_id = ${tenantId} and deleted_at is null`;
+      if (cus?.name) name = cus.name;
+    }
+    const preferred = pppoeUsernameFromName(name) || suggestPppoeUsername({ name, serviceId: data.except_service_id || "new" });
+    const username = await allocatePppoeUsername(
+      sql,
+      tenantId,
+      data.except_service_id || "",
+      preferred,
+      data.skip_username || "",
+    );
+    return { username, password: generatePppoePassword() };
   });
 
 export const createOnboardFn = createServerFn({ method: "POST" })

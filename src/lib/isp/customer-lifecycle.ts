@@ -9,6 +9,8 @@ import {
   REASSIGN_SEARCH_MIN,
   type ReassignCustomerHit,
 } from "./reassign-format.ts";
+import { assertPppoeUsernameAvailable, storeRadiusPassword, validatePppoePassword } from "./pppoe-credentials.ts";
+import { syncRadiusAccount } from "./radius.ts";
 import type { InvoiceRow, PackageRow, PaymentRow, ServiceRow, TicketRow } from "./types.ts";
 import { listTags } from "./tags.ts";
 
@@ -284,6 +286,7 @@ export async function updateService(
     id: string;
     package_id?: string;
     username?: string | null;
+    password?: string | null;
     static_ip?: string | null;
     mac_address?: string;
     customer_id?: string;
@@ -302,10 +305,19 @@ export async function updateService(
     if (!pkg) throw new Error("Package not found");
     packageId = pkg.id;
   }
-  const username = data.username === undefined ? svc.username : data.username?.trim() || null;
+  let username = data.username === undefined ? svc.username : data.username?.trim() || null;
   const staticIp = data.static_ip === undefined ? svc.static_ip : data.static_ip?.trim() || null;
   const mac = data.mac_address === undefined ? svc.mac_address : sanitizeMac(data.mac_address);
   const notes = data.notes === undefined ? svc.notes : data.notes.trim().slice(0, 4000);
+  const suppliedPass = data.password == null ? "" : String(data.password).trim();
+  const credentialsChanged = svc.access_method === "pppoe" && (username !== svc.username || Boolean(suppliedPass));
+  if (svc.access_method === "pppoe" && username && username !== svc.username) {
+    username = await assertPppoeUsernameAvailable(sql, tenantId, username, svc.id);
+  }
+  if (suppliedPass) {
+    const passErr = validatePppoePassword(suppliedPass);
+    if (passErr) throw new Error(passErr);
+  }
   await sql`update services
     set package_id = ${packageId},
         username = ${username},
@@ -314,8 +326,30 @@ export async function updateService(
         notes = ${notes}
     where id = ${data.id} and tenant_id = ${tenantId}`;
   const next = await loadService(sql, tenantId, data.id);
-  if (next) await enqueueServiceCommand(sql, tenantId, next);
-  return { id: data.id };
+  if (next && next.access_method === "pppoe" && (username || suppliedPass)) {
+    const sealed = suppliedPass ? storeRadiusPassword(suppliedPass) : undefined;
+    await syncRadiusAccount(sql, tenantId, {
+      ...next,
+      username,
+      password: sealed,
+    });
+    if (suppliedPass) {
+      await enqueueAgentCommand(sql, tenantId, "pppoe.upsert", {
+        service_id: next.id,
+        username,
+        password: suppliedPass,
+        status: next.status,
+        package: next.package_name,
+        download_mbps: next.download_mbps,
+        upload_mbps: next.upload_mbps,
+      });
+    } else {
+      await enqueueServiceCommand(sql, tenantId, next);
+    }
+  } else if (next) {
+    await enqueueServiceCommand(sql, tenantId, next);
+  }
+  return { id: data.id, credentials_changed: credentialsChanged };
 }
 
 /**

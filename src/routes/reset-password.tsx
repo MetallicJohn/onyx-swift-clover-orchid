@@ -34,7 +34,7 @@ function ResetPassword() {
     try {
       const r = await requestPasswordReset({ data: { email } });
       setMessage(r.message);
-      if (r.hint) setHint(r.hint);
+      setHint("hint" in r && typeof r.hint === "string" ? r.hint : null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send reset");
     } finally {

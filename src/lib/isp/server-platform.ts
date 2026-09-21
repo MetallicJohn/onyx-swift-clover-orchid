@@ -18,6 +18,7 @@ import {
   getPlatformSettings,
   listInfrastructure,
   deletePlatformBackup,
+  listPlatformActivity,
   listPlatformBackups,
   saveBackupRetention,
   listPlatformTenantsPage,

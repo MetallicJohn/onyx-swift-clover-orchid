@@ -4,11 +4,13 @@ import { nbiOrigin, nbiPostTask, type NbiFetch } from "./acs-nbi.ts";
 import { loadAcsConfig } from "./acs.ts";
 import {
   allocatePppoeUsername,
+  assertPppoeUsernameAvailable,
   generatePppoePassword,
   radiusPasswordHint,
   revealRadiusPassword,
   storeRadiusPassword,
   suggestPppoeUsername,
+  validatePppoePassword,
 } from "./pppoe-credentials.ts";
 import { isOverlayOrNasIp, pppoeGetParameterNames, pppoeSetParameterValues, selectWanPppoeProfile } from "./pppoe-profiles.ts";
 import { syncRadiusAccount } from "./radius.ts";
@@ -197,6 +199,8 @@ export async function startPppoeProvision(
     serviceId: string;
     cpeId?: string | null;
     manualUsername?: string;
+    manualPassword?: string;
+    strictUsername?: boolean;
     rotate?: boolean;
     fetch?: NbiFetch;
   },
@@ -228,8 +232,23 @@ export async function startPppoeProvision(
       name: svc.customer_name,
       serviceId: svc.id,
     });
-  const username = keepExisting && existingRad?.username ? existingRad.username : await allocatePppoeUsername(sql, tenantId, svc.id, preferred);
-  const password = keepExisting && existingRad ? revealRadiusPassword(existingRad.password) : generatePppoePassword();
+  const suppliedPass = String(opts.manualPassword || "").trim();
+  if (suppliedPass) {
+    const passErr = validatePppoePassword(suppliedPass);
+    if (passErr) throw new Error(passErr);
+  }
+  let username: string;
+  if (keepExisting && existingRad?.username) {
+    username = existingRad.username;
+  } else if (opts.strictUsername) {
+    username = await assertPppoeUsernameAvailable(sql, tenantId, preferred, svc.id);
+  } else {
+    username = await allocatePppoeUsername(sql, tenantId, svc.id, preferred);
+  }
+  const password =
+    keepExisting && existingRad && !suppliedPass
+      ? revealRadiusPassword(existingRad.password)
+      : suppliedPass || generatePppoePassword();
   if (!keepExisting && existingRad && !opts.rotate && opts.manualUsername && opts.manualUsername !== existingRad.username) {
     throw new Error("Existing PPPoE credentials were not overwritten. Rotate to change them.");
   }
@@ -324,7 +343,7 @@ export async function startPppoeProvision(
   });
 
   await saveRow(sql, tenantId, row);
-  return { ...row, password: keepExisting && !opts.rotate ? "" : password };
+  return { ...row, password: keepExisting && !opts.rotate && !suppliedPass ? "" : password };
 }
 
 async function pushPppoeToCpe(

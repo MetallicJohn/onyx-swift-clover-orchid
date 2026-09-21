@@ -223,7 +223,7 @@ test("create customer and first service together; after payment stays pending un
       select status, suspend_reason, username, static_ip from services where id = ${created.service_id}`;
     assert.equal(svc?.status, "pending");
     assert.equal(svc?.suspend_reason, "awaiting_payment");
-    assert.ok(svc?.username);
+    assert.equal(svc?.username, "brian.otieno");
     assert.equal(svc?.static_ip, null);
     const [rad] = await sql<{ enabled: boolean }>`
       select enabled from radius_accounts where tenant_id = 'ten_a' and service_id = ${created.service_id}`;

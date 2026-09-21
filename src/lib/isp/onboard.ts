@@ -9,6 +9,7 @@ import {
   parseFlexibleYmd,
   type OnboardingType,
 } from "./onboard-import-format.ts";
+import { validatePppoePassword, validatePppoeUsername } from "./pppoe-format.ts";
 
 export const ACCESS_METHODS: AccessMethod[] = ["pppoe", "static", "hotspot"];
 export const ACTIVATION_MODES = ["active", "after_payment", "after_partial"] as const;
@@ -225,14 +226,16 @@ export function stripIncompatibleFields(draft: OnboardServiceDraft): OnboardServ
     next.username = "";
     next.auto_username = true;
     next.hotspot_mode = "account";
+    next.pppoe_password = "";
   }
   if (next.access_method === "hotspot") {
     next.cpe_id = "";
     next.mac_address = "";
+    next.pppoe_password = "";
   }
   if (next.access_method !== "hotspot") next.hotspot_mode = "account";
-  if (next.auto_username && next.access_method !== "static") next.username = next.username && !next.auto_username ? next.username : "";
-  if (next.auto_username) next.username = "";
+  if (next.auto_username && next.access_method === "hotspot") next.username = "";
+  if (next.access_method !== "pppoe") next.pppoe_password = "";
   return next;
 }
 
@@ -269,7 +272,7 @@ export function sanitizeService(raw: Partial<OnboardServiceDraft> | null | undef
     name: String(d.name || "").trim().slice(0, 80),
     access_method: method,
     package_id: String(d.package_id || "").trim(),
-    username: String(d.username || "").trim().slice(0, 24),
+    username: String(d.username || "").trim().slice(0, 32),
     auto_username: d.auto_username !== false,
     static_ip: String(d.static_ip || "").trim(),
     pool_id: String(d.pool_id || "").trim(),
@@ -327,8 +330,20 @@ export function validateServiceDraft(
   if (pkg && pkg.access_method !== s.access_method) {
     errors.package_id = "Package does not match the selected service type";
   }
-  if (s.access_method !== "static" && !s.auto_username && !s.username) {
-    errors.username = s.access_method === "hotspot" ? "Enter a hotspot username" : "Enter a PPPoE username";
+  if (s.access_method === "hotspot" && !s.auto_username && !s.username) {
+    errors.username = "Enter a hotspot username";
+  }
+  if (s.access_method === "pppoe") {
+    if (!s.auto_username && !s.username) errors.username = "Enter a PPPoE username";
+    if (s.username) {
+      const uerr = validatePppoeUsername(s.username);
+      if (uerr) errors.username = uerr;
+    }
+    if (!s.auto_username && !s.pppoe_password) errors.pppoe_password = "Enter a PPPoE password";
+    if (s.pppoe_password) {
+      const perr = validatePppoePassword(s.pppoe_password);
+      if (perr) errors.pppoe_password = perr;
+    }
   }
   if (s.access_method === "static" && s.static_ip) {
     const parts = s.static_ip.split(".").map((n) => Number(n));
@@ -430,7 +445,7 @@ export function scoreDuplicate(
 export function storedAccessFields(s: OnboardServiceDraft) {
   if (s.access_method === "pppoe") {
     return {
-      username: s.auto_username ? null : s.username || null,
+      username: s.username || null,
       static_ip: null,
       mac_address: s.mac_address || "",
       cpe_id: s.cpe_id || null,

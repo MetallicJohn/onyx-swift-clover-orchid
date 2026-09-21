@@ -737,6 +737,7 @@ export const createService = createServerFn({ method: "POST" })
     customer_id: string;
     package_id: string;
     username?: string;
+    password?: string;
     static_ip?: string;
     cpe_id?: string;
     notes?: string;
@@ -775,6 +776,8 @@ export const createService = createServerFn({ method: "POST" })
         serviceId: id,
         cpeId: data.cpe_id || null,
         manualUsername: data.username,
+        manualPassword: data.password,
+        strictUsername: Boolean(data.username?.trim()),
       });
       radius = { username: provision.username, password: provision.password };
       await audit(sql, tid, context.userId, "service.pppoe.provision", "service", id, JSON.stringify({ username: provision.username, cpe_id: data.cpe_id || "" }));

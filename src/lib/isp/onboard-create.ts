@@ -24,7 +24,7 @@ import {
   type OnboardPayload,
   type OnboardServiceDraft,
 } from "./onboard.ts";
-import { usernameTaken } from "./pppoe-credentials.ts";
+import { PPPOE_USERNAME_IN_USE, usernameTaken } from "./pppoe-credentials.ts";
 import { startPppoeProvision } from "./pppoe-provision.ts";
 import { syncRadiusAccount } from "./radius.ts";
 import { parseExpiryYmd } from "./service-expiry-format.ts";
@@ -483,7 +483,12 @@ export async function createOnboard(
   let createdServiceId: string | null = null;
   try {
     if (fields.username && (await usernameTaken(sql, tid, fields.username))) {
-      throw new Error("That username is already in use on this network");
+      if (pkg.access_method === "pppoe" && service.auto_username === false) {
+        throw new Error(PPPOE_USERNAME_IN_USE);
+      }
+      if (pkg.access_method !== "pppoe") {
+        throw new Error("That username is already in use on this network");
+      }
     }
     if (fields.cpe_id) {
       await assertCpeAttachable(sql, tid, { cpeId: fields.cpe_id, customerId });
@@ -605,6 +610,8 @@ export async function createOnboard(
           serviceId: id,
           cpeId: fields.cpe_id,
           manualUsername: fields.username || undefined,
+          manualPassword: service.pppoe_password || undefined,
+          strictUsername: service.auto_username === false,
         });
         username = provision.username;
         password = provision.password || null;
