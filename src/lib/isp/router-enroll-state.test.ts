@@ -71,7 +71,11 @@ test("generated enroll script is certificate-free, overlay-API-only, and does no
   assert.match(script, /address=10\.200\.0\.1\/32/);
   assert.doesNotMatch(script, /owner=admin/);
   assert.match(script, /policy=ftp,read,write,policy,test,password,sensitive/);
-  assert.match(script, /enrollment bootstrap initialized for router/);
+  assert.match(script, /enrollment initialized router=/);
+  assert.match(script, /output=file dst-path="ispsolutions-pull.rsc" as-value/);
+  assert.match(script, /configuration imported successfully/);
+  assert.doesNotMatch(script, /HTTPS fetch failed — check URL/);
+  assert.doesNotMatch(script, /:foreach i in=\[\/file find\]/);
   assert.doesNotMatch(script, /check-certificate=yes/);
   assert.doesNotMatch(script, /enrolled token=/);
   assert.doesNotMatch(script, /185\.185\.126\.169/);

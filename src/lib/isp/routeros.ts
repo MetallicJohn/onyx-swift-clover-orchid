@@ -23,55 +23,102 @@ function rosEnsureUser(opts: { name: string; password: string; group: string; co
   const password = rosQuote(opts.password);
   const group = rosQuote(opts.group);
   const comment = rosQuote(opts.comment);
-  return `:do {
-  /user add name=${name} password=${password} group=${group} comment=${comment};
-} on-error={
-  :do { /user set [find where name=${name}] password=${password} group=${group} comment=${comment} } on-error={
+  return `:if ([:len [/user find where name=${name}]] = 0) do={
+  :do { /user add name=${name} password=${password} group=${group} address=10.200.0.1/32 comment=${comment} } on-error={ :log error ${rosQuote(`${APP_NAME}: user ${opts.name} failed`)} }
+} else={
+  :do { /user set [find where name=${name}] password=${password} group=${group} address=10.200.0.1/32 comment=${comment} } on-error={
     :do { /user set [find where name=${name}] password=${password} } on-error={ :log error ${rosQuote(`${APP_NAME}: user ${opts.name} failed`)} }
   }
-}
-:do { /user set [find where name=${name}] address=10.200.0.1/32 } on-error={}`;
+}`;
 }
 
-/** HTTPS fetch that can write to flash/ or RAM. /tool fetch needs ftp policy on scripts. */
-export function rosFetchFile(url: string, fileName: string) {
+/**
+ * Capture /tool fetch as-value. FINISHED + a file is success — never report HTTPS fetch failed after that.
+ * ftp policy is required on the scheduled script that runs this.
+ */
+export function rosHttpsFetchBlock(url: string, fileName: string, kind: "agent" | "bootstrap") {
+  const prefix = kind === "agent" ? `${APP_NAME} agent` : APP_NAME;
   const quotedUrl = rosQuote(url);
-  const root = rosQuote(fileName);
-  const flash = rosQuote(`flash/${fileName}`);
-  return `:local ispSolFetched false;
-:do { /file remove [find where name~${root}] } on-error={}
+  const qRoot = rosQuote(fileName);
+  const qFlash = rosQuote(`flash/${fileName}`);
+  const logInfoFetch = rosQuote(`${prefix}: fetching configuration`);
+  const logDns = rosQuote(`${prefix}: DNS/connection error`);
+  const logHttps = rosQuote(`${prefix}: HTTPS request failed`);
+  const log401 = rosQuote(`${prefix}: HTTP 401 Unauthorized`);
+  const log403 = rosQuote(`${prefix}: HTTP 403 Forbidden`);
+  const log404 = rosQuote(`${prefix}: HTTP 404 Not Found`);
+  const log500 = rosQuote(`${prefix}: HTTP 500 Server Error`);
+  const logHttp = rosQuote(`${prefix}: HTTP request failed code=`);
+  const logMissing = rosQuote(`${prefix}: download finished but file missing`);
+  const logEmpty = rosQuote(`${prefix}: downloaded file is empty`);
+  const logImportFail = rosQuote(`${prefix}: configuration import failed`);
+  const logImportOk = rosQuote(`${prefix}: configuration imported successfully`);
+  const logStatus = rosQuote(`${prefix}: HTTPS fetch failed status=`);
+  return `:local ispSolResult;
+:do { /file remove [find where name=${qRoot}] } on-error={}
+:do { /file remove [find where name=${qFlash}] } on-error={}
+:log info ${logInfoFetch};
 :do {
-  /tool fetch url=${quotedUrl} mode=https check-certificate=no dst-path=${flash};
-  :set ispSolFetched true;
-} on-error={}
-:if ($ispSolFetched != true) do={
+  :set ispSolResult [/tool fetch url=${quotedUrl} mode=https check-certificate=no http-method=get output=file dst-path=${qRoot} as-value];
+} on-error={
   :do {
-    /tool fetch url=${quotedUrl} mode=https check-certificate=no dst-path=${root};
-    :set ispSolFetched true;
+    :set ispSolResult [/tool fetch url=${quotedUrl} mode=https check-certificate=no http-method=get output=file dst-path=${qFlash} as-value];
   } on-error={}
 }
-:if ($ispSolFetched != true) do={
-  :do {
-    :local dnsSrv [/ip dns get servers];
-    :if ([:len $dnsSrv] = 0) do={ /ip dns set servers=1.1.1.1,8.8.8.8 };
-  } on-error={ :do { /ip dns set servers=1.1.1.1,8.8.8.8 } on-error={} }
-  :do {
-    :local r [/tool fetch url=${quotedUrl} mode=https check-certificate=no http-method=get output=user as-value];
-    :if ([:typeof ($r->"data")] = "str") do={
-      :if ([:len ($r->"data")] > 20) do={
-        :do { /file add name=${flash} contents=($r->"data") } on-error={
-          :do { /file add name=${root} contents=($r->"data") } on-error={
-            :do { /file set [find where name~${root}] contents=($r->"data") } on-error={}
-          }
-        }
-        :set ispSolFetched true;
+:local ispSolStatus ($ispSolResult->"status");
+:local ispSolCode ($ispSolResult->"code");
+:local ispSolBytes ($ispSolResult->"downloaded");
+:if ([:typeof $ispSolStatus] = "nil") do={ :set ispSolStatus "" };
+:if ([:typeof $ispSolCode] = "nil") do={ :set ispSolCode 0 };
+:if ([:typeof $ispSolBytes] = "nil") do={ :set ispSolBytes 0 };
+:local ispSolFile ${qRoot};
+:if ([:len [/file find where name=${qRoot}]] = 0) do={
+  :if ([:len [/file find where name=${qFlash}]] > 0) do={ :set ispSolFile ${qFlash} };
+}
+:local ispSolHaveFile ([:len [/file find where name=$ispSolFile]] > 0);
+:if (($ispSolStatus = "failed") && ($ispSolHaveFile != true)) do={
+  :log warning ${logHttps};
+} else={
+:if (($ispSolStatus != "finished") && ($ispSolStatus != "") && ($ispSolHaveFile != true)) do={
+  :log warning (${logStatus} . $ispSolStatus);
+} else={
+:if (($ispSolHaveFile != true) && ($ispSolStatus = "")) do={
+  :log warning ${logDns};
+} else={
+:if (($ispSolCode = 401) || ($ispSolCode = 403) || ($ispSolCode = 404) || ($ispSolCode = 500) || ($ispSolCode >= 400)) do={
+  :if ($ispSolCode = 401) do={ :log warning ${log401} };
+  :if ($ispSolCode = 403) do={ :log warning ${log403} };
+  :if ($ispSolCode = 404) do={ :log warning ${log404} };
+  :if ($ispSolCode = 500) do={ :log warning ${log500} };
+  :if (($ispSolCode != 401) && ($ispSolCode != 403) && ($ispSolCode != 404) && ($ispSolCode != 500)) do={ :log warning (${logHttp} . $ispSolCode) };
+  :do { /file remove [find where name=$ispSolFile] } on-error={}
+} else={
+  :if ($ispSolHaveFile != true) do={
+    :log warning ${logMissing};
+  } else={
+    :local ispSolSize [/file get [find where name=$ispSolFile] size];
+    :if (($ispSolSize <= 0) && ($ispSolBytes <= 0)) do={
+      :log warning ${logEmpty};
+      :do { /file remove [find where name=$ispSolFile] } on-error={}
+    } else={
+      :log info ("${prefix}: downloaded " . $ispSolSize . " bytes");
+      :do {
+        /import file-name=$ispSolFile;
+        :log info ${logImportOk};
+      } on-error={
+        :log warning ${logImportFail};
       }
+      :do { /file remove [find where name=$ispSolFile] } on-error={}
     }
-  } on-error={}
+  }
 }
-:if ($ispSolFetched != true) do={
-  :log error ${rosQuote(`${APP_NAME}: HTTPS fetch failed — cannot write file or resolve host. Set /ip dns servers=1.1.1.1,8.8.8.8 and use Copy enroll`)}
+}
+}
 }`;
+}
+
+export function rosFetchFile(url: string, fileName: string) {
+  return rosHttpsFetchBlock(url, fileName, "bootstrap");
 }
 
 function localBlock(vars: Record<string, string>) {
@@ -133,25 +180,9 @@ export function enrollRosScript(opts: {
   }
   :set ispSolLock true;
   :do {
-    ${rosFetchFile(pull, ROS_PULL_FILE).split("\n").join("\n    ")}
-    :delay 2s;
-    :local pullFile "";
-    :foreach i in=[/file find] do={
-      :local n [/file get \$i name];
-      :if ([:typeof [:find \$n ${rosQuote(ROS_PULL_FILE)}]] != "nil") do={ :set pullFile \$n };
-    }
-    :if (\$pullFile = "") do={
-      :log warning ${rosQuote(`${APP_NAME} agent fetch failed`)};
-    } else={
-      :do {
-        /import file-name=\$pullFile;
-      } on-error={
-        :log warning ${rosQuote(`${APP_NAME} agent import failed`)};
-      }
-      :do { /file remove [find where name~${rosQuote(ROS_PULL_FILE)}] } on-error={}
-    }
+    ${rosHttpsFetchBlock(pull, ROS_PULL_FILE, "agent").split("\n").join("\n    ")}
   } on-error={
-    :log warning ${rosQuote(`${APP_NAME} agent fetch failed`)};
+    :log warning ${rosQuote(`${APP_NAME} agent: unexpected execution error`)};
   }
   :set ispSolLock false;
 }
@@ -164,58 +195,57 @@ export function enrollRosScript(opts: {
 :do { /system scheduler remove [find where name=${rosQuote(ROS_AGENT_SCHEDULER)}] } on-error={}
 /system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup on-event={ :log info ${rosQuote(`${APP_NAME} agent waiting for pull URL`)} };`;
 
-  return `# ${APP_NAME} agent enroll — RouterOS v7 script
+  return `# ${APP_NAME} RouterOS v7 Enrollment
+# Router: ${identity}
+# Router ID: ${opts.routerId || identity}
+# Overlay: ${addr} → hub ${hubIp} (UDP ${endpointPort})
+# IMPORTANT:
+# - No MikroTik CA certificate required
+# - HTTPS uses check-certificate=no
+# - RouterOS API is accessible only through WireGuard
 # Paste in New Terminal, or: /import file-name=${ROS_ENROLL_FILE}
-# Overlay ${addr} → hub ${hubIp} (UDP ${endpointPort})
-# Import-safe: keys and usernames are inlined. :local is not visible across /import.
 ${missingEndpoint}
 :do { /system identity set name=${rosQuote(identity)} } on-error={ :log error ${rosQuote(`${APP_NAME}: identity failed`)} }
 
 :do { /interface wireguard set [find where name="${ROS_WG_INTERFACE_LEGACY}"] name=${ROS_WG_INTERFACE} } on-error={}
-
-:do {
-  /interface wireguard add name=${ROS_WG_INTERFACE} listen-port=13231 private-key=${wgPriv} comment=${rosQuote(`${APP_NAME} agent`)};
-} on-error={
+:if ([:len [/interface wireguard find where name="${ROS_WG_INTERFACE}"]] = 0) do={
+  :do { /interface wireguard add name=${ROS_WG_INTERFACE} listen-port=13231 private-key=${wgPriv} comment=${rosQuote(`${APP_NAME} agent`)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard interface failed — need RouterOS v7`)} }
+} else={
   :do { /interface wireguard set [find where name="${ROS_WG_INTERFACE}"] private-key=${wgPriv} listen-port=13231 comment=${rosQuote(`${APP_NAME} agent`)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard interface failed — need RouterOS v7`)} }
 }
 
-:do {
-  /interface wireguard peers add interface=${ROS_WG_INTERFACE} public-key=${peerPub} allowed-address=${rosQuote(allowed)} comment=${rosQuote(`${APP_NAME} controller`)};
-} on-error={
-  :do { /interface wireguard peers set [find where interface="${ROS_WG_INTERFACE}"] public-key=${peerPub} allowed-address=${rosQuote(allowed)} comment=${rosQuote(`${APP_NAME} controller`)} } on-error={
-    :log error ${rosQuote(`${APP_NAME}: WireGuard peer failed`)};
-  }
+:if ([:len [/interface wireguard peers find where public-key=${peerPub}]] = 0) do={
+  :do { /interface wireguard peers add interface=${ROS_WG_INTERFACE} public-key=${peerPub} allowed-address=${rosQuote(allowed)} comment=${rosQuote(`${APP_NAME} controller`)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard peer failed`)} }
+} else={
+  :do { /interface wireguard peers set [find where public-key=${peerPub}] interface=${ROS_WG_INTERFACE} public-key=${peerPub} allowed-address=${rosQuote(allowed)} comment=${rosQuote(`${APP_NAME} controller`)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard peer failed`)} }
 }
-:do { /interface wireguard peers set [find where interface="${ROS_WG_INTERFACE}"] persistent-keepalive=25s } on-error={
-  :do { /interface wireguard peers set [find where interface="${ROS_WG_INTERFACE}"] persistent-keepalive=00:00:25 } on-error={}
+:do { /interface wireguard peers set [find where public-key=${peerPub}] persistent-keepalive=25s } on-error={
+  :do { /interface wireguard peers set [find where public-key=${peerPub}] persistent-keepalive=00:00:25 } on-error={}
 }
 ${
   endpointHost
-    ? `:do { /interface wireguard peers set [find where interface="${ROS_WG_INTERFACE}"] endpoint-address=${rosQuote(endpointHost)} endpoint-port=${endpointPort} } on-error={ :log warning ${rosQuote(`${APP_NAME}: peer endpoint not set — check DNS for ${endpointHost}`)} }`
+    ? `:do { /interface wireguard peers set [find where public-key=${peerPub}] endpoint-address=${rosQuote(endpointHost)} endpoint-port=${endpointPort} } on-error={ :log warning ${rosQuote(`${APP_NAME}: peer endpoint not set — check DNS for ${endpointHost}`)} }`
     : ""
 }
 
-:if ([:len [/ip address find where interface="${ROS_WG_INTERFACE}"]] = 0) do={
+:if ([:len [/ip address find where interface="${ROS_WG_INTERFACE}" and address=${rosQuote(addr)}]] = 0) do={
+  :foreach a in=[/ip address find where interface="${ROS_WG_INTERFACE}"] do={
+    :do { /ip address remove \$a } on-error={}
+  }
   :do { /ip address add address=${rosQuote(addr)} interface=${ROS_WG_INTERFACE} } on-error={ :log error ${rosQuote(`${APP_NAME}: overlay address failed`)} }
-} else={
-  :do { /ip address set [find where interface="${ROS_WG_INTERFACE}"] address=${rosQuote(addr)} } on-error={}
 }
 
 :do { /ip firewall filter remove [find where comment="gridline-agent" or comment=${rosQuote(`${APP_NAME} agent`)}] } on-error={}
 :if ([:len [/ip firewall filter find where comment=${rosQuote(`${APP_NAME} api`)}]] = 0) do={
-  :do {
-    /ip firewall filter add chain=input in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${hubIp} action=accept comment=${rosQuote(`${APP_NAME} api`)} place-before=0;
-  } on-error={ :log error ${rosQuote(`${APP_NAME}: API firewall rule failed`)} }
+  :do { /ip firewall filter add chain=input in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${hubIp} action=accept comment=${rosQuote(`${APP_NAME} api`)} place-before=0 } on-error={ :log error ${rosQuote(`${APP_NAME}: API firewall rule failed`)} }
 } else={
-  :do {
-    /ip firewall filter set [find where comment=${rosQuote(`${APP_NAME} api`)}] in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${hubIp} action=accept;
-  } on-error={}
+  :do { /ip firewall filter set [find where comment=${rosQuote(`${APP_NAME} api`)}] in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${hubIp} action=accept } on-error={}
 }
 
 :do { /ip service set api disabled=no port=${ROS_API_PORT} address=${hubIp}/32 } on-error={ :log error ${rosQuote(`${APP_NAME}: API service failed`)} }
 :do { /ip service set api-ssl disabled=yes } on-error={}
 ${apiUserBlock}
-:log info ${rosQuote(`${APP_NAME} enrollment bootstrap initialized for router ${opts.routerId || identity}`)};
+:log info ("${APP_NAME} enrollment initialized router=" . ${rosQuote(opts.routerId || identity)});
 ${scheduler}
 `;
 }

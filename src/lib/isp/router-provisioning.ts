@@ -14,7 +14,7 @@ import { parseV4Cidr } from "./ipam.ts";
 import { routerReachability, validateRosScript } from "./mikrotik-ops.ts";
 import { applyRls } from "./rls.ts";
 import { recordEnrollState } from "./router-enroll-state.ts";
-import { enrollRosScript, poolPushRosScript, rosFetchFile, rosOverlayUserName, rosQuote, type RosPool } from "./routeros.ts";
+import { enrollRosScript, poolPushRosScript, rosHttpsFetchBlock, rosOverlayUserName, rosQuote, type RosPool } from "./routeros.ts";
 import { open, seal } from "./secrets.ts";
 import { ensureTenantHub, syncRouterWgPeer, wgEnrollContext } from "./wireguard.ts";
 
@@ -192,23 +192,7 @@ ${opts.identity ? `# identity: ${opts.identity}` : ""}
   :do { /ip cloud set update-time=yes } on-error={};
   :do { /system ntp client set enabled=yes } on-error={};
   :delay 3s;
-  ${rosFetchFile(url, file)}
-  :delay 2s;
-  :local bootFile "";
-  :foreach i in=[/file find] do={
-    :local n [/file get $i name];
-    :if ([:typeof [:find $n ${rosQuote(file)}]] != "nil") do={ :set bootFile $n };
-  }
-  :if ($bootFile != "") do={
-    :do {
-      /import file-name=$bootFile;
-      :log info ${rosQuote(`${APP_NAME} bootstrap imported`)};
-    } on-error={
-      :log error ${rosQuote(`${APP_NAME}: import failed — open Log and paste Copy enroll in New Terminal`)};
-    }
-  } else={
-    :log error ${rosQuote(`${APP_NAME}: bootstrap file missing after fetch — use Copy enroll`)};
-  }
+  ${rosHttpsFetchBlock(url, file, "bootstrap")}
 }
 `;
 }

@@ -1,87 +1,429 @@
-# ISP Solutions — RouterOS Agent Script Generation, Permissions & Autocopy
+# ISP Solutions — Complete RouterOS v7 Agent Implementation
 
-Implement **only** the changes described in this prompt.
+Implement the complete ISP Solutions RouterOS v7 enrollment and persistent-agent system.
 
-The goal is to fix the generated RouterOS v7 ISP Solutions agent enrollment script so it no longer depends on:
+This implementation must produce a **complete, production-ready RouterOS v7 configuration script** that can be pasted into MikroTik **New Terminal** or imported as an `.rsc` file.
+
+The implementation must also correct the current false error:
+
+```text
+Download from ispsolutions.co.ke FINISHED
+ISP Solutions: HTTPS fetch failed check URL and internet
+```
+
+A `FINISHED` download must **not** be treated as a fetch failure.
+
+---
+
+# 1. Critical Architecture
+
+Use this architecture:
+
+```text
+MikroTik RouterOS v7
+        |
+        | WireGuard UDP 51820
+        v
+wg.ispsolutions.co.ke
+        |
+        v
+ISP Solutions VPS
+10.200.0.1
+        |
+        | RouterOS API TCP 8728
+        v
+Router API / Agent
+```
+
+Router WireGuard:
+
+```text
+10.200.x.x/32
+```
+
+Controller:
+
+```text
+10.200.0.1/32
+```
+
+Public WireGuard endpoint:
+
+```text
+wg.ispsolutions.co.ke:51820
+```
+
+The web application remains:
+
+```text
+https://ispsolutions.co.ke
+```
+
+Do not use the main web hostname as the WireGuard endpoint.
+
+---
+
+# 2. No MikroTik Certificate Dependency
+
+This requirement is mandatory.
+
+Do NOT:
+
+* Install a MikroTik CA certificate.
+* Create a CA certificate.
+* Create a router certificate.
+* Import certificates.
+* Require RouterOS CA-store configuration.
+* Use `check-certificate=yes`.
+* Require API-SSL.
+
+The agent's HTTPS bootstrap/fetch must use:
 
 ```routeros
+check-certificate=no
+```
+
+WireGuard is the trusted management channel.
+
+---
+
+# 3. Generated Enrollment Parameters
+
+The backend must generate the following values dynamically per router:
+
+```text
+identity
+routerId
+wgPrivateKey
+serverPublicKey
+wgAddress
+apiUsername
+apiPassword
+agentToken
+```
+
+Example:
+
+```text
+identity       = nicee
+routerId       = rtr_xxxxxxxxxxxxxxxx
+wgPrivateKey   = <unique router private key>
+serverPublicKey = <ISP Solutions WireGuard public key>
+wgAddress      = 10.200.0.4/32
+apiUsername    = 10200004
+apiPassword    = <cryptographically random password>
+agentToken     = <unique agent credential>
+```
+
+Never hardcode credentials globally.
+
+---
+
+# 4. RouterOS Identity
+
+Set the router identity:
+
+```routeros
+/system identity set name=$identity;
+```
+
+The generated identity must be the actual router identity supplied during enrollment.
+
+---
+
+# 5. WireGuard Interface
+
+Create or reconcile:
+
+```text
+wg-ispsolutions
+```
+
+Do not blindly rename unrelated WireGuard interfaces.
+
+If an existing known legacy ISP Solutions/Gridline interface exists, it may be migrated safely.
+
+Do not rename arbitrary interfaces.
+
+Recommended:
+
+```routeros
+:if ([:len [/interface wireguard find where name="wg-ispsolutions"]] = 0) do={
+    /interface wireguard add \
+        name="wg-ispsolutions" \
+        listen-port=13231 \
+        private-key=$wgPriv \
+        comment="ISP Solutions agent";
+} else={
+    /interface wireguard set \
+        [find where name="wg-ispsolutions"] \
+        private-key=$wgPriv \
+        listen-port=13231 \
+        comment="ISP Solutions agent";
+}
+```
+
+---
+
+# 6. WireGuard Peer
+
+Create/reconcile the ISP Solutions controller peer.
+
+Use the server public key as the primary identifier.
+
+Do not identify the peer only by comment.
+
+Required values:
+
+```text
+public-key       = server WireGuard public key
+allowed-address  = 10.200.0.1/32
+endpoint-address = wg.ispsolutions.co.ke
+endpoint-port    = 51820
+persistent-keepalive = 25 seconds
+```
+
+Example:
+
+```routeros
+:local peerId [/interface wireguard peers find where public-key=$srvKey];
+
+:if ([:len $peerId] = 0) do={
+
+    /interface wireguard peers add \
+        interface="wg-ispsolutions" \
+        public-key=$srvKey \
+        allowed-address=10.200.0.1/32 \
+        endpoint-address="wg.ispsolutions.co.ke" \
+        endpoint-port=51820 \
+        persistent-keepalive=00:00:25 \
+        comment="ISP Solutions controller";
+
+} else={
+
+    /interface wireguard peers set $peerId \
+        interface="wg-ispsolutions" \
+        public-key=$srvKey \
+        allowed-address=10.200.0.1/32 \
+        endpoint-address="wg.ispsolutions.co.ke" \
+        endpoint-port=51820 \
+        persistent-keepalive=00:00:25 \
+        comment="ISP Solutions controller";
+}
+```
+
+---
+
+# 7. WireGuard Address
+
+Assign the router's unique overlay address:
+
+```routeros
+:if ([:len [/ip address find where interface="wg-ispsolutions" and address=$wgAddr]] = 0) do={
+
+    :foreach a in=[/ip address find where interface="wg-ispsolutions"] do={
+        /ip address remove $a;
+    }
+
+    /ip address add \
+        address=$wgAddr \
+        interface="wg-ispsolutions";
+}
+```
+
+Do not blindly modify unrelated IP addresses on other interfaces.
+
+---
+
+# 8. RouterOS API User
+
+Create a dedicated ISP Solutions API user.
+
+Preferred username format:
+
+```text
+10.200.0.4
+```
+
+converted into a RouterOS-safe deterministic username:
+
+```text
+10200004
+```
+
+For example:
+
+```text
+10.200.0.4 → 10200004
+```
+
+The username must be generated server-side and supplied to the bootstrap.
+
+Do not derive the password from the IP.
+
+---
+
+# 9. API User Permissions
+
+Preferred production implementation:
+
+Use a dedicated RouterOS group containing only the permissions required by the agent.
+
+If the current ISP Solutions agent requires full RouterOS configuration access and the application has not yet implemented granular permissions, support:
+
+```routeros
+group="full"
+```
+
+as the fallback.
+
+The user must have:
+
+```routeros
+comment="ISPsolutions"
+```
+
+The user must be restricted to the WireGuard controller:
+
+```routeros
+address=10.200.0.1/32
+```
+
+Example:
+
+```routeros
+:local apiUser "10200004";
+:local apiPass "<generated-password>";
+
+:if ([:len [/user find where name=$apiUser]] = 0) do={
+
+    /user add \
+        name=$apiUser \
+        password=$apiPass \
+        group="full" \
+        address=10.200.0.1/32 \
+        comment="ISPsolutions";
+
+} else={
+
+    /user set \
+        [find where name=$apiUser] \
+        password=$apiPass \
+        group="full" \
+        address=10.200.0.1/32 \
+        comment="ISPsolutions";
+}
+```
+
+Do not use:
+
+```text
 owner=admin
 ```
 
-and provide a reliable alternative for RouterOS execution permissions.
-
-Also add an **Autocopy** button to every dialog that displays a generated script.
+anywhere in the generated persistent agent implementation.
 
 ---
 
-## 1. Inspect Existing Implementation First
+# 10. RouterOS API Service
 
-Before making changes, inspect the existing repository implementation for:
-
-* RouterOS enrollment/bootstrap script generation.
-* Router provisioning.
-* Router agent generation.
-* WireGuard enrollment.
-* Router API credentials.
-* Router user/group creation.
-* Existing script-generation dialogs.
-* Existing copy-to-clipboard components.
-* Existing router enrollment database models.
-* Existing audit logging.
-
-Reuse the existing architecture.
-
-Do not create duplicate router-enrollment functionality.
-
----
-
-# 2. RouterOS Script Must Not Require `owner=admin`
-
-The generated RouterOS v7 enrollment script must **not** contain:
+Enable the plain RouterOS API:
 
 ```routeros
+/ip service set api disabled=no port=8728 address=10.200.0.1/32;
+```
+
+Disable API-SSL:
+
+```routeros
+:do {
+    /ip service set api-ssl disabled=yes;
+} on-error={}
+```
+
+Do not expose API 8728 to WAN.
+
+---
+
+# 11. API Firewall Rule
+
+Create exactly the required management access rule:
+
+```routeros
+:if ([:len [/ip firewall filter find where comment="ISP Solutions api"]] = 0) do={
+
+    /ip firewall filter add \
+        chain=input \
+        in-interface="wg-ispsolutions" \
+        protocol=tcp \
+        dst-port=8728 \
+        src-address=10.200.0.1 \
+        action=accept \
+        comment="ISP Solutions api" \
+        place-before=0;
+
+} else={
+
+    /ip firewall filter set \
+        [find where comment="ISP Solutions api"] \
+        in-interface="wg-ispsolutions" \
+        protocol=tcp \
+        dst-port=8728 \
+        src-address=10.200.0.1 \
+        action=accept;
+}
+```
+
+Do not create a WAN API rule.
+
+---
+
+# 12. Persistent Agent
+
+Create:
+
+```text
+ispsolutions-pull
+```
+
+without:
+
+```text
 owner=admin
 ```
 
-Do not assume that an `admin` user exists.
+Required policy:
 
-Do not make script execution depend on the username `admin`.
+```text
+read,write,policy,test,password,sensitive
+```
 
-The generated script must work when:
-
-* The default admin user has been renamed.
-* The admin user has been disabled.
-* The router uses a different administrative username.
-* The router is being enrolled by another user with sufficient permissions.
-
----
-
-# 3. Preferred RouterOS Agent Script Design
-
-Generate the persistent ISP Solutions agent script without an owner requirement.
-
-The generated script should use the existing RouterOS `/system script add` mechanism with the required execution policies.
-
-Example pattern:
+Example:
 
 ```routeros
 /system script add \
     name="ispsolutions-pull" \
     policy=read,write,policy,test,password,sensitive \
     source={
+
         ...
+
     }
 ```
 
-Do not include:
+The script must work regardless of which administrative username originally pasted the bootstrap.
 
-```routeros
-owner=admin
+---
+
+# 13. Scheduler
+
+Create:
+
+```text
+ispsolutions-agent
 ```
 
-The script must be executable by the scheduler.
-
-The scheduler should also have the required policies:
+with:
 
 ```routeros
 /system scheduler add \
@@ -92,578 +434,638 @@ The scheduler should also have the required policies:
     on-event="/system script run ispsolutions-pull";
 ```
 
-Use RouterOS v7-compatible syntax.
+Do not create duplicate schedulers.
+
+Delete/reconcile known legacy scheduler names if appropriate:
+
+```text
+gridline-agent
+```
+
+but do not remove unrelated schedulers.
 
 ---
 
-# 4. Alternative: Dedicated ISP Solutions User
+# 14. Critical Fetch Implementation
 
-If RouterOS requires an explicit user context for reliable agent execution in the target RouterOS version, implement the alternative using a dedicated ISP Solutions user.
+The agent must capture the result of `/tool fetch`.
 
-The dedicated username may be derived from the router's WireGuard overlay IP.
+Do NOT assume that no exception means failure.
 
-Example:
-
-```text
-10200004
-```
-
-or another RouterOS-safe representation derived deterministically from:
-
-```text
-10.200.0.4
-```
-
-The exact implementation must produce a valid RouterOS username.
-
-The user must have a clearly identifiable comment:
-
-```text
-ISPsolutions
-```
-
-Example:
+Use:
 
 ```routeros
-/user add \
-    name="10200004" \
-    group="full" \
-    password="<generated-password>" \
-    comment="ISPsolutions";
+:local result [/tool fetch \
+    url=("https://ispsolutions.co.ke/api/agent/script?token=" . $agentToken) \
+    mode=https \
+    check-certificate=no \
+    http-method=get \
+    output=file \
+    dst-path="ispsolutions-pull.rsc" \
+    as-value];
 ```
 
-### Important
+Then:
 
-Do not blindly create the user if it already exists.
+```routeros
+:local status ($result->"status");
+:local code ($result->"code");
+:local downloaded ($result->"downloaded");
+```
 
-Make the operation idempotent:
+A successful fetch must be recognized as:
 
 ```text
-IF user exists:
-    update it
-ELSE:
-    create it
+status = finished
+code = 200
+downloaded > 0
 ```
 
-Do not create duplicate users.
+Do NOT generate:
+
+```text
+HTTPS fetch failed
+```
+
+when:
+
+```text
+Download from ispsolutions.co.ke FINISHED
+```
+
+has already occurred.
 
 ---
 
-# 5. Full Rights Option
+# 15. Complete Agent Script
 
-If the dedicated user approach is used, the user may use RouterOS's existing `full` group rather than creating a custom group.
-
-Example:
+Generate the persistent script using this structure:
 
 ```routeros
-group="full"
-```
+/system script add \
+name="ispsolutions-pull" \
+policy=read,write,policy,test,password,sensitive \
+source={
 
-This is intentional because the agent may need to perform configuration operations across:
+    :global ispSolLock;
 
-* Interfaces
-* IP addresses
-* Routes
-* Firewall
-* NAT
-* Queues
-* PPP
-* RADIUS
-* WireGuard
-* System configuration
-* Router provisioning
-* Monitoring
-* Diagnostics
+    :if ($ispSolLock = true) do={
+        :log warning "ISP Solutions agent already running";
+        :return;
+    }
 
-However, the generated credentials must be treated as sensitive.
+    :set ispSolLock true;
 
-Never expose the password in normal logs.
+    :do {
 
-Never store it in plaintext in application logs.
+        :local fetchUrl ("https://ispsolutions.co.ke/api/agent/script?token=" . "<AGENT_TOKEN>");
 
-Never display it outside the authenticated Superadmin/router-enrollment context.
+        :log info "ISP Solutions agent: fetching configuration";
 
----
+        :local result [/tool fetch \
+            url=$fetchUrl \
+            mode=https \
+            check-certificate=no \
+            http-method=get \
+            output=file \
+            dst-path="ispsolutions-pull.rsc" \
+            as-value];
 
-# 6. Username Based on WireGuard IP
+        :local status ($result->"status");
+        :local code ($result->"code");
+        :local downloaded ($result->"downloaded");
 
-When the dedicated-user approach is enabled, derive the username from the router's assigned WireGuard overlay IP.
+        :if ($status != "finished") do={
 
-For example:
+            :log warning ("ISP Solutions agent: HTTPS fetch failed status=" . $status);
 
-```text
-10.200.0.4/32
-```
+            :set ispSolLock false;
+            :return;
+        }
 
-could produce:
+        :if ($code != 200) do={
 
-```text
-10200004
-```
+            :log warning ("ISP Solutions agent: HTTP request failed code=" . $code);
 
-The transformation must be deterministic and collision-safe within the ISP Solutions overlay.
+            :set ispSolLock false;
+            :return;
+        }
 
-Do not use characters that RouterOS rejects in usernames.
+        :if ([:len [/file find where name="ispsolutions-pull.rsc"]] = 0) do={
 
-Store the generated username in the router enrollment record.
+            :log warning "ISP Solutions agent: download finished but file was not created";
 
-Do not use the router's public IP as the username.
+            :set ispSolLock false;
+            :return;
+        }
 
----
+        :local fileId [/file find where name="ispsolutions-pull.rsc"];
+        :local fileSize [/file get $fileId size];
 
-# 7. Dedicated User Must Be Clearly Identifiable
+        :if ($fileSize <= 0) do={
 
-The RouterOS user must have:
+            :log warning "ISP Solutions agent: downloaded script is empty";
 
-```routeros
-comment="ISPsolutions"
-```
+            :do {
+                /file remove $fileId;
+            } on-error={};
 
-or, if the repository has a standardized comment convention:
+            :set ispSolLock false;
+            :return;
+        }
 
-```text
-ISP Solutions
-```
+        :log info ("ISP Solutions agent: downloaded " . $fileSize . " bytes");
 
-Use one consistent value throughout the system.
+        :do {
 
-The backend must be able to identify the user later for:
+            /import file-name="ispsolutions-pull.rsc";
 
-* Credential rotation.
-* Revocation.
-* Repair.
-* Re-enrollment.
-* Audit.
-* Cleanup.
+            :log info "ISP Solutions agent: configuration imported successfully";
 
-Do not identify the user solely by username.
+        } on-error={
 
-Use the comment plus the stored router/enrollment identity where appropriate.
+            :log warning "ISP Solutions agent: configuration import failed";
 
----
+            :do {
+                /file remove $fileId;
+            } on-error={};
 
-# 8. API Access
+            :set ispSolLock false;
+            :return;
+        }
 
-The generated RouterOS configuration must continue to restrict the API to the WireGuard management network.
+        :do {
+            /file remove $fileId;
+        } on-error={
+            :log warning "ISP Solutions agent: unable to remove temporary file";
+        };
 
-Preferred:
+    } on-error={
 
-```routeros
-/ip service set api disabled=no port=8728 address=10.200.0.1/32;
-```
+        :log warning "ISP Solutions agent: unexpected execution error";
 
-Do not expose the API to the public WAN.
+    }
 
-Firewall access must remain restricted to the ISP Solutions WireGuard controller:
-
-```routeros
-src-address=10.200.0.1
-```
-
-Example:
-
-```routeros
-/ip firewall filter add \
-    chain=input \
-    in-interface=wg-ispsolutions \
-    protocol=tcp \
-    dst-port=8728 \
-    src-address=10.200.0.1 \
-    action=accept \
-    comment="ISP Solutions api" \
-    place-before=0;
-```
-
-Do not broaden this to:
-
-```text
-0.0.0.0/0
-```
-
-or the public WAN.
-
----
-
-# 9. No MikroTik CA Certificate Dependency
-
-Maintain the existing requirement:
-
-**Do not use MikroTik certificates or CA-store validation.**
-
-Do not:
-
-* Install a CA certificate.
-* Generate a MikroTik certificate.
-* Configure certificate validation.
-* Require `check-certificate=yes`.
-* Depend on the RouterOS CA store.
-
-The bootstrap fetch must continue using:
-
-```routeros
-check-certificate=no
-```
-
-WireGuard remains the trusted management channel.
-
-Do not replace this architecture with certificate-based authentication.
-
----
-
-# 10. WireGuard Configuration
-
-Keep the existing WireGuard design:
-
-```text
-Router overlay: 10.200.x.x/32
-Hub:            10.200.0.1
-UDP:            51820
-Endpoint:       wg.ispsolutions.co.ke
-```
-
-The RouterOS peer should use:
-
-```routeros
-endpoint-address="wg.ispsolutions.co.ke"
-endpoint-port=51820
-```
-
-and:
-
-```routeros
-allowed-address=10.200.0.1/32
-```
-
-Do not change the existing public hostname architecture.
-
----
-
-# 11. Agent Script
-
-The generated persistent agent must:
-
-1. Download the current ISP Solutions RouterOS configuration.
-2. Use HTTPS with:
-
-   ```routeros
-   check-certificate=no
-   ```
-3. Save the temporary script.
-4. Verify that the expected file exists.
-5. Import it.
-6. Remove the temporary file.
-7. Log only non-sensitive operational information.
-8. Prevent overlapping executions.
-9. Handle errors gracefully.
-
-Do not log:
-
-* API passwords.
-* Agent tokens.
-* WireGuard private keys.
-* Enrollment secrets.
-
----
-
-# 12. Agent Lock
-
-Keep an execution lock to prevent multiple simultaneous agent executions.
-
-For example:
-
-```routeros
-:global ispSolLock;
-
-:if ($ispSolLock = true) do={
-    :log warning "ISP Solutions agent already running";
-    :return;
+    :set ispSolLock false;
 }
+```
 
-:set ispSolLock true;
+The backend must replace:
 
-:do {
+```text
+<AGENT_TOKEN>
+```
+
+with the router-specific token during generation.
+
+---
+
+# 16. Do Not Scan Files Loosely
+
+Do not use:
+
+```routeros
+:foreach i in=[/file find] do={
     ...
-} on-error={
-    :log warning "ISP Solutions agent fetch failed";
 }
-
-:set ispSolLock false;
 ```
 
-Ensure the lock is cleared even after an error.
+to locate the downloaded script.
+
+Use:
+
+```routeros
+/file find where name="ispsolutions-pull.rsc"
+```
+
+This avoids accidentally importing another similarly named file.
 
 ---
 
-# 13. Credential Separation
+# 17. Import Security
 
-Do not confuse the following credentials:
+The downloaded `.rsc` must be treated as executable configuration.
+
+The server-side endpoint must return only the intended ISP Solutions agent/configuration payload.
+
+Do not allow arbitrary user-provided RouterOS commands to reach this endpoint.
+
+The backend must validate:
+
+* Router identity.
+* Router ID.
+* Agent credential.
+* Tenant/platform authorization.
+* Configuration version.
+
+Do not expose arbitrary script-generation capability through an unauthenticated endpoint.
+
+---
+
+# 18. Secret Handling
+
+Never log:
+
+```text
+agentToken
+apiPassword
+wgPrivateKey
+serverPrivateKey
+```
+
+Do not include them in:
+
+* Application logs.
+* Router logs.
+* Audit logs.
+* Error messages.
+* Exception traces.
+* Frontend console logs.
+
+The generated bootstrap can contain secrets because the user explicitly needs to paste it into the router, but once stored server-side they must be protected using the application's existing secret mechanism.
+
+---
+
+# 19. Enrollment Verification
+
+After bootstrap, the backend must verify:
 
 ### WireGuard
 
-* Router private key.
-* Server public key.
+* Router peer exists.
+* Correct router public key.
+* Correct server public key.
+* Correct overlay IP.
+* Recent handshake.
+* RX/TX traffic.
 
-### Enrollment
+### API
 
-* Short-lived enrollment token.
+Connect through:
 
-### Agent
+```text
+10.200.x.x:8728
+```
 
-* Persistent agent authentication/token.
+and verify:
 
-### Router API
+```text
+/system identity
+/system resource
+/system routerboard
+```
 
-* Dedicated RouterOS API username/password.
+where supported.
 
-Each must be handled separately.
-
-Do not reuse the enrollment token as the RouterOS API password.
+Verify that the API username corresponds to the expected router.
 
 ---
 
-# 14. Credential Generation
+# 20. Enrollment States
 
-Generate cryptographically strong credentials server-side.
+Maintain the existing enrollment state model or implement equivalent states:
 
-Do not use predictable passwords based on:
+```text
+PENDING
+BOOTSTRAP_GENERATED
+BOOTSTRAP_EXECUTED
+WIREGUARD_CONFIGURED
+WIREGUARD_CONNECTED
+API_VERIFIED
+AGENT_CONNECTED
+ENROLLED
+DEGRADED
+REVOKED
+```
+
+Do not mark a router fully enrolled merely because the bootstrap script was generated.
+
+---
+
+# 21. Heartbeat
+
+The persistent agent must provide a mechanism for the backend to determine that the router is still alive.
+
+At minimum capture:
 
 * Router ID.
-* IP address.
-* Router name.
-* Serial number.
+* Router identity.
+* Agent version.
+* Configuration version.
+* Last successful fetch.
+* Last successful configuration application.
 
-The WireGuard IP may be used to derive the **username**, but never derive the password from it.
+Do not send passwords or private keys.
 
 ---
 
-# 15. Existing Router Migration
+# 22. Configuration Versioning
 
-The generated enrollment script must safely handle routers that already have:
+Every generated agent/configuration response should have:
+
+```text
+routerId
+configurationVersion
+generatedAt
+checksum
+```
+
+The router agent should avoid repeatedly importing the exact same configuration unnecessarily.
+
+---
+
+# 23. Idempotency
+
+Running the generated bootstrap multiple times must not create:
+
+* Duplicate WireGuard interfaces.
+* Duplicate WireGuard peers.
+* Duplicate IP addresses.
+* Duplicate firewall rules.
+* Duplicate API users.
+* Duplicate scripts.
+* Duplicate schedulers.
+
+It should reconcile existing ISP Solutions resources.
+
+---
+
+# 24. Safe Legacy Migration
+
+Recognize known legacy resources:
 
 ```text
 wg-gridline
 gridline-agent
 gridline-controller
+gridline-pull
 ```
 
-or other legacy ISP Solutions/Gridline artifacts.
+Only migrate them when they are clearly ISP Solutions/Gridline resources.
 
-Do not blindly rename unrelated RouterOS interfaces.
+Do not rename arbitrary interfaces.
 
-Only migrate known legacy ISP Solutions/Gridline resources.
-
-Preserve existing functionality.
-
-The enrollment process must remain idempotent.
+Do not delete unrelated RouterOS configuration.
 
 ---
 
-# 16. Generated Script Dialogs
+# 25. Complete Generated Bootstrap
 
-Every UI dialog that displays a generated RouterOS script must have an **Autocopy** button.
+The backend must ultimately generate one complete `.rsc` script containing:
 
-Examples include:
+```text
+1. Router identity
+2. WireGuard interface
+3. WireGuard controller peer
+4. WireGuard IP
+5. API firewall rule
+6. RouterOS API service configuration
+7. Dedicated ISP Solutions API user
+8. Persistent ISP Solutions agent
+9. Scheduler
+10. Safe cleanup/reconciliation
+```
 
-* Router enrollment script.
-* Router bootstrap script.
-* Router provisioning script.
-* Router repair script.
-* Router agent script.
-* MikroTik configuration script.
-* Any other generated `.rsc` script displayed by ISP Solutions.
-
-Do not add this only to the new enrollment dialog.
-
-Apply it to the existing reusable script-display component so all applicable script dialogs automatically receive the functionality.
+The user should not need to manually run additional commands.
 
 ---
 
-# 17. Autocopy Button
+# 26. Generated Script Dialog
 
-Add a prominent button:
+Every generated RouterOS script dialog must have:
 
 **Autocopy**
 
-When clicked:
+button.
+
+When clicked, copy the exact displayed `.rsc` content to the clipboard.
+
+After successful copy:
 
 ```text
-navigator.clipboard.writeText(script)
+Copied ✓
 ```
 
-or the application's existing clipboard utility.
+Restore the button after a short period.
 
-After successful copying, change the visual state temporarily to:
+Use the existing reusable script dialog/component so this applies to:
 
-**Copied ✓**
+* Enrollment scripts.
+* Bootstrap scripts.
+* Agent scripts.
+* Provisioning scripts.
+* Repair scripts.
+* Any generated RouterOS `.rsc` script.
 
-Then return to:
-
-**Autocopy**
-
-Do not modify the script contents.
-
-The copied content must be exactly the script displayed in the dialog.
-
----
-
-# 18. Clipboard Fallback
-
-If the browser does not support the Clipboard API or permission is denied, provide the application's existing fallback behavior.
-
-At minimum:
-
-* Keep the script selectable.
-* Allow manual copying.
-* Display a clear error/toast such as:
-  `Unable to copy automatically. Please copy the script manually.`
-
-Do not silently fail.
+Do not implement separate copy logic in every dialog if a shared component already exists.
 
 ---
 
-# 19. Script Dialog UX
+# 27. Autocopy Fallback
 
-The generated-script dialog should contain:
+If Clipboard API fails:
 
 ```text
-Generate RouterOS Script
-
-[ Autocopy ]
-
-┌─────────────────────────────────────────────┐
-│                                             │
-│ /system ...                                 │
-│ ...                                         │
-│                                             │
-└─────────────────────────────────────────────┘
+Unable to copy automatically. Please copy the script manually.
 ```
 
-The button should remain available while the dialog is open.
+Keep the script selectable.
 
-If the script is regenerated, the clipboard action must copy the newly generated script.
-
----
-
-# 20. Backend Storage
-
-Store only the metadata/credentials necessary for future router management.
-
-Do not store generated scripts unnecessarily if the repository already regenerates them dynamically.
-
-If credentials are persisted, use the existing secure secret/sealing mechanism.
-
-Never log secrets.
-
-Never expose secrets through tenant-facing APIs.
-
-Only authorized platform/router-management users may retrieve sensitive enrollment information.
+Do not modify its content.
 
 ---
 
-# 21. Audit
+# 28. Required Generated Script Example
 
-Use the existing audit system.
+The generated output should follow this general structure:
 
-Record appropriate events for:
+```routeros
+# ISP Solutions RouterOS v7 Enrollment
+# Router: <IDENTITY>
+# Router ID: <ROUTER_ID>
+# Overlay: <WG_ADDRESS>
+#
+# IMPORTANT:
+# - No MikroTik CA certificate required
+# - HTTPS uses check-certificate=no
+# - RouterOS API is accessible only through WireGuard
 
-* Router enrollment script generated.
-* Router API user created.
-* Router API credentials rotated.
-* Router API user revoked.
-* Router enrollment regenerated.
+:local identity "<IDENTITY>";
+:local routerId "<ROUTER_ID>";
+:local wgPriv "<WG_PRIVATE_KEY>";
+:local srvKey "<SERVER_PUBLIC_KEY>";
+:local wgAddr "<WG_ADDRESS>";
+:local apiUser "<API_USERNAME>";
+:local apiPass "<API_PASSWORD>";
+:local agentToken "<AGENT_TOKEN>";
 
-Do not place:
+/system identity set name=$identity;
 
-* API passwords.
-* Tokens.
-* Private keys.
+# WireGuard
+...
 
-inside audit logs.
+# API firewall
+...
+
+# RouterOS API
+...
+
+# ISP Solutions API user
+...
+
+# Persistent agent
+...
+
+# Scheduler
+...
+
+:log info ("ISP Solutions enrollment initialized router=" . $routerId);
+```
+
+Do not print credentials into the log.
 
 ---
 
-# 22. Tests
+# 29. Error Messages
 
-Add focused tests for:
+Replace the generic:
 
-### RouterOS generation
+```text
+ISP Solutions: HTTPS fetch failed check URL and internet
+```
 
-* Script does not contain `owner=admin`.
-* Script contains the correct RouterOS script policy.
-* Scheduler has the required policy.
-* Dedicated-user option generates a valid username.
-* Dedicated user comment is `ISPsolutions`.
-* API is restricted to `10.200.0.1/32`.
-* WireGuard endpoint is `wg.ispsolutions.co.ke`.
-* Allowed address is `10.200.0.1/32`.
-* `check-certificate=no` remains present.
-* No CA certificate dependency is introduced.
+with precise diagnostics.
 
-### Idempotency
+Examples:
 
-Running enrollment generation repeatedly must not create duplicate:
+```text
+ISP Solutions agent: DNS/connection error
+ISP Solutions agent: HTTPS request failed
+ISP Solutions agent: HTTP 401 Unauthorized
+ISP Solutions agent: HTTP 403 Forbidden
+ISP Solutions agent: HTTP 404 Not Found
+ISP Solutions agent: HTTP 500 Server Error
+ISP Solutions agent: download finished but file missing
+ISP Solutions agent: downloaded file is empty
+ISP Solutions agent: configuration import failed
+ISP Solutions agent: configuration applied successfully
+```
 
-* WireGuard interfaces.
-* WireGuard peers.
-* RouterOS users.
-* Scripts.
-* Schedulers.
+Never falsely report a successful `FINISHED` download as an HTTPS failure.
 
-### Security
+---
 
-Verify generated scripts do not leak secrets into logs.
+# 30. Testing
 
-### Clipboard
+Test the generated script on RouterOS v7 for:
+
+### Fresh router
+
+* No ISP Solutions configuration.
+* Bootstrap executes successfully.
+* WireGuard comes up.
+* API user created.
+* API accessible only through WireGuard.
+* Agent scheduler created.
+
+### Existing router
+
+* Existing ISP Solutions resources reconciled.
+* No duplicates created.
+* Existing unrelated configuration untouched.
+
+### Fetch
 
 Test:
 
-* Autocopy copies the exact displayed script.
-* Successful copy displays `Copied ✓`.
-* Clipboard failure displays the fallback message.
+```text
+HTTP 200
+HTTP 401
+HTTP 403
+HTTP 404
+HTTP 500
+empty response
+network failure
+```
+
+### Successful fetch
+
+Expected log sequence:
+
+```text
+Download from ispsolutions.co.ke FINISHED
+ISP Solutions agent: downloaded <N> bytes
+ISP Solutions agent: configuration imported successfully
+```
+
+There must be **no** false:
+
+```text
+HTTPS fetch failed
+```
+
+after a successful `FINISHED` transfer.
+
+### Scheduler
+
+Verify:
+
+```routeros
+/system scheduler print detail where name="ispsolutions-agent"
+```
+
+and confirm it executes successfully without:
+
+```text
+Couldn't start task: cannot open file: permission denied
+```
+
+### Script
+
+Verify:
+
+```routeros
+/system script print detail where name="ispsolutions-pull"
+```
+
+and confirm it has no:
+
+```text
+owner=admin
+```
+
+requirement.
 
 ---
 
-# 23. Acceptance Criteria
+# 31. Final Acceptance Criteria
 
-The implementation is complete when:
+The implementation is complete only when:
 
-1. Generated RouterOS scripts contain **no `owner=admin` dependency**.
-2. The persistent agent can execute under the generated configuration.
-3. If required, a dedicated RouterOS user can be created automatically.
-4. The dedicated user can use the username derived from the WireGuard IP.
-5. The dedicated user has comment:
-   `ISPsolutions`
-6. The dedicated user's password is securely generated.
-7. API access remains restricted to the WireGuard controller.
-8. The API is not exposed through the WAN.
-9. No MikroTik CA certificate is required.
-10. `check-certificate=no` remains used for bootstrap/agent HTTPS.
-11. WireGuard continues using:
-    `wg.ispsolutions.co.ke:51820`
-12. All generated-script dialogs have an **Autocopy** button.
-13. Autocopy copies the exact script shown.
-14. Existing enrollment and provisioning functionality continues working.
-15. Tenant functionality is unchanged.
-16. No unrelated modules are changed.
+* RouterOS v7 enrollment is fully generated.
+* No `owner=admin` dependency exists.
+* The persistent agent executes under the generated configuration.
+* Dedicated ISP Solutions API user is created/reconciled.
+* Username can be derived from the WireGuard IP.
+* User comment is `ISPsolutions`.
+* API access is restricted to `10.200.0.1/32`.
+* API is not exposed to WAN.
+* WireGuard uses `wg.ispsolutions.co.ke:51820`.
+* Router peer uses `allowed-address=10.200.0.1/32`.
+* No MikroTik CA certificate is required.
+* HTTPS fetch uses `check-certificate=no`.
+* `/tool fetch` results are correctly interpreted.
+* `FINISHED` + HTTP 200 is treated as success.
+* Downloaded file is explicitly validated.
+* File is imported only after successful validation.
+* Temporary file is removed after successful processing.
+* Agent lock cannot remain permanently stuck.
+* Scheduler executes successfully.
+* Enrollment is idempotent.
+* Router identity and API connectivity can be verified.
+* All generated-script dialogs have Autocopy.
+* Autocopy copies the exact generated script.
+* No secrets are written to logs.
+* No unrelated ISP Solutions functionality is changed.
 
-## Critical Scope Restriction
-
-Do **not** modify unrelated ISP Solutions functionality.
-
-Do not change:
-
-* Tenant signup.
-* Billing.
-* Payments.
-* Customer management.
-* Hotspot.
-* RADIUS.
-* GenieACS.
-* M-Pesa.
-* SMS.
-* User authentication.
-* SaaS subscription logic.
-
-Only implement:
-
-**RouterOS agent execution/ownership correction, optional dedicated full-rights ISP Solutions RouterOS user, and Autocopy for generated scripts.**
+**Implement this as the complete RouterOS v7 enrollment/agent solution, not merely as a change to the error message.**
