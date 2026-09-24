@@ -28,7 +28,10 @@ const REVIEW = [
   { operation: "DELETE FROM", re: /\bDELETE\s+FROM\b/i, reason: "Deletes existing rows." },
   {
     operation: "DROP CONSTRAINT",
-    re: /\bALTER\s+TABLE\b[\s\S]{0,400}?\bDROP\s+CONSTRAINT\b/i,
+    // `DROP CONSTRAINT IF EXISTS` only replaces a check/unique rule. It does not
+    // delete rows. Blocking it stopped a brand-new production database from
+    // migrating, so the web process exited and Compose marked it unhealthy.
+    re: /\bALTER\s+TABLE\b[\s\S]{0,400}?\bDROP\s+CONSTRAINT\b(?!\s+IF\s+EXISTS)/i,
     reason: "May reject existing application writes.",
   },
 ];

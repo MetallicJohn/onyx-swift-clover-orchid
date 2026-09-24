@@ -72,14 +72,35 @@ test("productionProtectsData follows NODE_ENV", () => {
   assert.equal(productionProtectsData({ NODE_ENV: "development" }), false);
 });
 
+test("replacing a check constraint is not destructive", () => {
+  const sql = `
+    alter table packages drop constraint if exists packages_tier_check;
+    alter table packages add constraint packages_tier_check
+      check (tier in ('residential','business','enterprise'));
+    execute format('alter table %s drop constraint if exists %I', r.tbl, r.conname);
+  `;
+  assert.deepEqual(findDestructiveOperations(sql, "0053_business_credit.sql"), []);
+});
+
+test("dropping a constraint without IF EXISTS is still review", () => {
+  const findings = findDestructiveOperations(
+    "alter table packages drop constraint packages_tier_check;",
+  );
+  assert.equal(findings[0]?.operation, "DROP CONSTRAINT");
+  assert.equal(findings[0]?.kind, "review");
+});
+
 test("every current migration is additive or historically allowlisted", () => {
   const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
   const files = pendingMigrations(readdirSync(dir), []).map((p) => ({
     name: p.name,
     sql: readFileSync(join(dir, p.name), "utf8"),
   }));
-  const findings = scanMigrationFiles(files).filter((f) => f.kind === "blocked");
-  assert.deepEqual(findings, [], findings.map((f) => `${f.migration} ${f.operation}`).join("; "));
+  const findings = scanMigrationFiles(files);
+  const blocked = findings.filter((f) => f.kind === "blocked");
+  assert.deepEqual(blocked, [], blocked.map((f) => `${f.migration} ${f.operation}`).join("; "));
+  const review = findings.filter((f) => f.kind === "review");
+  assert.deepEqual(review, [], review.map((f) => `${f.migration} ${f.operation}`).join("; "));
   assert.ok(HISTORICAL_DESTRUCTIVE_ALLOWLIST.has("0023_empty_tenants_created_today.sql"));
 });
 
