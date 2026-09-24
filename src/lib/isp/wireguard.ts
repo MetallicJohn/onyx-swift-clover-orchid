@@ -106,6 +106,26 @@ function overlayIp(address: string) {
   return address.replace(/\/\d+$/, "");
 }
 
+function safeOverlayNetwork(network: string) {
+  return /^\d{1,3}(?:\.\d{1,3}){3}\/\d{1,2}$/.test(network) ? network : DEFAULT_HUB_NETWORK;
+}
+
+/** App containers are not on the hub address. The router accepts TCP 8728 only from 10.200.0.1. */
+export function hubNatCommands(iface: string, network: string) {
+  const net = safeOverlayNetwork(network);
+  return `if command -v iptables >/dev/null 2>&1; then
+  iptables -t nat -C POSTROUTING -o ${iface} -d ${net} -j MASQUERADE 2>/dev/null \\
+    || iptables -t nat -A POSTROUTING -o ${iface} -d ${net} -j MASQUERADE || true
+  iptables -C DOCKER-USER -o ${iface} -j ACCEPT 2>/dev/null \\
+    || iptables -I DOCKER-USER 1 -o ${iface} -j ACCEPT 2>/dev/null || true
+  iptables -C DOCKER-USER -i ${iface} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null \\
+    || iptables -I DOCKER-USER 1 -i ${iface} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+fi
+if command -v ufw >/dev/null 2>&1; then
+  ufw route allow out on ${iface} to ${net} >/dev/null 2>&1 || true
+fi`;
+}
+
 export function buildServerConf(hub: WgHubConfig, peers: WgPeerConfig[]) {
   const lines = [
     `# ${APP_NAME} hub — /etc/wireguard/${ROS_WG_INTERFACE}.conf`,
@@ -117,6 +137,10 @@ export function buildServerConf(hub: WgHubConfig, peers: WgPeerConfig[]) {
     `ListenPort = ${hub.listenPort}`,
     `PrivateKey = ${hub.privateKey}`,
     "SaveConfig = false",
+    "# Docker API checks must leave as this host, or the router drops TCP 8728.",
+    `PostUp = iptables -t nat -C POSTROUTING -o %i -d ${safeOverlayNetwork(hub.network)} -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o %i -d ${safeOverlayNetwork(hub.network)} -j MASQUERADE`,
+    "PostUp = iptables -C DOCKER-USER -o %i -j ACCEPT 2>/dev/null || iptables -I DOCKER-USER 1 -o %i -j ACCEPT 2>/dev/null || true",
+    "PostUp = iptables -C DOCKER-USER -i %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || iptables -I DOCKER-USER 1 -i %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true",
   ];
   for (const peer of peers) {
     if (!peer.publicKey) continue;
@@ -174,6 +198,7 @@ else
   wg-quick up ${iface}
 fi
 wg show ${iface}
+${hubNatCommands(iface, hub.network)}
 echo "UDP ${hub.listenPort} must be open on the VPS firewall. Re-running this script does not drop live peers."
 `;
 }

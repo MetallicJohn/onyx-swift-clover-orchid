@@ -28,6 +28,17 @@ fi
 if ! ip link show "$IFACE" >/dev/null 2>&1; then
   exit 0
 fi
+# The app runs in Docker. RouterOS API accepts 10.200.0.1 only, so forwarded
+# checks must be rewritten onto this interface. syncconf does not re-run PostUp.
+if command -v iptables >/dev/null 2>&1; then
+  NET="${WG_NETWORK:-10.200.0.0/24}"
+  iptables -t nat -C POSTROUTING -o "$IFACE" -d "$NET" -j MASQUERADE 2>/dev/null \
+    || iptables -t nat -A POSTROUTING -o "$IFACE" -d "$NET" -j MASQUERADE || true
+  iptables -C DOCKER-USER -o "$IFACE" -j ACCEPT 2>/dev/null \
+    || iptables -I DOCKER-USER 1 -o "$IFACE" -j ACCEPT 2>/dev/null || true
+  iptables -C DOCKER-USER -i "$IFACE" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null \
+    || iptables -I DOCKER-USER 1 -i "$IFACE" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+fi
 if [[ -f "$WANTED" ]] && command -v python3 >/dev/null 2>&1; then
   WANTED="$WANTED" IFACE="$IFACE" python3 - <<'PY'
 import json, os, subprocess

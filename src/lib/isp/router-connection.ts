@@ -324,7 +324,7 @@ export async function probeRouterConnection(
   let identity = "";
   let version = "";
   if (wgOk) {
-    const result = await verifyRouterApi(sql, healthRow, { timeoutMs: 1500, retirePrevious: true });
+    const result = await verifyRouterApi(sql, healthRow, { timeoutMs: 6000, retirePrevious: true });
     apiOk = result.ok;
     apiError = result.error || "";
     identity = result.identity || "";

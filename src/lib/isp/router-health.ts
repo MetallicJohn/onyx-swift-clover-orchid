@@ -1,8 +1,10 @@
+import { ROS_API_USER } from "../brand.ts";
 import { nid } from "../utils.ts";
 import { metricIncr, metricSet } from "./metrics.ts";
 import { logEvent } from "./obs.ts";
 import { attr, routerosApiCommand } from "./routeros-api.ts";
 import { compositeEnrollState, recordEnrollState, type EnrollState } from "./router-enroll-state.ts";
+import { rosOverlayUserName } from "./routeros.ts";
 import { open } from "./secrets.ts";
 import { findDumpPeer, handshakeLive, parseWgDump, removeHostPeer, type WgDumpPeer } from "./wg-host.ts";
 
@@ -33,6 +35,33 @@ export function signalFresh(iso: string | null | undefined, now = Date.now(), ma
   if (!iso) return false;
   const t = Date.parse(iso);
   return Number.isFinite(t) && now - t <= maxAgeMs;
+}
+
+function apiLoginNames(row: RouterHealthRow) {
+  const overlay = rosOverlayUserName(row.wg_address);
+  const primary = (row.api_user || "").trim() || overlay || ROS_API_USER;
+  const names = [primary];
+  if (overlay && !names.includes(overlay)) names.push(overlay);
+  if (!names.includes(ROS_API_USER)) names.push(ROS_API_USER);
+  return names;
+}
+
+function isApiNetworkFailure(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err || "");
+  return /timeout|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|EHOSTDOWN|ENETDOWN|EPERM|ECONNRESET|EAI_AGAIN|ENOTFOUND/i.test(
+    message,
+  );
+}
+
+function explainApiError(err: unknown, host: string) {
+  const message = err instanceof Error ? err.message : "API failed";
+  if (/timeout|EHOSTUNREACH|ENETUNREACH|EHOSTDOWN|ENETDOWN/i.test(message)) {
+    return `No reply from ${host}:8728. The router accepts API only from 10.200.0.1.`;
+  }
+  if (/ECONNREFUSED/i.test(message)) {
+    return `Connection refused on ${host}:8728. Enable the API service for 10.200.0.1 only.`;
+  }
+  return message;
 }
 
 export function applyDumpToHealth(row: RouterHealthRow, dump: WgDumpPeer[], now = Date.now()) {
@@ -95,12 +124,12 @@ export async function verifyRouterApi(
   opts?: { timeoutMs?: number; retirePrevious?: boolean },
 ) {
   const host = (row.wg_address || "").replace(/\/\d+$/, "");
-  const user = row.api_user || "ispsolutions-agent";
+  const names = apiLoginNames(row);
   const current = open(row.api_password);
   const previous = open(row.api_password_previous || "");
   const started = Date.now();
   const timeoutMs = opts?.timeoutMs;
-  async function attempt(password: string) {
+  async function attempt(user: string, password: string) {
     const identity = await routerosApiCommand(
       { host, user, password, port: row.api_port || 8728, timeoutMs },
       ["/system/identity/print"],
@@ -119,15 +148,27 @@ export async function verifyRouterApi(
       board: attr(resource, "board-name") || attr(resource, "architecture-name") || (board ? attr(board, "model") : ""),
     };
   }
+  async function attemptPassword(password: string) {
+    let last: unknown;
+    for (const name of names) {
+      try {
+        return await attempt(name, password);
+      } catch (err) {
+        last = err;
+        if (isApiNetworkFailure(err)) throw err;
+      }
+    }
+    throw last instanceof Error ? last : new Error("RouterOS API login failed");
+  }
   try {
     if (!host || !current) throw new Error("API credentials or overlay missing");
     let usedPrevious = false;
     let result: { identity: string; version: string; board: string };
     try {
-      result = await attempt(current);
+      result = await attemptPassword(current);
     } catch (err) {
-      if (!previous || previous === current) throw err;
-      result = await attempt(previous);
+      if (!previous || previous === current || isApiNetworkFailure(err)) throw err;
+      result = await attemptPassword(previous);
       usedPrevious = true;
     }
     await sql`update routers set
@@ -156,7 +197,7 @@ export async function verifyRouterApi(
     });
     return { ok: true, identity: result.identity, version: result.version, board: result.board, error: "" };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "API failed";
+    const message = explainApiError(err, host).slice(0, 400);
     await sql`update routers set last_api_check_at = now(), api_last_error = ${message.slice(0, 400)}
       where id = ${row.id}`;
     metricIncr("router_api_failure");

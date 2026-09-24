@@ -105,7 +105,7 @@ function RouterRecordPage() {
   const [apiForm, setApiForm] = useState({
     api_user: "ispsolutions-agent",
     api_password: "",
-    api_port: 443,
+    api_port: 8728,
     api_host: "",
     api_password_set: false,
     api_password_hint: "",
@@ -233,11 +233,15 @@ function RouterRecordPage() {
                   const out = await testRouterConnectionFn({ data: { id: router.id } });
                   setProbe(out);
                   setNote(
-                    `${out.wireguard.status === "connected" ? "WireGuard connected" : "WireGuard not connected"} · ${
-                      out.api.status === "connected" ? "API connected" : out.api.status === "failed" ? "API failed" : "API not verified"
-                    } · ${
-                      out.agent.status === "connected" ? "Agent connected" : "Agent not verified"
-                    }`,
+                    [
+                      out.wireguard.status === "connected" ? "WireGuard connected" : "WireGuard not connected",
+                      out.api.status === "connected"
+                        ? "API connected"
+                        : out.api.status === "failed"
+                          ? `API failed: ${out.api.detail || "no reply"}`
+                          : "API not verified",
+                      out.agent.status === "connected" ? "Agent connected" : "Agent not verified",
+                    ].join(" · "),
                   );
                 }}
               >
@@ -543,8 +547,8 @@ function RouterRecordPage() {
               <div>
                 <h2 className="font-medium">API user</h2>
                 <p className="text-sm text-muted">
-                  REST is not used. The agent login is{" "}
-                  <span className="font-mono">ispsolutions-agent</span> on TCP 8728, overlay only.
+                  Binary API on TCP 8728, not REST. The router accepts it only from 10.200.0.1. The username is the
+                  overlay address with the dots removed (10.200.0.2 becomes 10200002).
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -574,7 +578,7 @@ function RouterRecordPage() {
                   <Input
                     type="number"
                     value={apiForm.api_port}
-                    onChange={(e) => setApiForm({ ...apiForm, api_port: Number(e.target.value) || 443 })}
+                    onChange={(e) => setApiForm({ ...apiForm, api_port: Number(e.target.value) || 8728 })}
                   />
                 </Field>
               </div>
