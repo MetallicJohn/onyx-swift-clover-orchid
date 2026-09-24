@@ -234,6 +234,9 @@ test("duplicate overlay IPs are not assigned", async () => {
     await sql`insert into routers (id, tenant_id, name, wg_address) values ('r1', 'ten_wg', 'a', ${a})`;
     const b = await nextWgAddress(sql, "ten_wg");
     assert.notEqual(a, b);
+    await sql`update routers set archived_at = now() where id = 'r1'`;
+    const c = await nextWgAddress(sql, "ten_wg");
+    assert.notEqual(c, a);
   } finally {
     await close();
   }

@@ -1,6 +1,6 @@
 import { backfillServiceAccountNumbers } from "./account-numbers";
 import { nid } from "../utils.ts";
-import { enrollFields, wgAddressForIndex } from "./agent";
+import { enrollFields, nextWgAddress } from "./agent";
 import { emptySeededTenantsCreatedOn } from "./empty-tenant";
 import { ensureTenantHub, syncRouterWgPeer } from "./wireguard";
 import { emit } from "./events";
@@ -90,11 +90,9 @@ export async function seedOpsForTenant(sql: Sql, tenantId: string) {
   }>`
     select id, name, enroll_token, wg_public, wg_address from routers where tenant_id = ${tenantId}`;
   await ensureTenantHub(sql, tenantId);
-  let i = 0;
   for (const r of routers) {
-    i += 1;
     if (r.enroll_token) continue;
-    const address = r.wg_address || wgAddressForIndex(i);
+    const address = r.wg_address || (await nextWgAddress(sql, tenantId));
     const enroll = enrollFields(r.name, address);
     if (r.wg_public) {
       await sql`update routers set enroll_token = ${enroll.token} where id = ${r.id} and tenant_id = ${tenantId}`;

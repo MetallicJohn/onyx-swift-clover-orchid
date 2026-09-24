@@ -15,16 +15,18 @@ export function wgAddressForIndex(i: number) {
 }
 
 function overlayLastOctet(address: string) {
-  const host = (address || "").replace(/\/\d+$/, "");
-  const last = Number(host.split(".").pop());
+  const host = (address || "").trim().replace(/\/\d+$/, "");
+  const parts = host.split(".");
+  if (parts.length !== 4 || parts[0] !== "10" || parts[1] !== "200" || parts[2] !== "0") return 0;
+  const last = Number(parts[3]);
   return Number.isInteger(last) ? last : 0;
 }
 
-/** Unique overlay in 10.200.0.2–254. Never 10.200.0.1. Never reuse a live router's address. */
+/** Unique overlay in 10.200.0.2–254. Never 10.200.0.1. Never reuse an address still stored, including archived routers. */
 export async function nextWgAddress(sql: Sql, _tenantId: string) {
   const rows = await sql<{ wg_address: string }>`
     select wg_address from routers
-    where coalesce(wg_address,'') <> '' and archived_at is null`;
+    where coalesce(wg_address,'') <> ''`;
   const used = new Set(rows.map((r) => overlayLastOctet(r.wg_address)));
   used.add(1);
   for (let i = 2; i <= 254; i += 1) {
