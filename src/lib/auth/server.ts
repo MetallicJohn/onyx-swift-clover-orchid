@@ -49,7 +49,10 @@ import {
 import { resolveAuthTrustedOrigins } from "../isp/auth-origins";
 
 // Kick (and share) PGLite bootstrap as soon as the auth server module loads.
-void ensureDbReady();
+void ensureDbReady().catch((err) => {
+  const message = err instanceof Error ? err.message : "error";
+  console.error("[auth] database bootstrap failed:", message);
+});
 
 /**
  * Preview secret must outlive module reloads: PGLite (and its session rows) is
@@ -158,8 +161,9 @@ export const SESSION_TOKEN_COOKIE = "__Host-grok-auth.session_token";
 
 // Built separately so the `betterAuth({...})` call stays easy to edit without
 // breaking brackets (models often trip on the conditional plugin spread).
-const grokOAuthPlugin = authConfigured
-  ? genericOAuth({
+const grokOAuthPlugin =
+  authConfigured && GROK_PROVIDERS.length > 0
+    ? genericOAuth({
       config: GROK_PROVIDERS.map(({ providerId, idp }) => ({
         providerId,
         clientId: grokClientId as string,

@@ -242,6 +242,30 @@ export const noteOperatorSignIn = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const currentPlatformIdentity = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const sql = await getSql();
+    const { loadOperatorProfile } = await import("./operator-security");
+    const { platformSessionAllowed } = await import("./platform-login");
+    if (!(await platformSessionAllowed(sql, context.userId))) {
+      throw new Error("Unauthorized");
+    }
+    const profile = await loadOperatorProfile(sql, context.userId);
+    if (!profile) throw new Error("Unauthorized");
+    const tenant = profile.tenants[0];
+    return {
+      id: profile.user_id,
+      name: profile.display_name || profile.name,
+      email: profile.email,
+      status: profile.status,
+      role: profile.platform_admin && !tenant ? "superadmin" : tenant?.role || (profile.platform_admin ? "superadmin" : ""),
+      tenant_name: tenant?.name || "",
+      tenant_id: tenant?.id || "",
+      platform_admin: profile.platform_admin,
+    };
+  });
+
 export const requestPasswordReset = createServerFn({ method: "POST" })
   .validator((d: { email?: string; identifier?: string }) => d)
   .handler(async ({ data }) => {

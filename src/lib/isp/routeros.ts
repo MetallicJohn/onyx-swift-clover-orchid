@@ -201,12 +201,19 @@ function rosIdentityBlock(identity: string) {
 }
 
 function rosWireGuardInterfaceBlock(wgPriv: string) {
-  return `:do { /interface wireguard set [find where name="${ROS_WG_INTERFACE_LEGACY}"] name=${ROS_WG_INTERFACE} } on-error={}
+  return `:if ([:len [/interface wireguard find where name="${ROS_WG_INTERFACE}"]] = 0) do={
+  :do { /interface wireguard set [find where name="${ROS_WG_INTERFACE_LEGACY}"] name=${ROS_WG_INTERFACE} } on-error={}
+}
 :if ([:len [/interface wireguard find where name="${ROS_WG_INTERFACE}"]] = 0) do={
   :do { /interface wireguard add name=${ROS_WG_INTERFACE} listen-port=13231 private-key=${wgPriv} comment=${rosQuote(APP_NAME)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard interface failed — need RouterOS v7`)} }
 } else={
   :do { /interface wireguard set [find where name="${ROS_WG_INTERFACE}"] private-key=${wgPriv} listen-port=13231 comment=${rosQuote(APP_NAME)} } on-error={ :log error ${rosQuote(`${APP_NAME}: WireGuard interface failed — need RouterOS v7`)} }
-}`;
+}
+:do { /ip firewall filter set [find where in-interface="${ROS_WG_INTERFACE_LEGACY}"] in-interface=${ROS_WG_INTERFACE} } on-error={}
+:do { /ip address set [find where interface="${ROS_WG_INTERFACE_LEGACY}"] interface=${ROS_WG_INTERFACE} } on-error={}
+:do { /ip route set [find where gateway="${ROS_WG_INTERFACE_LEGACY}"] gateway=${ROS_WG_INTERFACE} } on-error={}
+:do { /interface wireguard peers set [find where interface="${ROS_WG_INTERFACE_LEGACY}"] interface=${ROS_WG_INTERFACE} } on-error={}
+:do { /interface wireguard remove [find where name="${ROS_WG_INTERFACE_LEGACY}"] } on-error={}`;
 }
 
 function rosWireGuardPeerBlock(opts: {

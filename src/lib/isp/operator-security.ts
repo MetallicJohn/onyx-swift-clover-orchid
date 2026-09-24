@@ -30,6 +30,9 @@ const COMMON_PASSWORDS = new Set([
 const LOCK_AFTER = 5;
 const LOCK_MINUTES = 15;
 
+export const INVALID_LOGIN_MESSAGE = "Invalid username or password";
+export const LOCKOUT_MESSAGE = "Too many sign-in attempts from this network. Wait a minute and try again.";
+
 export type OperatorProfile = {
   user_id: string;
   email: string;
@@ -145,10 +148,10 @@ export async function assertOperatorCanSignIn(sql: Sql, email: string) {
   const [row] = await sql<{ status: string; locked_until: string | null }>`
     select status, locked_until::text as locked_until from operator_profiles where user_id = ${user.id}`;
   if (row?.status === "SUSPENDED" || row?.status === "DISABLED") {
-    throw new Error("Invalid email or password");
+    throw new Error(INVALID_LOGIN_MESSAGE);
   }
   if (row?.locked_until && Date.parse(row.locked_until) > Date.now()) {
-    throw new Error("Too many sign-in attempts from this network. Wait a minute and try again.");
+    throw new Error(LOCKOUT_MESSAGE);
   }
   return { email: user.email };
 }

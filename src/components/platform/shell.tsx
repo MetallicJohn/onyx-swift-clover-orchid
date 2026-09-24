@@ -44,7 +44,15 @@ type Hit = {
   nodes: { id: string; name: string; tenant_id: string; tenant_name: string }[];
 };
 
-export function PlatformShell({ email, defaultPassword = false }: { email?: string; defaultPassword?: boolean }) {
+export function PlatformShell({
+  email,
+  defaultPassword = false,
+  accountStatus = "ACTIVE",
+}: {
+  email?: string;
+  defaultPassword?: boolean;
+  accountStatus?: string;
+}) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -84,7 +92,11 @@ export function PlatformShell({ email, defaultPassword = false }: { email?: stri
             <Shield className="size-4" />
             <span className="app-nav-label">ISP console</span>
           </Link>
-          <div className="app-nav-kicker">{email || "superadmin"}</div>
+          <div className="app-nav-kicker">
+            {email || "superadmin"}
+            {accountStatus ? ` · ${accountStatus === "ACTIVE" ? "Active" : accountStatus}` : ""}
+            {" · Superadmin"}
+          </div>
         </div>
         <SidebarCollapseButton collapsed={collapsed} onToggle={toggle} />
       </aside>

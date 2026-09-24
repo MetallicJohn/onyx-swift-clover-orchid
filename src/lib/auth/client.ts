@@ -225,6 +225,12 @@ export async function signOut(redirectTo = "/"): Promise<void> {
     // Better Auth resolves with `{ error }` instead of rejecting, so surface a
     // failed response as a rejection for the sequence to act on.
     requestSignOut: async () => {
+      try {
+        const { noteOperatorLogout } = await import("@/lib/isp/server");
+        await noteOperatorLogout();
+      } catch {
+        /* still clear the session */
+      }
       const { error } = await authClient.signOut();
       if (error) throw new Error(error.message ?? "Sign-out failed");
     },

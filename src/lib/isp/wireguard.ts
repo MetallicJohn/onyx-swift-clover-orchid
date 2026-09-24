@@ -116,6 +116,7 @@ export function buildServerConf(hub: WgHubConfig, peers: WgPeerConfig[]) {
     `Address = ${hub.address}`,
     `ListenPort = ${hub.listenPort}`,
     `PrivateKey = ${hub.privateKey}`,
+    "SaveConfig = false",
   ];
   for (const peer of peers) {
     if (!peer.publicKey) continue;
@@ -153,20 +154,27 @@ install -d -m 0700 /etc/wireguard
 cat >/etc/wireguard/${iface}.conf <<'ISPSOLUTIONS_WG'
 ${conf}ISPSOLUTIONS_WG
 chmod 600 /etc/wireguard/${iface}.conf
+install -d -m 0755 /etc/sysctl.d
+printf '%s\n' 'net.ipv4.ip_forward=1' >/etc/sysctl.d/99-ispsolutions-wireguard.conf
 sysctl -w net.ipv4.ip_forward=1 >/dev/null
-if [ -f /etc/sysctl.conf ] && ! grep -q '^net.ipv4.ip_forward=1' /etc/sysctl.conf; then
-  echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
+if command -v ufw >/dev/null 2>&1; then
+  ufw allow ${hub.listenPort}/udp || true
 fi
-if [ -f /etc/wireguard/${legacy}.conf ] || systemctl is-active --quiet "wg-quick@${legacy}" 2>/dev/null; then
-  wg-quick down ${legacy} >/dev/null 2>&1 || true
-  systemctl disable --now "wg-quick@${legacy}" >/dev/null 2>&1 || true
-  rm -f /etc/wireguard/${legacy}.conf
+# Rename a live ${legacy} netdev. wg-quick down would drop every handshake.
+if ip link show ${legacy} >/dev/null 2>&1 && ! ip link show ${iface} >/dev/null 2>&1; then
+  ip link set dev ${legacy} name ${iface}
 fi
-wg-quick down ${iface} >/dev/null 2>&1 || true
-wg-quick up ${iface}
+systemctl disable "wg-quick@${legacy}" >/dev/null 2>&1 || true
+rm -f /etc/wireguard/${legacy}.conf
 systemctl enable "wg-quick@${iface}" >/dev/null 2>&1 || true
+if ip link show ${iface} >/dev/null 2>&1; then
+  # Reconcile peers without tearing the interface down. Unchanged MikroTiks keep their handshake.
+  wg syncconf ${iface} <(wg-quick strip /etc/wireguard/${iface}.conf)
+else
+  wg-quick up ${iface}
+fi
 wg show ${iface}
-echo "Allow UDP ${hub.listenPort} on the VPS firewall."
+echo "UDP ${hub.listenPort} must be open on the VPS firewall. Re-running this script does not drop live peers."
 `;
 }
 

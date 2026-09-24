@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8081/login",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "ISP Solutions",
+      "hasCanvas": false,
+      "bodyTextLen": 214,
+      "bodyTextHash": "a628b8b83a0548172780d0c17ca57fffcffbdff6394d291bb2846034bfbb5d35",
+      "bodyTextPrefix": "IS ISP Solutions ISP Solutions Sign in to your ISP Use the email",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/login-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "ISP Solutions",
+      "hasCanvas": false,
+      "bodyTextLen": 214,
+      "bodyTextHash": "a628b8b83a0548172780d0c17ca57fffcffbdff6394d291bb2846034bfbb5d35",
+      "bodyTextPrefix": "IS ISP Solutions ISP Solutions Sign in to your ISP Use the email",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/login-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/login-built.json"
+}

@@ -3,18 +3,22 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { useTheme } from "@/components/theme-provider";
 import { RedirectToSignIn } from "@/lib/auth/gates";
+import { authEnabled } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { getDashboard, listMyTenants, switchTenant } from "@/lib/isp/server";
 import { platformStatus } from "@/lib/isp/server-more";
 import { getTenantTheme } from "@/lib/isp/server-theme";
 import { setActiveDateFormat } from "@/lib/isp/display";
 import { clearThemeCache, type ThemeConfig } from "@/lib/theme/resolve";
+import { usePlatformIdentity } from "@/lib/isp/use-platform-session";
 import type { Workspace } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app")({ component: AppLayout });
 
 function AppLayout() {
   const { user, isPending } = useCurrentUserState();
+  const platformCheck = authEnabled && Boolean(user) && !isPending;
+  const platform = usePlatformIdentity(platformCheck);
   const { apply } = useTheme();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -60,10 +64,10 @@ function AppLayout() {
     return () => apply(null);
   }, [apply]);
 
-  if (isPending) {
+  if (isPending || (platformCheck && platform.state === "pending")) {
     return <div className="min-h-dvh bg-bg" />;
   }
-  if (!user) return <RedirectToSignIn />;
+  if (!user || (authEnabled && platform.state !== "ok")) return <RedirectToSignIn />;
   if (platformOnly && (pathname === "/app/profile" || pathname.startsWith("/app/profile/"))) {
     return <AppShell platformAdmin displayName="SaaS Management" tenantName="ISP Solutions" />;
   }
@@ -90,6 +94,8 @@ function AppLayout() {
       tenantStatus={workspace?.status}
       supportMode={workspace?.supportMode}
       supportReason={workspace?.supportReason}
+      accountEmail={platform.identity?.email}
+      accountStatus={platform.identity?.status}
     />
   );
 }

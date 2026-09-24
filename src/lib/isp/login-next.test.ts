@@ -31,6 +31,8 @@ test("platform bootstrap username lands on SaaS management", () => {
 
 test("sign-in errors tell operators to use the public HTTPS URL", () => {
   assert.match(signInErrorMessage(new Error("Invalid origin")), /HTTPS/);
-  assert.match(signInErrorMessage(new Error("Invalid email or password")), /Forgot password/);
+  assert.equal(signInErrorMessage(new Error("Invalid email or password")), "Invalid username or password");
+  assert.equal(signInErrorMessage(new Error("Invalid username or password")), "Invalid username or password");
   assert.match(signInErrorMessage(new Error("Too many requests")), /Wait a minute/);
+  assert.match(signInErrorMessage(new Error("Too many sign-in attempts")), /Wait a minute/);
 });

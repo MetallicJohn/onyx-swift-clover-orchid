@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
-import { APP_NAME } from "@/lib/brand";
+import { APP_NAME, ROS_WG_INTERFACE } from "@/lib/brand";
 import { DATE_FORMATS, DEFAULT_DATE_FORMAT, dateFormatExample, formatDate, normalizeDateFormat, setActiveDateFormat, type DateFormatId } from "@/lib/isp/display";
 import { AppearanceSettings } from "@/components/isp/appearance-settings";
 import { CustomerTagsSettings } from "@/components/isp/customer-tags-settings";
@@ -704,7 +704,7 @@ function SettingsPage() {
           <p className="text-sm text-muted">
             This VPS is <span className="font-mono text-fg">{hub?.address || "10.200.0.1/24"}</span> on{" "}
             <span className="font-mono text-fg">{hub?.network || "10.200.0.0/24"}</span>. Routers dial{" "}
-            <span className="font-mono text-fg">wg-ispsolutions</span>. API is TCP 8728 on the overlay only. Paste the
+            <span className="font-mono text-fg">{ROS_WG_INTERFACE}</span>. API is TCP 8728 on the overlay only. Paste the
             public WireGuard hostname (never the HTTPS apex). Production default is{" "}
             <span className="font-mono text-fg">wg.ispsolutions.co.ke</span>. Cloudflare stays DNS-only.
           </p>
@@ -762,7 +762,7 @@ function SettingsPage() {
                 }
               }}
             >
-              {hubCopied === "conf" ? "Copied wg-ispsolutions.conf" : "Download server config"}
+              {hubCopied === "conf" ? `Copied ${ROS_WG_INTERFACE}.conf` : "Download server config"}
             </Button>
             <Button
               type="button"

@@ -79,11 +79,15 @@ test("server wg-quick config is a hub with one peer per router", () => {
     },
     [{ name: "edge-01", publicKey: client.publicKey, address: "10.200.0.2/32" }],
   );
+  assert.match(conf, /SaveConfig = false/);
   assert.match(install, /wg-quick up wg-ispsolutions/);
+  assert.match(install, /ip link set dev wg-gridline name wg-ispsolutions/);
+  assert.match(install, /wg syncconf wg-ispsolutions/);
   assert.match(install, /\/etc\/wireguard\/wg-ispsolutions\.conf/);
-  assert.match(install, /wg-quick down wg-gridline/);
   assert.match(conf, /\/etc\/wireguard\/wg-ispsolutions\.conf/);
+  assert.doesNotMatch(install, /wg-quick down wg-gridline/);
   assert.doesNotMatch(install, /wg-quick up wg-gridline/);
+  assert.doesNotMatch(install, /wg-quick down wg-ispsolutions/);
 });
 
 test("hub peer shell adds one router without rewriting the hub conf", () => {
@@ -112,6 +116,7 @@ test("client enroll script sets the router private key and hub endpoint", () => 
   });
   assert.match(script, /interface wireguard add name=wg-ispsolutions/);
   assert.match(script, /name="wg-gridline"\] name=wg-ispsolutions/);
+  assert.match(script, /in-interface="wg-gridline"\] in-interface=wg-ispsolutions/);
   assert.match(script, /system script add name="ispsolutions-pull"/);
   assert.match(script, /system scheduler add name="ispsolutions-agent"/);
   assert.match(script, /ISP Solutions agent/);

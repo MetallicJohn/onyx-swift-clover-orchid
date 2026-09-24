@@ -14,6 +14,7 @@ import {
   sessionBoundToGateIdentity,
 } from "./gate-identity.server";
 import { GATE_SESSION_MARKER_COOKIE } from "./gate-session-marker";
+import { applicationExternalIdentityEnabled } from "./providers";
 
 export const GATE_PROVIDER_ID = "grok-gate";
 const GATE_ACCOUNT_ISSUER = "https://grok.com";
@@ -217,6 +218,11 @@ export function gateIdentitySessions() {
             const inbound = ctx.request?.headers ?? ctx.headers;
             if (!inbound) {
               console.error(`${LOG} no request headers on /get-session`);
+              return;
+            }
+            // ISP Solutions does not adopt gate identities as application logins.
+            if (!applicationExternalIdentityEnabled) {
+              await clearGateMarkerIfPresent(ctx, inbound);
               return;
             }
             // Bearer auth (live-preview popup) already carries a session — leave it alone.

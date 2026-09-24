@@ -44,18 +44,20 @@ export function rememberAuthSession(
 }
 
 /**
- * Gate (Grok viewer) sessions must not hide ISP email login. Operator bearer
- * or a normal cookie session can skip the form.
+ * Only a verified platform account may skip the login form.
+ * A Better Auth cookie, bearer, or Grok gate session is not enough.
  */
 export function loginPageAction(input: {
   isPending: boolean;
   hasUser: boolean;
   hasOperatorBearer: boolean;
   hasGateSession: boolean;
+  platformOk?: boolean;
+  platformPending?: boolean;
 }): "wait" | "go_app" | "form" {
-  if (input.isPending) return "wait";
+  if (input.isPending || input.platformPending) return "wait";
+  if (input.platformOk) return "go_app";
   if (!input.hasUser) return "form";
-  if (input.hasOperatorBearer) return "go_app";
-  if (input.hasGateSession) return "form";
-  return "go_app";
+  if (input.hasGateSession && !input.hasOperatorBearer) return "form";
+  return "form";
 }

@@ -3,11 +3,27 @@
 # Safe to run every few seconds. Does not rewrite the hub private key.
 set -euo pipefail
 IFACE="${WG_INTERFACE:-wg-ispsolutions}"
+LEGACY="${WG_INTERFACE_LEGACY:-wg-gridline}"
 WANTED="${ISPSOLUTIONS_WG_DIR:-/opt/ispsolutions/wg}/wanted.json"
 DUMP="${ISPSOLUTIONS_WG_DUMP:-${ISPSOLUTIONS_WG_DIR:-/opt/ispsolutions/wg}/wg.dump}"
 mkdir -p "$(dirname "$DUMP")" "$(dirname "$WANTED")"
 if ! command -v wg >/dev/null 2>&1; then
   exit 0
+fi
+# Rename the old hub interface in place. Do not wg-quick down it.
+if ip link show "$LEGACY" >/dev/null 2>&1 && ! ip link show "$IFACE" >/dev/null 2>&1; then
+  ip link set dev "$LEGACY" name "$IFACE" || true
+fi
+if [[ -f "/etc/wireguard/${LEGACY}.conf" ]]; then
+  systemctl disable "wg-quick@${LEGACY}" >/dev/null 2>&1 || true
+  if [[ ! -f "/etc/wireguard/${IFACE}.conf" ]]; then
+    mv "/etc/wireguard/${LEGACY}.conf" "/etc/wireguard/${IFACE}.conf"
+  else
+    rm -f "/etc/wireguard/${LEGACY}.conf"
+  fi
+fi
+if [[ -f "/etc/wireguard/${IFACE}.conf" ]]; then
+  systemctl enable "wg-quick@${IFACE}" >/dev/null 2>&1 || true
 fi
 if ! ip link show "$IFACE" >/dev/null 2>&1; then
   exit 0

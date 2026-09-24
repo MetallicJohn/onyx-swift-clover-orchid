@@ -8,7 +8,7 @@ Settings → Network:
 
 - One X25519 keypair per ISP (`tenants.wg_public` / sealed `wg_private_ref`). Public half is `WIREGUARD_SERVER_PUBLIC_KEY` when set.
 - Public endpoint hostname **`wg.ispsolutions.co.ke`** (never the HTTPS apex `ispsolutions.co.ke`) + UDP 51820
-- Download `wg-ispsolutions.conf` (`wg-quick`) and a root install script for the VPS. A previous overlay name on the host is brought down and replaced.
+- Download `wg-ispsolutions.conf` (`wg-quick`) and a root install script for the VPS. A host still named `wg-gridline` is renamed in place to `wg-ispsolutions` (the install script does not `wg-quick down` it). Re-running the install script hot-reloads with `wg syncconf` and does not drop MikroTiks that are already up. `SaveConfig = false` so a shutdown does not rewrite the managed file.
 
 `[Peer]` stanzas are built from live routers, including a previous public key during rotation until the new handshake is verified. Client private keys are not written into the server file.
 

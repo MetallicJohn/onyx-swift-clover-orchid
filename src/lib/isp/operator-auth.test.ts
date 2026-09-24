@@ -129,7 +129,7 @@ test("suspended operators cannot sign in; lockout trips after failed attempts", 
     const user = await createCredentialAccount(sql, { email: "staff@isp.test", password: "StaffPass1", name: "Kamau" });
     await ensureOperatorProfile(sql, user.id);
     await sql`update operator_profiles set status = 'SUSPENDED' where user_id = ${user.id}`;
-    await assert.rejects(() => assertOperatorCanSignIn(sql, "staff@isp.test"), /Invalid email or password/);
+    await assert.rejects(() => assertOperatorCanSignIn(sql, "staff@isp.test"), /Invalid username or password/);
     await sql`update operator_profiles set status = 'ACTIVE' where user_id = ${user.id}`;
     for (let i = 0; i < 5; i += 1) await recordOperatorLoginFailure(sql, "staff@isp.test", "1.1.1.1");
     await assert.rejects(() => assertOperatorCanSignIn(sql, "staff@isp.test"), /Too many sign-in/);

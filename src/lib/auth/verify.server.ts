@@ -67,7 +67,25 @@ export async function getSessionUser(
   }
   const session = await auth.api.getSession({ headers });
   if (!session?.user) return null;
+  if (!(await allowPlatformSession(session.user.id))) return null;
   return { id: session.user.id, email: session.user.email ?? null };
+}
+
+/**
+ * Fail closed unless the Better Auth session belongs to an active platform
+ * credential account. External, gate, RouterOS, and RADIUS identities never pass.
+ */
+async function allowPlatformSession(userId: string): Promise<boolean> {
+  try {
+    const { getSql } = await import("../db");
+    const { platformSessionAllowed } = await import("../isp/platform-login");
+    const sql = await getSql();
+    return await platformSessionAllowed(sql, userId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "error";
+    console.error("[auth] platform session rejected:", message);
+    return false;
+  }
 }
 
 /**
@@ -83,10 +101,10 @@ export async function getSessionUser(
  */
 export async function requireUserId(bearerToken?: string): Promise<string> {
   if (!authConfigured && !gateIdentityEnabled()) {
-    if (databaseConfigured) {
+    if (databaseConfigured || process.env.NODE_ENV === "production") {
       throw new Error(
-        "Auth is disabled (VITE_AUTH_ENABLED=false) but DATABASE_URL is set — " +
-          "refusing to fall back to the shared dev user against a real database.",
+        "Auth is disabled (VITE_AUTH_ENABLED=false) but a production database or " +
+          "production runtime is set — refusing the shared dev user.",
       );
     }
     return DEV_USER_ID;

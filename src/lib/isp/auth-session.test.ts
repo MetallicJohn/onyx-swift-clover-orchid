@@ -31,19 +31,20 @@ test("login stays on the form for a Grok gate session so ISP accounts can sign i
   );
 });
 
-test("login redirects once an ISP email session is remembered", () => {
+test("login redirects once a platform account session is verified", () => {
   assert.equal(
     loginPageAction({
       isPending: false,
       hasUser: true,
       hasOperatorBearer: true,
       hasGateSession: true,
+      platformOk: true,
     }),
     "go_app",
   );
 });
 
-test("login redirects a normal cookie session that is not the gate", () => {
+test("a cookie session that is not a platform account stays on the form", () => {
   assert.equal(
     loginPageAction({
       isPending: false,
@@ -51,7 +52,7 @@ test("login redirects a normal cookie session that is not the gate", () => {
       hasOperatorBearer: false,
       hasGateSession: false,
     }),
-    "go_app",
+    "form",
   );
 });
 

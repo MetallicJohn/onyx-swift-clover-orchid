@@ -1,6 +1,6 @@
 import { createFileRoute, Link, Navigate, useRouterState } from "@tanstack/react-router";
 import { useMemo, useState, useSyncExternalStore } from "react";
-import { GROK_PROVIDERS, authClient, authEnabled, getBearerToken, signIn } from "@/lib/auth/client";
+import { authClient, authEnabled, getBearerToken } from "@/lib/auth/client";
 import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { BrandMark } from "@/components/isp/brand-mark";
@@ -11,6 +11,7 @@ import { APP_NAME } from "@/lib/brand";
 import { hasOperatorBearer, loginPageAction, rememberAuthSession } from "@/lib/isp/auth-session";
 import { bootstrapWorkspace, prepareOperatorSignIn } from "@/lib/isp/server";
 import { loginDestination, loginModeFromSearch, normalizeLoginEmail, signInErrorMessage } from "@/lib/isp/login-next";
+import { usePlatformIdentity } from "@/lib/isp/use-platform-session";
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>): { next?: string; mode?: string; isp?: string } => ({
@@ -45,12 +46,16 @@ function Login() {
 
   const dest = loginDestination(search, mode, email);
   const platformIntent = dest === "/platform" && mode === "in";
+  const platformCheck = authEnabled && Boolean(user) && !isPending;
+  const platform = usePlatformIdentity(platformCheck);
 
   const action = loginPageAction({
     isPending,
     hasUser: Boolean(user),
     hasOperatorBearer: hasOperatorBearer() || Boolean(getBearerToken()),
     hasGateSession: gateSession,
+    platformPending: platformCheck && platform.state === "pending",
+    platformOk: authEnabled ? platform.state === "ok" : Boolean(user),
   });
 
   if (action === "go_app") return <Navigate to={dest} />;
@@ -85,8 +90,14 @@ function Login() {
       } else {
         try {
           await prepareOperatorSignIn({ data: { email: loginEmail } });
-        } catch {
-          /* still attempt sign-in */
+        } catch (err) {
+          try {
+            const { noteOperatorSignIn } = await import("@/lib/isp/server");
+            await noteOperatorSignIn({ data: { email: loginEmail, ok: false } });
+          } catch {
+            /* audit is best-effort */
+          }
+          throw err instanceof Error ? err : new Error("Invalid username or password");
         }
         const result = await authClient.signIn.email({ email: loginEmail, password, fetchOptions });
         if (result.error) {
@@ -96,7 +107,7 @@ function Login() {
           } catch {
             /* audit is best-effort */
           }
-          throw new Error(result.error.message || "Invalid email or password");
+          throw new Error(result.error.message || "Invalid username or password");
         }
         rememberAuthSession(result);
         try {
@@ -128,33 +139,14 @@ function Login() {
           {mode === "up"
             ? "Your email, mobile number, and password become the owner login. One free trial per email or phone — after that you choose a paid plan."
             : switching
-              ? "Enter the email and password from signup or the login your superadmin created. That account replaces this Grok view."
+              ? "Sign in with the email and password for your ISP Solutions account."
               : platformIntent
-                ? "Use the platform administrator email and password. Tenant consoles stay separate."
-                : "Use the email and password from signup, or the owner/staff login your superadmin created."}
+                ? "Use the platform administrator username and password. Tenant consoles stay separate."
+                : "Use the email and password from signup, or the staff login created in ISP Solutions."}
         </p>
 
         {authEnabled ? (
           <div className="mt-6 space-y-3">
-            {!switching && GROK_PROVIDERS.length > 0 ? (
-              <>
-                {GROK_PROVIDERS.map((p) => (
-                  <Button
-                    key={p.providerId}
-                    type="button"
-                    variant="secondary"
-                    className="w-full"
-                    onClick={() => signIn(p.providerId, { callbackURL: "/app" })}
-                  >
-                    Continue with {p.label}
-                  </Button>
-                ))}
-                <div className="relative py-2 text-center text-xs text-subtle">
-                  <span className="bg-bg px-2">or email</span>
-                  <div className="absolute top-1/2 right-0 left-0 -z-10 h-px bg-border" />
-                </div>
-              </>
-            ) : null}
             <form className="grid gap-3" onSubmit={onEmail}>
               {mode === "up" ? (
                 <>

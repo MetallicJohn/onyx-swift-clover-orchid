@@ -65,6 +65,8 @@ export function AppShell({
   tenantStatus,
   supportMode,
   supportReason,
+  accountEmail,
+  accountStatus,
 }: {
   tenantName?: string;
   displayName?: string;
@@ -77,6 +79,8 @@ export function AppShell({
   tenantStatus?: string;
   supportMode?: boolean;
   supportReason?: string;
+  accountEmail?: string;
+  accountStatus?: string;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [open, setOpen] = useState(false);
@@ -104,6 +108,11 @@ export function AppShell({
   const allowed = canAccessAppPath(role, pathname);
   const showRecycleBin = canAccessAppPath(role, RECYCLE_BIN.to);
   const roleLabel = ROLE_GUIDE.find((row) => row.role === role)?.label || role?.replaceAll("_", " ");
+  const accountLabel = accountStatus
+    ? accountStatus === "ACTIVE"
+      ? "Active"
+      : accountStatus.replaceAll("_", " ").toLowerCase()
+    : "";
   const gateSession = useSyncExternalStore(
     subscribeToNothing,
     hasGateSessionMarker,
@@ -211,7 +220,14 @@ export function AppShell({
             <Menu className="size-5" />
           </button>
           <div className="app-topbar-title">Operations</div>
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            {accountEmail ? (
+              <span className="hidden min-w-0 truncate text-xs text-muted md:inline">
+                {accountEmail}
+                {roleLabel ? ` · ${roleLabel}` : ""}
+                {accountLabel ? ` · ${accountLabel}` : ""}
+              </span>
+            ) : null}
             {gateSession ? (
               <Link to="/login" className="text-sm text-muted transition-colors duration-150 hover:text-fg">
                 ISP login

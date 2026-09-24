@@ -167,4 +167,4 @@ function gateIdentityUserInfo(identity) {
 	};
 }
 //#endregion
-export { gate_identity_server_LG3T69M__exports as a, gateIdentityUserInfo as i, gateIdentityEnabled as n, sessionBoundToGateIdentity as o, gateIdentityFromHeaders as r, GATE_IDENTITY_HEADER as t };
+export { gate_identity_server_LG3T69M__exports as n, gateIdentityEnabled as t };
