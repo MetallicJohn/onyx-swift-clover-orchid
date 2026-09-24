@@ -24,6 +24,7 @@ COPY --from=build /app/.output /app/.output
 COPY --from=build /app/migrations /app/migrations
 COPY --from=build /app/scripts/migrate.mjs /app/scripts/migrate.mjs
 COPY --from=build /app/scripts/migration-plan.mjs /app/scripts/migration-plan.mjs
+COPY --from=build /app/scripts/migration-safety.mjs /app/scripts/migration-safety.mjs
 COPY --from=build /app/package.json /app/package-lock.json /app/
 RUN npm ci --omit=dev
 COPY deploy/vps/entrypoint.sh /app/entrypoint.sh

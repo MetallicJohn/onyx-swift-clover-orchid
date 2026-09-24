@@ -296,6 +296,7 @@ if (typeof window === "undefined" && dbSource === "pglite") {
   globalBoot.__pgBootstrapPromise__ ??= ensureDbReady().catch((err) => {
     globalBoot.__pgBootstrapPromise__ = undefined;
     console.error("[db] PGLite bootstrap failed:", err);
-    throw err;
+    // Do not rethrow. An unhandled rejection here exits Node before listen,
+    // and Docker then marks web unhealthy.
   });
 }

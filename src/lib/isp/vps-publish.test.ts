@@ -105,6 +105,7 @@ test("publish pack names docker compose, health, and WireGuard", () => {
   assert.match(dockerfile, /ISPSOLUTIONS_GIT_SHA/);
   assert.match(compose, /1812:1812\/udp/);
   assert.match(dockerfile, /entrypoint\.sh/);
+  assert.match(dockerfile, /migration-safety\.mjs/);
   assert.match(dockerfile, /worker\.mjs/);
   assert.match(dockerfile, /collector\.mjs/);
   assert.match(ci, /VPS_HOST/);
