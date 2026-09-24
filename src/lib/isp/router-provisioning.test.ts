@@ -20,6 +20,7 @@ import {
   publicOnlineStatus,
   revokeProvisioningToken,
   serveBootstrapRsc,
+  settleVerifiedRouter,
   setRouterPools,
   toPublicRouter,
 } from "./router-provisioning.ts";
@@ -182,6 +183,16 @@ test("issue, fetch bootstrap over token, revoke, and isolate tenants", async () 
     assert.equal(after?.provisioning_status, "bootstrapping");
     assert.equal(after?.wg_status, "pending");
     assert.equal(after?.last_seen, null);
+    const stuck = await settleVerifiedRouter(sql, { tenantId: "ten_pv", routerId: "rtr_ten_pv", actorUserId: "usr_a" });
+    assert.equal(stuck.provisioning_status, "bootstrapping");
+    await sql`update routers set
+      last_handshake_at = now(),
+      api_verified_at = now(),
+      agent_last_ok_at = now()
+      where id = ${"rtr_ten_pv"}`;
+    const settled = await settleVerifiedRouter(sql, { tenantId: "ten_pv", routerId: "rtr_ten_pv", actorUserId: "usr_a" });
+    assert.equal(settled.provisioning_status, "provisioned");
+    assert.equal(settled.enroll_state, "ENROLLED");
 
     await setRouterPools(sql, {
       tenantId: "ten_pv",

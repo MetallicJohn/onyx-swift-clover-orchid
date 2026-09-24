@@ -61,6 +61,7 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${ACS_EDGE_TOKEN}}
       ISPSOLUTIONS_BACKUP_DIR: /opt/ispsolutions/backups
       ISPSOLUTIONS_WG_DIR: /opt/ispsolutions/wg
+      ISPSOLUTIONS_OVERLAY_DIAL: /opt/ispsolutions/wg/overlay-dial.sock
     volumes:
       - ../../backups:/opt/ispsolutions/backups
       - ../../wg:/opt/ispsolutions/wg
@@ -98,6 +99,7 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${ACS_EDGE_TOKEN}}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
       ISPSOLUTIONS_WG_DIR: /opt/ispsolutions/wg
+      ISPSOLUTIONS_OVERLAY_DIAL: /opt/ispsolutions/wg/overlay-dial.sock
     volumes:
       - ../../wg:/opt/ispsolutions/wg
     depends_on:
@@ -180,6 +182,18 @@ services:
       - ./genieacs/init-config.js:/init-config.js:ro
     command: ["mongosh", "${GENIEACS_MONGODB_CONNECTION_URL:-mongodb://mongo/genieacs}", "/init-config.js"]
     restart: "no"
+
+  overlay-dial:
+    image: node:22-alpine
+    restart: unless-stopped
+    # Host routing, so RouterOS API is sourced from 10.200.0.1, not a Docker address.
+    network_mode: host
+    command: ["node", "/opt/overlay-dial.mjs"]
+    environment:
+      DIAL_SOCK: /opt/ispsolutions/wg/overlay-dial.sock
+    volumes:
+      - ./overlay-dial.mjs:/opt/overlay-dial.mjs:ro
+      - ../../wg:/opt/ispsolutions/wg
 
   cwmp-edge:
     image: node:22-alpine

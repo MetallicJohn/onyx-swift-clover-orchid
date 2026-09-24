@@ -28,16 +28,32 @@ fi
 if ! ip link show "$IFACE" >/dev/null 2>&1; then
   exit 0
 fi
-# The app runs in Docker. RouterOS API accepts 10.200.0.1 only, so forwarded
-# checks must be rewritten onto this interface. syncconf does not re-run PostUp.
+# The app runs in Docker. RouterOS API accepts the hub address only, so forwarded
+# checks must be rewritten onto this interface before Docker's own masquerade.
 if command -v iptables >/dev/null 2>&1; then
   NET="${WG_NETWORK:-10.200.0.0/24}"
-  iptables -t nat -C POSTROUTING -o "$IFACE" -d "$NET" -j MASQUERADE 2>/dev/null \
-    || iptables -t nat -A POSTROUTING -o "$IFACE" -d "$NET" -j MASQUERADE || true
+  HUB="${WG_HUB_ADDRESS:-10.200.0.1}"
+  ip -4 addr show dev "$IFACE" | grep -q "${HUB}/" || ip addr add "${HUB}/24" dev "$IFACE" || true
+  sysctl -w net.ipv4.ip_forward=1 >/dev/null || true
+  sysctl -w net.ipv4.conf.all.rp_filter=2 >/dev/null || true
+  sysctl -w "net.ipv4.conf.${IFACE}.rp_filter=0" >/dev/null || true
+  iptables -C INPUT -i "$IFACE" -s "$NET" -j ACCEPT 2>/dev/null \
+    || iptables -I INPUT 1 -i "$IFACE" -s "$NET" -j ACCEPT || true
+  iptables -t nat -C POSTROUTING -o "$IFACE" -d "$NET" -j SNAT --to-source "$HUB" 2>/dev/null \
+    || iptables -t nat -I POSTROUTING 1 -o "$IFACE" -d "$NET" -j SNAT --to-source "$HUB" || true
+  iptables -C INPUT -i "$IFACE" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null \
+    || iptables -I INPUT 1 -i "$IFACE" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT || true
+  iptables -C OUTPUT -o "$IFACE" -p tcp -d "$NET" --dport 8728 -j ACCEPT 2>/dev/null \
+    || iptables -I OUTPUT 1 -o "$IFACE" -p tcp -d "$NET" --dport 8728 -j ACCEPT || true
   iptables -C DOCKER-USER -o "$IFACE" -j ACCEPT 2>/dev/null \
     || iptables -I DOCKER-USER 1 -o "$IFACE" -j ACCEPT 2>/dev/null || true
   iptables -C DOCKER-USER -i "$IFACE" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null \
     || iptables -I DOCKER-USER 1 -i "$IFACE" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+  for br in $(ip -o link show | awk -F': ' '/: br-|: docker0/ {print $2}' | cut -d@ -f1); do
+    iptables -C FORWARD -i "$br" -o "$IFACE" -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -i "$br" -o "$IFACE" -j ACCEPT || true
+    iptables -C FORWARD -i "$IFACE" -o "$br" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null \
+      || iptables -I FORWARD 1 -i "$IFACE" -o "$br" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT || true
+  done
 fi
 if [[ -f "$WANTED" ]] && command -v python3 >/dev/null 2>&1; then
   WANTED="$WANTED" IFACE="$IFACE" python3 - <<'PY'

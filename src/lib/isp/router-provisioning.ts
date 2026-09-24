@@ -397,6 +397,71 @@ export async function recordProvisionEvent(
     values (${nid("rpe")}, ${opts.tenantId}, ${opts.routerId}, ${opts.event}, ${opts.actorUserId || ""}, ${detail.slice(0, 4000)})`;
 }
 
+/** WireGuard, API, and the agent are all evidenced. Script download alone must not call this. */
+export async function settleVerifiedRouter(
+  sql: Sql,
+  opts: { tenantId: string; routerId: string; actorUserId?: string },
+) {
+  const [before] = await sql<{
+    provisioning_status: string;
+    enroll_state: string;
+    last_handshake_at: string | null;
+    api_verified_at: string | null;
+    agent_last_ok_at: string | null;
+    last_seen: string | null;
+  }>`select coalesce(provisioning_status, 'pending') as provisioning_status,
+      coalesce(enroll_state, 'PENDING') as enroll_state,
+      last_handshake_at::text as last_handshake_at,
+      api_verified_at::text as api_verified_at,
+      agent_last_ok_at::text as agent_last_ok_at,
+      last_seen::text as last_seen
+    from routers where id = ${opts.routerId} and tenant_id = ${opts.tenantId}`;
+  if (!before || before.provisioning_status === "revoked") {
+    return { provisioning_status: before?.provisioning_status || "pending", enroll_state: before?.enroll_state || "PENDING" };
+  }
+  const { signalFresh } = await import("./router-health.ts");
+  const evidenced =
+    signalFresh(before.last_handshake_at) &&
+    signalFresh(before.api_verified_at, Date.now(), 15 * 60_000) &&
+    signalFresh(before.agent_last_ok_at || before.last_seen);
+  if (!evidenced) {
+    return { provisioning_status: before.provisioning_status, enroll_state: before.enroll_state };
+  }
+  const steps = ["WIREGUARD_CONNECTED", "API_VERIFIED", "AGENT_CONNECTED", "ENROLLED"] as const;
+  let enrolled = before.enroll_state === "ENROLLED";
+  for (const state of steps) {
+    const result = await recordEnrollState(sql, {
+      tenantId: opts.tenantId,
+      routerId: opts.routerId,
+      state,
+      actorUserId: opts.actorUserId,
+      detail: { reason: "wireguard_api_agent" },
+    });
+    if (result.state === "ENROLLED") enrolled = true;
+  }
+  const [row] = await sql<{ provisioning_status: string; enroll_state: string }>`
+    select coalesce(provisioning_status, 'pending') as provisioning_status,
+      coalesce(enroll_state, 'PENDING') as enroll_state
+    from routers where id = ${opts.routerId} and tenant_id = ${opts.tenantId}`;
+  if (!row || !enrolled || row.enroll_state !== "ENROLLED") {
+    return { provisioning_status: row?.provisioning_status || before.provisioning_status, enroll_state: row?.enroll_state || before.enroll_state };
+  }
+  if (row.provisioning_status !== "provisioned") {
+    await sql`update routers set
+      provisioning_status = 'provisioned',
+      provisioned_at = coalesce(provisioned_at, now())
+      where id = ${opts.routerId} and tenant_id = ${opts.tenantId}`;
+    await recordProvisionEvent(sql, {
+      tenantId: opts.tenantId,
+      routerId: opts.routerId,
+      event: "provisioned",
+      actorUserId: opts.actorUserId,
+      detail: { wireguard: true, api: true, agent: true },
+    });
+  }
+  return { provisioning_status: "provisioned", enroll_state: "ENROLLED" };
+}
+
 async function assignedPools(sql: Sql, tenantId: string, routerId: string): Promise<RosPool[]> {
   const rows = await sql<{ name: string; cidr: string }>`
     select p.name, p.cidr

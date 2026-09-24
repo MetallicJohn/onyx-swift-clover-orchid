@@ -80,8 +80,8 @@ test("server wg-quick config is a hub with one peer per router", () => {
     [{ name: "edge-01", publicKey: client.publicKey, address: "10.200.0.2/32" }],
   );
   assert.match(conf, /SaveConfig = false/);
-  assert.match(conf, /PostUp = iptables -t nat -C POSTROUTING -o %i -d 10\.200\.0\.0\/24 -j MASQUERADE/);
-  assert.match(install, /MASQUERADE/);
+  assert.match(conf, /PostUp = iptables -t nat -C POSTROUTING -o %i -d 10\.200\.0\.0\/24 -j SNAT --to-source 10\.200\.0\.1/);
+  assert.match(install, /SNAT --to-source 10\.200\.0\.1/);
   assert.match(install, /DOCKER-USER/);
   assert.match(install, /ufw route allow out on wg-ispsolutions to 10\.200\.0\.0\/24/);
   assert.match(install, /wg-quick up wg-ispsolutions/);

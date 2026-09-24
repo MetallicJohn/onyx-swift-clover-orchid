@@ -186,9 +186,14 @@ function RoutersPage() {
     onTest: async (r) => {
       try {
         const out = await testRouterConnectionFn({ data: { id: r.id } });
-        const wg = out.wireguard?.status === "connected" ? "✓ Connected" : out.wireguard?.status === "failed" ? "✕ Failed" : "— Not verified";
-        const api = out.api?.status === "connected" ? "✓ Connected" : out.api?.status === "failed" ? "✕ Failed" : "— Not verified";
-        const agent = out.agent?.status === "connected" ? "✓ Connected" : out.agent?.status === "failed" ? "✕ Failed" : "— Not verified";
+        const detail = (text: string | undefined, status: string | undefined, ok: string, bad: string) => {
+          if (status === "connected") return `✓ ${text || ok}`;
+          if (status === "failed") return `✕ ${bad}${text ? `: ${text}` : ""}`;
+          return "— Not verified";
+        };
+        const wg = detail(out.wireguard?.detail, out.wireguard?.status, "Connected", "Failed");
+        const api = detail(out.api?.detail, out.api?.status, "Connected", "Failed");
+        const agent = detail(out.agent?.detail, out.agent?.status, "Connected", "Failed");
         setNotice(`${out.name}: WireGuard ${wg} · RouterOS API ${api} · Agent ${agent}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Test failed");

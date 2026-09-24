@@ -343,6 +343,12 @@ export async function probeRouterConnection(
     api: apiOk,
     agent: agentOk,
   });
+  let enrollState = state;
+  if (all) {
+    const { settleVerifiedRouter } = await import("./router-provisioning.ts");
+    const settled = await settleVerifiedRouter(sql, { tenantId, routerId: row.id, actorUserId });
+    enrollState = parseEnrollState(settled.enroll_state);
+  }
   return {
     id: row.id,
     name: row.name,
@@ -350,8 +356,8 @@ export async function probeRouterConnection(
     reachability: all ? "connected" : wgOk ? "partial" : row.last_seen ? "stale" : "pending",
     last_seen: row.last_seen,
     source: agentOk ? "agent_heartbeat" : wgOk ? "wireguard" : "none",
-    enroll_state: state,
-    connection_status: connectionStatusLabel(state),
+    enroll_state: enrollState,
+    connection_status: connectionStatusLabel(enrollState),
     identity,
     version,
     wireguard: channel(

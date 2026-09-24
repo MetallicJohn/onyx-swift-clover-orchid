@@ -236,24 +236,35 @@ function rosWireGuardPeerBlock(opts: {
 ${endpoint}`;
 }
 
-function rosOverlayAddressBlock(addr: string) {
+function rosOverlayAddressBlock(addr: string, hubIp: string) {
+  const dst = hubIp.includes("/") ? hubIp : `${hubIp}/32`;
   return `:if ([:len [/ip address find where interface="${ROS_WG_INTERFACE}" and address=${rosQuote(addr)}]] = 0) do={
   :foreach a in=[/ip address find where interface="${ROS_WG_INTERFACE}"] do={
     :do { /ip address remove \$a } on-error={}
   }
   :do { /ip address add address=${rosQuote(addr)} interface=${ROS_WG_INTERFACE} } on-error={ :log error ${rosQuote(`${APP_NAME}: overlay address failed`)} }
+}
+:if ([:len [/ip route find where dst-address=${rosQuote(dst)} and gateway="${ROS_WG_INTERFACE}"]] = 0) do={
+  :do { /ip route add dst-address=${rosQuote(dst)} gateway=${ROS_WG_INTERFACE} comment=${rosQuote(`${APP_NAME} hub`)} } on-error={ :log error ${rosQuote(`${APP_NAME}: hub route failed`)} }
 }`;
 }
 
 function rosApiFirewallBlock(hubIp: string) {
+  const src = hubIp.includes("/") ? hubIp : `${hubIp}/32`;
   return `:do { /ip firewall filter remove [find where comment="gridline-agent" or comment=${rosQuote(`${APP_NAME} agent`)}] } on-error={}
-:if ([:len [/ip firewall filter find where comment=${rosQuote(`${APP_NAME} api`)}]] = 0) do={
-  :do { /ip firewall filter add chain=input in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${hubIp} action=accept comment=${rosQuote(`${APP_NAME} api`)} place-before=0 } on-error={ :log error ${rosQuote(`${APP_NAME}: API firewall rule failed`)} }
-} else={
-  :do { /ip firewall filter set [find where comment=${rosQuote(`${APP_NAME} api`)}] in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${hubIp} action=accept } on-error={}
+:if ([:len [/interface list member find where list="LAN" and interface="${ROS_WG_INTERFACE}"]] = 0) do={
+  :do { /interface list member add list=LAN interface=${ROS_WG_INTERFACE} comment=${rosQuote(`${APP_NAME} api`)} } on-error={}
 }
+:if ([:len [/ip firewall filter find where comment=${rosQuote(`${APP_NAME} api`)}]] = 0) do={
+  :do { /ip firewall filter add chain=input in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${src} action=accept comment=${rosQuote(`${APP_NAME} api`)} place-before=0 } on-error={
+    :do { /ip firewall filter add chain=input in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${src} action=accept comment=${rosQuote(`${APP_NAME} api`)} } on-error={ :log error ${rosQuote(`${APP_NAME}: API firewall rule failed`)} }
+  }
+} else={
+  :do { /ip firewall filter set [find where comment=${rosQuote(`${APP_NAME} api`)}] in-interface=${ROS_WG_INTERFACE} protocol=tcp dst-port=${ROS_API_PORT} src-address=${src} action=accept } on-error={}
+}
+:do { /ip firewall filter move [find where comment=${rosQuote(`${APP_NAME} api`)}] destination=0 } on-error={}
 
-:do { /ip service set api disabled=no port=${ROS_API_PORT} address=${hubIp}/32 } on-error={ :log error ${rosQuote(`${APP_NAME}: API service failed`)} }
+:do { /ip service set api disabled=no port=${ROS_API_PORT} address=${src} } on-error={ :log error ${rosQuote(`${APP_NAME}: API service failed`)} }
 :do { /ip service set api-ssl disabled=yes } on-error={}`;
 }
 
@@ -289,12 +300,12 @@ function rosAgentBlock(pull: string) {
 
 :do { /system scheduler remove [find where name="gridline-agent"] } on-error={}
 :do { /system scheduler remove [find where name=${rosQuote(ROS_AGENT_SCHEDULER)}] } on-error={}
-/system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup policy=${ROS_AGENT_POLICY} on-event="/system script run ${ROS_PULL_SCRIPT}";`;
+/system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-date=jan/01/2020 start-time=00:00:00 policy=${ROS_AGENT_POLICY} on-event="/system script run ${ROS_PULL_SCRIPT}";`;
   }
   return `
 :do { /system scheduler remove [find where name="gridline-agent"] } on-error={}
 :do { /system scheduler remove [find where name=${rosQuote(ROS_AGENT_SCHEDULER)}] } on-error={}
-/system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-time=startup on-event={ :log info ${rosQuote(`${APP_NAME} agent waiting for pull URL`)} };`;
+/system scheduler add name=${rosQuote(ROS_AGENT_SCHEDULER)} interval=1m start-date=jan/01/2020 start-time=00:00:00 on-event={ :log info ${rosQuote(`${APP_NAME} agent waiting for pull URL`)} };`;
 }
 
 function rosHeader(kind: RosConnectionKind, parts: ReturnType<typeof connectionParts>) {
@@ -341,7 +352,7 @@ function renderRosConnectionScript(opts: RosConnectionOpts, kind: RosConnectionK
         endpointPort: parts.endpointPort,
       }),
     );
-    chunks.push(rosOverlayAddressBlock(parts.addr));
+    chunks.push(rosOverlayAddressBlock(parts.addr, parts.hubIp));
   }
   if (includeApi) {
     chunks.push(rosApiFirewallBlock(parts.hubIp));

@@ -3,6 +3,7 @@
  * Not API-SSL. Not REST. No certificate store on the router.
  */
 import { connect as netConnect, type Socket } from "node:net";
+import { existsSync } from "node:fs";
 import { loadServiceConfig } from "./runtime-config.ts";
 
 export const ROUTEROS_API_PORT = 8728;
@@ -139,6 +140,88 @@ function readSentences(socket: Socket, timeoutMs: number): Promise<string[][]> {
   });
 }
 
+function dialSocketPath() {
+  const explicit = process.env.ISPSOLUTIONS_OVERLAY_DIAL?.trim();
+  if (explicit) return explicit;
+  const dir = process.env.ISPSOLUTIONS_WG_DIR?.trim();
+  if (!dir) return "";
+  const path = `${dir}/overlay-dial.sock`;
+  return existsSync(path) ? path : "";
+}
+
+function dialerDown(err: unknown) {
+  const code = err && typeof err === "object" && "code" in err ? String((err as { code?: string }).code || "") : "";
+  return code === "ENOENT" || code === "EACCES" || code === "ENOTSOCK" || code === "ECONNREFUSED";
+}
+
+/** Dial through the host-network helper when it is up, so the source is 10.200.0.1. */
+export function openRouterSocket(host: string, port: number, timeoutMs: number): Promise<Socket> {
+  const via = dialSocketPath();
+  if (!via) return connectDirect(host, port, timeoutMs);
+  return connectViaDialer(via, host, port, timeoutMs).catch((err) => {
+    if (process.env.ISPSOLUTIONS_OVERLAY_DIAL_REQUIRED === "1" || !dialerDown(err)) throw err;
+    return connectDirect(host, port, timeoutMs);
+  });
+}
+
+function connectDirect(host: string, port: number, timeoutMs: number): Promise<Socket> {
+  return new Promise((resolve, reject) => {
+    const socket = netConnect({ host, port }, () => resolve(socket));
+    socket.setTimeout(timeoutMs);
+    socket.once("error", reject);
+    socket.once("timeout", () => {
+      socket.destroy();
+      reject(new Error("RouterOS API timeout"));
+    });
+  });
+}
+
+function connectViaDialer(sockPath: string, host: string, port: number, timeoutMs: number): Promise<Socket> {
+  return new Promise((resolve, reject) => {
+    const socket = netConnect(sockPath);
+    let buf = Buffer.alloc(0);
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      reject(new Error("RouterOS API timeout"));
+    }, timeoutMs);
+    const fail = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      reject(err);
+    };
+    socket.once("error", fail);
+    socket.once("connect", () => {
+      socket.write(`ISPDIAL ${host} ${port}\n`);
+    });
+    socket.on("data", function onData(chunk: Buffer) {
+      buf = Buffer.concat([buf, chunk]);
+      const nl = buf.indexOf(0x0a);
+      if (nl < 0) return;
+      const line = buf.subarray(0, nl).toString("utf8").trim();
+      const rest = buf.subarray(nl + 1);
+      socket.off("data", onData);
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.off("error", fail);
+      if (line !== "OK") {
+        socket.destroy();
+        const message = line.replace(/^ERR\s*/, "") || "overlay dial failed";
+        reject(new Error(message === "timeout" ? "RouterOS API timeout" : message));
+        return;
+      }
+      if (rest.length) socket.unshift(rest);
+      socket.setTimeout(timeoutMs);
+      resolve(socket);
+    });
+  });
+}
+
 export async function routerosApiCommand(
   opts: { host: string; user: string; password: string; port?: number; timeoutMs?: number },
   words: string[],
@@ -154,12 +237,7 @@ export async function routerosApiCommand(
       timeout = 4000;
     }
   }
-  const socket = await new Promise<Socket>((resolve, reject) => {
-    const s = netConnect({ host, port }, () => resolve(s));
-    s.setTimeout(timeout);
-    s.once("error", reject);
-    s.once("timeout", () => reject(new Error("RouterOS API timeout")));
-  });
+  const socket = await openRouterSocket(host, port, timeout);
   try {
     socket.write(encodeSentence(["/login", `=name=${opts.user}`, `=password=${opts.password}`]));
     const login = parseReplies(await readSentences(socket, timeout));

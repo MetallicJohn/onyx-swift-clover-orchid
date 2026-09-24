@@ -106,20 +106,32 @@ function overlayIp(address: string) {
   return address.replace(/\/\d+$/, "");
 }
 
-function safeOverlayNetwork(network: string) {
-  return /^\d{1,3}(?:\.\d{1,3}){3}\/\d{1,2}$/.test(network) ? network : DEFAULT_HUB_NETWORK;
+function safeOverlayHost(address: string) {
+  const host = address.replace(/\/\d+$/, "");
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) ? host : "10.200.0.1";
 }
 
 /** App containers are not on the hub address. The router accepts TCP 8728 only from 10.200.0.1. */
-export function hubNatCommands(iface: string, network: string) {
-  const net = safeOverlayNetwork(network);
-  return `if command -v iptables >/dev/null 2>&1; then
-  iptables -t nat -C POSTROUTING -o ${iface} -d ${net} -j MASQUERADE 2>/dev/null \\
-    || iptables -t nat -A POSTROUTING -o ${iface} -d ${net} -j MASQUERADE || true
+export function hubNatCommands(iface: string, network: string, hubAddress = "10.200.0.1/24") {
+  const net = /^\d{1,3}(?:\.\d{1,3}){3}\/\d{1,2}$/.test(network) ? network : DEFAULT_HUB_NETWORK;
+  const hub = safeOverlayHost(hubAddress);
+  return `ip -4 addr show dev ${iface} | grep -q '${hub}/' || ip addr add ${hub}/24 dev ${iface} || true
+if command -v iptables >/dev/null 2>&1; then
+  iptables -t nat -C POSTROUTING -o ${iface} -d ${net} -j SNAT --to-source ${hub} 2>/dev/null \\
+    || iptables -t nat -I POSTROUTING 1 -o ${iface} -d ${net} -j SNAT --to-source ${hub} || true
+  iptables -C INPUT -i ${iface} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null \\
+    || iptables -I INPUT 1 -i ${iface} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT || true
+  iptables -C OUTPUT -o ${iface} -p tcp -d ${net} --dport 8728 -j ACCEPT 2>/dev/null \\
+    || iptables -I OUTPUT 1 -o ${iface} -p tcp -d ${net} --dport 8728 -j ACCEPT || true
   iptables -C DOCKER-USER -o ${iface} -j ACCEPT 2>/dev/null \\
     || iptables -I DOCKER-USER 1 -o ${iface} -j ACCEPT 2>/dev/null || true
   iptables -C DOCKER-USER -i ${iface} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null \\
     || iptables -I DOCKER-USER 1 -i ${iface} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+  for br in $(ip -o link show | awk -F': ' '/: br-|: docker0/ {print $2}' | cut -d@ -f1); do
+    iptables -C FORWARD -i "$br" -o ${iface} -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -i "$br" -o ${iface} -j ACCEPT || true
+    iptables -C FORWARD -i ${iface} -o "$br" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null \\
+      || iptables -I FORWARD 1 -i ${iface} -o "$br" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT || true
+  done
 fi
 if command -v ufw >/dev/null 2>&1; then
   ufw route allow out on ${iface} to ${net} >/dev/null 2>&1 || true
@@ -138,7 +150,7 @@ export function buildServerConf(hub: WgHubConfig, peers: WgPeerConfig[]) {
     `PrivateKey = ${hub.privateKey}`,
     "SaveConfig = false",
     "# Docker API checks must leave as this host, or the router drops TCP 8728.",
-    `PostUp = iptables -t nat -C POSTROUTING -o %i -d ${safeOverlayNetwork(hub.network)} -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o %i -d ${safeOverlayNetwork(hub.network)} -j MASQUERADE`,
+    `PostUp = iptables -t nat -C POSTROUTING -o %i -d ${/^\d{1,3}(?:\.\d{1,3}){3}\/\d{1,2}$/.test(hub.network) ? hub.network : DEFAULT_HUB_NETWORK} -j SNAT --to-source ${safeOverlayHost(hub.address)} 2>/dev/null || iptables -t nat -I POSTROUTING 1 -o %i -d ${/^\d{1,3}(?:\.\d{1,3}){3}\/\d{1,2}$/.test(hub.network) ? hub.network : DEFAULT_HUB_NETWORK} -j SNAT --to-source ${safeOverlayHost(hub.address)}`,
     "PostUp = iptables -C DOCKER-USER -o %i -j ACCEPT 2>/dev/null || iptables -I DOCKER-USER 1 -o %i -j ACCEPT 2>/dev/null || true",
     "PostUp = iptables -C DOCKER-USER -i %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || iptables -I DOCKER-USER 1 -i %i -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true",
   ];
@@ -198,7 +210,7 @@ else
   wg-quick up ${iface}
 fi
 wg show ${iface}
-${hubNatCommands(iface, hub.network)}
+${hubNatCommands(iface, hub.network, hub.address)}
 echo "UDP ${hub.listenPort} must be open on the VPS firewall. Re-running this script does not drop live peers."
 `;
 }

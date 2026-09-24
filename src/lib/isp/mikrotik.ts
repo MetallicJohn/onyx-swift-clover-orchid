@@ -381,6 +381,14 @@ export async function heartbeatRouter(
       routerId: router.id,
       state: "AGENT_CONNECTED",
     });
+    const [live] = await sql<{ last_handshake_at: string | null; api_verified_at: string | null }>`
+      select last_handshake_at::text as last_handshake_at, api_verified_at::text as api_verified_at
+      from routers where id = ${router.id}`;
+    const { signalFresh } = await import("./router-health.ts");
+    if (signalFresh(live?.last_handshake_at) && signalFresh(live?.api_verified_at, Date.now(), 15 * 60_000)) {
+      const { settleVerifiedRouter } = await import("./router-provisioning.ts");
+      await settleVerifiedRouter(sql, { tenantId: router.tenant_id, routerId: router.id });
+    }
   } catch {
     /* enroll_state may be missing on old snapshots */
   }

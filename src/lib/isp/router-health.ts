@@ -234,6 +234,10 @@ export async function snapshotHealth(sql: Sql, row: RouterHealthRow, now = Date.
   if (state === "ENROLLED" || state === "DEGRADED") {
     await recordEnrollState(sql, { tenantId: row.tenant_id, routerId: row.id, state });
   }
+  if (handshake && api && agent) {
+    const { settleVerifiedRouter } = await import("./router-provisioning.ts");
+    await settleVerifiedRouter(sql, { tenantId: row.tenant_id, routerId: row.id });
+  }
   return { handshake, api, agent, state };
 }
 
