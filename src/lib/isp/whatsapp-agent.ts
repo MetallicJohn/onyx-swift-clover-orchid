@@ -7,7 +7,8 @@ import { deliverSms, deliverWhatsapp, e164, getMessagingSettings } from "./messa
 import { rotatePppoeCredentials } from "./pppoe-provision.ts";
 import { rateLimit } from "./rate-limit.ts";
 import { open, seal } from "./secrets.ts";
-import { openTicket } from "./tickets.ts";
+import { createStkIntent } from "./payments.ts";
+import { remainingKes } from "./billing.ts";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -26,6 +27,7 @@ export const WA_MENU = [
   "3 Internet Problem",
   "4 My Service",
   "5 Support",
+  "6 Pay now",
 ].join("\n");
 
 const IDENTIFY_PER_HOUR = 10;
@@ -37,7 +39,7 @@ const OTP_TTL_MAX = 300;
 const LEVEL2_TTL_MIN = 60;
 const LEVEL2_TTL_MAX = 600;
 
-export type WaActionGroup = "faq" | "read" | "ticket" | "connection" | "cpe" | "password" | "service";
+export type WaActionGroup = "faq" | "read" | "ticket" | "connection" | "cpe" | "password" | "service" | "payment";
 
 export type WaActionDef = {
   id: string;
@@ -72,6 +74,7 @@ export const WA_ACTIONS: WaActionDef[] = [
   { id: "CHANGE_WIFI_PASSWORD", name: "Change WiFi Password", group: "cpe", level: 2, confirm: true, confirmTtlSec: 300, executable: true, ratePerHour: 2 },
   { id: "RENEW_SERVICE", name: "Renew Service", group: "service", level: 2, confirm: true, confirmTtlSec: 300, executable: true, ratePerHour: 3 },
   { id: "REQUEST_SERVICE_UPGRADE", name: "Request Upgrade", group: "service", level: 1, confirm: true, confirmTtlSec: 300, executable: true, ratePerHour: 3 },
+  { id: "PAY_INVOICE", name: "Pay invoice", group: "payment", level: 1, confirm: true, confirmTtlSec: 180, executable: true, ratePerHour: 4 },
 ];
 
 const ACTION_IDS = WA_ACTIONS.map((action) => action.id);
@@ -89,6 +92,7 @@ export type WaSettings = {
   cpe_actions_enabled: boolean;
   password_actions_enabled: boolean;
   service_actions_enabled: boolean;
+  payment_prompt_enabled: boolean;
   kill_switch: boolean;
   link_mode: string;
   otp_ttl_seconds: number;
@@ -106,6 +110,7 @@ const DEFAULT_SETTINGS: WaSettings = {
   cpe_actions_enabled: false,
   password_actions_enabled: false,
   service_actions_enabled: false,
+  payment_prompt_enabled: false,
   kill_switch: false,
   link_mode: "web",
   otp_ttl_seconds: 300,
@@ -179,6 +184,7 @@ export function classifyIntent(text: string): WaIntent {
   const raw = text.trim();
   const q = raw.toLowerCase();
   if (!q || /^(hi|hello|hey|menu|start|help)$/.test(q)) return { intent: "MENU", confidence: 1 };
+  if (isPayRequest(q)) return { intent: "PAY_INVOICE", confidence: 0.92 };
   if (/^[1]$|my account|account status|what's my package|whats my package|package/.test(q)) return { intent: "CHECK_ACCOUNT", confidence: 0.9 };
   if (/^[2]$|payment|i paid|balance|m-pesa|mpesa/.test(q)) return { intent: "CHECK_PAYMENT", confidence: 0.9 };
   if (/invoice/.test(q)) return { intent: "GET_INVOICE", confidence: 0.9 };
@@ -199,6 +205,14 @@ export function classifyIntent(text: string): WaIntent {
   return { intent: "CLARIFY", confidence: 0.3 };
 }
 
+/** A request to send an STK prompt. Claims that money was already sent stay a payment lookup. */
+export function isPayRequest(q: string) {
+  if (/\b(i paid|paid already|already paid|have paid)\b/.test(q)) return false;
+  if (/^[6]$/.test(q)) return true;
+  if (/\blipa\b|\bstk\b|payment prompt|pay now|pay my|pay the|pay for|pay invoice|send (me )?(a |an )?(mpesa |m-pesa )?prompt/.test(q)) return true;
+  return /\bpay\b/.test(q) && !/\bbalance\b/.test(q);
+}
+
 export function actionAllowed(settings: WaSettings, id: string) {
   const action = waAction(id);
   if (!action) return false;
@@ -211,6 +225,7 @@ export function actionAllowed(settings: WaSettings, id: string) {
   if (action.group === "cpe" && !settings.cpe_actions_enabled) return false;
   if (action.group === "password" && !settings.password_actions_enabled) return false;
   if (action.group === "service" && !settings.service_actions_enabled) return false;
+  if (action.group === "payment" && !settings.payment_prompt_enabled) return false;
   return true;
 }
 
@@ -266,6 +281,7 @@ export async function getWhatsAppAgentSettings(sql: Sql, tenantId: string): Prom
     cpe_actions_enabled: boolean;
     password_actions_enabled: boolean;
     service_actions_enabled: boolean;
+    payment_prompt_enabled: boolean;
     kill_switch: boolean;
     link_mode: string;
     otp_ttl_seconds: number;
@@ -274,7 +290,7 @@ export async function getWhatsAppAgentSettings(sql: Sql, tenantId: string): Prom
     handoff_phone: string;
     actions_json: string;
   }>`select enabled, ai_enabled, read_only_enabled, connection_actions_enabled, cpe_actions_enabled,
-            password_actions_enabled, service_actions_enabled, kill_switch, link_mode, otp_ttl_seconds,
+            password_actions_enabled, service_actions_enabled, payment_prompt_enabled, kill_switch, link_mode, otp_ttl_seconds,
             level2_ttl_seconds, business_hours, handoff_phone, actions_json
      from whatsapp_agent_settings where tenant_id = ${tenantId}`;
   if (!row) return { ...DEFAULT_SETTINGS };
@@ -295,6 +311,7 @@ export async function getWhatsAppAgentSettings(sql: Sql, tenantId: string): Prom
     cpe_actions_enabled: Boolean(row.cpe_actions_enabled),
     password_actions_enabled: Boolean(row.password_actions_enabled),
     service_actions_enabled: Boolean(row.service_actions_enabled),
+    payment_prompt_enabled: Boolean(row.payment_prompt_enabled),
     kill_switch: Boolean(row.kill_switch),
     link_mode: row.link_mode === "meta" ? "meta" : "web",
     otp_ttl_seconds: clampOtpTtl(Number(row.otp_ttl_seconds)),
@@ -318,11 +335,11 @@ export async function saveWhatsAppAgentSettings(sql: Sql, tenantId: string, patc
   const actionsJson = JSON.stringify(next.actions);
   await sql`insert into whatsapp_agent_settings (
       tenant_id, enabled, ai_enabled, read_only_enabled, connection_actions_enabled, cpe_actions_enabled,
-      password_actions_enabled, service_actions_enabled, kill_switch, link_mode, otp_ttl_seconds,
+      password_actions_enabled, service_actions_enabled, payment_prompt_enabled, kill_switch, link_mode, otp_ttl_seconds,
       level2_ttl_seconds, business_hours, handoff_phone, actions_json, updated_at
     ) values (
       ${tenantId}, ${next.enabled}, ${next.ai_enabled}, ${next.read_only_enabled}, ${next.connection_actions_enabled},
-      ${next.cpe_actions_enabled}, ${next.password_actions_enabled}, ${next.service_actions_enabled}, ${next.kill_switch},
+      ${next.cpe_actions_enabled}, ${next.password_actions_enabled}, ${next.service_actions_enabled}, ${next.payment_prompt_enabled}, ${next.kill_switch},
       ${next.link_mode}, ${next.otp_ttl_seconds}, ${next.level2_ttl_seconds}, ${next.business_hours.slice(0, 40)},
       ${next.handoff_phone.slice(0, 40)}, ${actionsJson}, now()
     )
@@ -334,6 +351,7 @@ export async function saveWhatsAppAgentSettings(sql: Sql, tenantId: string, patc
       cpe_actions_enabled = excluded.cpe_actions_enabled,
       password_actions_enabled = excluded.password_actions_enabled,
       service_actions_enabled = excluded.service_actions_enabled,
+      payment_prompt_enabled = excluded.payment_prompt_enabled,
       kill_switch = excluded.kill_switch,
       link_mode = excluded.link_mode,
       otp_ttl_seconds = excluded.otp_ttl_seconds,
@@ -543,6 +561,10 @@ function customerError(code: string) {
   if (code === "DISABLED") return "That action is turned off. I can connect you to support instead.";
   if (code === "RATE") return "That action was used recently. Please wait before trying again.";
   if (code === "LEVEL") return "I need to verify you by SMS before I can do that.";
+  if (code === "NO_INVOICE") return "I couldn't find an unpaid invoice, so I didn't send a payment prompt. Nothing was charged.";
+  if (code === "NO_PHONE") return "I couldn't send a payment prompt because this account has no M-Pesa number. Nothing was charged.";
+  if (code === "NO_PROVIDER") return "I couldn't send a payment prompt. M-Pesa isn't set up yet. Nothing was charged.";
+  if (code === "PROMPT_FAILED") return "I couldn't send a payment prompt. Nothing was charged.";
   return "I couldn't complete that automatically. I can connect you to support.";
 }
 
@@ -753,7 +775,94 @@ async function performExecutable(sql: Sql, tenantId: string, customerId: string,
       sensitive: false,
     };
   }
+  if (action === "PAY_INVOICE") return promptInvoicePayment(sql, tenantId, customerId);
   return { status: "FAILED", customerText: customerError("DISABLED"), publicText: "Unsupported", errorCode: "DENIED", sensitive: false };
+}
+
+async function accountPayPhone(sql: Sql, tenantId: string, customerId: string) {
+  const [row] = await sql<{ phone: string }>`select phone from customers
+    where id = ${customerId} and tenant_id = ${tenantId} and deleted_at is null`;
+  const phone = (row?.phone || "").trim();
+  return last9(phone).length >= 9 ? phone : "";
+}
+
+async function unpaidInvoice(sql: Sql, tenantId: string, customerId: string) {
+  const [invoice] = await sql<{ id: string; number: string; amount_kes: number; paid_kes: number; status: string }>`
+    select id, number, amount_kes, paid_kes, status from invoices
+    where tenant_id = ${tenantId} and customer_id = ${customerId}
+      and status in ('issued', 'due', 'overdue', 'partial')
+    order by issued_at desc limit 1`;
+  if (!invoice) return null;
+  const remaining = remainingKes(Number(invoice.amount_kes), Number(invoice.paid_kes), invoice.status);
+  if (remaining <= 0) return null;
+  return { ...invoice, remaining };
+}
+
+async function readyStkProvider(sql: Sql, tenantId: string) {
+  const { loadMpesa } = await import("./mpesa.ts");
+  const mpesa = await loadMpesa(sql, tenantId);
+  if (mpesa?.enabled && mpesa.client_id && mpesa.client_secret && mpesa.passkey && mpesa.till_number) return "mpesa" as const;
+  const { loadKopo } = await import("./kopokopo.ts");
+  const kopo = await loadKopo(sql, tenantId);
+  if (kopo?.enabled && kopo.client_id && kopo.client_secret) return "kopokopo" as const;
+  return "";
+}
+
+function maskedTail(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  return digits.slice(-4);
+}
+
+function stkWasSimulated(checkoutId: string, note: string) {
+  return !checkoutId || checkoutId.startsWith("ws_") || /simulated|no keys/i.test(note);
+}
+
+async function promptInvoicePayment(sql: Sql, tenantId: string, customerId: string): Promise<{
+  status: "SUCCEEDED" | "FAILED";
+  customerText: string;
+  publicText: string;
+  errorCode: string;
+  sensitive: boolean;
+}> {
+  const fail = (errorCode: string) => ({
+    status: "FAILED" as const,
+    customerText: customerError(errorCode),
+    publicText: "Payment prompt not sent",
+    errorCode,
+    sensitive: false,
+  });
+  const phone = await accountPayPhone(sql, tenantId, customerId);
+  if (!phone) return fail("NO_PHONE");
+  const invoice = await unpaidInvoice(sql, tenantId, customerId);
+  if (!invoice) return fail("NO_INVOICE");
+  const provider = await readyStkProvider(sql, tenantId);
+  if (!provider) return fail("NO_PROVIDER");
+  const [pending] = await sql<{ checkout_id: string }>`select checkout_id from payment_intents
+    where tenant_id = ${tenantId} and customer_id = ${customerId} and invoice_id = ${invoice.id}
+      and status = 'pending' and checkout_id <> '' and checkout_id not like 'ws_%'
+      and created_at > now() - interval '5 minutes'
+    order by created_at desc limit 1`;
+  if (pending) {
+    const text = `A payment prompt for invoice ${invoice.number} is already on your phone. Enter your PIN there. This chat does not mark the invoice paid until M-Pesa confirms.`;
+    return { status: "SUCCEEDED", customerText: text, publicText: "Payment prompt already pending", errorCode: "", sensitive: false };
+  }
+  try {
+    const intent = await createStkIntent(sql, {
+      tenantId,
+      invoiceId: invoice.id,
+      provider,
+      phone,
+      amountKes: invoice.remaining,
+    });
+    if (last9(intent.phone) !== last9(phone) || stkWasSimulated(intent.checkout_id, intent.note || "")) {
+      await sql`delete from payment_intents where id = ${intent.id} and tenant_id = ${tenantId} and status = 'pending'`;
+      return fail(stkWasSimulated(intent.checkout_id, intent.note || "") ? "NO_PROVIDER" : "PROMPT_FAILED");
+    }
+    const text = `I've sent a payment prompt for Ksh ${intent.amount_kes} on invoice ${invoice.number} to the number saved on this account, ending ${maskedTail(phone)}. Enter your PIN on the phone. This chat does not mark the invoice paid until M-Pesa confirms.`;
+    return { status: "SUCCEEDED", customerText: text, publicText: "Payment prompt sent", errorCode: "", sensitive: false };
+  } catch {
+    return fail("PROMPT_FAILED");
+  }
 }
 
 async function deliverActionReply(sql: Sql, tenantId: string, phone: string, text: string, sensitive: boolean) {
@@ -965,6 +1074,20 @@ async function routeAction(
     return;
   }
   if (action.confirm) {
+    let detail = "";
+    if (action.id === "PAY_INVOICE") {
+      const invoice = await unpaidInvoice(sql, tenantId, convo.customer_id);
+      const phone = await accountPayPhone(sql, tenantId, convo.customer_id);
+      if (!invoice) {
+        await say(customerError("NO_INVOICE"));
+        return;
+      }
+      if (!phone) {
+        await say(customerError("NO_PHONE"));
+        return;
+      }
+      detail = ` This sends an M-Pesa prompt for Ksh ${invoice.remaining} on invoice ${invoice.number} to the number saved on this account, ending ${maskedTail(phone)}. It does not mark the invoice paid.`;
+    }
     await createAction(sql, {
       tenantId,
       customerId: convo.customer_id,
@@ -974,7 +1097,8 @@ async function routeAction(
       status: "AWAITING_CONFIRMATION",
       confirmTtlSec: action.confirmTtlSec,
     });
-    await say(`Please confirm ${action.name}. Reply Yes within ${Math.round(action.confirmTtlSec / 60)} minutes. Reply No to cancel.`, action.id);
+    const detailSuffix = detail;
+    await say(`Please confirm ${action.name}.${detailSuffix} Reply Yes within ${Math.round(action.confirmTtlSec / 60)} minutes. Reply No to cancel.`, action.id);
     return;
   }
   if (!action.executable) {

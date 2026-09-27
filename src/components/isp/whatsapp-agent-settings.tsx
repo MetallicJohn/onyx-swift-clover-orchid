@@ -22,6 +22,7 @@ type Settings = {
   cpe_actions_enabled: boolean;
   password_actions_enabled: boolean;
   service_actions_enabled: boolean;
+  payment_prompt_enabled: boolean;
   kill_switch: boolean;
   otp_ttl_seconds: number;
   level2_ttl_seconds: number;
@@ -42,6 +43,7 @@ const EMPTY: Settings = {
   cpe_actions_enabled: false,
   password_actions_enabled: false,
   service_actions_enabled: false,
+  payment_prompt_enabled: false,
   kill_switch: false,
   otp_ttl_seconds: 300,
   level2_ttl_seconds: 600,
@@ -182,7 +184,7 @@ export function WhatsAppAgentSettings() {
               <SettingsCheck label="Use AI when a message is unclear" checked={settings.ai_enabled} onChange={(ai_enabled) => setSettings({ ...settings, ai_enabled })} />
               <p className="text-xs text-muted">AI only classifies intent. It cannot run actions, see secrets, or confirm payments. If AI is off or unavailable, the numbered menu still works.</p>
               <SettingsCheck label="Emergency stop for automated changes" checked={settings.kill_switch} onChange={(kill_switch) => setSettings({ ...settings, kill_switch })} />
-              <p className="text-xs text-muted">When this is on, chats still arrive and account checks can stay available, but restarts, password changes, and other changes are blocked.</p>
+              <p className="text-xs text-muted">When this is on, chats still arrive and account checks can stay available, but restarts, password changes, payment prompts, and other changes are blocked.</p>
             </>
           ) : null}
           {section === "actions" ? (
@@ -193,6 +195,8 @@ export function WhatsAppAgentSettings() {
               <SettingsCheck label="Router actions" checked={settings.cpe_actions_enabled} onChange={(cpe_actions_enabled) => setSettings({ ...settings, cpe_actions_enabled })} />
               <SettingsCheck label="Password actions" checked={settings.password_actions_enabled} onChange={(password_actions_enabled) => setSettings({ ...settings, password_actions_enabled })} />
               <SettingsCheck label="Renewal and upgrade requests" checked={settings.service_actions_enabled} onChange={(service_actions_enabled) => setSettings({ ...settings, service_actions_enabled })} />
+              <SettingsCheck label="M-Pesa payment prompts" checked={settings.payment_prompt_enabled} onChange={(payment_prompt_enabled) => setSettings({ ...settings, payment_prompt_enabled })} />
+              <p className="text-xs text-muted">Pay now asks the customer to confirm, then sends an M-Pesa prompt to the phone already saved on the account. The invoice stays unpaid until M-Pesa confirms. A message that they already paid is not proof.</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {actions.map((action) => (
                   <SettingsCheck
