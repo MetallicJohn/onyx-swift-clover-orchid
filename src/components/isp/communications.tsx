@@ -382,7 +382,7 @@ export function Communications() {
             <span className="font-medium text-fg">{meta.email_from}</span>
             {meta.email_sandbox ? " · sandbox" : ` · ${meta.email_provider}`}
             {" · "}
-            <Link to="/app/settings" search={{ tab: "sms" }} className="text-accent hover:underline">
+            <Link to="/app/settings" search={{ tab: "communications" }} className="text-accent hover:underline">
               Messaging settings
             </Link>
           </p>

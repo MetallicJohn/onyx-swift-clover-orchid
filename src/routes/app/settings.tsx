@@ -6,6 +6,9 @@ import { APP_NAME, ROS_WG_INTERFACE } from "@/lib/brand";
 import { DEFAULT_DATE_FORMAT, formatDate, normalizeDateFormat, setActiveDateFormat, type DateFormatId } from "@/lib/isp/display";
 import { AppearanceSettings } from "@/components/isp/appearance-settings";
 import { CompanyInfoSettings } from "@/components/isp/company-info-settings";
+import { CommunicationsSettings } from "@/components/isp/communications-settings";
+import { PaymentSettings } from "@/components/isp/payment-settings";
+import { SaveButton, SecretInput, SettingsField, SettingsStatus, SettingsSubnav, type SettingsNote } from "@/components/isp/settings-ui";
 import { companyBrandDirty, companyProfileDirty, mergeKeptEdits, type CompanyBrandFields, type CompanyProfileFields } from "@/lib/isp/company-info-tabs";
 import { CustomerTagsSettings } from "@/components/isp/customer-tags-settings";
 import { CustomerIdSettings } from "@/components/isp/customer-id-settings";
@@ -13,129 +16,39 @@ import { NotificationsSettings } from "@/components/isp/notifications-settings";
 import { hasPermission, STAFF_ROLES } from "@/lib/isp/rbac";
 import { getDashboard, setStaffPassword } from "@/lib/isp/server";
 import { getDocumentBranding } from "@/lib/isp/server-docs";
-import { getKopokopo, saveKopokopo, testKopokopo } from "@/lib/isp/server-kopo";
-import { getMpesa, saveMpesa, savePublicBase, testMpesa } from "@/lib/isp/server-mpesa";
+import { getMpesa } from "@/lib/isp/server-mpesa";
 import { getPlan, listTicketStaff, recordPlanPayment, sendPlanStk, setPlan, createStaffAccount, changeMemberRole } from "@/lib/isp/server-more";
-import { checkSmsAccount, confirmStk, getMessaging, listProviders, saveMessaging, testMessaging, toggleProvider, workspaceSlug } from "@/lib/isp/server-ops";
+import { confirmStk, workspaceSlug } from "@/lib/isp/server-ops";
 import { getGracePolicyFn, saveGracePolicyFn } from "@/lib/isp/server-grace";
 import type { GracePolicy } from "@/lib/isp/grace";
 import { getPartialPolicyFn, savePartialPolicyFn } from "@/lib/isp/server-partial";
 import type { PartialPolicySnapshot } from "@/lib/isp/partial-payment-format";
 import { PartialPaymentSettingsForm } from "@/components/isp/partial-payment-panel";
 import { downloadWireGuardServer, getVpsPublishGuide, getWireGuardHub, rotateWireGuardHub, saveWireGuardHub } from "@/lib/isp/server-wg";
+import {
+  GRACE_SAVE_FAIL,
+  GRACE_SAVE_OK,
+  NETWORK_SAVE_FAIL,
+  NETWORK_SAVE_OK,
+  PARTIAL_SAVE_FAIL,
+  PARTIAL_SAVE_OK,
+  STAFF_SAVE_FAIL,
+} from "@/lib/isp/settings-feedback";
+import { parseSettingsSearch, SETTINGS_PAGES, type SettingsPageId } from "@/lib/isp/settings-nav";
 import { vpsInstallCommand, vpsUpdateCommand } from "@/lib/isp/vps-publish";
-import { cn, kes } from "@/lib/utils";
+import { kes } from "@/lib/utils";
 import type { Workspace } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app/settings")({
-  validateSearch: (search: Record<string, unknown>): { tab?: TabId } => ({
-    tab: isTabId(search.tab) ? search.tab : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>) => parseSettingsSearch(search),
   component: SettingsPage,
 });
 
-type TabId = "company" | "appearance" | "network" | "sms" | "notifications" | "payment" | "plan" | "staff" | "grace" | "partial" | "tags" | "accounts";
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: "company", label: "Company info" },
-  { id: "appearance", label: "Appearance" },
-  { id: "network", label: "Network" },
-  { id: "sms", label: "SMS & email" },
-  { id: "notifications", label: "Notifications" },
-  { id: "payment", label: "Payment" },
-  { id: "plan", label: "Plan" },
-  { id: "staff", label: "Staff" },
-  { id: "grace", label: "Grace period" },
-  { id: "partial", label: "Partial payments" },
-  { id: "tags", label: "Customer tags" },
-  { id: "accounts", label: "ID Settings" },
-];
-
-function isTabId(value: unknown): value is TabId {
-  return TABS.some((t) => t.id === value);
-}
-
-type MsgForm = {
-  payment_sms: boolean;
-  payment_whatsapp: boolean;
-  billing_sms: boolean;
-  billing_whatsapp: boolean;
-  sms_provider: string;
-  sms_sender_id: string;
-  sms_username: string;
-  sms_api_key: string;
-  sms_sandbox: boolean;
-  wa_provider: string;
-  wa_phone_id: string;
-  wa_access_token: string;
-  wa_business_id: string;
-  wa_sandbox: boolean;
-  payment_email: boolean;
-  billing_email: boolean;
-  email_provider: string;
-  email_from_name: string;
-  email_from_address: string;
-  email_reply_to: string;
-  email_api_key: string;
-  smtp_host: string;
-  smtp_port: number;
-  smtp_username: string;
-  smtp_password: string;
-  smtp_secure: boolean;
-  email_sandbox: boolean;
-};
-
-const EMPTY_MSG: MsgForm = {
-  payment_sms: true,
-  payment_whatsapp: true,
-  billing_sms: true,
-  billing_whatsapp: false,
-  sms_provider: "africastalking",
-  sms_sender_id: "",
-  sms_username: "",
-  sms_api_key: "",
-  sms_sandbox: true,
-  wa_provider: "meta",
-  wa_phone_id: "",
-  wa_access_token: "",
-  wa_business_id: "",
-  wa_sandbox: true,
-  payment_email: true,
-  billing_email: true,
-  email_provider: "resend",
-  email_from_name: "",
-  email_from_address: "",
-  email_reply_to: "",
-  email_api_key: "",
-  smtp_host: "",
-  smtp_port: 587,
-  smtp_username: "",
-  smtp_password: "",
-  smtp_secure: false,
-  email_sandbox: true,
-};
-
-function Check({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <label className="flex h-11 items-center gap-2 rounded-md border border-border bg-bg px-3 text-sm">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      {label}
-    </label>
-  );
-}
-
 function SettingsPage() {
   const navigate = Route.useNavigate();
-  const { tab: tabParam } = Route.useSearch();
-  const tab: TabId = tabParam ?? "company";
+  const search = Route.useSearch();
+  const tab: SettingsPageId = search.tab ?? "general";
+  const section = search.section;
   const [ws, setWs] = useState<Workspace | null>(null);
   const [form, setForm] = useState({
     name: "",
@@ -165,46 +78,8 @@ function SettingsPage() {
   brandRef.current = brand;
   savedFormRef.current = savedForm;
   savedBrandRef.current = savedBrand;
-  const [providers, setProviders] = useState<{ id: string; kind: string; label: string; enabled: boolean; sandbox: boolean }[]>([]);
-  const [msg, setMsg] = useState<MsgForm>(EMPTY_MSG);
-  const [smsHint, setSmsHint] = useState("");
-  const [waHint, setWaHint] = useState("");
-  const [emailHint, setEmailHint] = useState("");
-  const [smtpHint, setSmtpHint] = useState("");
-  const [testPhone, setTestPhone] = useState("");
-  const [testEmail, setTestEmail] = useState("");
-  const [testOut, setTestOut] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
-  const [smsNote, setSmsNote] = useState<{ ok: boolean; text: string } | null>(null);
-  const [waNote, setWaNote] = useState<{ ok: boolean; text: string } | null>(null);
-  const [emailNote, setEmailNote] = useState<{ ok: boolean; text: string } | null>(null);
-  const [smsBusy, setSmsBusy] = useState(false);
-  const [waBusy, setWaBusy] = useState(false);
-  const [emailBusy, setEmailBusy] = useState(false);
-  const [kopo, setKopo] = useState({
-    enabled: true,
-    sandbox: true,
-    client_id: "",
-    client_secret: "",
-    till_number: "",
-  });
-  const [kopoHint, setKopoHint] = useState("");
-  const [kopoOut, setKopoOut] = useState<string | null>(null);
-  const [mpesa, setMpesa] = useState({
-    enabled: true,
-    sandbox: true,
-    client_id: "",
-    client_secret: "",
-    till_number: "",
-    passkey: "",
-    stk_type: "paybill",
-  });
-  const [mpesaSecretHint, setMpesaSecretHint] = useState("");
-  const [mpesaPassHint, setMpesaPassHint] = useState("");
-  const [mpesaOut, setMpesaOut] = useState<string | null>(null);
   const [publicBase, setPublicBase] = useState("");
-  const [mpesaCallback, setMpesaCallback] = useState("");
-  const [kopoCallback, setKopoCallback] = useState("");
   const [plan, setPlanState] = useState<Awaited<ReturnType<typeof getPlan>> | null>(null);
   const [staff, setStaff] = useState<{ user_id: string; role: string; name: string; email?: string }[]>([]);
   const [staffForm, setStaffForm] = useState({
@@ -213,11 +88,14 @@ function SettingsPage() {
     password: "",
     role: "technician",
   });
-  const [staffErr, setStaffErr] = useState<string | null>(null);
+  const [staffNote, setStaffNote] = useState<SettingsNote>(null);
   const [staffBusy, setStaffBusy] = useState(false);
+  const staffLock = useRef(false);
+  const [resettingId, setResettingId] = useState<string | null>(null);
   const [planRef, setPlanRef] = useState("");
   const [planStk, setPlanStk] = useState<string | null>(null);
   const [planErr, setPlanErr] = useState<string | null>(null);
+  const [planBusy, setPlanBusy] = useState(false);
   const [hub, setHub] = useState<{
     publicKey: string;
     address: string;
@@ -230,6 +108,10 @@ function SettingsPage() {
   const [hubConf, setHubConf] = useState<string | null>(null);
   const [hubInstall, setHubInstall] = useState<string | null>(null);
   const [hubCopied, setHubCopied] = useState<"conf" | "install" | null>(null);
+  const [hubNote, setHubNote] = useState<SettingsNote>(null);
+  const [hubBusy, setHubBusy] = useState(false);
+  const networkSection = section === "publish" ? "publish" : "hub";
+  const hubDirty = useRef(false);
   const [vpsGuide, setVpsGuide] = useState<{
     domain: string;
     command: string;
@@ -239,16 +121,18 @@ function SettingsPage() {
   const [vpsCopied, setVpsCopied] = useState<"install" | "update" | null>(null);
   const [gracePolicy, setGracePolicy] = useState<GracePolicy | null>(null);
   const [graceBusy, setGraceBusy] = useState(false);
+  const [graceSection, setGraceSection] = useState<"staff" | "customer">("staff");
+  const [graceNote, setGraceNote] = useState<SettingsNote>(null);
+  const graceDirty = useRef(false);
   const [partialPolicy, setPartialPolicy] = useState<PartialPolicySnapshot | null>(null);
   const [partialBusy, setPartialBusy] = useState(false);
+  const [partialNote, setPartialNote] = useState<SettingsNote>(null);
+  const partialDirty = useRef(false);
 
   async function load() {
-    const [d, s, p, m, k, daraja, sub, st, branding, gp, pp] = await Promise.all([
+    const [d, s, daraja, sub, st, branding, gp, pp] = await Promise.all([
       getDashboard(),
       workspaceSlug(),
-      listProviders(),
-      getMessaging(),
-      getKopokopo(),
       getMpesa(),
       getPlan(),
       listTicketStaff(),
@@ -257,10 +141,9 @@ function SettingsPage() {
       getPartialPolicyFn(),
     ]);
     setWs(d.workspace);
-    setGracePolicy(gp);
-    setPartialPolicy(pp);
+    if (!graceDirty.current) setGracePolicy(gp);
+    if (!partialDirty.current) setPartialPolicy(pp);
     setSlug(s.slug);
-    setProviders(p.providers);
     const nextForm = {
       name: d.workspace.tenantName,
       supportEmail: d.workspace.supportEmail,
@@ -274,63 +157,7 @@ function SettingsPage() {
       setSavedForm(nextForm);
     }
     setActiveDateFormat(d.workspace.dateFormat || DEFAULT_DATE_FORMAT);
-    setTestPhone(d.workspace.supportPhone || "");
-    setMsg({
-      payment_sms: m.payment_sms,
-      payment_whatsapp: m.payment_whatsapp,
-      billing_sms: m.billing_sms,
-      billing_whatsapp: m.billing_whatsapp,
-      sms_provider: m.sms_provider,
-      sms_sender_id: m.sms_sender_id,
-      sms_username: m.sms_username,
-      sms_api_key: m.sms_api_key_hint,
-      sms_sandbox: m.sms_sandbox,
-      wa_provider: m.wa_provider,
-      wa_phone_id: m.wa_phone_id,
-      wa_access_token: m.wa_token_hint,
-      wa_business_id: m.wa_business_id,
-      wa_sandbox: m.wa_sandbox,
-      payment_email: m.payment_email,
-      billing_email: m.billing_email,
-      email_provider: m.email_provider,
-      email_from_name: m.email_from_name,
-      email_from_address: m.email_from_address,
-      email_reply_to: m.email_reply_to,
-      email_api_key: m.email_api_key_hint,
-      smtp_host: m.smtp_host,
-      smtp_port: m.smtp_port,
-      smtp_username: m.smtp_username,
-      smtp_password: m.smtp_password_hint,
-      smtp_secure: m.smtp_secure,
-      email_sandbox: m.email_sandbox,
-    });
-    setSmsHint(m.sms_api_key_set ? m.sms_api_key_hint : "");
-    setWaHint(m.wa_token_set ? m.wa_token_hint : "");
-    setEmailHint(m.email_api_key_set ? m.email_api_key_hint : "");
-    setSmtpHint(m.smtp_password_set ? m.smtp_password_hint : "");
-    setTestEmail(d.workspace.supportEmail || "");
-    setKopo({
-      enabled: k.enabled,
-      sandbox: k.sandbox,
-      client_id: k.client_id,
-      client_secret: k.client_secret_hint,
-      till_number: k.till_number,
-    });
-    setKopoHint(k.client_secret_set ? k.client_secret_hint : "");
-    setMpesa({
-      enabled: daraja.enabled,
-      sandbox: daraja.sandbox,
-      client_id: daraja.client_id,
-      client_secret: daraja.client_secret_hint,
-      till_number: daraja.till_number,
-      passkey: daraja.passkey_hint,
-      stk_type: daraja.stk_type,
-    });
-    setMpesaSecretHint(daraja.client_secret_set ? daraja.client_secret_hint : "");
-    setMpesaPassHint(daraja.passkey_set ? daraja.passkey_hint : "");
     setPublicBase(daraja.public_base_url || (typeof window !== "undefined" ? window.location.origin : ""));
-    setMpesaCallback(daraja.callback_url);
-    setKopoCallback(daraja.kopokopo_callback_url);
     setPlanState(sub);
     setStaff(st.staff);
     const nextBrand: CompanyBrandFields = {
@@ -350,12 +177,14 @@ function SettingsPage() {
       setBrand(nextBrand);
       setSavedBrand(nextBrand);
     }
-    try {
-      const wg = await getWireGuardHub();
-      setHub(wg);
-      setHubForm({ endpoint_host: wg.endpointHost, listen_port: wg.listenPort });
-    } catch {
-      setHub(null);
+    if (!hubDirty.current) {
+      try {
+        const wg = await getWireGuardHub();
+        setHub(wg);
+        setHubForm({ endpoint_host: wg.endpointHost, listen_port: wg.listenPort });
+      } catch {
+        setHub(null);
+      }
     }
     try {
       setVpsGuide(await getVpsPublishGuide());
@@ -405,126 +234,27 @@ function SettingsPage() {
     load().catch(console.error);
   }, []);
 
-  async function saveSms(e: React.FormEvent) {
-    e.preventDefault();
-    setSmsNote(null);
-    const sender = msg.sms_sender_id.trim();
-    if (!msg.sms_provider) {
-      setSmsNote({ ok: false, text: "Choose an SMS provider." });
-      return;
-    }
-    if (msg.sms_provider === "talksasa" && sender.length > 11) {
-      setSmsNote({ ok: false, text: "Talksasa sender ID must be 11 characters or fewer." });
-      return;
-    }
-    if (!msg.sms_sandbox && !msg.sms_api_key.trim() && !smsHint) {
-      setSmsNote({ ok: false, text: "Enter an API key, or keep sandbox on until you go live." });
-      return;
-    }
-    setSmsBusy(true);
-    try {
-      await saveMessaging({
-        data: {
-          payment_sms: msg.payment_sms,
-          billing_sms: msg.billing_sms,
-          sms_provider: msg.sms_provider,
-          sms_sender_id: sender,
-          sms_username: msg.sms_username.trim(),
-          sms_api_key: msg.sms_api_key,
-          sms_sandbox: msg.sms_sandbox,
-        },
-      });
-      setSmsNote({ ok: true, text: "SMS settings applied." });
-      await load();
-    } catch (err) {
-      setSmsNote({ ok: false, text: err instanceof Error ? err.message : "Could not save SMS settings" });
-    } finally {
-      setSmsBusy(false);
-    }
+  function editGrace(next: GracePolicy) {
+    graceDirty.current = true;
+    setGracePolicy(next);
   }
 
-  async function saveWhatsApp(e: React.FormEvent) {
-    e.preventDefault();
-    setWaNote(null);
-    if (!msg.wa_sandbox && !msg.wa_phone_id.trim()) {
-      setWaNote({ ok: false, text: "Enter the Meta phone number ID, or keep sandbox on." });
-      return;
-    }
-    if (!msg.wa_sandbox && !msg.wa_access_token.trim() && !waHint) {
-      setWaNote({ ok: false, text: "Enter an access token, or keep sandbox on until you go live." });
-      return;
-    }
-    setWaBusy(true);
-    try {
-      await saveMessaging({
-        data: {
-          payment_whatsapp: msg.payment_whatsapp,
-          billing_whatsapp: msg.billing_whatsapp,
-          wa_provider: msg.wa_provider || "meta",
-          wa_phone_id: msg.wa_phone_id.trim(),
-          wa_business_id: msg.wa_business_id.trim(),
-          wa_access_token: msg.wa_access_token,
-          wa_sandbox: msg.wa_sandbox,
-        },
-      });
-      setWaNote({ ok: true, text: "WhatsApp settings applied." });
-      await load();
-    } catch (err) {
-      setWaNote({ ok: false, text: err instanceof Error ? err.message : "Could not save WhatsApp settings" });
-    } finally {
-      setWaBusy(false);
-    }
-  }
-
-  async function saveEmail(e: React.FormEvent) {
-    e.preventDefault();
-    setEmailNote(null);
-    const from = msg.email_from_address.trim();
-    if (!msg.email_sandbox && !from) {
-      setEmailNote({ ok: false, text: "Enter this ISP's from address, or keep sandbox on." });
-      return;
-    }
-    if (msg.email_provider === "resend" && !msg.email_sandbox && !msg.email_api_key.trim() && !emailHint) {
-      setEmailNote({ ok: false, text: "Enter a Resend API key, or keep sandbox on until you go live." });
-      return;
-    }
-    if (msg.email_provider === "smtp" && !msg.email_sandbox && !msg.smtp_host.trim()) {
-      setEmailNote({ ok: false, text: "Enter the SMTP host, or keep sandbox on." });
-      return;
-    }
-    setEmailBusy(true);
-    try {
-      await saveMessaging({
-        data: {
-          payment_email: msg.payment_email,
-          billing_email: msg.billing_email,
-          email_provider: msg.email_provider,
-          email_from_name: msg.email_from_name.trim(),
-          email_from_address: from,
-          email_reply_to: msg.email_reply_to.trim(),
-          email_api_key: msg.email_api_key,
-          smtp_host: msg.smtp_host.trim(),
-          smtp_port: Number(msg.smtp_port) || 587,
-          smtp_username: msg.smtp_username.trim(),
-          smtp_password: msg.smtp_password,
-          smtp_secure: msg.smtp_secure,
-          email_sandbox: msg.email_sandbox,
-        },
-      });
-      setEmailNote({ ok: true, text: "Email settings applied for this ISP only." });
-      await load();
-    } catch (err) {
-      setEmailNote({ ok: false, text: err instanceof Error ? err.message : "Could not save email settings" });
-    } finally {
-      setEmailBusy(false);
-    }
+  function openPage(next: SettingsPageId, nextSection?: string) {
+    void navigate({ search: { tab: next, section: nextSection }, replace: true });
+    setSaved(null);
+    setHubNote(null);
+    setGraceNote(null);
+    setPartialNote(null);
+    setStaffNote(null);
   }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted">Company profile, appearance, WireGuard hub, SMS, notifications, and payment rails.</p>
+        <p className="text-sm text-muted">
+          Company, communications, payments, network, staff, and customer defaults for this ISP.
+        </p>
         {hasPermission(ws?.role || "", "recycle_bin.view") ? (
           <p className="mt-2 text-sm">
             <Link to="/app/recycle-bin" className="text-accent hover:underline">
@@ -535,54 +265,55 @@ function SettingsPage() {
         ) : null}
       </div>
 
-      <div
-        role="tablist"
-        aria-label="Settings sections"
-        className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-surface p-1"
-      >
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            className={cn(
-              "h-11 shrink-0 rounded-lg px-4 text-sm font-medium transition-colors",
-              tab === t.id ? "bg-accent text-accent-fg" : "text-muted hover:bg-elevated hover:text-fg",
-            )}
-            onClick={() => {
-              void navigate({ search: { tab: t.id }, replace: true });
-              setSaved(null);
-              setSmsNote(null);
-              setWaNote(null);
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <SettingsSubnav
+        label="Settings sections"
+        value={tab}
+        onChange={(id) => openPage(id)}
+        tabs={SETTINGS_PAGES.map((page) => ({ id: page.id, label: page.label }))}
+      />
 
-      {tab === "company" ? (
-        <CompanyInfoSettings
-          ws={ws}
-          slug={slug}
-          form={form}
-          setForm={setForm}
-          savedForm={savedForm}
-          brand={brand}
-          setBrand={setBrand}
-          savedBrand={savedBrand}
-          reloadProfile={reloadProfile}
-          reloadBrand={reloadBrand}
-        />
-      ) : null}
-
-      {tab === "appearance" ? (
-        <AppearanceSettings canManage={Boolean(ws && hasPermission(ws.role, "settings.manage"))} />
+      {tab === "general" ? (
+        <div className="space-y-4">
+          <SettingsSubnav
+            label="General"
+            value={section === "appearance" ? "appearance" : "company"}
+            onChange={(id) => openPage("general", id)}
+            tabs={[
+              { id: "company", label: "Company" },
+              { id: "appearance", label: "Appearance" },
+            ]}
+          />
+          {section === "appearance" ? (
+            <AppearanceSettings canManage={Boolean(ws && hasPermission(ws.role, "settings.manage"))} />
+          ) : (
+            <CompanyInfoSettings
+              ws={ws}
+              slug={slug}
+              form={form}
+              setForm={setForm}
+              savedForm={savedForm}
+              brand={brand}
+              setBrand={setBrand}
+              savedBrand={savedBrand}
+              reloadProfile={reloadProfile}
+              reloadBrand={reloadBrand}
+            />
+          )}
+        </div>
       ) : null}
 
       {tab === "network" ? (
-        <section className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4 md:p-5">
+        <div className="space-y-4">
+          <SettingsSubnav
+            label="Network"
+            value={networkSection}
+            onChange={(id) => openPage("network", id)}
+            tabs={[
+              { id: "hub", label: "WireGuard" },
+              { id: "publish", label: "Publish" },
+            ]}
+          />
+        <section hidden={networkSection !== "hub"} className={networkSection === "hub" ? "grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4 md:p-5" : "hidden"}>
           <h2 className="font-medium">WireGuard hub</h2>
           <p className="text-sm text-muted">
             This VPS is <span className="font-mono text-fg">{hub?.address || "10.200.0.1/24"}</span> on{" "}
@@ -595,22 +326,35 @@ function SettingsPage() {
             className="grid gap-3"
             onSubmit={async (e) => {
               e.preventDefault();
-              const next = await saveWireGuardHub({
-                data: {
-                  endpoint_host: hubForm.endpoint_host,
-                  listen_port: Number(hubForm.listen_port) || 51820,
-                },
-              });
-              setHub(next);
-              setHubForm({ endpoint_host: next.endpointHost, listen_port: next.listenPort });
-              setSaved("WireGuard hub endpoint saved. Re-copy router enroll scripts so they pick up the endpoint.");
+              if (hubBusy) return;
+              setHubNote(null);
+              setHubBusy(true);
+              try {
+                const next = await saveWireGuardHub({
+                  data: {
+                    endpoint_host: hubForm.endpoint_host,
+                    listen_port: Number(hubForm.listen_port) || 51820,
+                  },
+                });
+                hubDirty.current = false;
+                setHub(next);
+                setHubForm({ endpoint_host: next.endpointHost, listen_port: next.listenPort });
+                setHubNote({ ok: true, text: NETWORK_SAVE_OK });
+              } catch (err) {
+                setHubNote({ ok: false, text: err instanceof Error ? err.message : NETWORK_SAVE_FAIL });
+              } finally {
+                setHubBusy(false);
+              }
             }}
           >
             <Field label="Public endpoint">
               <Input
                 placeholder="wg.ispsolutions.co.ke"
                 value={hubForm.endpoint_host}
-                onChange={(e) => setHubForm({ ...hubForm, endpoint_host: e.target.value })}
+                onChange={(e) => {
+                  hubDirty.current = true;
+                  setHubForm({ ...hubForm, endpoint_host: e.target.value });
+                }}
               />
             </Field>
             <Field label="Listen port">
@@ -619,13 +363,17 @@ function SettingsPage() {
                 min={1}
                 max={65535}
                 value={hubForm.listen_port}
-                onChange={(e) => setHubForm({ ...hubForm, listen_port: Number(e.target.value) || 51820 })}
+                onChange={(e) => {
+                  hubDirty.current = true;
+                  setHubForm({ ...hubForm, listen_port: Number(e.target.value) || 51820 });
+                }}
               />
             </Field>
             <Field label="Hub public key">
               <Input readOnly value={hub?.publicKey || "Generated on first save"} />
             </Field>
-            <Button type="submit">Save hub</Button>
+            <SettingsStatus note={hubNote} />
+            <SaveButton busy={hubBusy} label="Save changes" />
           </form>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -670,11 +418,20 @@ function SettingsPage() {
               variant="secondary"
               onClick={async () => {
                 if (!window.confirm("Rotate the hub keypair? Every router enroll script must be copied again.")) return;
-                const next = await rotateWireGuardHub();
-                setHub(next);
-                setHubConf(null);
-                setHubInstall(null);
-                setSaved("Hub keys rotated. Download a new server config and re-copy each router script.");
+                setHubNote(null);
+                setHubBusy(true);
+                try {
+                  const next = await rotateWireGuardHub();
+                  hubDirty.current = false;
+                  setHub(next);
+                  setHubConf(null);
+                  setHubInstall(null);
+                  setHubNote({ ok: true, text: "Hub keys rotated. Download a new server config and re-copy each router script." });
+                } catch (err) {
+                  setHubNote({ ok: false, text: err instanceof Error ? err.message : "Unable to rotate hub keys." });
+                } finally {
+                  setHubBusy(false);
+                }
               }}
             >
               Rotate hub keys
@@ -686,10 +443,7 @@ function SettingsPage() {
             </pre>
           ) : null}
         </section>
-      ) : null}
-
-      {tab === "network" ? (
-        <section className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4 md:p-5">
+        <section hidden={networkSection !== "publish"} className={networkSection === "publish" ? "grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4 md:p-5" : "hidden"}>
           <h2 className="font-medium">Publish to your VPS</h2>
           <p className="text-sm text-muted">
             We build here and push to GitHub. After the first install, the VPS pulls that push and rebuilds — usually
@@ -745,506 +499,30 @@ function SettingsPage() {
             ))}
           </ol>
         </section>
+        </div>
       ) : null}
 
-      {tab === "sms" ? (
-        <div className="space-y-6">
-          <form className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4" onSubmit={saveSms}>
-            <div>
-              <h2 className="font-medium">SMS gateway</h2>
-              <p className="text-sm text-muted">Provider used for receipts, billing reminders, and staff campaigns.</p>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Check label="Payment receipts · SMS" checked={msg.payment_sms} onChange={(v) => setMsg({ ...msg, payment_sms: v })} />
-              <Check label="Billing reminders · SMS" checked={msg.billing_sms} onChange={(v) => setMsg({ ...msg, billing_sms: v })} />
-            </div>
-
-            <Field label="Provider">
-              <Select value={msg.sms_provider} onChange={(e) => setMsg({ ...msg, sms_provider: e.target.value })}>
-                <option value="blessedtexts">Blessed Texts</option>
-                <option value="talksasa">Talksasa</option>
-                <option value="webfam">Webfam SMS</option>
-                <option value="africastalking">Africa's Talking</option>
-                <option value="advanta">Advanta SMS</option>
-                <option value="twilio">Twilio</option>
-              </Select>
-            </Field>
-            <p className="text-xs text-subtle">
-              {msg.sms_provider === "talksasa"
-                ? "Talksasa: API token from bulksms.talksasa.com. Sender ID max 11 characters."
-                : msg.sms_provider === "blessedtexts"
-                  ? "Blessed Texts: Partner ID + API key. Sender ID is your approved short name."
-                  : msg.sms_provider === "webfam"
-                    ? "WebfamSMS: Bearer API key (WFK-…). POST /api/v1/sms/send"
-                    : msg.sms_provider === "twilio"
-                      ? "Twilio: Account SID as username, Auth Token as API key."
-                      : "Username / partner ID plus API key from the provider dashboard."}
-            </p>
-            <Field label="Sender ID / shortcode">
-              <Input
-                placeholder="ISPSOL"
-                value={msg.sms_sender_id}
-                onChange={(e) => setMsg({ ...msg, sms_sender_id: e.target.value })}
-              />
-            </Field>
-            <Field
-              label={
-                msg.sms_provider === "twilio"
-                  ? "Account SID"
-                  : msg.sms_provider === "talksasa" || msg.sms_provider === "webfam"
-                    ? "Account (optional)"
-                    : "Partner ID / username"
-              }
-            >
-              <Input value={msg.sms_username} onChange={(e) => setMsg({ ...msg, sms_username: e.target.value })} />
-            </Field>
-            <Field label="API key">
-              <Input
-                type="password"
-                autoComplete="off"
-                placeholder={smsHint || (msg.sms_provider === "webfam" ? "WFK-…" : "Paste key")}
-                value={msg.sms_api_key}
-                onChange={(e) => setMsg({ ...msg, sms_api_key: e.target.value })}
-              />
-            </Field>
-            <Check
-              label="SMS sandbox (log only, do not hit live API)"
-              checked={msg.sms_sandbox}
-              onChange={(v) => setMsg({ ...msg, sms_sandbox: v })}
-            />
-
-            {smsNote ? (
-              <p role="status" className={smsNote.ok ? "text-sm text-ok" : "text-sm text-danger"}>
-                {smsNote.text}
-              </p>
-            ) : null}
-            <Button type="submit" disabled={smsBusy}>
-              {smsBusy ? "Saving…" : "Save SMS"}
-            </Button>
-
-            <h3 className="mt-2 text-sm font-medium">Send a test SMS</h3>
-            <Field label="Phone">
-              <Input placeholder="+2547…" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} />
-            </Field>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={async () => {
-                  const r = await testMessaging({ data: { channel: "sms", phone: testPhone } });
-                  setTestOut(`SMS ${r.status} · ${r.detail}`);
-                }}
-              >
-                Test SMS
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={async () => {
-                  const r = await checkSmsAccount();
-                  setTestOut(`Account ${r.ok ? "ok" : "error"} · ${r.detail}`);
-                }}
-              >
-                Check Webfam balance
-              </Button>
-            </div>
-            {testOut && !testOut.startsWith("WhatsApp") ? <p className="text-sm text-muted">{testOut}</p> : null}
-          </form>
-
-          <form className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4" onSubmit={saveWhatsApp}>
-            <div>
-              <h2 className="font-medium">WhatsApp gateway</h2>
-              <p className="text-sm text-muted">Meta Cloud API for payment receipts and billing reminders.</p>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Check
-                label="Payment receipts · WhatsApp"
-                checked={msg.payment_whatsapp}
-                onChange={(v) => setMsg({ ...msg, payment_whatsapp: v })}
-              />
-              <Check
-                label="Billing reminders · WhatsApp"
-                checked={msg.billing_whatsapp}
-                onChange={(v) => setMsg({ ...msg, billing_whatsapp: v })}
-              />
-            </div>
-
-            <Field label="Phone number ID">
-              <Input
-                placeholder="Meta phone number ID"
-                value={msg.wa_phone_id}
-                onChange={(e) => setMsg({ ...msg, wa_phone_id: e.target.value })}
-              />
-            </Field>
-            <Field label="WhatsApp Business Account ID">
-              <Input value={msg.wa_business_id} onChange={(e) => setMsg({ ...msg, wa_business_id: e.target.value })} />
-            </Field>
-            <Field label="Access token">
-              <Input
-                type="password"
-                autoComplete="off"
-                placeholder={waHint || "Paste token"}
-                value={msg.wa_access_token}
-                onChange={(e) => setMsg({ ...msg, wa_access_token: e.target.value })}
-              />
-            </Field>
-            <Check
-              label="WhatsApp sandbox (log only until go-live)"
-              checked={msg.wa_sandbox}
-              onChange={(v) => setMsg({ ...msg, wa_sandbox: v })}
-            />
-
-            {waNote ? (
-              <p role="status" className={waNote.ok ? "text-sm text-ok" : "text-sm text-danger"}>
-                {waNote.text}
-              </p>
-            ) : null}
-            <Button type="submit" disabled={waBusy}>
-              {waBusy ? "Saving…" : "Save WhatsApp"}
-            </Button>
-
-            <h3 className="mt-2 text-sm font-medium">Send a test WhatsApp</h3>
-            <Field label="Phone">
-              <Input placeholder="+2547…" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} />
-            </Field>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={async () => {
-                const r = await testMessaging({ data: { channel: "whatsapp", phone: testPhone } });
-                setTestOut(`WhatsApp ${r.status} · ${r.detail}`);
-              }}
-            >
-              Test WhatsApp
-            </Button>
-            {testOut?.startsWith("WhatsApp") ? <p className="text-sm text-muted">{testOut}</p> : null}
-          </form>
-
-          <form className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4" onSubmit={saveEmail}>
-            <div>
-              <h2 className="font-medium">Email gateway</h2>
-              <p className="text-sm text-muted">
-                This ISP’s own from address and credentials. Receipts, billing reminders, invoice PDFs, and staff
-                campaigns never use another ISP’s mailbox.
-              </p>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Check
-                label="Payment receipts · Email"
-                checked={msg.payment_email}
-                onChange={(v) => setMsg({ ...msg, payment_email: v })}
-              />
-              <Check
-                label="Billing reminders · Email"
-                checked={msg.billing_email}
-                onChange={(v) => setMsg({ ...msg, billing_email: v })}
-              />
-            </div>
-
-            <Field label="Provider">
-              <Select value={msg.email_provider} onChange={(e) => setMsg({ ...msg, email_provider: e.target.value })}>
-                <option value="resend">Resend</option>
-                <option value="smtp">SMTP (VPS / Google / Zoho)</option>
-              </Select>
-            </Field>
-            <Field label="From name">
-              <Input
-                placeholder="Imani Networks"
-                value={msg.email_from_name}
-                onChange={(e) => setMsg({ ...msg, email_from_name: e.target.value })}
-              />
-            </Field>
-            <Field label="From address">
-              <Input
-                type="email"
-                placeholder="billing@yourisp.co.ke"
-                value={msg.email_from_address}
-                onChange={(e) => setMsg({ ...msg, email_from_address: e.target.value })}
-              />
-            </Field>
-            <Field label="Reply-to (optional)">
-              <Input
-                type="email"
-                placeholder="support@yourisp.co.ke"
-                value={msg.email_reply_to}
-                onChange={(e) => setMsg({ ...msg, email_reply_to: e.target.value })}
-              />
-            </Field>
-            {msg.email_provider === "resend" ? (
-              <Field label="Resend API key">
-                <Input
-                  type="password"
-                  autoComplete="off"
-                  placeholder={emailHint || "re_…"}
-                  value={msg.email_api_key}
-                  onChange={(e) => setMsg({ ...msg, email_api_key: e.target.value })}
-                />
-              </Field>
-            ) : (
-              <>
-                <Field label="SMTP host">
-                  <Input
-                    placeholder="smtp.gmail.com or 127.0.0.1"
-                    value={msg.smtp_host}
-                    onChange={(e) => setMsg({ ...msg, smtp_host: e.target.value })}
-                  />
-                </Field>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Port">
-                    <Input
-                      type="number"
-                      min={1}
-                      max={65535}
-                      value={msg.smtp_port}
-                      onChange={(e) => setMsg({ ...msg, smtp_port: Number(e.target.value) || 587 })}
-                    />
-                  </Field>
-                  <Check
-                    label="TLS on connect (465)"
-                    checked={msg.smtp_secure}
-                    onChange={(v) => setMsg({ ...msg, smtp_secure: v })}
-                  />
-                </div>
-                <Field label="SMTP username">
-                  <Input value={msg.smtp_username} onChange={(e) => setMsg({ ...msg, smtp_username: e.target.value })} />
-                </Field>
-                <Field label="SMTP password">
-                  <Input
-                    type="password"
-                    autoComplete="off"
-                    placeholder={smtpHint || "App password"}
-                    value={msg.smtp_password}
-                    onChange={(e) => setMsg({ ...msg, smtp_password: e.target.value })}
-                  />
-                </Field>
-              </>
-            )}
-            <Check
-              label="Email sandbox (log only, do not send live)"
-              checked={msg.email_sandbox}
-              onChange={(v) => setMsg({ ...msg, email_sandbox: v })}
-            />
-
-            {emailNote ? (
-              <p role="status" className={emailNote.ok ? "text-sm text-ok" : "text-sm text-danger"}>
-                {emailNote.text}
-              </p>
-            ) : null}
-            <Button type="submit" disabled={emailBusy}>
-              {emailBusy ? "Saving…" : "Save email"}
-            </Button>
-
-            <h3 className="mt-2 text-sm font-medium">Send a test email</h3>
-            <Field label="Email">
-              <Input
-                type="email"
-                placeholder="you@example.com"
-                value={testEmail}
-                onChange={(e) => setTestEmail(e.target.value)}
-              />
-            </Field>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={async () => {
-                const r = await testMessaging({ data: { channel: "email", email: testEmail } });
-                setTestOut(`Email ${r.status} · ${r.detail}`);
-              }}
-            >
-              Test email
-            </Button>
-            {testOut?.startsWith("Email") ? <p className="text-sm text-muted">{testOut}</p> : null}
-          </form>
-        </div>
+      {tab === "communications" ? (
+        <CommunicationsSettings supportPhone={form.supportPhone} supportEmail={form.supportEmail} />
       ) : null}
 
       {tab === "notifications" ? <NotificationsSettings /> : null}
 
-      {tab === "payment" ? (
-        <div className="space-y-6">
-          <section className="max-w-xl space-y-3">
-            <h2 className="font-medium">Payment providers</h2>
-            {providers.map((p) => (
-              <div key={p.id} className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3">
-                <div>
-                  <div className="font-medium">{p.label}</div>
-                  <div className="text-xs text-muted">
-                    {p.kind} · {p.sandbox ? "sandbox" : "live"}
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={async () => {
-                    await toggleProvider({ data: { id: p.id, enabled: !p.enabled } });
-                    await load();
-                  }}
-                >
-                  {p.enabled ? "Enabled" : "Disabled"}
-                </Button>
-              </div>
-            ))}
-          </section>
-
-          <form
-            className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const urls = await savePublicBase({ data: { public_base_url: publicBase } });
-              setMpesaCallback(urls.mpesa);
-              setKopoCallback(urls.kopokopo);
-              setPublicBase(urls.public_base_url);
-            }}
-          >
-            <h2 className="font-medium">Public URL</h2>
-            <p className="text-sm text-muted">
-              Request a custom hostname for this ISP. It is used for bootstrap, portal, and payment callbacks only after
-              platform DNS and HTTPS verification. Until then the central application domain is used.
-            </p>
-            <Field label="Public site URL">
-              <Input
-                placeholder="https://ops.yourisp.co.ke"
-                value={publicBase}
-                onChange={(e) => setPublicBase(e.target.value)}
-              />
-            </Field>
-            <Field label="M-Pesa Daraja callback">
-              <Input readOnly value={mpesaCallback || "Save the public URL to generate this"} />
-            </Field>
-            <Field label="Kopo Kopo callback">
-              <Input readOnly value={kopoCallback || "Save the public URL to generate this"} />
-            </Field>
-            <Button type="submit">Save public URL</Button>
-          </form>
-
-          <form
-            className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              setMpesaOut(null);
-              await saveMpesa({ data: mpesa });
-              setMpesaOut("M-Pesa Daraja saved.");
-              await load();
-            }}
-          >
-            <h2 className="font-medium">M-Pesa Daraja</h2>
-            <Check label="Enabled" checked={mpesa.enabled} onChange={(v) => setMpesa({ ...mpesa, enabled: v })} />
-            <Check label="Sandbox" checked={mpesa.sandbox} onChange={(v) => setMpesa({ ...mpesa, sandbox: v })} />
-            <Field label="STK type">
-              <Select value={mpesa.stk_type} onChange={(e) => setMpesa({ ...mpesa, stk_type: e.target.value })}>
-                <option value="paybill">Paybill (CustomerPayBillOnline)</option>
-                <option value="till">Till / Buy Goods (CustomerBuyGoodsOnline)</option>
-              </Select>
-            </Field>
-            <Field label="Consumer key">
-              <Input value={mpesa.client_id} onChange={(e) => setMpesa({ ...mpesa, client_id: e.target.value })} />
-            </Field>
-            <Field label="Consumer secret">
-              <Input
-                type="password"
-                autoComplete="off"
-                placeholder={mpesaSecretHint || "Paste secret"}
-                value={mpesa.client_secret}
-                onChange={(e) => setMpesa({ ...mpesa, client_secret: e.target.value })}
-              />
-            </Field>
-            <Field label="Shortcode">
-              <Input
-                placeholder="Paybill or till"
-                value={mpesa.till_number}
-                onChange={(e) => setMpesa({ ...mpesa, till_number: e.target.value })}
-              />
-            </Field>
-            <Field label="Lipa Na M-Pesa passkey">
-              <Input
-                type="password"
-                autoComplete="off"
-                placeholder={mpesaPassHint || "Passkey"}
-                value={mpesa.passkey}
-                onChange={(e) => setMpesa({ ...mpesa, passkey: e.target.value })}
-              />
-            </Field>
-            <p className="text-xs text-subtle">
-              STK CallBackURL: <span className="font-mono text-fg">{mpesaCallback || "set public URL above"}</span>
-            </p>
-            {mpesaOut ? <p className="text-sm text-accent">{mpesaOut}</p> : null}
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit">Save M-Pesa</Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={async () => {
-                  try {
-                    const r = await testMpesa();
-                    setMpesaOut(`Token ok on ${r.host} (${r.token_prefix}…)`);
-                  } catch (ex) {
-                    setMpesaOut(ex instanceof Error ? ex.message : "Token failed");
-                  }
-                }}
-              >
-                Test token
-              </Button>
-            </div>
-          </form>
-
-          <form
-            className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              setKopoOut(null);
-              await saveKopokopo({ data: kopo });
-              setKopoOut("Kopo Kopo saved.");
-              await load();
-            }}
-          >
-            <h2 className="font-medium">Kopo Kopo</h2>
-            <Check label="Enabled" checked={kopo.enabled} onChange={(v) => setKopo({ ...kopo, enabled: v })} />
-            <Check label="Sandbox" checked={kopo.sandbox} onChange={(v) => setKopo({ ...kopo, sandbox: v })} />
-            <Field label="Client ID">
-              <Input value={kopo.client_id} onChange={(e) => setKopo({ ...kopo, client_id: e.target.value })} />
-            </Field>
-            <Field label="Client secret">
-              <Input
-                type="password"
-                autoComplete="off"
-                placeholder={kopoHint || "Paste secret"}
-                value={kopo.client_secret}
-                onChange={(e) => setKopo({ ...kopo, client_secret: e.target.value })}
-              />
-            </Field>
-            <Field label="Till / online payments account">
-              <Input
-                placeholder="K000000 or 1234567"
-                value={kopo.till_number}
-                onChange={(e) => setKopo({ ...kopo, till_number: e.target.value })}
-              />
-            </Field>
-            <p className="text-xs text-subtle">
-              Incoming payment callback:{" "}
-              <span className="font-mono text-fg">{kopoCallback || "set public URL above"}</span>
-            </p>
-            {kopoOut ? <p className="text-sm text-accent">{kopoOut}</p> : null}
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit">Save Kopo Kopo</Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={async () => {
-                  try {
-                    const r = await testKopokopo();
-                    setKopoOut(`Token ok on ${r.host} (${r.token_prefix}…)`);
-                  } catch (ex) {
-                    setKopoOut(ex instanceof Error ? ex.message : "Token failed");
-                  }
-                }}
-              >
-                Test token
-              </Button>
-            </div>
-          </form>
+      {tab === "payments" ? (
+        <div className="space-y-4">
+          <SettingsSubnav
+            label="Payments"
+            value={section === "grace" || section === "partial" ? section : "gateways"}
+            onChange={(id) => openPage("payments", id)}
+            tabs={[
+              { id: "gateways", label: "Gateways" },
+              { id: "grace", label: "Grace period" },
+              { id: "partial", label: "Partial payments" },
+            ]}
+          />
+          <div hidden={section === "grace" || section === "partial"} className={section === "grace" || section === "partial" ? "hidden" : undefined}>
+            <PaymentSettings onPublicBase={setPublicBase} />
+          </div>
         </div>
       ) : null}
 
@@ -1253,8 +531,7 @@ function SettingsPage() {
           <p className="text-sm text-muted">
             {APP_NAME} subscription for this ISP. Customer invoices stay on Billing. Paid plans issue an invoice and activate after M-Pesa (Stripe is not used).
           </p>
-          {planErr ? <p className="text-sm text-danger">{planErr}</p> : null}
-          {saved && tab === "plan" ? <p className="text-sm text-accent">{saved}</p> : null}
+          <SettingsStatus note={planErr ? { ok: false, text: planErr } : saved ? { ok: true, text: saved } : null} />
           {plan ? (
             <div className="rounded-xl border border-border bg-surface p-4 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1295,10 +572,13 @@ function SettingsPage() {
                   <Button
                     className="mt-4"
                     variant={current ? "default" : "secondary"}
-                    disabled={current || (p.monthly_kes === 0 && !trialAvailable && !current)}
+                    disabled={planBusy || current || (p.monthly_kes === 0 && !trialAvailable && !current)}
+                    aria-busy={planBusy}
                     onClick={async () => {
+                      if (planBusy) return;
                       setPlanErr(null);
                       setSaved(null);
+                      setPlanBusy(true);
                       try {
                         const r = await setPlan({ data: { plan: p.code } });
                         setPlanState(r);
@@ -1310,7 +590,9 @@ function SettingsPage() {
                               : `Plan set to ${p.label}.`,
                         );
                       } catch (ex) {
-                        setPlanErr(ex instanceof Error ? ex.message : "Plan change failed");
+                        setPlanErr(ex instanceof Error ? ex.message : "Unable to update the plan.");
+                      } finally {
+                        setPlanBusy(false);
                       }
                     }}
                   >
@@ -1333,7 +615,10 @@ function SettingsPage() {
               className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4"
               onSubmit={async (e) => {
                 e.preventDefault();
+                if (planBusy) return;
                 setPlanErr(null);
+                setSaved(null);
+                setPlanBusy(true);
                 try {
                   const r = await recordPlanPayment({
                     data: { invoice_id: plan.invoice!.id, provider: "mpesa", reference: planRef },
@@ -1343,7 +628,9 @@ function SettingsPage() {
                   setPlanStk(null);
                   setSaved(`Paid ${plan.invoice!.number}. ${r.plan} is active.`);
                 } catch (ex) {
-                  setPlanErr(ex instanceof Error ? ex.message : "Payment failed");
+                  setPlanErr(ex instanceof Error ? ex.message : "Unable to record the plan payment.");
+                } finally {
+                  setPlanBusy(false);
                 }
               }}
             >
@@ -1351,23 +638,30 @@ function SettingsPage() {
               <p className="text-sm text-muted">
                 {plan.invoice.plan} · {kes(plan.invoice.amount_kes)} · due {plan.invoice.due_date}. The plan does not change until this is paid.
               </p>
-              <Field label="M-Pesa receipt">
+              <SettingsField label="M-Pesa receipt" required>
                 <Input required placeholder="QK7X…" value={planRef} onChange={(e) => setPlanRef(e.target.value)} />
-              </Field>
-              {planErr ? <p className="text-sm text-danger">{planErr}</p> : null}
+              </SettingsField>
+              <SettingsStatus note={planErr ? { ok: false, text: planErr } : null} />
               <div className="flex flex-wrap gap-2">
-                <Button type="submit">Record payment</Button>
+                <SaveButton busy={planBusy} label="Record payment" />
                 <Button
                   type="button"
                   variant="secondary"
+                  disabled={planBusy}
+                  aria-busy={planBusy}
                   onClick={async () => {
+                    if (planBusy) return;
                     setPlanErr(null);
+                    setPlanBusy(true);
                     try {
                       const r = await sendPlanStk({ data: { invoice_id: plan.invoice!.id, provider: "mpesa" } });
                       setPlanStk(r.checkout_id);
                       if (r.note) setPlanErr(r.note);
+                      else setSaved("STK prompt sent to the company phone.");
                     } catch (ex) {
-                      setPlanErr(ex instanceof Error ? ex.message : "STK failed");
+                      setPlanErr(ex instanceof Error ? ex.message : "Unable to send the STK prompt.");
+                    } finally {
+                      setPlanBusy(false);
                     }
                   }}
                 >
@@ -1450,7 +744,9 @@ function SettingsPage() {
             className="grid gap-3 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2"
             onSubmit={async (e) => {
               e.preventDefault();
-              setStaffErr(null);
+              if (staffLock.current) return;
+              setStaffNote(null);
+              staffLock.current = true;
               setStaffBusy(true);
               try {
                 await createStaffAccount({
@@ -1462,11 +758,12 @@ function SettingsPage() {
                   },
                 });
                 setStaffForm({ name: "", email: "", password: "", role: "technician" });
-                setSaved("Staff login created. They can sign in with that email and password.");
+                setStaffNote({ ok: true, text: "Staff login created successfully." });
                 await load();
               } catch (err) {
-                setStaffErr(err instanceof Error ? err.message : "Could not create staff");
+                setStaffNote({ ok: false, text: err instanceof Error ? err.message : STAFF_SAVE_FAIL });
               } finally {
+                staffLock.current = false;
                 setStaffBusy(false);
               }
             }}
@@ -1477,15 +774,15 @@ function SettingsPage() {
                 They sign in at the same {APP_NAME} login with this email and password. No extra signup needed.
               </p>
             </div>
-            <Field label="Name">
+            <SettingsField label="Name" required>
               <Input
                 required
                 value={staffForm.name}
                 onChange={(e) => setStaffForm({ ...staffForm, name: e.target.value })}
                 placeholder="Kamau Otieno"
               />
-            </Field>
-            <Field label="Email">
+            </SettingsField>
+            <SettingsField label="Email" required>
               <Input
                 type="email"
                 required
@@ -1493,19 +790,17 @@ function SettingsPage() {
                 onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })}
                 placeholder="tech@isp.co.ke"
               />
-            </Field>
-            <Field label="Temporary password">
-              <Input
-                type="password"
-                required
-                minLength={8}
+            </SettingsField>
+            <SettingsField label="Temporary password" required hint="At least 8 characters. They can change it after signing in.">
+              <SecretInput
                 value={staffForm.password}
-                onChange={(e) => setStaffForm({ ...staffForm, password: e.target.value })}
                 autoComplete="new-password"
                 placeholder="At least 8 characters"
+                minLength={8}
+                onChange={(password) => setStaffForm({ ...staffForm, password })}
               />
-            </Field>
-            <Field label="Role">
+            </SettingsField>
+            <SettingsField label="Role" required>
               <Select
                 value={staffForm.role}
                 onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })}
@@ -1516,14 +811,13 @@ function SettingsPage() {
                   </option>
                 ))}
               </Select>
-            </Field>
-            {staffErr ? <p className="text-sm text-danger sm:col-span-2">{staffErr}</p> : null}
+            </SettingsField>
             <div className="sm:col-span-2">
-              <Button type="submit" disabled={staffBusy}>
-                {staffBusy ? "Creating…" : "Create login"}
-              </Button>
+              <SaveButton busy={staffBusy} label="Create login" pending="Saving…" />
             </div>
           </form>
+
+          <SettingsStatus note={staffNote} />
 
           <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
             {staff.map((s) => (
@@ -1536,11 +830,13 @@ function SettingsPage() {
                   className="sm:w-52"
                   value={s.role}
                   onChange={async (e) => {
+                    setStaffNote(null);
                     try {
                       await changeMemberRole({ data: { user_id: s.user_id, role: e.target.value } });
+                      setStaffNote({ ok: true, text: "Staff role updated successfully." });
                       await load();
                     } catch (err) {
-                      setStaffErr(err instanceof Error ? err.message : "Could not change role");
+                      setStaffNote({ ok: false, text: err instanceof Error ? err.message : STAFF_SAVE_FAIL });
                     }
                   }}
                 >
@@ -1556,13 +852,16 @@ function SettingsPage() {
                     e.preventDefault();
                     const fd = new FormData(e.currentTarget);
                     const password = String(fd.get("password") || "");
-                    setStaffErr(null);
+                    setStaffNote(null);
+                    setResettingId(s.user_id);
                     try {
                       await setStaffPassword({ data: { user_id: s.user_id, password } });
                       e.currentTarget.reset();
-                      setSaved(`Password updated for ${s.email || s.name}.`);
+                      setStaffNote({ ok: true, text: "Staff password updated successfully." });
                     } catch (err) {
-                      setStaffErr(err instanceof Error ? err.message : "Could not reset password");
+                      setStaffNote({ ok: false, text: err instanceof Error ? err.message : STAFF_SAVE_FAIL });
+                    } finally {
+                      setResettingId(null);
                     }
                   }}
                 >
@@ -1575,8 +874,8 @@ function SettingsPage() {
                     autoComplete="new-password"
                     className="sm:w-44"
                   />
-                  <Button type="submit" size="sm" variant="secondary">
-                    Reset
+                  <Button type="submit" size="sm" variant="secondary" disabled={resettingId === s.user_id} aria-busy={resettingId === s.user_id}>
+                    {resettingId === s.user_id ? "Saving…" : "Reset"}
                   </Button>
                 </form>
               </li>
@@ -1586,13 +885,14 @@ function SettingsPage() {
         </div>
       ) : null}
 
-      {tab === "grace" && gracePolicy ? (
+      {tab === "payments" && section === "grace" && gracePolicy ? (
         <form
           className="grid gap-4 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2"
           onSubmit={async (e) => {
             e.preventDefault();
+            if (graceBusy) return;
             setGraceBusy(true);
-            setSaved(null);
+            setGraceNote(null);
             try {
               const next = await saveGracePolicyFn({
                 data: {
@@ -1610,10 +910,11 @@ function SettingsPage() {
                   notify_nearing_hours: gracePolicy.notify_nearing_hours,
                 },
               });
+              graceDirty.current = false;
               setGracePolicy(next);
-              setSaved("Grace period terms saved.");
+              setGraceNote({ ok: true, text: GRACE_SAVE_OK });
             } catch (err) {
-              setSaved(err instanceof Error ? err.message : "Could not save grace terms");
+              setGraceNote({ ok: false, text: err instanceof Error ? err.message : GRACE_SAVE_FAIL });
             } finally {
               setGraceBusy(false);
             }
@@ -1626,20 +927,32 @@ function SettingsPage() {
               grace themselves only when they meet the terms below.
             </p>
           </div>
-          <Field label="Staff maximum days">
+          <div className="sm:col-span-2">
+            <SettingsSubnav
+              label="Grace period"
+              value={graceSection}
+              onChange={setGraceSection}
+              tabs={[
+                { id: "staff", label: "Staff grants" },
+                { id: "customer", label: "Customer self-service" },
+              ]}
+            />
+          </div>
+          <div hidden={graceSection !== "staff"} className={graceSection === "staff" ? "grid gap-4 sm:col-span-2 sm:grid-cols-2" : "hidden"}>
+            <Field label="Staff maximum days">
             <Input
               type="number"
               min={1}
               max={30}
               value={gracePolicy.staff_max_days}
-              onChange={(e) => setGracePolicy({ ...gracePolicy, staff_max_days: Number(e.target.value) })}
+              onChange={(e) => editGrace({ ...gracePolicy, staff_max_days: Number(e.target.value) })}
             />
           </Field>
           <Field label="Staff day options (comma separated)">
             <Input
               value={gracePolicy.staff_preset_days.join(",")}
               onChange={(e) =>
-                setGracePolicy({
+                editGrace({
                   ...gracePolicy,
                   staff_preset_days: e.target.value.split(/[,\s]+/).map(Number).filter((n) => n > 0),
                 })
@@ -1650,15 +963,17 @@ function SettingsPage() {
             <input
               type="checkbox"
               checked={gracePolicy.allow_custom_days}
-              onChange={(e) => setGracePolicy({ ...gracePolicy, allow_custom_days: e.target.checked })}
+              onChange={(e) => editGrace({ ...gracePolicy, allow_custom_days: e.target.checked })}
             />
             Allow staff to enter a custom number of days
           </label>
+          </div>
+          <div hidden={graceSection !== "customer"} className={graceSection === "customer" ? "grid gap-4 sm:col-span-2 sm:grid-cols-2" : "hidden"}>
           <label className="flex h-11 items-center gap-2 rounded-md border border-border bg-bg px-3 text-sm sm:col-span-2">
             <input
               type="checkbox"
               checked={gracePolicy.customer_self_service}
-              onChange={(e) => setGracePolicy({ ...gracePolicy, customer_self_service: e.target.checked })}
+              onChange={(e) => editGrace({ ...gracePolicy, customer_self_service: e.target.checked })}
             />
             Allow eligible customers to add grace from the portal
           </label>
@@ -1668,14 +983,14 @@ function SettingsPage() {
               min={1}
               max={30}
               value={gracePolicy.customer_max_days}
-              onChange={(e) => setGracePolicy({ ...gracePolicy, customer_max_days: Number(e.target.value) })}
+              onChange={(e) => editGrace({ ...gracePolicy, customer_max_days: Number(e.target.value) })}
             />
           </Field>
           <Field label="Customer day options (comma separated)">
             <Input
               value={gracePolicy.customer_preset_days.join(",")}
               onChange={(e) =>
-                setGracePolicy({
+                editGrace({
                   ...gracePolicy,
                   customer_preset_days: e.target.value.split(/[,\s]+/).map(Number).filter((n) => n > 0),
                 })
@@ -1688,7 +1003,7 @@ function SettingsPage() {
               min={1}
               max={12}
               value={gracePolicy.customer_max_uses_per_period}
-              onChange={(e) => setGracePolicy({ ...gracePolicy, customer_max_uses_per_period: Number(e.target.value) })}
+              onChange={(e) => editGrace({ ...gracePolicy, customer_max_uses_per_period: Number(e.target.value) })}
             />
           </Field>
           <Field label="Minimum account age (days)">
@@ -1697,7 +1012,7 @@ function SettingsPage() {
               min={0}
               max={365}
               value={gracePolicy.customer_min_account_days}
-              onChange={(e) => setGracePolicy({ ...gracePolicy, customer_min_account_days: Number(e.target.value) })}
+              onChange={(e) => editGrace({ ...gracePolicy, customer_min_account_days: Number(e.target.value) })}
             />
           </Field>
           <Field label="Days between customer requests">
@@ -1706,7 +1021,7 @@ function SettingsPage() {
               min={0}
               max={365}
               value={gracePolicy.customer_cooldown_days}
-              onChange={(e) => setGracePolicy({ ...gracePolicy, customer_cooldown_days: Number(e.target.value) })}
+              onChange={(e) => editGrace({ ...gracePolicy, customer_cooldown_days: Number(e.target.value) })}
             />
           </Field>
           <Field label="Remind before expiry (hours)">
@@ -1715,14 +1030,14 @@ function SettingsPage() {
               min={1}
               max={72}
               value={gracePolicy.notify_nearing_hours}
-              onChange={(e) => setGracePolicy({ ...gracePolicy, notify_nearing_hours: Number(e.target.value) })}
+              onChange={(e) => editGrace({ ...gracePolicy, notify_nearing_hours: Number(e.target.value) })}
             />
           </Field>
           <label className="flex h-11 items-center gap-2 rounded-md border border-border bg-bg px-3 text-sm sm:col-span-2">
             <input
               type="checkbox"
               checked={gracePolicy.customer_require_prior_payment}
-              onChange={(e) => setGracePolicy({ ...gracePolicy, customer_require_prior_payment: e.target.checked })}
+              onChange={(e) => editGrace({ ...gracePolicy, customer_require_prior_payment: e.target.checked })}
             />
             Require a previous confirmed payment
           </label>
@@ -1730,33 +1045,40 @@ function SettingsPage() {
             <input
               type="checkbox"
               checked={gracePolicy.customer_block_if_already_grace}
-              onChange={(e) => setGracePolicy({ ...gracePolicy, customer_block_if_already_grace: e.target.checked })}
+              onChange={(e) => editGrace({ ...gracePolicy, customer_block_if_already_grace: e.target.checked })}
             />
             Block a second grace request while one is already active
           </label>
-          {saved && tab === "grace" ? <p className="text-sm text-accent sm:col-span-2">{saved}</p> : null}
-          <div className="sm:col-span-2">
-            <Button type="submit" disabled={graceBusy || !hasPermission(ws?.role || "", "settings.manage")}>
-              Save terms
+          </div>
+          <div className="sm:col-span-2 grid gap-3">
+            <SettingsStatus note={graceNote} />
+            <Button type="submit" disabled={graceBusy || !hasPermission(ws?.role || "", "settings.manage")} aria-busy={graceBusy}>
+              {graceBusy ? "Saving…" : "Save changes"}
             </Button>
           </div>
         </form>
       ) : null}
 
-      {tab === "partial" && partialPolicy ? (
+      {tab === "payments" && section === "partial" && partialPolicy ? (
         <PartialPaymentSettingsForm
           policy={partialPolicy}
           busy={partialBusy}
-          onChange={setPartialPolicy}
+          note={partialNote}
+          onChange={(next) => {
+            partialDirty.current = true;
+            setPartialPolicy(next);
+          }}
           onSave={async () => {
+            if (partialBusy) return;
             setPartialBusy(true);
-            setSaved(null);
+            setPartialNote(null);
             try {
               const next = await savePartialPolicyFn({ data: partialPolicy });
+              partialDirty.current = false;
               setPartialPolicy(next);
-              setSaved("Partial payment policy saved.");
+              setPartialNote({ ok: true, text: PARTIAL_SAVE_OK });
             } catch (err) {
-              setSaved(err instanceof Error ? err.message : "Could not save");
+              setPartialNote({ ok: false, text: err instanceof Error ? err.message : PARTIAL_SAVE_FAIL });
             } finally {
               setPartialBusy(false);
             }
@@ -1764,8 +1086,20 @@ function SettingsPage() {
         />
       ) : null}
 
-      {tab === "tags" ? <CustomerTagsSettings /> : null}
-      {tab === "accounts" ? <CustomerIdSettings /> : null}
+      {tab === "customers" ? (
+        <div className="space-y-4">
+          <SettingsSubnav
+            label="Customers"
+            value={section === "ids" ? "ids" : "tags"}
+            onChange={(id) => openPage("customers", id)}
+            tabs={[
+              { id: "tags", label: "Customer tags" },
+              { id: "ids", label: "ID Settings" },
+            ]}
+          />
+          {section === "ids" ? <CustomerIdSettings /> : <CustomerTagsSettings />}
+        </div>
+      ) : null}
     </div>
   );
 }

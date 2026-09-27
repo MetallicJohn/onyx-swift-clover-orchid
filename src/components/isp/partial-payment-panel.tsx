@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/input";
+import { SaveButton, SettingsStatus, type SettingsNote } from "@/components/isp/settings-ui";
 import { formatDate, formatDateTime } from "@/lib/isp/display";
 import { hasPermission } from "@/lib/isp/rbac";
 import {
@@ -249,11 +250,13 @@ export function PartialPaymentSettingsForm({
   onChange,
   onSave,
   busy,
+  note = null,
 }: {
   policy: PartialPolicySnapshot;
   onChange: (next: PartialPolicySnapshot) => void;
   onSave: () => void;
   busy: boolean;
+  note?: SettingsNote;
 }) {
   function patch(p: Partial<PartialPolicySnapshot>) {
     onChange({ ...policy, ...p });
@@ -359,10 +362,9 @@ export function PartialPaymentSettingsForm({
         />
         Require staff approval before access is granted
       </label>
-      <div className="sm:col-span-2">
-        <Button type="submit" disabled={busy}>
-          {busy ? "Saving…" : "Save partial payment policy"}
-        </Button>
+      <div className="sm:col-span-2 grid gap-3">
+        <SettingsStatus note={note} />
+        <SaveButton busy={busy} label="Save changes" />
       </div>
     </form>
   );

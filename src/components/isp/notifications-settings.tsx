@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/input";
+import { SaveButton, SettingsStatus, SettingsSubnav, type SettingsNote } from "@/components/isp/settings-ui";
+import { NOTIFY_SAVE_FAIL, NOTIFY_SAVE_OK, safeSettingsError } from "@/lib/isp/settings-feedback";
 import {
   eventLabel,
   NOTIFICATION_CATALOG,
@@ -26,6 +28,9 @@ export function NotificationsSettings() {
   const [cycle, setCycle] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState<NotificationTemplateRow | null>(null);
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [templateNote, setTemplateNote] = useState<SettingsNote>(null);
+  const templateLock = useRef(false);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
 
   const grouped = useMemo(() => {
@@ -105,17 +110,16 @@ export function NotificationsSettings() {
       </div>
       {cycle ? <p className="text-sm text-accent">{cycle}</p> : null}
 
-      <div className="flex gap-2">
-        <Button size="sm" variant={tab === "log" ? "default" : "secondary"} onClick={() => setTab("log")}>
-          Delivery log
-        </Button>
-        <Button size="sm" variant={tab === "templates" ? "default" : "secondary"} onClick={() => setTab("templates")}>
-          Templates
-        </Button>
-        <Button size="sm" variant={tab === "inbox" ? "default" : "secondary"} onClick={() => setTab("inbox")}>
-          In-app inbox
-        </Button>
-      </div>
+      <SettingsSubnav
+        label="Notifications"
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: "log", label: "Delivery log" },
+          { id: "templates", label: "Templates" },
+          { id: "inbox", label: "In-app inbox" },
+        ]}
+      />
 
       {tab === "log" ? (
         <ul className="space-y-3">
@@ -137,6 +141,7 @@ export function NotificationsSettings() {
         </ul>
       ) : tab === "templates" ? (
         <div className="space-y-6">
+          <SettingsStatus note={templateNote} />
           <p className="text-xs text-subtle">
             Click a placeholder to insert it at the cursor. Dates render as the network date format (default dd/mm/yy).
             Paybill and support contact come from this network’s payment and company settings.
@@ -165,11 +170,23 @@ export function NotificationsSettings() {
                       className="mt-4 grid gap-3"
                       onSubmit={async (e) => {
                         e.preventDefault();
-                        await updateNotificationTemplate({
-                          data: { id: t.id, subject: edit.subject, body: edit.body, enabled: edit.enabled },
-                        });
-                        setEdit(null);
-                        await load();
+                        if (templateLock.current) return;
+                        templateLock.current = true;
+                        setTemplateBusy(true);
+                        setTemplateNote(null);
+                        try {
+                          await updateNotificationTemplate({
+                            data: { id: t.id, subject: edit.subject, body: edit.body, enabled: edit.enabled },
+                          });
+                          setEdit(null);
+                          await load();
+                          setTemplateNote({ ok: true, text: NOTIFY_SAVE_OK });
+                        } catch (err) {
+                          setTemplateNote({ ok: false, text: safeSettingsError(err, NOTIFY_SAVE_FAIL) });
+                        } finally {
+                          templateLock.current = false;
+                          setTemplateBusy(false);
+                        }
                       }}
                     >
                       <div className="flex flex-wrap gap-1.5">
@@ -203,9 +220,7 @@ export function NotificationsSettings() {
                         Enabled
                       </label>
                       <div className="flex gap-2">
-                        <Button type="submit" size="sm">
-                          Save
-                        </Button>
+                        <SaveButton busy={templateBusy} label="Save changes" />
                         <Button type="button" size="sm" variant="ghost" onClick={() => setEdit(null)}>
                           Cancel
                         </Button>

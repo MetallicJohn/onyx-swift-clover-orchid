@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/input";
+import { useEffect, useRef, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { SaveButton, SettingsField, SettingsStatus, type SettingsNote } from "@/components/isp/settings-ui";
+import { ID_SAVE_FAIL, ID_SAVE_OK, safeSettingsError } from "@/lib/isp/settings-feedback";
 import { getCustomerIdSettingsFn, saveCustomerIdSettingsFn } from "@/lib/isp/server-customer-ids";
 
 type Desk = {
@@ -23,8 +24,8 @@ export function CustomerIdSettings() {
   const [form, setForm] = useState<Desk>(EMPTY);
   const [start, setStart] = useState("1");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
+  const [note, setNote] = useState<SettingsNote>(null);
+  const lock = useRef(false);
 
   async function load() {
     const desk = await getCustomerIdSettingsFn();
@@ -39,17 +40,19 @@ export function CustomerIdSettings() {
   const preview = form.locked ? form.next_preview : String(Math.max(1, Math.floor(Number(start) || 1)));
 
   async function save() {
+    if (lock.current || form.locked) return;
+    lock.current = true;
     setBusy(true);
-    setError(null);
-    setSaved(null);
+    setNote(null);
     try {
       const desk = await saveCustomerIdSettingsFn({ data: { start_n: Math.max(1, Math.floor(Number(start) || 1)) } });
       setForm(desk);
       setStart(String(desk.start_n));
-      setSaved("Starting number saved. Existing customers keep their current IDs.");
+      setNote({ ok: true, text: ID_SAVE_OK });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save");
+      setNote({ ok: false, text: safeSettingsError(err, ID_SAVE_FAIL) });
     } finally {
+      lock.current = false;
       setBusy(false);
     }
   }
@@ -82,29 +85,27 @@ export function CustomerIdSettings() {
           void save();
         }}
       >
-        <Field label="Starting number">
+        <SettingsField label="Starting number" required hint="Existing customers keep their current IDs. New customers receive the next unused number.">
           <Input
             type="number"
             min={1}
             max={99999999}
             value={start}
             disabled={form.locked || busy}
-            onChange={(e) => setStart(e.target.value)}
+            onChange={(e) => {
+              setStart(e.target.value);
+              setNote(null);
+            }}
           />
-        </Field>
-        <Field label="Next ID preview">
+        </SettingsField>
+        <SettingsField label="Next ID preview">
           <Input value={preview} readOnly />
-        </Field>
-        {error ? <p className="text-sm text-danger">{error}</p> : null}
-        {saved ? <p className="text-sm text-accent">{saved}</p> : null}
+        </SettingsField>
+        <SettingsStatus note={note} />
         {form.locked ? (
           <p className="text-sm text-muted">Normal staff cannot change the sequence after IDs have been issued.</p>
         ) : (
-          <div>
-            <Button type="submit" disabled={busy}>
-              Save changes
-            </Button>
-          </div>
+          <SaveButton busy={busy} label="Save changes" />
         )}
       </form>
     </div>
