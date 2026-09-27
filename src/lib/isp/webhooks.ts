@@ -193,6 +193,17 @@ export async function handleMpesaCallback(slug: string, body: Record<string, unk
   return processMpesaCallback(await getSql(), slug, body);
 }
 
+export async function kopokopoSignatureOk(slug: string, rawBody: string, signature: string | null) {
+  const { getSql } = await import("../db.ts");
+  const sql = await getSql();
+  const tenant = await tenantBySlug(sql, slug);
+  if (!tenant) return false;
+  const { kopoSignatureValid, loadKopo } = await import("./kopokopo.ts");
+  const cfg = await loadKopo(sql, tenant.id);
+  if (!cfg?.client_secret) return false;
+  return kopoSignatureValid(rawBody, signature, cfg.client_secret);
+}
+
 export async function handleKopokopoCallback(slug: string, body: Record<string, unknown>) {
   const { getSql } = await import("../db.ts");
   const sql = await getSql();

@@ -194,7 +194,7 @@ export function AppearanceSettings({
         </div>
       )}
 
-      <ThemePreview palette={resolved.palette} name={resolved.displayName} fontFamily={fontFamily(draft.font)} />
+      <ThemePreview palette={resolved.palette} name={resolved.displayName} fontFamily={fontFamily(draft.font)} flat={draft.preset === "modernize"} />
 
       {resolved.issues.length ? (
         <div className="rounded-xl border border-warn/40 bg-warn/10 px-4 py-3 text-sm text-warn">
@@ -206,7 +206,9 @@ export function AppearanceSettings({
 
       <div>
         <h3 className="text-sm font-medium">Theme</h3>
-        <p className="mt-1 text-sm text-muted">A full palette, not a single colour. Status greens/ambers/reds stay readable.</p>
+        <p className="mt-1 text-sm text-muted">
+          Choose a palette, or Modernize for a cleaner layout. Status colours stay readable. Other companies are not affected.
+        </p>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {THEME_PRESETS.map((preset) => {
             const pal = resolvePalette(
@@ -218,7 +220,13 @@ export function AppearanceSettings({
               <button
                 key={preset.id}
                 type="button"
-                onClick={() => setPatch({ preset: preset.id as ThemePresetId, primary: "", secondary: "", accent: "" })}
+                onClick={() =>
+                  setPatch(
+                    preset.id === "modernize"
+                      ? { preset: "modernize" }
+                      : { preset: preset.id as ThemePresetId, primary: "", secondary: "", accent: "" },
+                  )
+                }
                 className={cn(
                   "min-h-24 rounded-xl border p-3 text-left transition-colors",
                   selected ? "border-accent bg-accent/10" : "border-border bg-surface hover:bg-elevated",

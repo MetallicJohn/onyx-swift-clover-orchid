@@ -40,6 +40,7 @@ export type RedisLike = {
   set: (key: string, value: string, ttlSec?: number) => Promise<void>;
   del: (key: string) => Promise<void>;
   setNx: (key: string, value: string, ttlSec?: number) => Promise<boolean>;
+  incr: (key: string, ttlSec?: number) => Promise<number>;
   pushRing: (key: string, value: string, max: number, ttlSec?: number) => Promise<void>;
   lrange: (key: string, start: number, stop: number) => Promise<string[]>;
 };
@@ -65,6 +66,20 @@ function memoryRedis(): RedisLike {
       if (memGet(key) != null) return false;
       memory.set(key, { value, exp: ttlSec ? now() + ttlSec * 1000 : 0 });
       return true;
+    },
+    async incr(key, ttlSec) {
+      const existing = memory.get(key);
+      const expired = !existing || (existing.exp !== 0 && existing.exp < now());
+      const n = expired ? 1 : Number(existing?.value || 0) + 1;
+      const exp = expired ? (ttlSec ? now() + ttlSec * 1000 : 0) : existing?.exp || 0;
+      memory.set(key, { value: String(Number.isFinite(n) ? n : 1), exp });
+      if (memory.size > 2000) {
+        const t = now();
+        for (const [k, row] of memory) {
+          if (row.exp && row.exp < t) memory.delete(k);
+        }
+      }
+      return Number.isFinite(n) ? n : 1;
     },
     async pushRing(key, value, max, ttlSec) {
       const row = listRow(key) || { values: [], exp: 0 };
@@ -224,6 +239,15 @@ function remoteRedis(url: string, useTls: boolean): RedisLike {
     async setNx(key, value, ttlSec) {
       const r = await cmd(["SET", key, value, "NX", ...(ttlSec ? ["EX", String(ttlSec)] : [])]);
       return String(r || "").toUpperCase() === "OK";
+    },
+    async incr(key, ttlSec) {
+      const current = Number(await cmd(["INCR", key]));
+      const n = Number.isFinite(current) ? current : 0;
+      if (ttlSec && ttlSec > 0) {
+        const ttl = Number(await cmd(["TTL", key]));
+        if (!Number.isFinite(ttl) || ttl < 0) await cmd(["EXPIRE", key, String(Math.max(1, Math.ceil(ttlSec)))]);
+      }
+      return n > 0 ? n : 1;
     },
     async pushRing(key, value, max, ttlSec) {
       const keep = Math.max(1, max);

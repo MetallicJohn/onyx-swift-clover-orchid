@@ -538,7 +538,7 @@ export const revealAcsCredentialsFn = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "acs.credentials.reveal");
-    const lim = rateLimit(`acs-reveal:${tenantId}`, 5, 5 * 60_000);
+    const lim = await rateLimit(`acs-reveal:${tenantId}`, 5, 5 * 60_000);
     if (!lim.ok) throw new Error("Too many password reveals. Try again in a few minutes.");
     const row = await revealAcsSecrets(sql, tenantId, context.userId);
     return packAcsCredentials(row, { secrets: true });
@@ -549,7 +549,7 @@ export const testAcsConnectionFn = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "acs.connection.test");
-    const lim = rateLimit(`acs-test:${tenantId}`, 8, 5 * 60_000);
+    const lim = await rateLimit(`acs-test:${tenantId}`, 8, 5 * 60_000);
     if (!lim.ok) throw new Error("Too many ACS tests. Try again in a few minutes.");
     const cfg = await loadAcsConfig(sql, tenantId);
     if (!nbiOrigin(cfg)) {
@@ -756,7 +756,7 @@ export const testMessaging = createServerFn({ method: "POST" })
     if (data.channel === "email") {
       const to = (data.email || "").trim();
       if (!emailOk(to)) throw new Error("Enter a test email address");
-      const limited = rateLimit(`email-test:${tenantId}`, 8, 60_000);
+      const limited = await rateLimit(`email-test:${tenantId}`, 8, 60_000);
       if (!limited.ok) throw new Error("Too many test emails. Try again shortly.");
       return deliverEmail(
         settings,
@@ -767,7 +767,7 @@ export const testMessaging = createServerFn({ method: "POST" })
     }
     const phone = (data.phone || "").trim();
     if (!phone) throw new Error("Enter a test phone number");
-    const limited = rateLimit(`sms-test:${tenantId}:${data.channel}`, 8, 60_000);
+    const limited = await rateLimit(`sms-test:${tenantId}:${data.channel}`, 8, 60_000);
     if (!limited.ok) throw new Error("Too many test messages. Try again shortly.");
     const fallback =
       data.channel === "sms"
@@ -826,7 +826,7 @@ export const testSmsConnection = createServerFn({ method: "POST" })
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "settings.manage");
     if (!isSmsGatewayId(data.id)) return { ok: false as const, detail: "Unknown SMS gateway" };
-    const limited = rateLimit(`sms-probe:${tenantId}`, 8, 60_000);
+    const limited = await rateLimit(`sms-probe:${tenantId}`, 8, 60_000);
     if (!limited.ok) return { ok: false as const, detail: "Too many connection tests. Try again shortly." };
     const settings = await getMessagingSettings(sql, tenantId);
     return probeSmsGateway(settings, data.id, data.config);

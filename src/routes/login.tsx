@@ -149,7 +149,8 @@ function Login() {
           <div className="mt-6 space-y-3">
             <form className="grid gap-3" onSubmit={onEmail}>
               {mode === "up" ? (
-                <>
+                <fieldset className="grid gap-3">
+                  <legend className="signup-legend">Business</legend>
                   <Field label="Your name">
                     <Input
                       required
@@ -181,8 +182,10 @@ function Login() {
                       name="phone"
                     />
                   </Field>
-                </>
+                </fieldset>
               ) : null}
+              <fieldset className="grid gap-3">
+                {mode === "up" ? <legend className="signup-legend">Account security</legend> : null}
               <Field label={mode === "in" ? "Email or username" : "Email"}>
                 <Input
                   type={mode === "up" ? "email" : "text"}
@@ -213,6 +216,7 @@ function Login() {
               <Button type="submit" className="w-full" disabled={busy}>
                 {busy ? "Please wait…" : mode === "up" ? "Create account" : "Sign in"}
               </Button>
+              </fieldset>
             </form>
             {mode === "in" ? (
               <Link to="/forgot-password" className="block w-full text-center text-sm text-muted hover:text-fg">

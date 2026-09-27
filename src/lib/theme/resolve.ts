@@ -191,7 +191,7 @@ export function resolveTheme(config: ThemeConfig, fallbackName: string, systemDa
   };
 }
 
-export function applyCssVars(vars: Record<string, string> | null, appearance: "light" | "dark") {
+export function applyCssVars(vars: Record<string, string> | null, appearance: "light" | "dark", preset?: string | null) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   for (const key of CSS_VAR_KEYS) {
@@ -200,6 +200,8 @@ export function applyCssVars(vars: Record<string, string> | null, appearance: "l
   }
   root.dataset.appearance = appearance;
   root.style.colorScheme = appearance;
+  if (preset) root.dataset.preset = preset;
+  else delete root.dataset.preset;
 }
 
 export function applyFavicon(href: string | null, themeColor: string | null) {

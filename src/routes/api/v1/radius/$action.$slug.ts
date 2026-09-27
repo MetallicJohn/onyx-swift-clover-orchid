@@ -15,7 +15,7 @@ async function readBody(request: Request) {
 }
 
 async function handle(request: Request, action: string, slug: string) {
-  const lim = rateLimit(`radius:${action}:${slug}`, 180);
+  const lim = await rateLimit(`radius:${action}:${slug}`, 180);
   if (!lim.ok) return Response.json({ ok: false, error: "slow down" }, { status: 429 });
   const sql = await getSql();
   const body = await readBody(request);

@@ -20,7 +20,7 @@ export function clientIp(request: Request) {
 
 export async function requireRouterApi(request: Request, perm: Perm, limitKey: string, max = 60) {
   const ip = clientIp(request);
-  const lim = rateLimit(`routers:${limitKey}:${ip}`, max, 60_000);
+  const lim = await rateLimit(`routers:${limitKey}:${ip}`, max, 60_000);
   if (!lim.ok) {
     throw Object.assign(new Error("Too many requests"), { status: 429 });
   }

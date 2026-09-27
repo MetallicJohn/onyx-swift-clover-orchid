@@ -42,7 +42,7 @@ export const resolvePortalNetworkFn = createServerFn({ method: "POST" })
 export const portalPasswordSignIn = createServerFn({ method: "POST" })
   .validator((d: { slug: string; phone: string; password: string }) => d)
   .handler(async ({ data }) => {
-    const lim = rateLimit(`portal-login:${data.slug}:${data.phone}`, 12, 15 * 60_000);
+    const lim = await rateLimit(`portal-login:${data.slug}:${data.phone}`, 12, 15 * 60_000);
     if (!lim.ok) throw new Error("Too many sign-in attempts. Try again shortly.");
     const sql = await getSql();
     return wrap(() => portalPasswordLogin(sql, data.slug, data.phone, data.password));
@@ -51,7 +51,7 @@ export const portalPasswordSignIn = createServerFn({ method: "POST" })
 export const requestPortalOtp = createServerFn({ method: "POST" })
   .validator((d: { slug: string; phone: string }) => d)
   .handler(async ({ data }) => {
-    const lim = rateLimit(`portal-otp:${data.slug}:${data.phone}`, 8, 15 * 60_000);
+    const lim = await rateLimit(`portal-otp:${data.slug}:${data.phone}`, 8, 15 * 60_000);
     if (!lim.ok) throw new Error("Too many codes requested. Try again shortly.");
     const sql = await getSql();
     return wrap(() => issuePortalOtp(sql, data.slug, data.phone));

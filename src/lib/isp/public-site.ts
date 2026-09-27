@@ -52,7 +52,7 @@ export async function submitInquiry(
   if (!isInquiryTopic(opts.topic)) throw new Error("Choose a topic");
   if (message.length < 10 || message.length > 2000) throw new Error("Message should be 10–2000 characters");
   const ip = (opts.ip || "unknown").slice(0, 64);
-  const limited = rateLimit(`inquiry:${ip}:${email}`, 5, 60 * 60_000);
+  const limited = await rateLimit(`inquiry:${ip}:${email}`, 5, 60 * 60_000);
   if (!limited.ok) throw new Error("Please wait before sending another message");
   await sql`insert into platform_inquiries (id, name, company, email, phone, topic, message)
     values (${nid("inq")}, ${name}, ${company}, ${email}, ${phone}, ${opts.topic}, ${message})`;

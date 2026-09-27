@@ -167,8 +167,8 @@ async function audit(
   });
 }
 
-function assertRate(key: string) {
-  const lim = rateLimit(key, 8, 60_000);
+async function assertRate(key: string) {
+  const lim = await rateLimit(key, 8, 60_000);
   if (!lim.ok) throw new Error("Too many verification attempts. Wait a minute and try again.");
 }
 
@@ -301,8 +301,8 @@ export async function verifyTenantDomainDns(
 ) {
   const row = await loadRow(sql, opts.domainId);
   if (!row) throw new Error("Domain not found");
-  assertRate(`domain-dns:${row.tenant_id}`);
-  assertRate(`domain-dns-host:${row.hostname}`);
+  await assertRate(`domain-dns:${row.tenant_id}`);
+  await assertRate(`domain-dns-host:${row.hostname}`);
   const cfg = await loadPlatformDomainConfig(sql);
   const central = parsePublicOrigin(centralOriginFromConfig(cfg));
   const lookup = opts.lookup || defaultDnsLookup;
@@ -349,8 +349,8 @@ export async function verifyTenantDomainHttps(
   const row = await loadRow(sql, opts.domainId);
   if (!row) throw new Error("Domain not found");
   if (row.dns_status !== "verified") throw new Error("Verify DNS before HTTPS");
-  assertRate(`domain-https:${row.tenant_id}`);
-  assertRate(`domain-https-host:${row.hostname}`);
+  await assertRate(`domain-https:${row.tenant_id}`);
+  await assertRate(`domain-https-host:${row.hostname}`);
   const probe = opts.probe || defaultTlsProbe;
   const result = await verifyHttpsCertificate(row.hostname, probe, { production: productionDomainContext() });
   const expired = isCertExpired(result.expiresAt);
@@ -468,7 +468,7 @@ export async function testPublicUrl(sql: Sql, opts: { origin?: string; domainId?
     hostname = parsePublicOrigin(opts.origin || "")?.hostname || "";
   }
   if (!hostname) throw new Error("Enter a public URL to test");
-  assertRate(`domain-test:${hostname}`);
+  await assertRate(`domain-test:${hostname}`);
   const result = await verifyHttpsCertificate(hostname, opts.probe || defaultTlsProbe);
   return {
     hostname,

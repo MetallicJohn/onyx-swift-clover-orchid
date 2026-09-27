@@ -170,8 +170,8 @@ export async function handleAcsAuthRequest(sql: Sql, request: Request): Promise<
   const kind: AcsAuthKind =
     body.kind === "profile" ? "profile" : body.kind === "service" ? "service" : "password";
   const serial = (body.serial || "").trim();
-  const global = rateLimit("acs-auth:*", 2000, 60_000);
-  const perUser = rateLimit(`acs-auth:${username || "none"}:${kind}:${serial || "-"}`, 180, 60_000);
+  const global = await rateLimit("acs-auth:*", 2000, 60_000);
+  const perUser = await rateLimit(`acs-auth:${username || "none"}:${kind}:${serial || "-"}`, 180, 60_000);
   if (!global.ok || !perUser.ok) {
     return Response.json({ ok: false, error: "rate_limited" }, { status: 429 });
   }

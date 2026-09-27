@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import {
   Activity,
   ArrowDownRight,
@@ -63,7 +63,7 @@ function Card({
   className?: string;
 }) {
   return (
-    <section className={cn("rounded-xl bg-surface p-5 shadow-card md:p-6", className)}>{children}</section>
+    <section className={cn("kpi-card rounded-xl bg-surface p-5 shadow-card md:p-6", className)}>{children}</section>
   );
 }
 
@@ -116,7 +116,7 @@ function Kpi({
   return (
     <Card>
       <div className="flex items-start justify-between gap-3">
-        <div className={cn("grid size-11 shrink-0 place-items-center rounded-md", chip)}>
+        <div className={cn("kpi-mark grid size-11 shrink-0 place-items-center rounded-md", chip)}>
           <Icon className="size-5" strokeWidth={1.75} />
         </div>
         {typeof delta === "number" ? (
@@ -127,7 +127,7 @@ function Kpi({
         ) : null}
       </div>
       <div className="mt-5 text-xs tracking-wide text-muted uppercase">{label}</div>
-      <div className="mt-1 font-mono text-2xl tracking-tight tabular-nums md:text-3xl">{value}</div>
+      <div className="kpi-value mt-1 font-mono text-2xl tracking-tight tabular-nums md:text-3xl">{value}</div>
       <div className="mt-2 text-sm text-subtle">{hint}</div>
     </Card>
   );
@@ -193,7 +193,11 @@ function Overview() {
         <Kpi
           label="This month"
           value={kes(t.revenueMonth)}
-          hint={`${kes(t.paymentsToday)} today · ${t.paymentsTodayCount} receipts`}
+          hint={
+            t.revenueMonth === 0 && t.paymentsTodayCount === 0
+              ? "No payments recorded yet"
+              : `${kes(t.paymentsToday)} today · ${t.paymentsTodayCount} receipts`
+          }
           delta={t.revenueLastMonth > 0 ? revDelta : undefined}
           icon={CreditCard}
           tone="ok"

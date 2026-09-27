@@ -13,7 +13,7 @@ export const Route = createFileRoute("/api/v1/hotspot/deploy-verify")({
         const id = url.searchParams.get("id") || "";
         const ok = url.searchParams.get("ok") === "1";
         const ip = clientIp(request);
-        const lim = rateLimit(`hs-verify:${ip}`, 30, 60_000);
+        const lim = await rateLimit(`hs-verify:${ip}`, 30, 60_000);
         if (!lim.ok) {
           return new Response("rate limited", { status: 429 });
         }

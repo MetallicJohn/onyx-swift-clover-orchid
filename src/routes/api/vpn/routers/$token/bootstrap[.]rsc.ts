@@ -10,8 +10,8 @@ export const Route = createFileRoute("/api/vpn/routers/$token/bootstrap.rsc")({
       GET: async ({ request, params }) => {
         const ip = clientIp(request);
         const token = params.token || "";
-        const ipLim = rateLimit(`bootstrap-ip:${ip}`, 30, 60_000);
-        const tokLim = rateLimit(`bootstrap-tok:${hashProvisionToken(token).slice(0, 16)}`, 12, 60_000);
+        const ipLim = await rateLimit(`bootstrap-ip:${ip}`, 30, 60_000);
+        const tokLim = await rateLimit(`bootstrap-tok:${hashProvisionToken(token).slice(0, 16)}`, 12, 60_000);
         if (!ipLim.ok || !tokLim.ok) {
           return new Response("# rate limited\n", {
             status: 429,

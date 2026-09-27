@@ -899,7 +899,7 @@ async function maybeAiIntent(tenantId: string, text: string, settings: WaSetting
   if (!settings.ai_enabled) return null;
   const key = (process.env.XAI_API_KEY || "").trim();
   if (!key) return null;
-  const limited = rateLimit(`wa-ai:${tenantId}`, 20, 60 * 60_000);
+  const limited = await rateLimit(`wa-ai:${tenantId}`, 20, 60 * 60_000);
   if (!limited.ok) return null;
   try {
     const res = await fetch("https://api.x.ai/v1/chat/completions", {

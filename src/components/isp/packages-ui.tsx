@@ -652,7 +652,7 @@ export function PackageCards({
               <div className="truncate font-medium">{p.name}</div>
               <PackageMeta pkg={p} />
             </div>
-            <div className="font-mono text-sm tabular-nums">{kes(p.price_kes)}</div>
+            <div className="package-price font-mono text-sm tabular-nums">{kes(p.price_kes)}</div>
           </div>
           <p className="mt-3 text-sm text-muted">
             {speedLabel(p.download_mbps, p.upload_mbps)} · {durationLabel(p.validity_hours, p.billing_interval, p)}

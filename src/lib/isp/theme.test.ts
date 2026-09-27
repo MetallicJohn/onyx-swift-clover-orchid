@@ -83,6 +83,38 @@ test("switching saved theme on one ISP leaves the other unchanged", async () => 
   }
 });
 
+test("modernize is a tenant theme and does not replace another ISP", async () => {
+  const { sql, bypass, close } = await openTestDb();
+  try {
+    await bypass();
+    await sql`insert into tenants (id, name, slug) values ('ten_mod', 'Mod', 'mod-isp'), ('ten_keep', 'Keep', 'keep-isp')`;
+    await saveTenantTheme(sql, "ten_mod", { preset: "modernize", appearance: "light", primary: "#1d4ed8" });
+    await saveTenantTheme(sql, "ten_keep", { preset: "teal" });
+    const mod = await loadTenantTheme(sql, "ten_mod");
+    const keep = await loadTenantTheme(sql, "ten_keep");
+    assert.equal(mod.preset, "modernize");
+    assert.equal(mod.appearance, "light");
+    assert.equal(keep.preset, "teal");
+    const dark = resolvePalette({ preset: "modernize", appearance: "dark", primary: "", secondary: "", accent: "" }, true);
+    const light = resolvePalette({ preset: "modernize", appearance: "light", primary: "", secondary: "", accent: "" }, false);
+    assert.notEqual(dark.bg, light.bg);
+    const branded = resolvePalette({ preset: "modernize", appearance: "dark", primary: "#1d4ed8", secondary: "", accent: "" }, true);
+    assert.equal(branded.primary, "#1d4ed8");
+    assert.equal(PRESET_BY_ID.modernize.name, "Modernize");
+  } finally {
+    await close();
+  }
+});
+
+test("modernize is selectable in company appearance without a second app", () => {
+  const ui = readFileSync(new URL("../../components/isp/appearance-settings.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
+  assert.match(ui, /Modernize/);
+  assert.match(ui, /preset: "modernize"/);
+  assert.match(css, /data-preset="modernize"/);
+  assert.match(css, /kpi-mark/);
+});
+
 test("custom colours get an accessible button foreground", () => {
   const pal = resolvePalette({ preset: "teal", appearance: "dark", primary: "#f5f5f5", secondary: "", accent: "" }, true);
   assert.equal(normalizeHex(pal.primary), "#f5f5f5");

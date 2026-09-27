@@ -10,7 +10,7 @@ export const Route = createFileRoute("/api/v1/hotspot/catalog")({
       OPTIONS: () => new Response(null, { status: 204, headers: corsHeaders() }),
       GET: async ({ request }) => {
         const ip = clientIp(request);
-        const lim = rateLimit(`hs-cat:${ip}`, 60, 60_000);
+        const lim = await rateLimit(`hs-cat:${ip}`, 60, 60_000);
         if (!lim.ok) return Response.json({ error: "Too many requests" }, { status: 429, headers: corsHeaders() });
         const slug = new URL(request.url).searchParams.get("slug") || "";
         try {

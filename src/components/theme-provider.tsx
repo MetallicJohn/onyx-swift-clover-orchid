@@ -31,6 +31,7 @@ type CachePayload = {
   vars: Record<string, string>;
   appearance: "light" | "dark";
   fontHref?: string | null;
+  preset?: string;
 };
 
 function systemDark() {
@@ -51,10 +52,10 @@ function readCache(): CachePayload | null {
   }
 }
 
-function writeCache(tenantId: string, vars: Record<string, string>, appearance: "light" | "dark", fontHref: string | null) {
+function writeCache(tenantId: string, vars: Record<string, string>, appearance: "light" | "dark", fontHref: string | null, preset: string) {
   if (typeof sessionStorage === "undefined") return;
   try {
-    sessionStorage.setItem(THEME_CACHE_KEY, JSON.stringify({ tenantId, vars, appearance, fontHref }));
+    sessionStorage.setItem(THEME_CACHE_KEY, JSON.stringify({ tenantId, vars, appearance, fontHref, preset }));
   } catch {
     /* quota */
   }
@@ -71,7 +72,7 @@ function paint(resolved: ResolvedTheme | null) {
     applyFontLink(null);
     return;
   }
-  applyCssVars(resolved.vars, resolved.appearance);
+  applyCssVars(resolved.vars, resolved.appearance, resolved.config.preset);
   applyFavicon(resolved.config.favicon || null, resolved.palette.bg);
   applyFontLink(googleStylesheet(resolved.config.font));
 }
@@ -84,7 +85,7 @@ function paintCachedForApp() {
   if (!onAppPath()) return false;
   const cached = readCache();
   if (!cached) return false;
-  applyCssVars(cached.vars, cached.appearance);
+  applyCssVars(cached.vars, cached.appearance, cached.preset);
   applyFontLink(cached.fontHref || null);
   return true;
 }
@@ -116,7 +117,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (resolved) {
       paint(resolved);
       if (committed && !previewCfg) {
-        writeCache(committed.tenantId, resolved.vars, resolved.appearance, googleStylesheet(committed.font));
+        writeCache(committed.tenantId, resolved.vars, resolved.appearance, googleStylesheet(committed.font), committed.preset);
       }
       return;
     }
@@ -133,7 +134,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
     const cached = readCache();
     if (cached && cached.tenantId === config.tenantId) {
-      applyCssVars(cached.vars, cached.appearance);
+      applyCssVars(cached.vars, cached.appearance, cached.preset);
       applyFontLink(cached.fontHref || null);
     }
     setCommitted(config);

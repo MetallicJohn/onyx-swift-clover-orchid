@@ -109,6 +109,72 @@ html[data-appearance="light"] {
     0 0 0 1px color-mix(in oklab, var(--color-fg) 12%, transparent);
 }
 
+html[data-preset="modernize"] {
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --shadow-card: none;
+  --shadow-card-hover: none;
+}
+
+html[data-preset="modernize"] .kpi-mark {
+  display: none;
+}
+
+html[data-preset="modernize"] .kpi-card {
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-inline: 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+html[data-preset="modernize"] .kpi-value {
+  font-size: 1.875rem;
+  font-weight: 560;
+  letter-spacing: -0.03em;
+}
+
+html[data-preset="modernize"] h1 {
+  letter-spacing: -0.03em;
+}
+
+html[data-preset="modernize"] .app-nav-item {
+  color: var(--color-subtle);
+}
+
+html[data-preset="modernize"] .app-nav-item[data-active="true"] {
+  background: transparent;
+  color: var(--color-fg);
+  font-weight: 600;
+}
+
+html[data-preset="modernize"] .app-nav-item[data-active="true"] svg {
+  color: var(--color-fg);
+}
+
+html[data-preset="modernize"] table th,
+html[data-preset="modernize"] table td {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+
+html[data-preset="modernize"] .package-price {
+  font-size: 1.25rem;
+  font-weight: 560;
+  letter-spacing: -0.02em;
+}
+
+html[data-preset="modernize"] .signup-legend {
+  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-subtle);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

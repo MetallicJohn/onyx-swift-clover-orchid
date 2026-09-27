@@ -12,7 +12,7 @@ export const Route = createFileRoute("/api/v1/hotspot/html/$file")({
         const token = url.searchParams.get("token") || "";
         const file = params.file || "";
         const ip = clientIp(request);
-        const lim = rateLimit(`hs-html:${ip}`, 60, 60_000);
+        const lim = await rateLimit(`hs-html:${ip}`, 60, 60_000);
         if (!lim.ok) {
           return new Response("rate limited", { status: 429, headers: { "Content-Type": "text/plain; charset=utf-8" } });
         }

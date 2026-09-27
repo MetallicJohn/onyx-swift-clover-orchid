@@ -1,0 +1,1587 @@
+# ISP SOLUTIONS — “MODERNIZE” VISUAL THEME
+
+## Production Implementation Specification
+
+You are modifying the existing **ISP Solutions multi-tenant ISP management SaaS**.
+
+Implement a new optional visual theme called:
+
+**Modernize**
+
+The objective is to modernize the application's visual design while preserving **100% of the existing business logic, functionality, permissions, tenant isolation, API behavior, database behavior, authentication, billing, provisioning, networking, and integrations**.
+
+This is a **UI/design-system modernization**, not an application rewrite.
+
+---
+
+# 1. PRIMARY OBJECTIVE
+
+Add a new selectable company visual theme:
+
+> **Modernize**
+
+The theme must be selectable from:
+
+**Settings → Company**
+
+Existing themes must continue working exactly as they do today.
+
+The user must be able to switch between the existing theme(s) and:
+
+**Modernize**
+
+without changing application behavior or data.
+
+The selected theme must persist at the appropriate company/tenant level using the application's existing theme/settings architecture.
+
+Do not introduce a parallel theme system if the existing theme infrastructure can support the new theme.
+
+---
+
+# 2. MANDATORY FIRST STEP — INSPECT BEFORE MODIFYING
+
+Before writing code, inspect the existing repository and understand the current implementation.
+
+Do not assume filenames or component structures.
+
+Specifically inspect:
+
+```text
+src/lib/theme/
+src/styles.css
+src/components/ui/
+src/components/isp/
+```
+
+and identify:
+
+* existing theme definitions
+* existing theme presets
+* CSS custom properties
+* light/dark mode implementation
+* tenant/company palette handling
+* typography tokens
+* spacing tokens
+* radius tokens
+* shadows
+* button variants
+* card components
+* badges
+* inputs
+* tables
+* dialogs
+* navigation/sidebar
+* dashboard components
+* package components
+* signup/auth components
+* settings/company components
+
+Also inspect the actual pages/components responsible for:
+
+1. Overview/Dashboard
+2. Packages
+3. Signup
+4. Settings → Company
+
+Determine which components are shared and which are page-specific.
+
+### Important
+
+Do not create duplicate versions of existing components merely because the current components need modernization.
+
+Prefer extending/refactoring the existing design system.
+
+---
+
+# 3. DO NOT REWRITE THE APPLICATION
+
+This implementation must NOT become a rewrite.
+
+Do not replace:
+
+* React/TanStack architecture
+* routing architecture
+* authentication
+* Better Auth
+* PostgreSQL
+* Kysely
+* RLS
+* RBAC
+* billing
+* invoices
+* payments
+* M-Pesa
+* RADIUS
+* MikroTik integration
+* WireGuard
+* GenieACS
+* WhatsApp
+* SMS
+* job queue
+* provisioning
+* customer/service logic
+* API contracts
+* tenant isolation
+* audit logging
+
+Do not alter business rules.
+
+Do not alter database relationships unless absolutely required to persist the new theme selection and the existing settings system cannot already support it.
+
+---
+
+# 4. MODERNIZE MUST BE A THEME, NOT A FORK
+
+The application should continue to use the same components and functionality.
+
+Implement Modernize primarily through:
+
+```text
+theme tokens
+CSS custom properties
+shared UI primitives
+component variants
+layout hierarchy
+spacing
+typography
+surface treatment
+semantic colors
+```
+
+Avoid creating:
+
+```text
+ModernizeDashboard.tsx
+ModernizePackages.tsx
+ModernizeSignup.tsx
+ModernizeSettings.tsx
+```
+
+unless absolutely unavoidable.
+
+The goal is:
+
+```text
+Existing application
+       ↓
+Existing components
+       ↓
+Theme tokens / variants
+       ↓
+Modernize appearance
+```
+
+not:
+
+```text
+Existing application
+       +
+Entire duplicate Modernize application
+```
+
+---
+
+# 5. COMPANY SETTINGS
+
+Add a theme selector under:
+
+**Settings → Company**
+
+The option must be clearly named:
+
+> **Modernize**
+
+Example presentation:
+
+```text
+Appearance / Theme
+
+○ Default
+○ Existing theme
+● Modernize
+
+Modernize
+A cleaner, more spacious interface with stronger
+visual hierarchy and reduced card-heavy styling.
+```
+
+Use the application's existing theme/settings persistence mechanism.
+
+If the existing system already supports theme identifiers, add:
+
+```text
+modernize
+```
+
+as a valid theme preset/identifier.
+
+Do not create a separate Modernize database mechanism if the current theme system can store it.
+
+---
+
+# 6. TENANT / COMPANY ISOLATION
+
+Modernize must respect the existing multi-tenant architecture.
+
+A company selecting:
+
+```text
+Modernize
+```
+
+must not change the appearance of another company.
+
+Do not introduce cross-tenant theme leakage.
+
+Verify:
+
+* tenant/company theme loading
+* server rendering
+* client hydration
+* page refresh
+* login/signup flows where applicable
+* light/dark mode
+* tenant palette overrides
+
+---
+
+# 7. EXISTING LIGHT/DARK MODE MUST REMAIN
+
+Modernize must support both:
+
+```text
+Light
+Dark
+```
+
+using the application's existing light/dark architecture.
+
+Do not hardcode colors directly into components when a semantic token should be used.
+
+Avoid:
+
+```css
+background: #123456;
+color: #abcdef;
+```
+
+inside individual components where an existing semantic token is appropriate.
+
+Prefer:
+
+```css
+background: var(--surface);
+color: var(--foreground);
+```
+
+or the equivalent architecture already used by the repository.
+
+---
+
+# 8. MODERNIZE DESIGN PHILOSOPHY
+
+The existing interface currently has a strong:
+
+> SaaS-card-kit
+
+visual language.
+
+Modernize should deliberately reduce this.
+
+The design principle is:
+
+> **Hierarchy first. Cards only when they communicate structure or interaction.**
+
+Not every section should have:
+
+* border
+* rounded rectangle
+* shadow
+* colored icon box
+
+at the same time.
+
+Use visual hierarchy instead.
+
+---
+
+# 9. MODERNIZE DESIGN TOKENS
+
+Extend the existing token system rather than bypassing it.
+
+Create or refine semantic tokens for:
+
+### Surfaces
+
+```text
+background
+surface
+surface-subtle
+surface-elevated
+surface-hover
+surface-active
+surface-inset
+```
+
+### Text
+
+```text
+foreground
+foreground-muted
+foreground-subtle
+foreground-disabled
+```
+
+### Borders
+
+```text
+border
+border-subtle
+border-strong
+```
+
+### Semantic states
+
+```text
+success
+warning
+danger
+info
+neutral
+```
+
+Each should have appropriate foreground/background/border relationships.
+
+### Accent
+
+The primary/accent color should have a defined purpose.
+
+Modernize should not use the accent color indiscriminately for:
+
+* every icon
+* every badge
+* every heading
+* every decorative element
+* every status
+
+Reserve strong accent emphasis primarily for:
+
+* primary CTA
+* active navigation
+* selected controls
+* important interactive states
+* key brand moments
+
+---
+
+# 10. TYPOGRAPHY SYSTEM
+
+Establish a clear type scale.
+
+At minimum distinguish:
+
+```text
+Display / major metric
+Page title
+Section title
+Card title
+Body
+Secondary body
+Label
+Caption
+```
+
+Use both:
+
+* font size
+* font weight
+
+to establish hierarchy.
+
+Avoid making:
+
+```text
+Page title
+section heading
+label
+body text
+```
+
+look visually similar.
+
+Preserve the company's existing font configuration and allow tenant branding where supported.
+
+---
+
+# 11. SPACING SYSTEM
+
+Establish a consistent spacing scale.
+
+Prefer a predictable progression rather than arbitrary values.
+
+For example:
+
+```text
+xs
+sm
+md
+lg
+xl
+2xl
+3xl
+```
+
+Use spacing consistently between:
+
+* page sections
+* labels
+* form fields
+* dashboard metrics
+* tables
+* cards
+* navigation groups
+
+Do not make the UI excessively spacious on operational screens.
+
+---
+
+# 12. RADIUS SYSTEM
+
+Modernize should reduce the feeling that every element is a floating rounded card.
+
+Define semantic radius levels such as:
+
+```text
+small
+medium
+large
+pill
+```
+
+Use:
+
+* smaller radius for controls
+* medium radius for discrete cards
+* larger radius only for major surfaces where appropriate
+* pill radius for badges/tags
+
+Do not use one radius value everywhere.
+
+---
+
+# 13. SHADOW SYSTEM
+
+Reduce excessive shadows.
+
+Create semantic levels such as:
+
+```text
+none
+subtle
+elevated
+overlay
+```
+
+Most normal dashboard surfaces should not require a visible shadow.
+
+Use stronger shadows only for:
+
+* dialogs
+* popovers
+* menus
+* elevated interactive elements
+
+---
+
+# 14. SHARED UI PRIMITIVES
+
+Inspect the existing UI component library.
+
+Where appropriate, modernize existing primitives rather than replacing them.
+
+Ensure support for variants such as:
+
+### Card
+
+```text
+default
+subtle
+outlined
+interactive
+flat
+elevated
+```
+
+### Button
+
+```text
+primary
+secondary
+outline
+ghost
+danger
+link
+```
+
+### Badge
+
+```text
+success
+warning
+danger
+info
+neutral
+accent
+```
+
+### Input
+
+Support:
+
+```text
+default
+error
+disabled
+focused
+```
+
+### Section
+
+Create a reusable section pattern if one does not already exist:
+
+```text
+Section heading
+Optional description
+Optional action
+Content
+```
+
+### PageHeader
+
+Standardize:
+
+```text
+Page title
+Description
+Actions
+Breadcrumb/context where applicable
+```
+
+### Stat
+
+Create/refine a metric primitive supporting:
+
+```text
+label
+value
+description
+trend
+trend direction
+optional visualization
+loading
+empty
+```
+
+### EmptyState
+
+Create/refine a meaningful empty state supporting:
+
+```text
+icon/illustration
+title
+description
+optional CTA
+```
+
+Do not display an unexplained zero when there is no data.
+
+---
+
+# 15. DASHBOARD / OVERVIEW MODERNIZATION
+
+Modernize the Overview/Dashboard first.
+
+Current problem:
+
+Multiple visually identical cards compete for attention.
+
+Change this.
+
+## Primary metrics
+
+Important numbers such as:
+
+```text
+Revenue
+Online customers
+Outstanding invoices
+New connections
+```
+
+should have stronger hierarchy.
+
+They do not all need identical boxed containers.
+
+Example conceptual layout:
+
+```text
+Revenue
+
+Ksh 1,284,500
+↑ 12.4% from previous period
+
+[14-day trend]
+```
+
+The metric should be visually dominant.
+
+---
+
+# 16. REAL DATA VISUALIZATION
+
+Inspect existing dashboard data.
+
+Where data already exists, use it.
+
+Do not invent metrics.
+
+If the existing application already calculates:
+
+```text
+Revenue — last 14 days
+```
+
+use that data to create a lightweight visualization such as:
+
+* sparkline
+* mini area/line chart
+* trend indicator
+
+The repository already includes charting capability.
+
+Do not introduce a new charting library if an existing dependency can perform the job.
+
+Charts must be:
+
+* lightweight
+* responsive
+* accessible
+* theme-aware
+* compatible with light/dark mode
+
+Do not add charts merely for decoration.
+
+---
+
+# 17. DASHBOARD EMPTY STATES
+
+When there is no data:
+
+Do not show:
+
+```text
+Revenue
+Ksh 0
+```
+
+with exactly the same visual treatment as a populated metric.
+
+Use contextual empty treatment.
+
+Example:
+
+```text
+Revenue
+
+Ksh 0
+
+No payments recorded yet
+```
+
+If an appropriate action exists:
+
+```text
+No payments recorded yet
+[View billing]
+```
+
+Do not invent actions where none exist.
+
+---
+
+# 18. ICONS
+
+Inspect the existing icon implementation.
+
+Reduce the generic:
+
+```text
+colored square + icon + title
+```
+
+pattern.
+
+Icons should either:
+
+1. communicate meaningful information, or
+2. be removed when the text already communicates the meaning.
+
+Do not add icons simply because the space exists.
+
+For metrics, consider:
+
+* trend
+* status
+* small visualization
+
+instead of decorative icon blocks.
+
+---
+
+# 19. STATUS COLORS
+
+Use semantic status colors.
+
+Examples:
+
+```text
+Active       → success
+Pending      → warning
+Disabled     → neutral
+Failed       → danger
+Information  → info
+Selected     → accent
+```
+
+Do not use the primary/accent color for every status.
+
+Preserve existing business meaning of statuses.
+
+Only change presentation.
+
+---
+
+# 20. PACKAGES PAGE
+
+Modernize the Packages page after Overview.
+
+Packages are legitimate discrete objects, so cards can remain.
+
+However, remove unnecessary nested card structures.
+
+Package hierarchy should communicate:
+
+```text
+Package name
+Price
+Billing period
+Key features
+Status
+Primary action
+```
+
+Example:
+
+```text
+10 Mbps
+
+Ksh 2,000
+/month
+
+Unlimited data
+✓ Fibre available
+✓ Standard support
+
+[Edit package]
+```
+
+Use stronger typography rather than excessive decoration.
+
+A highlighted/popular package may use a subtle accent treatment.
+
+Do not introduce fake:
+
+* discounts
+* popularity
+* savings
+* features
+* pricing
+
+unless already present in the underlying data.
+
+---
+
+# 21. SIGNUP PAGE
+
+Modernize the signup experience.
+
+Create stronger hierarchy between:
+
+```text
+page heading
+business information
+account information
+authentication options
+primary action
+```
+
+Avoid presenting every field as an equally important visual block.
+
+Conceptual structure:
+
+```text
+Create your ISP account
+
+Business information
+────────────────────
+ISP / Business name
+Email
+Phone
+
+Account security
+────────────────
+Password
+Confirm password
+
+[Create account]
+
+──────── or ────────
+
+[Continue with Google]
+```
+
+Use the actual existing fields and authentication mechanisms.
+
+Do not alter:
+
+* validation
+* registration flow
+* Google authentication
+* account creation
+* tenant creation
+* password handling
+
+Only change presentation.
+
+The primary submit action should generally be the strongest saturated element.
+
+---
+
+# 22. SETTINGS → COMPANY
+
+Modernize the Company settings screen.
+
+Organize settings visually into logical sections.
+
+Avoid making every setting a separate heavy card.
+
+Use:
+
+```text
+section heading
+description
+controls
+subtle separators
+```
+
+where appropriate.
+
+The theme selector should be clearly visible.
+
+Example:
+
+```text
+Appearance
+
+Theme
+Choose the visual style used across your company workspace.
+
+[ Default ] [ Modernize ]
+
+Color mode
+[ Light ] [ Dark ]
+```
+
+The exact implementation must follow the existing settings architecture.
+
+---
+
+# 23. THEME PREVIEW
+
+If practical within the existing architecture, provide a small visual preview for the Modernize option.
+
+For example:
+
+```text
+┌─────────────────────────┐
+│ Modernize               │
+│                         │
+│ Revenue     Customers   │
+│ Ksh ...      1,248      │
+│                         │
+│        [View]           │
+└─────────────────────────┘
+```
+
+Keep the preview lightweight.
+
+Do not build a separate application inside the settings screen.
+
+---
+
+# 24. NAVIGATION
+
+Modernize the sidebar/top navigation.
+
+Desired characteristics:
+
+* quieter inactive items
+* clear active item
+* restrained icons
+* sensible grouping
+* stronger section hierarchy
+* fewer colored icon containers
+* clear hover/focus states
+
+Do not change:
+
+* routes
+* permissions
+* navigation destinations
+* RBAC behavior
+
+---
+
+# 25. TABLES AND OPERATIONAL SCREENS
+
+Although Overview → Packages → Signup → Settings are the first modernization targets, shared table primitives should also support Modernize.
+
+Operational ISP screens often contain large amounts of information.
+
+Provide a:
+
+```text
+compact
+```
+
+density option.
+
+It should work well for:
+
+* customers
+* services
+* routers
+* invoices
+* payments
+* tickets
+* network devices
+* logs
+
+Do not make every operational screen excessively spacious.
+
+---
+
+# 26. RESPONSIVE DESIGN
+
+Modernize must work on:
+
+* desktop
+* laptop
+* tablet
+* mobile
+
+Do not merely shrink desktop layouts.
+
+Pay particular attention to:
+
+* dashboard metrics
+* package grids
+* forms
+* tables
+* navigation
+* dialogs
+* settings
+
+Existing responsive behavior must not regress.
+
+---
+
+# 27. ACCESSIBILITY
+
+Maintain or improve:
+
+* keyboard navigation
+* focus indicators
+* semantic HTML
+* labels
+* contrast
+* screen-reader semantics
+* disabled states
+* error states
+
+Do not use color as the only indicator of status.
+
+Respect:
+
+```text
+prefers-reduced-motion
+```
+
+for animations.
+
+---
+
+# 28. MOTION
+
+Use motion sparingly.
+
+Appropriate examples:
+
+* page content entrance
+* dialog opening
+* expanding sections
+* save confirmation
+* status transition
+* loading state
+
+Avoid:
+
+* excessive card hover animations
+* constant floating effects
+* distracting parallax
+* animation on every icon
+
+Modernize should feel refined, not gimmicky.
+
+---
+
+# 29. TENANT BRAND COLORS
+
+Preserve the existing tenant/company branding architecture.
+
+Modernize must use the tenant's existing:
+
+* primary/accent color
+* logo
+* branding
+* light/dark preferences
+
+where supported.
+
+Do not replace tenant branding with a globally hardcoded color palette.
+
+Modernize is the **visual system**, not a new company identity.
+
+---
+
+# 30. DO NOT CHANGE BUSINESS LOGIC
+
+This is a hard requirement.
+
+The following must behave exactly as before:
+
+```text
+Customer CRUD
+Service CRUD
+Package CRUD
+Billing
+Invoices
+Payments
+M-Pesa
+PPPoE
+Static IP
+Hotspot
+RADIUS
+MikroTik
+WireGuard
+GenieACS
+WhatsApp
+SMS
+Tickets
+Technicians
+Resellers
+Authentication
+Authorization
+RLS
+Tenant isolation
+Audit logs
+Notifications
+Jobs
+Provisioning
+```
+
+Do not modify business rules to make the UI easier to implement.
+
+---
+
+# 31. DO NOT ALTER API CONTRACTS
+
+Do not rename or remove existing API endpoints.
+
+Do not change request/response semantics.
+
+Do not change authentication requirements.
+
+Do not weaken authorization.
+
+Do not bypass server-side authorization because the new UI needs data.
+
+---
+
+# 32. DO NOT ALTER SECURITY
+
+Do not:
+
+* move authorization to the client
+* expose secrets
+* expose credentials
+* remove RLS
+* bypass RBAC
+* store sensitive settings in localStorage
+* weaken session handling
+* expose tenant data
+* add client-side-only permission checks
+
+The visual modernization must not reduce security.
+
+---
+
+# 33. IMPLEMENTATION ORDER
+
+Implement in this order.
+
+## Phase 1 — Existing system audit
+
+Inspect and document internally:
+
+```text
+theme architecture
+theme persistence
+CSS variables
+UI primitives
+dashboard components
+package components
+signup components
+company settings
+navigation
+responsive system
+```
+
+Do not modify anything during the initial inspection until the existing architecture is understood.
+
+---
+
+## Phase 2 — Design tokens
+
+Update the existing token system.
+
+Implement:
+
+```text
+surface hierarchy
+typography scale
+spacing scale
+radius scale
+shadow scale
+semantic colors
+focus states
+density
+```
+
+Add the Modernize theme preset.
+
+Do not break existing presets.
+
+---
+
+## Phase 3 — Shared primitives
+
+Modernize the shared components.
+
+Prioritize:
+
+```text
+Button
+Card
+Badge
+Input
+Select
+Dialog
+Tabs
+PageHeader
+Section
+Stat
+EmptyState
+Table
+```
+
+Only modify components that actually exist.
+
+If a primitive already provides equivalent functionality, enhance it rather than creating a duplicate.
+
+---
+
+## Phase 4 — Overview
+
+Modernize:
+
+```text
+dashboard layout
+stat hierarchy
+revenue visualization
+empty states
+status presentation
+navigation
+section hierarchy
+```
+
+Verify all existing data and actions still work.
+
+---
+
+## Phase 5 — Packages
+
+Modernize:
+
+```text
+package cards
+package grid
+package actions
+package status
+package empty state
+```
+
+Keep package functionality unchanged.
+
+---
+
+## Phase 6 — Signup
+
+Modernize:
+
+```text
+form hierarchy
+field grouping
+OAuth presentation
+primary CTA
+validation presentation
+responsive behavior
+```
+
+Do not modify authentication behavior.
+
+---
+
+## Phase 7 — Settings → Company
+
+Modernize:
+
+```text
+Company settings layout
+theme selection
+Modernize preview
+branding settings
+light/dark controls
+```
+
+Ensure:
+
+```text
+Settings → Company → Modernize
+```
+
+persists correctly.
+
+---
+
+## Phase 8 — Regression pass
+
+Check the application using:
+
+```text
+Default theme
+Modernize
+Light mode
+Dark mode
+Desktop
+Mobile
+```
+
+Verify no functional regression.
+
+---
+
+# 34. THEME SWITCHING REQUIREMENTS
+
+Switching:
+
+```text
+Default → Modernize
+```
+
+must immediately update the interface where the existing theme system supports live switching.
+
+Switching:
+
+```text
+Modernize → Default
+```
+
+must restore the existing visual appearance.
+
+Refreshing the page must preserve the selected company theme.
+
+Logging out and back in must preserve it.
+
+Another tenant must not inherit it.
+
+---
+
+# 35. PERFORMANCE
+
+Do not significantly increase application bundle size.
+
+Do not add large UI frameworks.
+
+Reuse existing dependencies.
+
+Avoid unnecessary client-side JavaScript for purely visual behavior.
+
+Prefer CSS for:
+
+* transitions
+* hover states
+* responsive layouts
+* theme variables
+* visual effects
+
+---
+
+# 36. TESTING
+
+Add/update tests where appropriate.
+
+At minimum verify:
+
+### Theme
+
+```text
+Modernize theme can be selected
+Modernize theme persists
+Default theme remains functional
+Light mode works
+Dark mode works
+Tenant isolation works
+```
+
+### Components
+
+Test important variants of:
+
+```text
+Button
+Card
+Badge
+Stat
+EmptyState
+```
+
+### Pages
+
+Verify:
+
+```text
+Overview renders
+Packages renders
+Signup renders
+Company settings renders
+```
+
+with Modernize enabled.
+
+### Regression
+
+Verify existing functionality remains unchanged.
+
+---
+
+# 37. TYPECHECK / LINT / TEST
+
+Run the repository's existing validation commands.
+
+Use the actual scripts defined in `package.json`.
+
+At minimum attempt:
+
+```bash
+npm run typecheck
+npm run lint
+npm test
+```
+
+If the repository provides additional relevant checks, run them as well.
+
+Do not claim tests passed unless they actually passed.
+
+If an environment/dependency issue prevents execution, report exactly what failed.
+
+---
+
+# 38. VISUAL QA
+
+Perform a visual inspection of:
+
+1. Overview
+2. Packages
+3. Signup
+4. Settings → Company
+5. Navigation
+6. Light mode
+7. Dark mode
+8. Mobile layout
+
+Look specifically for:
+
+* excessive cards
+* excessive borders
+* excessive shadows
+* inconsistent spacing
+* weak typography hierarchy
+* accent-color overuse
+* poor empty states
+* inconsistent button hierarchy
+* inconsistent status colors
+* nested-card problems
+* mobile overflow
+
+---
+
+# 39. ACCEPTANCE CRITERIA
+
+The implementation is complete only when all of the following are true:
+
+### Theme
+
+* [ ] Modernize appears under Settings → Company.
+* [ ] Existing theme options remain available.
+* [ ] Modernize persists per company/tenant.
+* [ ] Modernize supports light and dark mode.
+* [ ] Tenant branding remains functional.
+* [ ] Switching themes does not change application data.
+
+### Design system
+
+* [ ] Existing token system has been extended rather than bypassed.
+* [ ] Typography hierarchy is visibly stronger.
+* [ ] Spacing is consistent.
+* [ ] Surface hierarchy is established.
+* [ ] Shadows are restrained.
+* [ ] Radius hierarchy is established.
+* [ ] Semantic status colors are used.
+* [ ] Accent color is no longer used as generic decoration.
+
+### Overview
+
+* [ ] Primary metrics have clear hierarchy.
+* [ ] Existing revenue/trend data is used where appropriate.
+* [ ] Empty metrics have meaningful empty states.
+* [ ] Generic icon boxes have been reduced.
+* [ ] Dashboard no longer looks like a collection of identical cards.
+
+### Packages
+
+* [ ] Package cards remain functional.
+* [ ] Package information has stronger hierarchy.
+* [ ] Actions remain unchanged.
+* [ ] Status presentation is semantic.
+* [ ] No fake data has been introduced.
+
+### Signup
+
+* [ ] Existing signup fields remain.
+* [ ] Existing validation remains.
+* [ ] Existing authentication remains.
+* [ ] Business information and account security have visual hierarchy.
+* [ ] Primary CTA has clear emphasis.
+
+### Settings
+
+* [ ] Company settings remain functional.
+* [ ] Modernize is selectable.
+* [ ] Theme selection persists.
+* [ ] Existing company settings remain intact.
+
+### Security
+
+* [ ] No RLS changes.
+* [ ] No RBAC weakening.
+* [ ] No authentication changes.
+* [ ] No secrets exposed.
+* [ ] No tenant isolation regression.
+
+### Engineering
+
+* [ ] No duplicate application architecture created.
+* [ ] Existing components reused.
+* [ ] Existing dependencies preferred.
+* [ ] TypeScript passes.
+* [ ] Lint passes.
+* [ ] Relevant tests pass.
+* [ ] Any blocked validation is explicitly reported.
+
+---
+
+# 40. STRICT SCOPE RULE
+
+The primary goal is:
+
+> **Introduce Modernize as an optional visual theme and progressively modernize the existing UI.**
+
+Do NOT use this task as an opportunity to:
+
+* redesign the database
+* rewrite the backend
+* refactor unrelated services
+* change authentication
+* change billing
+* change provisioning
+* change networking
+* change RADIUS
+* change MikroTik
+* change WireGuard
+* change GenieACS
+* change WhatsApp
+* change APIs
+* replace the application framework
+
+If an unrelated defect is discovered, document it separately unless it prevents the Modernize implementation.
+
+---
+
+# 41. FINAL IMPLEMENTATION PRINCIPLE
+
+The finished result should feel like the **same ISP Solutions product, professionally redesigned**, not like a different application.
+
+The visual transformation should be immediately noticeable through:
+
+```text
+stronger hierarchy
+cleaner typography
+better spacing
+less card clutter
+more purposeful color
+better empty states
+better information density
+more meaningful status treatment
+cleaner forms
+more refined navigation
+subtle motion
+```
+
+while the underlying application remains the same.
+
+The user should be able to select:
+
+**Settings → Company → Theme → Modernize**
+
+and receive the new visual experience without losing or changing any existing functionality.

@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { open } from "./secrets";
 
 type Sql = {
@@ -126,4 +127,21 @@ export async function kopoPaymentStatus(cfg: KopoConfig, locationOrId: string) {
   const status = j.data?.attributes?.status ?? "";
   const reference = j.data?.attributes?.event?.resource?.reference ?? "";
   return { status, reference, raw: j };
+}
+
+function sameText(a: string, b: string) {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length || left.length === 0) return false;
+  return timingSafeEqual(left, right);
+}
+
+/** HMAC-SHA256 of the raw body using the OAuth client secret. Accepts hex or base64, with an optional sha256= prefix. */
+export function kopoSignatureValid(rawBody: string, header: string | null, secret: string) {
+  const given = (header || "").trim();
+  const key = secret.trim();
+  if (!given || !key) return false;
+  const mac = createHmac("sha256", key).update(rawBody).digest();
+  const presented = given.replace(/^sha256=/i, "");
+  return sameText(presented, mac.toString("hex")) || sameText(presented, mac.toString("base64")) || sameText(given, mac.toString("hex"));
 }

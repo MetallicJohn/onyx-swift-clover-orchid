@@ -8,8 +8,8 @@ test("sandbox OTP is fixed; live OTP is six digits", () => {
   assert.match(newOtp(false), /^\d{6}$/);
 });
 
-test("rate limit trips after max hits", () => {
+test("rate limit trips after max hits", async () => {
   const key = `t-${Math.random()}`;
-  for (let i = 0; i < 3; i += 1) assert.equal(rateLimit(key, 3, 60_000).ok, true);
-  assert.equal(rateLimit(key, 3, 60_000).ok, false);
+  for (let i = 0; i < 3; i += 1) assert.equal((await rateLimit(key, 3, 60_000)).ok, true);
+  assert.equal((await rateLimit(key, 3, 60_000)).ok, false);
 });

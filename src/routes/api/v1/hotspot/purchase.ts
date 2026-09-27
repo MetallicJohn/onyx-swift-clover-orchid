@@ -13,7 +13,7 @@ export const Route = createFileRoute("/api/v1/hotspot/purchase")({
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
         const slug = String(body.slug || "");
         const phone = String(body.phone || "");
-        const lim = rateLimit(`hs-buy:${ip}:${phone}`, 8, 15 * 60_000);
+        const lim = await rateLimit(`hs-buy:${ip}:${phone}`, 8, 15 * 60_000);
         if (!lim.ok) return Response.json({ error: "Too many payment attempts. Try again later." }, { status: 429, headers: corsHeaders() });
         try {
           const sql = await getSql();

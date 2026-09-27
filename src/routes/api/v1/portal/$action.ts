@@ -72,7 +72,7 @@ async function handlePortalApi(action: string, request: Request, method: string)
       }
       const phone = String(body.phone || "");
       const password = String(body.password || "");
-      const lim = rateLimit(`portal-api:${slug}:${phone}`, 12, 15 * 60_000);
+      const lim = await rateLimit(`portal-api:${slug}:${phone}`, 12, 15 * 60_000);
       if (!lim.ok) return json({ error: "Too many sign-in attempts" }, 429);
       const session = await portalPasswordLogin(sql, slug, phone, password);
       return json({

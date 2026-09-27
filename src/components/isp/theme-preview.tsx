@@ -4,10 +4,12 @@ export function ThemePreview({
   palette,
   name,
   fontFamily,
+  flat = false,
 }: {
   palette: ThemePalette;
   name: string;
   fontFamily?: string;
+  flat?: boolean;
 }) {
   return (
     <div
@@ -46,7 +48,7 @@ export function ThemePreview({
               { label: "Online", value: "128", color: palette.primary },
               { label: "Overdue", value: "4", color: palette.warning },
             ].map((k) => (
-              <div key={k.label} className="rounded-lg p-2" style={{ background: palette.surface, border: `1px solid ${palette.border}` }}>
+              <div key={k.label} className="rounded-lg p-2" style={flat ? { background: "transparent" } : { background: palette.surface, border: `1px solid ${palette.border}` }}>
                 <div className="text-[9px]" style={{ color: palette.muted }}>
                   {k.label}
                 </div>

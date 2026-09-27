@@ -14,7 +14,8 @@ export type ThemePresetId =
   | "orange"
   | "slate"
   | "dark"
-  | "light";
+  | "light"
+  | "modernize";
 
 export type ThemePalette = {
   bg: string;
@@ -47,15 +48,15 @@ export type ThemePreset = {
 const STATUS_DARK = { success: "#6db58a", warning: "#d4a35c", danger: "#d46a6a", info: "#6b9fd4" };
 const STATUS_LIGHT = { success: "#2f8a57", warning: "#b47a20", danger: "#c44545", info: "#2b6cb0" };
 
-function darkInk(primary: string, secondary: string, accent: string, bg = "#0a0e13", surface = "#11181f"): ThemePalette {
+function darkInk(primary: string, secondary: string, accent: string, bg = "#0a0e13", surface = "#11181f", elevated = "#172028", border = "#24303a"): ThemePalette {
   return {
     bg,
     surface,
-    elevated: "#172028",
+    elevated,
     fg: "#e8eef4",
     muted: "#8b98a5",
     subtle: "#66707a",
-    border: "#24303a",
+    border,
     primary,
     primaryFg: contrastFg(primary),
     secondary,
@@ -169,6 +170,13 @@ export const THEME_PRESETS: ThemePreset[] = [
     blurb: "Paper desk, teal actions, daylight contrast.",
     dark: darkInk("#4aa8a0", "#1f5c57", "#6bc4bc"),
     light: lightPaper("#2f7d76", "#d5eeeb", "#1f5c57", "#f6f3ec", "#ffffff"),
+  },
+  {
+    id: "modernize",
+    name: "Modernize",
+    blurb: "A cleaner, more spacious interface with stronger hierarchy and less card chrome. Your brand colours still apply.",
+    dark: darkInk("#3d9b93", "#1a3330", "#3d9b93", "#0c0f12", "#101418", "#161b20", "#22282e"),
+    light: lightPaper("#1f6f68", "#e7f3f1", "#1a3330", "#f7f6f3", "#fffcf8"),
   },
 ];
 

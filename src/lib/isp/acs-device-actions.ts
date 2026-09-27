@@ -252,7 +252,7 @@ export async function runAcsDeviceAction(
     throw new Error(unsupportedActionMessage());
   }
   if (DESTRUCTIVE_KINDS.has(kind)) {
-    const limit = rateLimit(rateKey(tenantId, cpeId, kind), 4, 10 * 60_000);
+    const limit = await rateLimit(rateKey(tenantId, cpeId, kind), 4, 10 * 60_000);
     if (!limit.ok) throw new Error("Too many device actions. Wait before retrying.");
   }
   if (await inFlight(sql, tenantId, cpeId, kind)) {
