@@ -1,16 +1,18 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Select, Textarea } from "@/components/ui/input";
+import { Field, Input, Select } from "@/components/ui/input";
 import { APP_NAME, ROS_WG_INTERFACE } from "@/lib/brand";
-import { DATE_FORMATS, DEFAULT_DATE_FORMAT, dateFormatExample, formatDate, normalizeDateFormat, setActiveDateFormat, type DateFormatId } from "@/lib/isp/display";
+import { DEFAULT_DATE_FORMAT, formatDate, normalizeDateFormat, setActiveDateFormat, type DateFormatId } from "@/lib/isp/display";
 import { AppearanceSettings } from "@/components/isp/appearance-settings";
+import { CompanyInfoSettings } from "@/components/isp/company-info-settings";
+import { companyBrandDirty, companyProfileDirty, mergeKeptEdits, type CompanyBrandFields, type CompanyProfileFields } from "@/lib/isp/company-info-tabs";
 import { CustomerTagsSettings } from "@/components/isp/customer-tags-settings";
 import { CustomerIdSettings } from "@/components/isp/customer-id-settings";
 import { NotificationsSettings } from "@/components/isp/notifications-settings";
 import { hasPermission, STAFF_ROLES } from "@/lib/isp/rbac";
-import { changeMyPassword, getDashboard, renameTenant, setStaffPassword } from "@/lib/isp/server";
-import { getDocumentBranding, saveDocumentBranding } from "@/lib/isp/server-docs";
+import { getDashboard, setStaffPassword } from "@/lib/isp/server";
+import { getDocumentBranding } from "@/lib/isp/server-docs";
 import { getKopokopo, saveKopokopo, testKopokopo } from "@/lib/isp/server-kopo";
 import { getMpesa, saveMpesa, savePublicBase, testMpesa } from "@/lib/isp/server-mpesa";
 import { getPlan, listTicketStaff, recordPlanPayment, sendPlanStk, setPlan, createStaffAccount, changeMemberRole } from "@/lib/isp/server-more";
@@ -153,9 +155,16 @@ function SettingsPage() {
     bank_branch: "",
   });
   const [slug, setSlug] = useState("");
-  const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
-  const [pwBusy, setPwBusy] = useState(false);
-  const [pwErr, setPwErr] = useState<string | null>(null);
+  const [savedForm, setSavedForm] = useState(form);
+  const [savedBrand, setSavedBrand] = useState(brand);
+  const formRef = useRef(form);
+  const brandRef = useRef(brand);
+  const savedFormRef = useRef(savedForm);
+  const savedBrandRef = useRef(savedBrand);
+  formRef.current = form;
+  brandRef.current = brand;
+  savedFormRef.current = savedForm;
+  savedBrandRef.current = savedBrand;
   const [providers, setProviders] = useState<{ id: string; kind: string; label: string; enabled: boolean; sandbox: boolean }[]>([]);
   const [msg, setMsg] = useState<MsgForm>(EMPTY_MSG);
   const [smsHint, setSmsHint] = useState("");
@@ -166,11 +175,9 @@ function SettingsPage() {
   const [testEmail, setTestEmail] = useState("");
   const [testOut, setTestOut] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
-  const [companyNote, setCompanyNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [smsNote, setSmsNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [waNote, setWaNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [emailNote, setEmailNote] = useState<{ ok: boolean; text: string } | null>(null);
-  const [companyBusy, setCompanyBusy] = useState(false);
   const [smsBusy, setSmsBusy] = useState(false);
   const [waBusy, setWaBusy] = useState(false);
   const [emailBusy, setEmailBusy] = useState(false);
@@ -254,12 +261,18 @@ function SettingsPage() {
     setPartialPolicy(pp);
     setSlug(s.slug);
     setProviders(p.providers);
-    setForm({
+    const nextForm = {
       name: d.workspace.tenantName,
       supportEmail: d.workspace.supportEmail,
       supportPhone: d.workspace.supportPhone,
       dateFormat: normalizeDateFormat(d.workspace.dateFormat),
-    });
+    };
+    if (!companyProfileDirty(formRef.current, savedFormRef.current)) {
+      formRef.current = nextForm;
+      savedFormRef.current = nextForm;
+      setForm(nextForm);
+      setSavedForm(nextForm);
+    }
     setActiveDateFormat(d.workspace.dateFormat || DEFAULT_DATE_FORMAT);
     setTestPhone(d.workspace.supportPhone || "");
     setMsg({
@@ -320,7 +333,7 @@ function SettingsPage() {
     setKopoCallback(daraja.kopokopo_callback_url);
     setPlanState(sub);
     setStaff(st.staff);
-    setBrand({
+    const nextBrand: CompanyBrandFields = {
       address: branding.address,
       website: branding.website,
       tax_pin: branding.tax_pin,
@@ -330,7 +343,13 @@ function SettingsPage() {
       bank_name: branding.bank_name,
       bank_account: branding.bank_account,
       bank_branch: branding.bank_branch,
-    });
+    };
+    if (!companyBrandDirty(brandRef.current, savedBrandRef.current)) {
+      brandRef.current = nextBrand;
+      savedBrandRef.current = nextBrand;
+      setBrand(nextBrand);
+      setSavedBrand(nextBrand);
+    }
     try {
       const wg = await getWireGuardHub();
       setHub(wg);
@@ -344,6 +363,44 @@ function SettingsPage() {
       setVpsGuide(null);
     }
   }
+
+  async function reloadProfile(submitted: CompanyProfileFields & { dateFormat: DateFormatId }) {
+    const d = await getDashboard();
+    const next = {
+      name: d.workspace.tenantName,
+      supportEmail: d.workspace.supportEmail,
+      supportPhone: d.workspace.supportPhone,
+      dateFormat: normalizeDateFormat(d.workspace.dateFormat),
+    };
+    setWs(d.workspace);
+    setActiveDateFormat(d.workspace.dateFormat || DEFAULT_DATE_FORMAT);
+    const resolved = mergeKeptEdits(formRef.current, submitted, next);
+    formRef.current = resolved;
+    savedFormRef.current = next;
+    setForm(resolved);
+    setSavedForm(next);
+  }
+
+  async function reloadBrand(submitted: CompanyBrandFields) {
+    const branding = await getDocumentBranding();
+    const next: CompanyBrandFields = {
+      address: branding.address,
+      website: branding.website,
+      tax_pin: branding.tax_pin,
+      invoice_footer: branding.invoice_footer,
+      invoice_notes: branding.invoice_notes,
+      brand_color: branding.brand_color || "#4aa8a0",
+      bank_name: branding.bank_name,
+      bank_account: branding.bank_account,
+      bank_branch: branding.bank_branch,
+    };
+    const resolved = mergeKeptEdits(brandRef.current, submitted, next);
+    brandRef.current = resolved;
+    savedBrandRef.current = next;
+    setBrand(resolved);
+    setSavedBrand(next);
+  }
+
   useEffect(() => {
     load().catch(console.error);
   }, []);
@@ -496,7 +553,6 @@ function SettingsPage() {
             onClick={() => {
               void navigate({ search: { tab: t.id }, replace: true });
               setSaved(null);
-              setCompanyNote(null);
               setSmsNote(null);
               setWaNote(null);
             }}
@@ -507,195 +563,22 @@ function SettingsPage() {
       </div>
 
       {tab === "company" ? (
-        <form
-          className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setCompanyNote(null);
-            if (!form.name.trim()) {
-              setCompanyNote({ ok: false, text: "Enter the ISP name." });
-              return;
-            }
-            setCompanyBusy(true);
-            try {
-              const savedCompany = await renameTenant({ data: form });
-              setActiveDateFormat(savedCompany.dateFormat || form.dateFormat);
-              setCompanyNote({ ok: true, text: "Company settings applied." });
-              await load();
-            } catch (err) {
-              setCompanyNote({ ok: false, text: err instanceof Error ? err.message : "Could not save company" });
-            } finally {
-              setCompanyBusy(false);
-            }
-          }}
-        >
-          <h2 className="font-medium">Company info</h2>
-          <Field label="ISP name">
-            <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </Field>
-          <Field label="Support email">
-            <Input value={form.supportEmail} onChange={(e) => setForm({ ...form, supportEmail: e.target.value })} />
-          </Field>
-          <Field label="Support phone">
-            <Input value={form.supportPhone} onChange={(e) => setForm({ ...form, supportPhone: e.target.value })} />
-          </Field>
-          <Field label="Date format">
-            <Select
-              value={form.dateFormat}
-              onChange={(e) => setForm({ ...form, dateFormat: normalizeDateFormat(e.target.value) })}
-            >
-              {DATE_FORMATS.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label} — {opt.sample}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <p className="text-xs text-muted">
-            Used on every page, invoice, statement, SMS, and date field. Date entry uses this format (default dd/mm/yy). Preview:{" "}
-            <span className="font-medium text-fg">{dateFormatExample(form.dateFormat)}</span>.
-          </p>
-          <p className="text-xs text-subtle">
-            Role: {ws?.role} · Plan: {ws?.status} · Customer portal slug:{" "}
-            <span className="font-mono text-fg">{slug}</span>
-          </p>
-          <p className="text-sm text-muted">
-            Customers sign in at{" "}
-            <a href="/portal" className="text-accent hover:underline">
-              /portal
-            </a>
-            .
-          </p>
-          {companyNote ? (
-            <p role="status" className={companyNote.ok ? "text-sm text-ok" : "text-sm text-danger"}>
-              {companyNote.text}
-            </p>
-          ) : null}
-          <Button type="submit" disabled={companyBusy}>
-            {companyBusy ? "Saving…" : "Save company"}
-          </Button>
-        </form>
+        <CompanyInfoSettings
+          ws={ws}
+          slug={slug}
+          form={form}
+          setForm={setForm}
+          savedForm={savedForm}
+          brand={brand}
+          setBrand={setBrand}
+          savedBrand={savedBrand}
+          reloadProfile={reloadProfile}
+          reloadBrand={reloadBrand}
+        />
       ) : null}
 
       {tab === "appearance" ? (
         <AppearanceSettings canManage={Boolean(ws && hasPermission(ws.role, "settings.manage"))} />
-      ) : null}
-
-      {tab === "company" ? (
-        <form
-          className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            await saveDocumentBranding({ data: brand });
-            setSaved("Invoice branding saved.");
-            await load();
-          }}
-        >
-          <h2 className="font-medium">Invoices & statements</h2>
-          <p className="text-sm text-muted">
-            Shown on PDFs for this ISP only. Leave a field empty to hide it.
-          </p>
-          <Field label="Address">
-            <Input value={brand.address} onChange={(e) => setBrand({ ...brand, address: e.target.value })} />
-          </Field>
-          <Field label="Website">
-            <Input value={brand.website} onChange={(e) => setBrand({ ...brand, website: e.target.value })} />
-          </Field>
-          <Field label="Tax / PIN">
-            <Input value={brand.tax_pin} onChange={(e) => setBrand({ ...brand, tax_pin: e.target.value })} />
-          </Field>
-          <p className="text-xs text-muted">Invoice accent colour follows Appearance → Primary.</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Bank name">
-              <Input value={brand.bank_name} onChange={(e) => setBrand({ ...brand, bank_name: e.target.value })} />
-            </Field>
-            <Field label="Account number">
-              <Input value={brand.bank_account} onChange={(e) => setBrand({ ...brand, bank_account: e.target.value })} />
-            </Field>
-          </div>
-          <Field label="Bank branch">
-            <Input value={brand.bank_branch} onChange={(e) => setBrand({ ...brand, bank_branch: e.target.value })} />
-          </Field>
-          <Field label="Invoice notes">
-            <Textarea
-              value={brand.invoice_notes}
-              onChange={(e) => setBrand({ ...brand, invoice_notes: e.target.value })}
-              placeholder="Shown on invoices when no invoice-specific note is set"
-            />
-          </Field>
-          <Field label="Footer">
-            <Textarea
-              value={brand.invoice_footer}
-              onChange={(e) => setBrand({ ...brand, invoice_footer: e.target.value })}
-              placeholder="Thank you for your business."
-            />
-          </Field>
-          {saved ? <p className="text-sm text-ok">{saved}</p> : null}
-          <Button type="submit">Save document branding</Button>
-        </form>
-      ) : null}
-
-      {tab === "company" ? (
-        <form
-          className="grid max-w-xl gap-3 rounded-xl bg-surface p-5 shadow-card md:p-6"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setPwErr(null);
-            if (pw.next !== pw.confirm) {
-              setPwErr("Passwords do not match");
-              return;
-            }
-            setPwBusy(true);
-            try {
-              await changeMyPassword({ data: { current: pw.current, password: pw.next } });
-              setPw({ current: "", next: "", confirm: "" });
-              setSaved("Your login password was updated.");
-            } catch (err) {
-              setPwErr(err instanceof Error ? err.message : "Could not change password");
-            } finally {
-              setPwBusy(false);
-            }
-          }}
-        >
-          <h2 className="font-medium">Your password</h2>
-          <p className="text-sm text-muted">
-            This is the email login for the ISP console and for {APP_NAME} superadmin, if you have that role.
-          </p>
-          <Field label="Current password">
-            <Input
-              type="password"
-              required
-              value={pw.current}
-              onChange={(e) => setPw({ ...pw, current: e.target.value })}
-              autoComplete="current-password"
-            />
-          </Field>
-          <Field label="New password">
-            <Input
-              type="password"
-              required
-              minLength={8}
-              value={pw.next}
-              onChange={(e) => setPw({ ...pw, next: e.target.value })}
-              autoComplete="new-password"
-            />
-          </Field>
-          <Field label="Confirm">
-            <Input
-              type="password"
-              required
-              minLength={8}
-              value={pw.confirm}
-              onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
-              autoComplete="new-password"
-            />
-          </Field>
-          {pwErr ? <p className="text-sm text-danger">{pwErr}</p> : null}
-          {saved ? <p className="text-sm text-ok">{saved}</p> : null}
-          <Button type="submit" disabled={pwBusy}>
-            {pwBusy ? "Saving…" : "Update password"}
-          </Button>
-        </form>
       ) : null}
 
       {tab === "network" ? (

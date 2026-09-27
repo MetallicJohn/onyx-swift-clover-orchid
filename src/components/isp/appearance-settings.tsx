@@ -113,7 +113,19 @@ function toConfig(row: {
   };
 }
 
-export function AppearanceSettings({ canManage }: { canManage: boolean }) {
+export function AppearanceSettings({
+  canManage,
+  live = true,
+  embedded = false,
+  savedMessage = "Appearance saved for this ISP.",
+  onDirtyChange,
+}: {
+  canManage: boolean;
+  live?: boolean;
+  embedded?: boolean;
+  savedMessage?: string;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
   const { apply, preview, clearPreview } = useTheme();
   const [draft, setDraft] = useState<ThemeConfig>(emptyThemeConfig());
   const [saved, setSaved] = useState<ThemeConfig>(emptyThemeConfig());
@@ -151,10 +163,19 @@ export function AppearanceSettings({ canManage }: { canManage: boolean }) {
     [draft, ispName],
   );
   const dirty = isThemeDirty(draft, saved);
+  const saveLock = useRef(false);
 
   useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (!live) {
+      clearPreview();
+      return;
+    }
     preview({ ...draft, displayName: draft.displayName || ispName }, ispName);
-  }, [draft, ispName, preview]);
+  }, [draft, ispName, preview, live, clearPreview]);
 
   function setPatch(patch: Partial<ThemeConfig>) {
     dirtyRef.current = true;
@@ -164,12 +185,14 @@ export function AppearanceSettings({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="font-medium">Appearance</h2>
-        <p className="mt-1 text-sm text-muted">
-          White-label this ISP only. Other networks keep their own colours, type, logo, and login.
-        </p>
-      </div>
+      {embedded ? null : (
+        <div>
+          <h2 className="font-medium">Appearance</h2>
+          <p className="mt-1 text-sm text-muted">
+            White-label this ISP only. Other networks keep their own colours, type, logo, and login.
+          </p>
+        </div>
+      )}
 
       <ThemePreview palette={resolved.palette} name={resolved.displayName} fontFamily={fontFamily(draft.font)} />
 
@@ -335,7 +358,10 @@ export function AppearanceSettings({ canManage }: { canManage: boolean }) {
       <div className="flex flex-wrap gap-2">
         <Button
           disabled={!canManage || busy || !dirty}
+          aria-busy={busy}
           onClick={async () => {
+            if (saveLock.current) return;
+            saveLock.current = true;
             setBusy(true);
             setErr(null);
             setOk(null);
@@ -362,10 +388,11 @@ export function AppearanceSettings({ canManage }: { canManage: boolean }) {
               setSaved(next);
               setDraft(next);
               apply(next, ispName);
-              setOk("Appearance saved for this ISP.");
+              setOk(savedMessage);
             } catch (e) {
               setErr(e instanceof Error ? e.message : "Could not save appearance");
             } finally {
+              saveLock.current = false;
               setBusy(false);
             }
           }}
