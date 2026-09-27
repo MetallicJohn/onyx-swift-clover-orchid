@@ -47,6 +47,85 @@ export function linkCloseAction(code: number | undefined): "logout" | "replaced"
   return "reconnect";
 }
 
+type InboundKey = {
+  fromMe?: boolean | null;
+  id?: string | null;
+  remoteJid?: string | null;
+  remoteJidAlt?: string | null;
+};
+
+function nestedMessage(value: unknown) {
+  if (!value || typeof value !== "object") return undefined;
+  const message = (value as { message?: unknown }).message;
+  if (!message || typeof message !== "object") return undefined;
+  return message as Record<string, unknown>;
+}
+
+function unwrapContent(message: Record<string, unknown> | null | undefined) {
+  let current = message;
+  for (let i = 0; i < 6 && current; i += 1) {
+    const next =
+      nestedMessage(current.ephemeralMessage) ||
+      nestedMessage(current.viewOnceMessage) ||
+      nestedMessage(current.viewOnceMessageV2) ||
+      nestedMessage(current.documentWithCaptionMessage) ||
+      nestedMessage(current.editedMessage) ||
+      nestedMessage(current.deviceSentMessage);
+    if (!next) break;
+    current = next;
+  }
+  return current;
+}
+
+function fieldText(value: unknown, key: string) {
+  if (!value || typeof value !== "object") return "";
+  const text = (value as Record<string, unknown>)[key];
+  return typeof text === "string" ? text : "";
+}
+
+export function webMessageText(message: Record<string, unknown> | null | undefined) {
+  const content = unwrapContent(message);
+  const text =
+    (typeof content?.conversation === "string" ? content.conversation : "") ||
+    fieldText(content?.extendedTextMessage, "text") ||
+    fieldText(content?.imageMessage, "caption") ||
+    fieldText(content?.videoMessage, "caption") ||
+    fieldText(content?.documentMessage, "caption") ||
+    fieldText(content?.buttonsResponseMessage, "selectedDisplayText") ||
+    fieldText(content?.listResponseMessage, "title") ||
+    fieldText(content?.templateButtonReplyMessage, "selectedDisplayText");
+  return text.trim();
+}
+
+/** Phone identity is the @s.whatsapp.net jid. A @lid alone is not a customer number. */
+export function phoneJidFromKey(key: InboundKey) {
+  const remote = key.remoteJid || "";
+  const alt = key.remoteJidAlt || "";
+  if (remote.endsWith("@g.us") || remote === "status@broadcast") return "";
+  if (remote.endsWith("@s.whatsapp.net")) return remote;
+  if (alt.endsWith("@s.whatsapp.net")) return alt;
+  return "";
+}
+
+export function shouldHandleUpsert(type: string | undefined, key: InboundKey) {
+  if (key.fromMe) return false;
+  if (type && type !== "notify") return false;
+  const remote = key.remoteJid || "";
+  if (!remote || remote.endsWith("@g.us") || remote === "status@broadcast") return false;
+  return remote.endsWith("@s.whatsapp.net") || remote.endsWith("@lid") || (key.remoteJidAlt || "").endsWith("@s.whatsapp.net");
+}
+
+async function tenantSql<T>(tenantId: string, fn: (sql: Sql) => Promise<T>): Promise<T> {
+  const { withDbSession } = await import("../db-session.ts");
+  const { getSql } = await import("../db.ts");
+  const { applyRls } = await import("./rls.ts");
+  return withDbSession(async () => {
+    const sql = await getSql();
+    await applyRls(sql, { tenantId, bypass: false });
+    return fn(sql);
+  });
+}
+
 async function persist(sql: Sql, tenantId: string, patch: Partial<{ status: string; phone: string; qr: string; error: string }>) {
   const current = session(tenantId);
   const status = patch.status || current.status;
@@ -65,8 +144,12 @@ async function persist(sql: Sql, tenantId: string, patch: Partial<{ status: stri
 
 export async function whatsAppLinkStatus(sql: Sql, tenantId: string) {
   const memory = live.get(tenantId);
-  const [row] = await sql<{ status: string; phone_e164: string; qr_text: string; last_error: string }>`
-    select status, phone_e164, qr_text, last_error from whatsapp_web_sessions where tenant_id = ${tenantId}`;
+  const [row] = await sql<{ status: string; phone_e164: string; qr_text: string; last_error: string; linked: boolean }>`
+    select status, phone_e164, qr_text, last_error, (auth_sealed <> '') as linked from whatsapp_web_sessions where tenant_id = ${tenantId}`;
+  if (!memory && row?.linked && row.status === "connected") {
+    void startWebLink(sql, tenantId, { reconnect: true }).catch(() => undefined);
+    return { status: "connecting", phone: row.phone_e164 || "", qrDataUrl: "", error: "" };
+  }
   const status = memory?.status && memory.status !== "disconnected" ? memory.status : row?.status || "disconnected";
   const qr = memory?.qr || row?.qr_text || "";
   let qrDataUrl = "";
@@ -96,13 +179,13 @@ function scheduleReconnect(sql: Sql, tenantId: string) {
     current.qr = "";
     current.send = null;
     current.error = "WhatsApp link closed. Scan again to reconnect.";
-    void persist(sql, tenantId, { status: "disconnected", qr: "", error: current.error });
+    void tenantSql(tenantId, (db) => persist(db, tenantId, { status: "disconnected", qr: "", error: current.error }));
     return;
   }
   current.reconnects += 1;
   current.status = "connecting";
   current.error = "";
-  void persist(sql, tenantId, { status: "connecting", qr: current.qr, error: "" });
+  void tenantSql(tenantId, (db) => persist(db, tenantId, { status: "connecting", qr: current.qr, error: "" }));
   clearReconnect(tenantId);
   const wait = current.reconnects === 1 ? 400 : 1200;
   reconnectTimers.set(
@@ -114,7 +197,7 @@ function scheduleReconnect(sql: Sql, tenantId: string) {
         if (!failed || failed.intentional) return;
         failed.status = "disconnected";
         failed.error = "WhatsApp link closed. Scan again to reconnect.";
-        void persist(sql, tenantId, { status: "disconnected", qr: "", error: failed.error });
+        void tenantSql(tenantId, (db) => persist(db, tenantId, { status: "disconnected", qr: "", error: failed.error }));
       });
     }, wait),
   );
@@ -138,18 +221,24 @@ export async function startWebLink(sql: Sql, tenantId: string, opts?: { reconnec
   current.qr = "";
   current.error = "";
   if (!opts?.reconnect) current.phone = "";
-  await persist(sql, tenantId, { status: current.status, qr: "", error: "", phone: current.phone });
+  await tenantSql(tenantId, (db) => persist(db, tenantId, { status: current.status, qr: "", error: "", phone: current.phone }));
 
   const baileys = await import("@whiskeysockets/baileys");
   const pino = (await import("pino")).default;
   const logger = pino({ level: "silent" });
-  const [stored] = await sql<{ auth_sealed: string }>`select auth_sealed from whatsapp_web_sessions where tenant_id = ${tenantId}`;
+  const [stored] = await tenantSql(
+    tenantId,
+    (db) => db<{ auth_sealed: string }>`select auth_sealed from whatsapp_web_sessions where tenant_id = ${tenantId}`,
+  );
   const dump = readDump(stored?.auth_sealed || "", baileys.BufferJSON);
   const creds = (dump.creds || baileys.initAuthCreds()) as ReturnType<typeof baileys.initAuthCreds>;
   const keys = dump.keys;
   const save = async () => {
     const sealed = seal(JSON.stringify({ creds, keys }, baileys.BufferJSON.replacer));
-    await sql`update whatsapp_web_sessions set auth_sealed = ${sealed}, updated_at = now() where tenant_id = ${tenantId}`;
+    await tenantSql(
+      tenantId,
+      (db) => db`update whatsapp_web_sessions set auth_sealed = ${sealed}, updated_at = now() where tenant_id = ${tenantId}`,
+    );
   };
   const { version } = await baileys.fetchLatestBaileysVersion();
   const sock = baileys.makeWASocket({
@@ -204,7 +293,7 @@ export async function startWebLink(sql: Sql, tenantId: string, opts?: { reconnec
       current.status = "qr";
       current.qr = update.qr;
       current.error = "";
-      void persist(sql, tenantId, { status: "qr", qr: update.qr, error: "" });
+      void tenantSql(tenantId, (db) => persist(db, tenantId, { status: "qr", qr: update.qr, error: "" }));
     }
     if (update.connection === "open") {
       const jid = sock.user?.id || "";
@@ -214,7 +303,7 @@ export async function startWebLink(sql: Sql, tenantId: string, opts?: { reconnec
       current.reconnects = 0;
       current.phone = phone.startsWith("+") ? phone : phone ? `+${phone.replace(/\D/g, "")}` : "";
       current.error = "";
-      void persist(sql, tenantId, { status: "connected", qr: "", phone: current.phone, error: "" });
+      void tenantSql(tenantId, (db) => persist(db, tenantId, { status: "connected", qr: "", phone: current.phone, error: "" }));
       void save();
     }
     if (update.connection === "close") {
@@ -225,15 +314,17 @@ export async function startWebLink(sql: Sql, tenantId: string, opts?: { reconnec
         current.status = "disconnected";
         current.qr = "";
         current.error = "The phone unlinked this device. Scan again to reconnect.";
-        void sql`update whatsapp_web_sessions set auth_sealed = '' where tenant_id = ${tenantId}`;
-        void persist(sql, tenantId, { status: "disconnected", qr: "", error: current.error });
+        void tenantSql(tenantId, async (db) => {
+          await db`update whatsapp_web_sessions set auth_sealed = '' where tenant_id = ${tenantId}`;
+          await persist(db, tenantId, { status: "disconnected", qr: "", error: current.error });
+        });
         return;
       }
       if (action === "replaced") {
         current.status = "disconnected";
         current.qr = "";
         current.error = "This WhatsApp was linked somewhere else. Scan again to reconnect.";
-        void persist(sql, tenantId, { status: "disconnected", qr: "", error: current.error });
+        void tenantSql(tenantId, (db) => persist(db, tenantId, { status: "disconnected", qr: "", error: current.error }));
         return;
       }
       void save().then(() => {
@@ -244,25 +335,51 @@ export async function startWebLink(sql: Sql, tenantId: string, opts?: { reconnec
   });
   sock.ev.on("messages.upsert", (payload) => {
     if (current.gen !== gen || current.intentional) return;
+    const kind = (payload as { type?: string }).type;
     for (const message of payload.messages || []) {
-      if (message.key?.fromMe) continue;
-      const remote = message.key?.remoteJid || "";
-      if (!remote.endsWith("@s.whatsapp.net")) continue;
-      const text = message.message?.conversation || message.message?.extendedTextMessage?.text || "";
-      if (!text || !message.key?.id) continue;
-      void import("./whatsapp-agent.ts").then(async (agent) => {
-        const result = await agent.handleCustomerWhatsApp(sql, {
-          tenantId,
-          provider: "web",
-          providerMessageId: message.key?.id || "",
-          from: remote,
-          text,
-        });
-        for (const reply of result.replies) {
+      const key = message.key || {};
+      if (!shouldHandleUpsert(kind, key)) continue;
+      const text = webMessageText(message.message as Record<string, unknown> | null);
+      if (!text || !key.id) continue;
+      const replyJid = key.remoteJid || "";
+      void (async () => {
+        try {
           if (current.gen !== gen) return;
-          await sock.sendMessage(remote, { text: reply });
+          let phoneJid = phoneJidFromKey(key);
+          if (!phoneJid && replyJid.endsWith("@lid")) {
+            const pn = await sock.signalRepository?.lidMapping?.getPNForLID(replyJid);
+            phoneJid = pn?.endsWith("@s.whatsapp.net") ? pn : pn ? `${pn.replace(/@.*/, "")}@s.whatsapp.net` : "";
+          }
+          if (current.gen !== gen) return;
+          if (!phoneJid) {
+            if (!replyJid) return;
+            await sock.sendMessage(replyJid, { text: "We could not verify this WhatsApp number. Please contact support for assistance." });
+            return;
+          }
+          const agent = await import("./whatsapp-agent.ts");
+          const result = await tenantSql(tenantId, (db) =>
+            agent.handleCustomerWhatsApp(db, {
+              tenantId,
+              provider: "web",
+              providerMessageId: key.id || "",
+              from: phoneJid,
+              text,
+            }),
+          );
+          for (const reply of result.replies) {
+            if (current.gen !== gen) return;
+            await sock.sendMessage(replyJid, { text: reply });
+          }
+        } catch {
+          console.error("[whatsapp] reply failed");
+          if (current.gen !== gen || !replyJid) return;
+          try {
+            await sock.sendMessage(replyJid, { text: "I couldn't answer just now. Please try again in a moment." });
+          } catch {
+            /* socket already closed */
+          }
         }
-      });
+      })();
     }
   });
   return whatsAppLinkStatus(sql, tenantId);

@@ -13,7 +13,7 @@ import {
   WA_OTP_ASK,
   WA_UNVERIFIED,
 } from "./whatsapp-agent.ts";
-import { linkCloseAction } from "./whatsapp-link.ts";
+import { linkCloseAction, phoneJidFromKey, shouldHandleUpsert, webMessageText } from "./whatsapp-link.ts";
 import { openTestDb } from "./test-db.ts";
 
 test("intent parsing rejects invented targets and infrastructure fields", () => {
@@ -217,6 +217,13 @@ test("whatsapp settings expose device linking and do not send OTP on WhatsApp", 
   assert.equal(linkCloseAction(428), "reconnect");
   assert.equal(linkCloseAction(401), "logout");
   assert.equal(linkCloseAction(440), "replaced");
+  assert.equal(phoneJidFromKey({ remoteJid: "254712000001@s.whatsapp.net" }), "254712000001@s.whatsapp.net");
+  assert.equal(phoneJidFromKey({ remoteJid: "123@lid", remoteJidAlt: "254712000001@s.whatsapp.net" }), "254712000001@s.whatsapp.net");
+  assert.equal(phoneJidFromKey({ remoteJid: "123@lid" }), "");
+  assert.equal(shouldHandleUpsert("notify", { remoteJid: "123@lid" }), true);
+  assert.equal(shouldHandleUpsert("append", { remoteJid: "254712000001@s.whatsapp.net" }), false);
+  assert.equal(shouldHandleUpsert("notify", { fromMe: true, remoteJid: "254712000001@s.whatsapp.net" }), false);
+  assert.equal(webMessageText({ ephemeralMessage: { message: { conversation: "1" } } }), "1");
   assert.match(ui, /Reconnecting/);
   assert.match(ui, /M-Pesa payment prompts/);
   assert.match(engine, /createStkIntent/);
