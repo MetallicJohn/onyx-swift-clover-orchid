@@ -813,8 +813,12 @@ function maskedTail(phone: string) {
   return digits.slice(-4);
 }
 
-function stkWasSimulated(checkoutId: string, note: string) {
-  return !checkoutId || checkoutId.startsWith("ws_") || /simulated|no keys/i.test(note);
+/** Local placeholders are `ws_` plus 12 hex chars. A live Daraja CheckoutRequestID is `ws_CO_...` and must be kept so the callback can credit the invoice. */
+export function isSimulatedCheckout(checkoutId: string, note = "") {
+  const id = checkoutId.trim();
+  if (/^ws_CO_/i.test(id)) return false;
+  if (!id || /^ws_[0-9a-f]{12}$/i.test(id)) return true;
+  return /simulated|no keys/i.test(note);
 }
 
 async function promptInvoicePayment(sql: Sql, tenantId: string, customerId: string): Promise<{
@@ -839,7 +843,7 @@ async function promptInvoicePayment(sql: Sql, tenantId: string, customerId: stri
   if (!provider) return fail("NO_PROVIDER");
   const [pending] = await sql<{ checkout_id: string }>`select checkout_id from payment_intents
     where tenant_id = ${tenantId} and customer_id = ${customerId} and invoice_id = ${invoice.id}
-      and status = 'pending' and checkout_id <> '' and checkout_id not like 'ws_%'
+      and status = 'pending' and checkout_id <> '' and checkout_id !~ '^ws_[0-9a-f]{12}$'
       and created_at > now() - interval '5 minutes'
     order by created_at desc limit 1`;
   if (pending) {
@@ -854,10 +858,11 @@ async function promptInvoicePayment(sql: Sql, tenantId: string, customerId: stri
       phone,
       amountKes: invoice.remaining,
     });
-    if (last9(intent.phone) !== last9(phone) || stkWasSimulated(intent.checkout_id, intent.note || "")) {
+    if (isSimulatedCheckout(intent.checkout_id, intent.note || "")) {
       await sql`delete from payment_intents where id = ${intent.id} and tenant_id = ${tenantId} and status = 'pending'`;
-      return fail(stkWasSimulated(intent.checkout_id, intent.note || "") ? "NO_PROVIDER" : "PROMPT_FAILED");
+      return fail("NO_PROVIDER");
     }
+    if (last9(intent.phone) !== last9(phone)) return fail("PROMPT_FAILED");
     const text = `I've sent a payment prompt for Ksh ${intent.amount_kes} on invoice ${invoice.number} to the number saved on this account, ending ${maskedTail(phone)}. Enter your PIN on the phone. This chat does not mark the invoice paid until M-Pesa confirms.`;
     return { status: "SUCCEEDED", customerText: text, publicText: "Payment prompt sent", errorCode: "", sensitive: false };
   } catch {

@@ -8,6 +8,7 @@ import {
   handleCustomerWhatsApp,
   hashWhatsAppOtp,
   isPayRequest,
+  isSimulatedCheckout,
   parseModelIntent,
   saveWhatsAppAgentSettings,
   WA_OTP_ASK,
@@ -17,6 +18,9 @@ import { linkCloseAction, phoneJidFromKey, shouldHandleUpsert, webMessageText } 
 import { openTestDb } from "./test-db.ts";
 
 test("intent parsing rejects invented targets and infrastructure fields", () => {
+  assert.equal(isSimulatedCheckout("ws_a1b2c3d4e5f6", "queued"), true);
+  assert.equal(isSimulatedCheckout("", "M-Pesa sandbox (no keys) — simulated STK"), true);
+  assert.equal(isSimulatedCheckout("ws_CO_270920261200001234", "Success. Request accepted for processing"), false);
   assert.equal(classifyIntent("What's my package?").intent, "CHECK_ACCOUNT");
   assert.equal(classifyIntent("I paid Ksh 2,000").intent, "CHECK_PAYMENT");
   assert.equal(classifyIntent("I want to pay").intent, "PAY_INVOICE");
