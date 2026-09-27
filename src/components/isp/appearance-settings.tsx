@@ -1,5 +1,5 @@
 import { Check, Upload, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ThemePreview } from "@/components/isp/theme-preview";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
@@ -134,6 +134,7 @@ export function AppearanceSettings({
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [fileErr, setFileErr] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
   const dirtyRef = useRef(false);
 
   useEffect(() => {
@@ -145,6 +146,7 @@ export function AppearanceSettings({
         const cfg = toConfig(row);
         setIspName(row.name);
         setSaved(cfg);
+        setReady(true);
         setDraft((current) => {
           if (!dirtyRef.current) return cfg;
           return { ...current, tenantId: cfg.tenantId || current.tenantId };
@@ -169,13 +171,14 @@ export function AppearanceSettings({
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!live) {
       clearPreview();
       return;
     }
+    if (!ready) return;
     preview({ ...draft, displayName: draft.displayName || ispName }, ispName);
-  }, [draft, ispName, preview, live, clearPreview]);
+  }, [draft, ispName, preview, live, clearPreview, ready]);
 
   function setPatch(patch: Partial<ThemeConfig>) {
     dirtyRef.current = true;

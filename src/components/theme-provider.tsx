@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { getPublicBranding } from "@/lib/isp/server-theme";
 import { isMarketingPath, paintPlatformDefault, paintSiteAppearance } from "@/lib/isp/site-appearance";
@@ -33,6 +33,23 @@ type CachePayload = {
   fontHref?: string | null;
   preset?: string;
 };
+
+function sameTheme(a: ThemeConfig | null, b: ThemeConfig) {
+  if (!a) return false;
+  return (
+    a.preset === b.preset &&
+    a.appearance === b.appearance &&
+    a.font === b.font &&
+    a.primary === b.primary &&
+    a.secondary === b.secondary &&
+    a.accent === b.accent &&
+    a.logo === b.logo &&
+    a.favicon === b.favicon &&
+    a.displayName === b.displayName &&
+    a.brandLogin === b.brandLogin &&
+    a.brandPortal === b.brandPortal
+  );
+}
 
 function systemDark() {
   if (typeof window === "undefined" || !window.matchMedia) return true;
@@ -113,7 +130,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     [active, fallbackName, dark],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (resolved) {
       paint(resolved);
       if (committed && !previewCfg) {
@@ -132,17 +149,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setCommitted(null);
       return;
     }
-    const cached = readCache();
-    if (cached && cached.tenantId === config.tenantId) {
-      applyCssVars(cached.vars, cached.appearance, cached.preset);
-      applyFontLink(cached.fontHref || null);
-    }
     setCommitted(config);
   }, []);
 
   const preview = useCallback((config: ThemeConfig, name = "ISP") => {
     setFallbackName(name);
-    setPreviewCfg(config);
+    setPreviewCfg((current) => (sameTheme(current, config) ? current : config));
   }, []);
 
   const clearPreview = useCallback(() => setPreviewCfg(null), []);

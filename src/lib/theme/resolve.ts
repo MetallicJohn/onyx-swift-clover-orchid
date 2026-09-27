@@ -191,9 +191,15 @@ export function resolveTheme(config: ThemeConfig, fallbackName: string, systemDa
   };
 }
 
+let paintedTheme = "";
+
 export function applyCssVars(vars: Record<string, string> | null, appearance: "light" | "dark", preset?: string | null) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
+  const next = `${appearance}\n${preset || ""}\n${vars ? CSS_VAR_KEYS.map((key) => vars[key] || "").join("\n") : ""}`;
+  if (next === paintedTheme) return;
+  paintedTheme = next;
+  root.classList.add("theme-swap");
   for (const key of CSS_VAR_KEYS) {
     if (vars && vars[key]) root.style.setProperty(key, vars[key]!);
     else root.style.removeProperty(key);
@@ -202,12 +208,14 @@ export function applyCssVars(vars: Record<string, string> | null, appearance: "l
   root.style.colorScheme = appearance;
   if (preset) root.dataset.preset = preset;
   else delete root.dataset.preset;
+  requestAnimationFrame(() => root.classList.remove("theme-swap"));
 }
 
 export function applyFavicon(href: string | null, themeColor: string | null) {
   if (typeof document === "undefined") return;
   const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-  if (icon) icon.href = href || "/favicon.svg";
+  const nextIcon = href || "/favicon.svg";
+  if (icon && icon.getAttribute("href") !== nextIcon) icon.href = nextIcon;
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  if (meta && themeColor) meta.content = themeColor;
+  if (meta && themeColor && meta.content !== themeColor) meta.content = themeColor;
 }
