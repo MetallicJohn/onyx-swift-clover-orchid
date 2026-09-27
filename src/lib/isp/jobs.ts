@@ -177,6 +177,12 @@ export async function executeJob(sql: Sql, job: JobRow) {
   if (tenantId) await applyRls(sql, { tenantId, bypass: false });
   else await applyRls(sql, { bypass: true });
 
+  if (job.kind === "whatsapp.action") {
+    if (!tenantId) throw new Error("whatsapp.action requires tenantId");
+    const { executeQueuedWhatsAppAction } = await import("./whatsapp-agent.ts");
+    return executeQueuedWhatsAppAction(sql, tenantId, String(payload.actionId || ""), { notify: true });
+  }
+
   if (job.kind === "billing.cycle") {
     if (!tenantId) throw new Error("billing.cycle requires tenantId");
     const locked = await lockKey(job.kind, tenantId, String(payload.day || ""));

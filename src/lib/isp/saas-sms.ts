@@ -156,6 +156,7 @@ function toMessaging(raw: RawSms, senderId?: string): MessagingSettings {
     smtp_password: "",
     smtp_secure: false,
     email_sandbox: true,
+    sms_gateways: "",
   };
 }
 

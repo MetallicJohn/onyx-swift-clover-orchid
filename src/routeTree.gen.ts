@@ -100,6 +100,7 @@ import { Route as ApiV1HotspotPurchaseStatusRouteImport } from './routes/api/v1/
 import { Route as ApiV1PortalActionRouteImport } from './routes/api/v1/portal/$action'
 import { Route as ApiWebhooksKopokopoSlugRouteImport } from './routes/api/webhooks/kopokopo/$slug'
 import { Route as ApiWebhooksMpesaSlugRouteImport } from './routes/api/webhooks/mpesa/$slug'
+import { Route as ApiWebhooksWhatsappSlugRouteImport } from './routes/api/webhooks/whatsapp/$slug'
 import { Route as ApiV1HotspotHtmlFileRouteImport } from './routes/api/v1/hotspot/html.$file'
 import { Route as ApiV1RadiusActionSlugRouteImport } from './routes/api/v1/radius/$action.$slug'
 import { Route as ApiVpnRoutersTokenBootstrapDotrscRouteImport } from './routes/api/vpn/routers/$token/bootstrap[.]rsc'
@@ -563,6 +564,11 @@ const ApiWebhooksMpesaSlugRoute = ApiWebhooksMpesaSlugRouteImport.update({
   path: '/api/webhooks/mpesa/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWebhooksWhatsappSlugRoute = ApiWebhooksWhatsappSlugRouteImport.update({
+  id: '/api/webhooks/whatsapp/$slug',
+  path: '/api/webhooks/whatsapp/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1HotspotHtmlFileRoute = ApiV1HotspotHtmlFileRouteImport.update({
   id: '/api/v1/hotspot/html/$file',
   path: '/api/v1/hotspot/html/$file',
@@ -671,6 +677,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/portal/$action': typeof ApiV1PortalActionRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
+  '/api/webhooks/whatsapp/$slug': typeof ApiWebhooksWhatsappSlugRoute
   '/api/routers/$id/': typeof ApiRoutersIdIndexRoute
   '/api/v1/hotspot/html/$file': typeof ApiV1HotspotHtmlFileRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
@@ -763,6 +770,7 @@ export interface FileRoutesByTo {
   '/api/v1/portal/$action': typeof ApiV1PortalActionRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
+  '/api/webhooks/whatsapp/$slug': typeof ApiWebhooksWhatsappSlugRoute
   '/api/routers/$id': typeof ApiRoutersIdIndexRoute
   '/api/v1/hotspot/html/$file': typeof ApiV1HotspotHtmlFileRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
@@ -860,6 +868,7 @@ export interface FileRoutesById {
   '/api/v1/portal/$action': typeof ApiV1PortalActionRoute
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
+  '/api/webhooks/whatsapp/$slug': typeof ApiWebhooksWhatsappSlugRoute
   '/api/routers/$id/': typeof ApiRoutersIdIndexRoute
   '/api/v1/hotspot/html/$file': typeof ApiV1HotspotHtmlFileRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
@@ -958,6 +967,7 @@ export interface FileRouteTypes {
     | '/api/v1/portal/$action'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
+    | '/api/webhooks/whatsapp/$slug'
     | '/api/routers/$id/'
     | '/api/v1/hotspot/html/$file'
     | '/api/v1/radius/$action/$slug'
@@ -1050,6 +1060,7 @@ export interface FileRouteTypes {
     | '/api/v1/portal/$action'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
+    | '/api/webhooks/whatsapp/$slug'
     | '/api/routers/$id'
     | '/api/v1/hotspot/html/$file'
     | '/api/v1/radius/$action/$slug'
@@ -1146,6 +1157,7 @@ export interface FileRouteTypes {
     | '/api/v1/portal/$action'
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
+    | '/api/webhooks/whatsapp/$slug'
     | '/api/routers/$id/'
     | '/api/v1/hotspot/html/$file'
     | '/api/v1/radius/$action/$slug'
@@ -1195,6 +1207,7 @@ export interface RootRouteChildren {
   ApiV1PortalActionRoute: typeof ApiV1PortalActionRoute
   ApiWebhooksKopokopoSlugRoute: typeof ApiWebhooksKopokopoSlugRoute
   ApiWebhooksMpesaSlugRoute: typeof ApiWebhooksMpesaSlugRoute
+  ApiWebhooksWhatsappSlugRoute: typeof ApiWebhooksWhatsappSlugRoute
   ApiRoutersIdIndexRoute: typeof ApiRoutersIdIndexRoute
   ApiV1HotspotHtmlFileRoute: typeof ApiV1HotspotHtmlFileRoute
   ApiV1RadiusActionSlugRoute: typeof ApiV1RadiusActionSlugRoute
@@ -1840,6 +1853,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWebhooksMpesaSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/webhooks/whatsapp/$slug': {
+      id: '/api/webhooks/whatsapp/$slug'
+      path: '/api/webhooks/whatsapp/$slug'
+      fullPath: '/api/webhooks/whatsapp/$slug'
+      preLoaderRoute: typeof ApiWebhooksWhatsappSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/hotspot/html/$file': {
       id: '/api/v1/hotspot/html/$file'
       path: '/api/v1/hotspot/html/$file'
@@ -2119,6 +2139,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1PortalActionRoute: ApiV1PortalActionRoute,
   ApiWebhooksKopokopoSlugRoute: ApiWebhooksKopokopoSlugRoute,
   ApiWebhooksMpesaSlugRoute: ApiWebhooksMpesaSlugRoute,
+  ApiWebhooksWhatsappSlugRoute: ApiWebhooksWhatsappSlugRoute,
   ApiRoutersIdIndexRoute: ApiRoutersIdIndexRoute,
   ApiV1HotspotHtmlFileRoute: ApiV1HotspotHtmlFileRoute,
   ApiV1RadiusActionSlugRoute: ApiV1RadiusActionSlugRoute,

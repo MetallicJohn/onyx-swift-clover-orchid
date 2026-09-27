@@ -32,6 +32,7 @@ import {
   type SmsGatewayId,
 } from "@/lib/isp/sms-gateways";
 import { cn } from "@/lib/utils";
+import { WhatsAppAgentSettings } from "@/components/isp/whatsapp-agent-settings";
 import {
   SaveButton,
   SecretInput,
@@ -691,7 +692,9 @@ export function CommunicationsSettings({ supportPhone, supportEmail }: { support
       ) : null}
 
       {section === "whatsapp" ? (
-        <form className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4 md:p-5" onSubmit={(e) => void saveWhatsApp(e)}>
+        <div className="space-y-4">
+          <WhatsAppAgentSettings />
+          <form className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4 md:p-5" onSubmit={(e) => void saveWhatsApp(e)}>
           <div>
             <h2 className="font-medium">WhatsApp</h2>
             <p className="text-sm text-muted">Meta Cloud API for payment receipts and billing reminders.</p>
@@ -729,6 +732,7 @@ export function CommunicationsSettings({ supportPhone, supportEmail }: { support
           </Button>
           <SettingsStatus note={testOut} />
         </form>
+        </div>
       ) : null}
 
       {section === "email" ? (

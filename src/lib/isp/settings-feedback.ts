@@ -26,6 +26,8 @@ export const ID_SAVE_OK = "ID settings saved successfully.";
 export const ID_SAVE_FAIL = "Unable to save ID settings.";
 export const NETWORK_SAVE_OK = "Network settings saved successfully.";
 export const NETWORK_SAVE_FAIL = "Unable to save network settings.";
+export const WA_SAVE_OK = "WhatsApp customer settings saved successfully.";
+export const WA_SAVE_FAIL = "Unable to save WhatsApp customer settings.";
 
 export const SETTINGS_GATEWAYS = [
   { id: "mpesa", label: "M-Pesa" },

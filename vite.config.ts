@@ -173,6 +173,7 @@ export default defineConfig(({ command, isPreview }) => ({
   },
   ssr: {
     noExternal: ["pdfkit"],
+    external: ["@whiskeysockets/baileys", "whatsapp-rust-bridge", "pino", "qrcode"],
   },
   plugins: [
     {
