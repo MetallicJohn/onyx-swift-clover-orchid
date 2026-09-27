@@ -6,22 +6,45 @@ type Sql = {
 };
 
 type LiveSession = {
-  status: "disconnected" | "qr" | "connected";
+  status: "disconnected" | "qr" | "connecting" | "connected";
   qr: string;
   phone: string;
   error: string;
+  gen: number;
+  reconnects: number;
+  intentional: boolean;
   send: ((jid: string, text: string) => Promise<void>) | null;
   close: (() => void) | null;
 };
 
 const live = new Map<string, LiveSession>();
+const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+let epoch = 0;
+const MAX_RECONNECTS = 6;
 
 function session(tenantId: string): LiveSession {
   const existing = live.get(tenantId);
   if (existing) return existing;
-  const created: LiveSession = { status: "disconnected", qr: "", phone: "", error: "", send: null, close: null };
+  const created: LiveSession = {
+    status: "disconnected",
+    qr: "",
+    phone: "",
+    error: "",
+    gen: 0,
+    reconnects: 0,
+    intentional: false,
+    send: null,
+    close: null,
+  };
   live.set(tenantId, created);
   return created;
+}
+
+/** 515 after a scan is a required restart, not a failed link. 401/403/500 drop the saved login. */
+export function linkCloseAction(code: number | undefined): "logout" | "replaced" | "reconnect" {
+  if (code === 401 || code === 403 || code === 411 || code === 500) return "logout";
+  if (code === 440) return "replaced";
+  return "reconnect";
 }
 
 async function persist(sql: Sql, tenantId: string, patch: Partial<{ status: string; phone: string; qr: string; error: string }>) {
@@ -55,18 +78,67 @@ export async function whatsAppLinkStatus(sql: Sql, tenantId: string) {
     status,
     phone: memory?.phone || row?.phone_e164 || "",
     qrDataUrl,
-    error: memory?.error || row?.last_error || "",
+    error: memory?.error || (status === "connected" || status === "connecting" || status === "qr" ? "" : row?.last_error || ""),
   };
 }
 
-export async function startWebLink(sql: Sql, tenantId: string) {
-  await stopWebLink(sql, tenantId, false);
+function clearReconnect(tenantId: string) {
+  const timer = reconnectTimers.get(tenantId);
+  if (timer) clearTimeout(timer);
+  reconnectTimers.delete(tenantId);
+}
+
+function scheduleReconnect(sql: Sql, tenantId: string) {
+  const current = live.get(tenantId);
+  if (!current || current.intentional) return;
+  if (current.reconnects >= MAX_RECONNECTS) {
+    current.status = "disconnected";
+    current.qr = "";
+    current.send = null;
+    current.error = "WhatsApp link closed. Scan again to reconnect.";
+    void persist(sql, tenantId, { status: "disconnected", qr: "", error: current.error });
+    return;
+  }
+  current.reconnects += 1;
+  current.status = "connecting";
+  current.error = "";
+  void persist(sql, tenantId, { status: "connecting", qr: current.qr, error: "" });
+  clearReconnect(tenantId);
+  const wait = current.reconnects === 1 ? 400 : 1200;
+  reconnectTimers.set(
+    tenantId,
+    setTimeout(() => {
+      reconnectTimers.delete(tenantId);
+      void startWebLink(sql, tenantId, { reconnect: true }).catch(() => {
+        const failed = live.get(tenantId);
+        if (!failed || failed.intentional) return;
+        failed.status = "disconnected";
+        failed.error = "WhatsApp link closed. Scan again to reconnect.";
+        void persist(sql, tenantId, { status: "disconnected", qr: "", error: failed.error });
+      });
+    }, wait),
+  );
+}
+
+export async function startWebLink(sql: Sql, tenantId: string, opts?: { reconnect?: boolean }) {
+  clearReconnect(tenantId);
+  const previous = live.get(tenantId);
+  const reconnects = opts?.reconnect ? previous?.reconnects || 0 : 0;
+  if (previous) {
+    previous.intentional = true;
+    previous.close?.();
+  }
+  live.delete(tenantId);
   const current = session(tenantId);
-  current.status = "qr";
+  const gen = ++epoch;
+  current.gen = gen;
+  current.reconnects = reconnects;
+  current.intentional = false;
+  current.status = opts?.reconnect && previous?.status === "connected" ? "connecting" : "qr";
   current.qr = "";
   current.error = "";
-  current.phone = "";
-  await persist(sql, tenantId, { status: "qr", qr: "", error: "", phone: "" });
+  if (!opts?.reconnect) current.phone = "";
+  await persist(sql, tenantId, { status: current.status, qr: "", error: "", phone: current.phone });
 
   const baileys = await import("@whiskeysockets/baileys");
   const pino = (await import("pino")).default;
@@ -111,7 +183,7 @@ export async function startWebLink(sql: Sql, tenantId: string) {
     printQRInTerminal: false,
     syncFullHistory: false,
     markOnlineOnConnect: false,
-    browser: ["ISP Solutions", "Chrome", "1.0.0"],
+    browser: baileys.Browsers.ubuntu("Chrome"),
   });
   current.close = () => {
     try {
@@ -127,9 +199,11 @@ export async function startWebLink(sql: Sql, tenantId: string) {
     void save();
   });
   sock.ev.on("connection.update", (update) => {
+    if (current.gen !== gen || current.intentional) return;
     if (update.qr) {
       current.status = "qr";
       current.qr = update.qr;
+      current.error = "";
       void persist(sql, tenantId, { status: "qr", qr: update.qr, error: "" });
     }
     if (update.connection === "open") {
@@ -137,6 +211,7 @@ export async function startWebLink(sql: Sql, tenantId: string) {
       const phone = jid.replace(/:\d+@/, "@").replace(/@.*/, "");
       current.status = "connected";
       current.qr = "";
+      current.reconnects = 0;
       current.phone = phone.startsWith("+") ? phone : phone ? `+${phone.replace(/\D/g, "")}` : "";
       current.error = "";
       void persist(sql, tenantId, { status: "connected", qr: "", phone: current.phone, error: "" });
@@ -144,18 +219,31 @@ export async function startWebLink(sql: Sql, tenantId: string) {
     }
     if (update.connection === "close") {
       const code = (update.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output?.statusCode;
-      const loggedOut = code === baileys.DisconnectReason.loggedOut;
-      current.status = "disconnected";
-      current.qr = "";
+      const action = linkCloseAction(code);
       current.send = null;
-      current.error = loggedOut ? "The phone unlinked this device." : "WhatsApp link closed. Scan again to reconnect.";
-      void persist(sql, tenantId, { status: "disconnected", qr: "", error: current.error });
-      if (loggedOut) {
+      if (action === "logout") {
+        current.status = "disconnected";
+        current.qr = "";
+        current.error = "The phone unlinked this device. Scan again to reconnect.";
         void sql`update whatsapp_web_sessions set auth_sealed = '' where tenant_id = ${tenantId}`;
+        void persist(sql, tenantId, { status: "disconnected", qr: "", error: current.error });
+        return;
       }
+      if (action === "replaced") {
+        current.status = "disconnected";
+        current.qr = "";
+        current.error = "This WhatsApp was linked somewhere else. Scan again to reconnect.";
+        void persist(sql, tenantId, { status: "disconnected", qr: "", error: current.error });
+        return;
+      }
+      void save().then(() => {
+        if (current.gen !== gen || current.intentional) return;
+        scheduleReconnect(sql, tenantId);
+      });
     }
   });
   sock.ev.on("messages.upsert", (payload) => {
+    if (current.gen !== gen || current.intentional) return;
     for (const message of payload.messages || []) {
       if (message.key?.fromMe) continue;
       const remote = message.key?.remoteJid || "";
@@ -171,6 +259,7 @@ export async function startWebLink(sql: Sql, tenantId: string) {
           text,
         });
         for (const reply of result.replies) {
+          if (current.gen !== gen) return;
           await sock.sendMessage(remote, { text: reply });
         }
       });
@@ -190,7 +279,9 @@ function readDump(sealed: string, bufferJson: { reviver: (key: string, value: un
 }
 
 export async function stopWebLink(sql: Sql, tenantId: string, clearAuth: boolean) {
+  clearReconnect(tenantId);
   const current = live.get(tenantId);
+  if (current) current.intentional = true;
   if (current?.close) current.close();
   live.delete(tenantId);
   if (clearAuth) {

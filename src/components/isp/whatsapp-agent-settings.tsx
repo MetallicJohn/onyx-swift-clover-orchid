@@ -76,7 +76,7 @@ export function WhatsAppAgentSettings() {
   }, []);
 
   useEffect(() => {
-    if (link.status !== "qr") return;
+    if (link.status !== "qr" && link.status !== "connecting") return;
     const timer = window.setInterval(() => {
       refreshWhatsAppLink()
         .then((next) => setLink(next))
@@ -132,7 +132,7 @@ export function WhatsAppAgentSettings() {
             </p>
           </div>
           <p className="text-sm">
-            Status: {link.status === "connected" ? `Connected${link.phone ? ` · ${link.phone}` : ""}` : link.status === "qr" ? "Waiting for scan" : "Not linked"}
+            Status: {link.status === "connected" ? `Connected${link.phone ? ` · ${link.phone}` : ""}` : link.status === "qr" ? "Waiting for scan" : link.status === "connecting" ? "Reconnecting…" : "Not linked"}
           </p>
           {link.qrDataUrl ? (
             <img src={link.qrDataUrl} alt="WhatsApp link QR code" className="h-56 w-56 rounded-lg border border-border bg-white p-2" />

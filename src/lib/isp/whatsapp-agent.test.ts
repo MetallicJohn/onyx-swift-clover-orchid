@@ -13,6 +13,7 @@ import {
   WA_OTP_ASK,
   WA_UNVERIFIED,
 } from "./whatsapp-agent.ts";
+import { linkCloseAction } from "./whatsapp-link.ts";
 import { openTestDb } from "./test-db.ts";
 
 test("intent parsing rejects invented targets and infrastructure fields", () => {
@@ -212,6 +213,11 @@ test("whatsapp settings expose device linking and do not send OTP on WhatsApp", 
   assert.match(ui, /Link a device/);
   assert.match(ui, /WhatsApp Web/);
   assert.match(ui, /Linked devices/);
+  assert.equal(linkCloseAction(515), "reconnect");
+  assert.equal(linkCloseAction(428), "reconnect");
+  assert.equal(linkCloseAction(401), "logout");
+  assert.equal(linkCloseAction(440), "replaced");
+  assert.match(ui, /Reconnecting/);
   assert.match(ui, /M-Pesa payment prompts/);
   assert.match(engine, /createStkIntent/);
   assert.match(engine, /deliverSms/);
