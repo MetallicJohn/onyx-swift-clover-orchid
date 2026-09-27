@@ -37,6 +37,8 @@ test("settings pages group existing areas and keep legacy links", () => {
   assert.equal(parseSettingsSearch({ tab: "partial" }).section, "partial");
   assert.equal(parseSettingsSearch({ tab: "tags" }).section, "tags");
   assert.equal(parseSettingsSearch({ tab: "accounts" }).section, "ids");
+  assert.equal(parseSettingsSearch({ tab: "numbers" }).section, "numbers");
+  assert.equal(parseSettingsSearch({ tab: "customers" }).section, "ids");
   assert.equal(parseSettingsSearch({ tab: "payments", section: "partial" }).section, "partial");
   assert.equal(parseSettingsSearch({ tab: "nope" }).tab, "general");
   assert.equal(parseSettingsSearch({ tab: "notifications", section: "grace" }).section, undefined);
@@ -101,13 +103,16 @@ test("payment and settings screens keep labels, secrets, and save confirmation",
   assert.match(settings, /Grace period/);
   assert.match(settings, /Partial payments/);
   assert.match(settings, /ID Settings/);
+  assert.match(settings, /Account numbers/);
+  assert.match(settings, /AccountNumberSettings/);
+  assert.match(settings, /CustomerIdSettings/);
   assert.match(settings, /CompanyInfoSettings/);
   assert.match(settings, /PaymentSettings/);
   assert.match(settings, /CommunicationsSettings/);
   assert.match(settings, /GRACE_SAVE_OK/);
   assert.match(settings, /PARTIAL_SAVE_OK/);
   assert.match(settings, /Staff maximum days/);
-  assert.match(comms, /SMS settings saved successfully|SMS_SAVE_OK/);
+  assert.match(comms, /SMS_GATEWAY_SAVE_OK|SMS settings saved successfully|SMS_SAVE_OK/);
   assert.match(comms, /SecretInput/);
   assert.match(comms, /mergeKeptEdits/);
   assert.match(comms, /lock\.current/);

@@ -10,6 +10,7 @@ import { CommunicationsSettings } from "@/components/isp/communications-settings
 import { PaymentSettings } from "@/components/isp/payment-settings";
 import { SaveButton, SecretInput, SettingsField, SettingsStatus, SettingsSubnav, type SettingsNote } from "@/components/isp/settings-ui";
 import { companyBrandDirty, companyProfileDirty, mergeKeptEdits, type CompanyBrandFields, type CompanyProfileFields } from "@/lib/isp/company-info-tabs";
+import { AccountNumberSettings } from "@/components/isp/account-number-settings";
 import { CustomerTagsSettings } from "@/components/isp/customer-tags-settings";
 import { CustomerIdSettings } from "@/components/isp/customer-id-settings";
 import { NotificationsSettings } from "@/components/isp/notifications-settings";
@@ -1090,14 +1091,23 @@ function SettingsPage() {
         <div className="space-y-4">
           <SettingsSubnav
             label="Customers"
-            value={section === "ids" ? "ids" : "tags"}
+            value={section === "numbers" || section === "tags" ? section : "ids"}
             onChange={(id) => openPage("customers", id)}
             tabs={[
-              { id: "tags", label: "Customer tags" },
               { id: "ids", label: "ID Settings" },
+              { id: "numbers", label: "Account numbers" },
+              { id: "tags", label: "Customer tags" },
             ]}
           />
-          {section === "ids" ? <CustomerIdSettings /> : <CustomerTagsSettings />}
+          <div hidden={section === "numbers" || section === "tags"} className={section === "numbers" || section === "tags" ? "hidden" : undefined}>
+            <CustomerIdSettings />
+          </div>
+          <div hidden={section !== "numbers"} className={section === "numbers" ? undefined : "hidden"}>
+            <AccountNumberSettings />
+          </div>
+          <div hidden={section !== "tags"} className={section === "tags" ? undefined : "hidden"}>
+            <CustomerTagsSettings />
+          </div>
         </div>
       ) : null}
     </div>

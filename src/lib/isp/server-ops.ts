@@ -12,7 +12,9 @@ import {
   deliverWhatsapp,
   emailOk,
   getMessagingSettings,
+  probeSmsGateway,
   saveMessagingSettings,
+  saveSmsGatewaySettings,
   toPublic,
   webfamBalance,
 } from "./messaging";
@@ -38,6 +40,7 @@ import { genieDeviceId, nbiOrigin, nbiPing } from "./acs-nbi";
 import { loadAcsPlatformSettings } from "./acs-ports";
 import { acsSecurityFromPlatform, applyGenieAcsSecurity } from "./acs-security";
 import { rateLimit } from "./rate-limit";
+import { isSmsGatewayId, type SmsGatewayConfig } from "./sms-gateways";
 import { requireWorkspace as requireWs } from "./workspace";
 
 export const listRadius = createServerFn({ method: "GET" })
@@ -740,7 +743,12 @@ export const saveMessaging = createServerFn({ method: "POST" })
 
 export const testMessaging = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { channel: "sms" | "whatsapp" | "email"; phone?: string; email?: string }) => d)
+  .validator((d: { channel: "sms" | "whatsapp" | "email"; phone?: string; email?: string; message?: string }) => ({
+    channel: d.channel,
+    phone: d.phone,
+    email: d.email,
+    message: String(d.message || "").trim().slice(0, 320),
+  }))
   .handler(async ({ context, data }) => {
     const { sql, tenantId, tenantName, role } = await requireWs(context.userId);
     assertPermission(role, "settings.manage");
@@ -759,11 +767,69 @@ export const testMessaging = createServerFn({ method: "POST" })
     }
     const phone = (data.phone || "").trim();
     if (!phone) throw new Error("Enter a test phone number");
-    const msg =
+    const limited = rateLimit(`sms-test:${tenantId}:${data.channel}`, 8, 60_000);
+    if (!limited.ok) throw new Error("Too many test messages. Try again shortly.");
+    const fallback =
       data.channel === "sms"
         ? `${tenantName}: test payment SMS from ${APP_NAME}. If you received this, SMS is configured.`
         : `${tenantName}: test payment WhatsApp from ${APP_NAME}. If you received this, the Cloud API is configured.`;
+    const msg = data.channel === "sms" && data.message ? data.message : fallback;
     return data.channel === "sms" ? deliverSms(settings, phone, msg) : deliverWhatsapp(settings, phone, msg);
+  });
+
+function clipGatewayConfig(raw: Partial<SmsGatewayConfig> | undefined): SmsGatewayConfig {
+  const clip = (value: unknown, max: number) => String(value ?? "").slice(0, max);
+  return {
+    auth: raw?.auth === "password" ? "password" : "apikey",
+    apiKey: clip(raw?.apiKey, 500),
+    token: clip(raw?.token, 500),
+    password: clip(raw?.password, 500),
+    userId: clip(raw?.userId, 120),
+    partnerId: clip(raw?.partnerId, 120),
+    senderId: clip(raw?.senderId, 40),
+    messageType: clip(raw?.messageType, 20),
+  };
+}
+
+export const saveSmsGateway = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(
+    (d: {
+      id: string;
+      config: Partial<SmsGatewayConfig>;
+      makeDefault?: boolean;
+      payment_sms?: boolean;
+      billing_sms?: boolean;
+      sms_sandbox?: boolean;
+    }) => ({
+      id: String(d.id || "").slice(0, 40),
+      config: clipGatewayConfig(d.config),
+      makeDefault: d.makeDefault === true,
+      payment_sms: d.payment_sms,
+      billing_sms: d.billing_sms,
+      sms_sandbox: d.sms_sandbox,
+    }),
+  )
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
+    return toPublic(await saveSmsGatewaySettings(sql, tenantId, data));
+  });
+
+export const testSmsConnection = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id: string; config?: Partial<SmsGatewayConfig> }) => ({
+    id: String(d.id || "").slice(0, 40),
+    config: clipGatewayConfig(d.config),
+  }))
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "settings.manage");
+    if (!isSmsGatewayId(data.id)) return { ok: false as const, detail: "Unknown SMS gateway" };
+    const limited = rateLimit(`sms-probe:${tenantId}`, 8, 60_000);
+    if (!limited.ok) return { ok: false as const, detail: "Too many connection tests. Try again shortly." };
+    const settings = await getMessagingSettings(sql, tenantId);
+    return probeSmsGateway(settings, data.id, data.config);
   });
 
 export const checkSmsAccount = createServerFn({ method: "POST" })

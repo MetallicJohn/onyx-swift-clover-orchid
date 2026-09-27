@@ -21,7 +21,7 @@ export type SettingsSearch = {
 const PAGE_SECTIONS: Partial<Record<SettingsPageId, readonly string[]>> = {
   general: ["company", "appearance"],
   payments: ["gateways", "grace", "partial"],
-  customers: ["tags", "ids"],
+  customers: ["ids", "numbers", "tags"],
   network: ["hub", "publish"],
 };
 
@@ -39,9 +39,11 @@ const LEGACY: Record<string, { tab: SettingsPageId; section?: string }> = {
   partial: { tab: "payments", section: "partial" },
   network: { tab: "network", section: "hub" },
   staff: { tab: "staff" },
-  customers: { tab: "customers", section: "tags" },
+  customers: { tab: "customers", section: "ids" },
   tags: { tab: "customers", section: "tags" },
   accounts: { tab: "customers", section: "ids" },
+  numbers: { tab: "customers", section: "numbers" },
+  "account-numbers": { tab: "customers", section: "numbers" },
   plan: { tab: "plan" },
 };
 

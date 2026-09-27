@@ -1,6 +1,30 @@
 import type { BillingEvent, NotifyChannel } from "./types";
 import { PAYMENT_NOTIFY_EVENTS } from "./notification-catalog.ts";
 import { open, seal } from "./secrets";
+import {
+  buildSmsProbe,
+  buildSmsRequest,
+  configFromFlat,
+  emptyGateway,
+  executeSmsRequest,
+  gatewayConfigured,
+  isSmsGatewayId,
+  mergeGatewayConfig,
+  mergeGatewayStore,
+  parseGatewayStore,
+  projectGateway,
+  responseSummary,
+  scrubSecrets,
+  SMS_GATEWAYS,
+  SMS_TEST_FAIL,
+  SMS_TEST_OK,
+  smsGatewayLabel,
+  toPublicGateway,
+  validateGateway,
+  type PublicSmsGateway,
+  type SmsGatewayConfig,
+  type SmsGatewayId,
+} from "./sms-gateways";
 import { sendSmtp } from "./smtp";
 
 type Sql = {
@@ -42,11 +66,12 @@ export type MessagingSettings = {
   smtp_password: string;
   smtp_secure: boolean;
   email_sandbox: boolean;
+  sms_gateways: string;
 };
 
 export type MessagingPublic = Omit<
   MessagingSettings,
-  "sms_api_key" | "wa_access_token" | "email_api_key" | "smtp_password"
+  "sms_api_key" | "wa_access_token" | "email_api_key" | "smtp_password" | "sms_gateways"
 > & {
   sms_api_key_set: boolean;
   sms_api_key_hint: string;
@@ -56,6 +81,8 @@ export type MessagingPublic = Omit<
   email_api_key_hint: string;
   smtp_password_set: boolean;
   smtp_password_hint: string;
+  sms_gateways: PublicSmsGateway[];
+  default_sms_gateway: string;
 };
 
 const DEFAULTS: MessagingSettings = {
@@ -86,6 +113,7 @@ const DEFAULTS: MessagingSettings = {
   smtp_password: "",
   smtp_secure: false,
   email_sandbox: true,
+  sms_gateways: "",
 };
 
 export async function ensureMessagingSchema(_sql: Sql) {
@@ -100,7 +128,7 @@ export async function getMessagingSettings(sql: Sql, tenantId: string): Promise<
            wa_provider, wa_phone_id, wa_access_token, wa_business_id, wa_sandbox,
            payment_email, billing_email, email_provider, email_from_name, email_from_address,
            email_reply_to, email_api_key, smtp_host, smtp_port, smtp_username, smtp_password,
-           smtp_secure, email_sandbox
+           smtp_secure, email_sandbox, sms_gateways
     from messaging_settings where tenant_id = ${tenantId}`;
   if (rows[0]) {
     return {
@@ -111,6 +139,7 @@ export async function getMessagingSettings(sql: Sql, tenantId: string): Promise<
       wa_access_token: open(rows[0].wa_access_token),
       email_api_key: open(rows[0].email_api_key),
       smtp_password: open(rows[0].smtp_password),
+      sms_gateways: open(rows[0].sms_gateways || ""),
     };
   }
   await sql`insert into messaging_settings (tenant_id) values (${tenantId})`;
@@ -122,7 +151,20 @@ function hint(secret: string) {
   return secret.length <= 4 ? "••••" : `••••${secret.slice(-4)}`;
 }
 
+export function listPublicGateways(s: MessagingSettings) {
+  const store = parseGatewayStore(s.sms_gateways || "");
+  const defaultId: SmsGatewayId = isSmsGatewayId(s.sms_provider) ? s.sms_provider : "africastalking";
+  if (!store[defaultId] && (s.sms_api_key || s.sms_sender_id || s.sms_username)) {
+    store[defaultId] = configFromFlat(defaultId, s);
+  }
+  return {
+    defaultId,
+    gateways: SMS_GATEWAYS.map((gateway) => toPublicGateway(gateway.id, store[gateway.id] || emptyGateway(gateway.id))),
+  };
+}
+
 export function toPublic(s: MessagingSettings): MessagingPublic {
+  const listed = listPublicGateways(s);
   return {
     payment_sms: s.payment_sms,
     payment_whatsapp: s.payment_whatsapp,
@@ -155,6 +197,8 @@ export function toPublic(s: MessagingSettings): MessagingPublic {
     email_api_key_hint: hint(s.email_api_key),
     smtp_password_set: Boolean(s.smtp_password),
     smtp_password_hint: hint(s.smtp_password),
+    sms_gateways: listed.gateways,
+    default_sms_gateway: listed.defaultId,
   };
 }
 
@@ -192,47 +236,6 @@ function keMobile(phone: string) {
   return e164(phone).replace("+", "");
 }
 
-async function postJson(url: string, body: unknown, headers: Record<string, string> = {}) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json", ...headers },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  return { ok: res.ok, status: res.status, text };
-}
-
-async function sendHostpinnacle(host: string, settings: MessagingSettings, mobile: string, message: string) {
-  return postJson(`${host.replace(/\/$/, "")}/api/services/sendsms/`, {
-    apikey: settings.sms_api_key,
-    partnerID: settings.sms_username,
-    message,
-    shortcode: settings.sms_sender_id,
-    mobile,
-  });
-}
-
-async function sendTalksasaV3(base: string, settings: MessagingSettings, mobile: string, message: string) {
-  return postJson(
-    `${base.replace(/\/$/, "")}/sms/send`,
-    {
-      recipient: mobile.startsWith("+") ? mobile : `+${mobile}`,
-      sender_id: settings.sms_sender_id,
-      type: "plain",
-      message,
-    },
-    { Authorization: `Bearer ${settings.sms_api_key}` },
-  );
-}
-
-async function sendWebfam(settings: MessagingSettings, mobile: string, message: string) {
-  const body: Record<string, string> = { to: mobile, message };
-  if (settings.sms_sender_id) body.sender_id = settings.sms_sender_id;
-  return postJson("https://sms.webfam.co.ke/api/v1/sms/send", body, {
-    Authorization: `Bearer ${settings.sms_api_key}`,
-  });
-}
-
 function webfamError(status: number, text: string) {
   try {
     const j = JSON.parse(text) as { error?: string; errors?: Record<string, string[]>; success?: boolean };
@@ -263,92 +266,89 @@ export async function webfamBalance(settings: MessagingSettings) {
   }
 }
 
+export function resolveActiveGateway(settings: MessagingSettings): { id: SmsGatewayId; config: SmsGatewayConfig } {
+  const id: SmsGatewayId = isSmsGatewayId(settings.sms_provider) ? settings.sms_provider : "advanta";
+  const store = parseGatewayStore(settings.sms_gateways || "");
+  const stored = store[id];
+  const flat = configFromFlat(id, settings);
+  if (stored && gatewayConfigured(id, stored)) return { id, config: stored };
+  if (gatewayConfigured(id, flat)) return { id, config: flat };
+  return { id, config: stored || flat };
+}
+
+export function resolveStoredGateway(settings: MessagingSettings, id: SmsGatewayId): SmsGatewayConfig {
+  const store = parseGatewayStore(settings.sms_gateways || "");
+  if (store[id]) return store[id];
+  if (settings.sms_provider === id) return configFromFlat(id, settings);
+  return emptyGateway(id);
+}
+
+function safeSmsDetail(id: SmsGatewayId, status: number, text: string, config: SmsGatewayConfig) {
+  return scrubSecrets(responseSummary(id, status, text), [config.apiKey, config.token, config.password]) || "SMS provider rejected the request";
+}
+
+export async function probeSmsGateway(settings: MessagingSettings, id: SmsGatewayId, incoming?: SmsGatewayConfig) {
+  if (!isSmsGatewayId(id)) return { ok: false as const, detail: "Unknown SMS gateway" };
+  if (id === "bytewave") return { ok: false as const, detail: "Bytewave cannot be tested until its API contract is verified." };
+  const config = incoming ? mergeGatewayConfig(resolveStoredGateway(settings, id), incoming, id) : resolveStoredGateway(settings, id);
+  if (!gatewayConfigured(id, config)) return { ok: false as const, detail: "Enter the required fields for this gateway." };
+  const request = buildSmsProbe(id, config);
+  if (!request) {
+    return {
+      ok: false as const,
+      detail: `${smsGatewayLabel(id)} has no balance or status check. Use Send Test SMS to confirm delivery.`,
+    };
+  }
+  if (/sendsms|send_sms|\/send\/message|\/sms\/send|\/messaging/i.test(request.url)) {
+    return { ok: false as const, detail: SMS_TEST_FAIL };
+  }
+  try {
+    const res = await executeSmsRequest(request);
+    if (!res.ok) return { ok: false as const, detail: safeSmsDetail(id, res.status, res.text, config) || SMS_TEST_FAIL };
+    try {
+      const body = JSON.parse(res.text) as { success?: boolean };
+      if (body.success === false) return { ok: false as const, detail: SMS_TEST_FAIL };
+    } catch {
+      /* non-json success body is acceptable when the HTTP status is ok */
+    }
+    return { ok: true as const, detail: SMS_TEST_OK };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : SMS_TEST_FAIL;
+    return { ok: false as const, detail: scrubSecrets(message, [config.apiKey, config.token, config.password]) || SMS_TEST_FAIL };
+  }
+}
+
 export async function deliverSms(settings: MessagingSettings, phone: string, message: string) {
   const to = e164(phone);
   const mobile = keMobile(phone);
   if (!to) return { status: "failed" as const, detail: "No phone number" };
-  if (!settings.sms_api_key || settings.sms_sandbox) {
-    return { status: "sandbox" as const, detail: `${settings.sms_provider} sandbox → ${to}` };
+  const { id, config } = resolveActiveGateway(settings);
+  if (settings.sms_sandbox || !gatewayConfigured(id, config)) {
+    return { status: "sandbox" as const, detail: `${id} sandbox → ${to}` };
   }
   try {
-    const kind = settings.sms_provider;
-    if (kind === "africastalking") {
-      const body = new URLSearchParams({
-        username: settings.sms_username,
-        to,
-        message,
-        ...(settings.sms_sender_id ? { from: settings.sms_sender_id } : {}),
-      });
-      const res = await fetch("https://api.africastalking.com/version1/messaging", {
-        method: "POST",
-        headers: {
-          apiKey: settings.sms_api_key,
-          Accept: "application/json",
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body,
-      });
-      if (!res.ok) return { status: "failed" as const, detail: `Africa's Talking ${res.status}` };
-      return { status: "sent" as const, detail: to };
-    }
-    if (kind === "twilio") {
-      const sid = settings.sms_username;
-      const auth = Buffer.from(`${sid}:${settings.sms_api_key}`).toString("base64");
-      const body = new URLSearchParams({
-        To: to,
-        From: settings.sms_sender_id,
-        Body: message,
-      });
-      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-        method: "POST",
-        headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
-        body,
-      });
-      if (!res.ok) return { status: "failed" as const, detail: `Twilio ${res.status}` };
-      return { status: "sent" as const, detail: to };
-    }
-    if (kind === "talksasa") {
-      const r = await sendTalksasaV3("https://bulksms.talksasa.com/api/v3", settings, mobile, message);
-      if (!r.ok) return { status: "failed" as const, detail: `Talksasa ${r.status} ${r.text.slice(0, 80)}` };
-      return { status: "sent" as const, detail: to };
-    }
-    if (kind === "blessedtexts") {
-      const r = await sendHostpinnacle("https://sms.blessedtexts.com", settings, mobile, message);
-      if (!r.ok) return { status: "failed" as const, detail: `Blessed Texts ${r.status} ${r.text.slice(0, 80)}` };
-      return { status: "sent" as const, detail: to };
-    }
-    if (kind === "webfam") {
-      const r = await sendWebfam(settings, mobile, message);
-      if (!r.ok) return { status: "failed" as const, detail: webfamError(r.status, r.text) };
+    const request = buildSmsRequest(id, config, { mobile, to, message });
+    const res = await executeSmsRequest(request);
+    if (!res.ok) return { status: "failed" as const, detail: safeSmsDetail(id, res.status, res.text, config) };
+    if (id === "webfam") {
       try {
-        const j = JSON.parse(r.text) as {
+        const body = JSON.parse(res.text) as {
           success?: boolean;
-          error?: string;
-          data?: { message_id?: number; status?: string; balance_remaining?: number; balanceRemaining?: number };
+          data?: { message_id?: number; balance_remaining?: number; balanceRemaining?: number };
         };
-        if (j.success === false) return { status: "failed" as const, detail: webfamError(r.status, r.text) };
-        const remaining = j.data?.balance_remaining ?? j.data?.balanceRemaining;
-        const id = j.data?.message_id ? `#${j.data.message_id}` : "";
+        if (body.success === false) return { status: "failed" as const, detail: safeSmsDetail(id, res.status, res.text, config) };
+        const remaining = body.data?.balance_remaining ?? body.data?.balanceRemaining;
+        const mid = body.data?.message_id ? ` · id ${body.data.message_id}` : "";
         const bal = remaining != null ? ` · ${remaining} credits` : "";
-        return { status: "sent" as const, detail: `${to} ${id}${bal}`.trim() };
+        return { status: "sent" as const, detail: scrubSecrets(`Webfam SMS ${res.status}${mid}${bal}`, [config.token]).slice(0, 180) };
       } catch {
-        return { status: "sent" as const, detail: to };
+        return { status: "sent" as const, detail: safeSmsDetail(id, res.status, res.text, config) };
       }
     }
-    const res = await fetch("https://api.advantasms.com/v1/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Api-Key": settings.sms_api_key },
-      body: JSON.stringify({
-        partnerID: settings.sms_username,
-        shortcode: settings.sms_sender_id,
-        mobile,
-        message,
-      }),
-    });
-    if (!res.ok) return { status: "failed" as const, detail: `Advanta ${res.status}` };
-    return { status: "sent" as const, detail: to };
+    return { status: "sent" as const, detail: safeSmsDetail(id, res.status, res.text, config) };
   } catch (e) {
-    return { status: "failed" as const, detail: e instanceof Error ? e.message : "SMS send failed" };
+    const message = e instanceof Error ? e.message : "SMS send failed";
+    return { status: "failed" as const, detail: scrubSecrets(message, [config.apiKey, config.token, config.password]) || "SMS send failed" };
   }
 }
 
@@ -518,6 +518,7 @@ export async function saveMessagingSettings(
     smtp_password: seal(keepSecret(patch.smtp_password, current.smtp_password)),
     smtp_secure: patch.smtp_secure ?? current.smtp_secure,
     email_sandbox: patch.email_sandbox ?? current.email_sandbox,
+    sms_gateways: current.sms_gateways,
   };
   await sql`update messaging_settings set
     payment_sms = ${next.payment_sms},
@@ -549,5 +550,63 @@ export async function saveMessagingSettings(
     email_sandbox = ${next.email_sandbox},
     updated_at = now()
     where tenant_id = ${tenantId}`;
-  return { ...next, sms_api_key: open(next.sms_api_key), wa_access_token: open(next.wa_access_token), email_api_key: open(next.email_api_key), smtp_password: open(next.smtp_password) };
+  return {
+    ...next,
+    sms_api_key: open(next.sms_api_key),
+    wa_access_token: open(next.wa_access_token),
+    email_api_key: open(next.email_api_key),
+    smtp_password: open(next.smtp_password),
+    sms_gateways: current.sms_gateways,
+  };
+}
+
+export async function saveSmsGatewaySettings(
+  sql: Sql,
+  tenantId: string,
+  input: {
+    id: string;
+    config: SmsGatewayConfig;
+    makeDefault?: boolean;
+    payment_sms?: boolean;
+    billing_sms?: boolean;
+    sms_sandbox?: boolean;
+  },
+) {
+  if (!isSmsGatewayId(input.id)) throw new Error("Unknown SMS gateway");
+  const current = await getMessagingSettings(sql, tenantId);
+  const store = parseGatewayStore(current.sms_gateways);
+  const currentId: SmsGatewayId = isSmsGatewayId(current.sms_provider) ? current.sms_provider : "advanta";
+  if (!store[currentId] && (current.sms_api_key || current.sms_username || current.sms_sender_id)) {
+    store[currentId] = configFromFlat(currentId, current);
+  }
+  const nextStore = mergeGatewayStore(store, input.id, input.config);
+  const merged = nextStore[input.id] || emptyGateway(input.id);
+  validateGateway(input.id, merged);
+  const keepDefault = input.makeDefault === true || current.sms_provider === input.id;
+  if (keepDefault && !gatewayConfigured(input.id, merged)) {
+    throw new Error("A gateway can be the default only after it is configured.");
+  }
+  let sms_provider = current.sms_provider;
+  let sms_api_key = current.sms_api_key;
+  let sms_username = current.sms_username;
+  let sms_sender_id = current.sms_sender_id;
+  if (keepDefault) {
+    const projected = projectGateway(input.id, merged);
+    sms_provider = input.id;
+    sms_api_key = projected.sms_api_key;
+    sms_username = projected.sms_username;
+    sms_sender_id = projected.sms_sender_id;
+  }
+  await sql`update messaging_settings set
+    payment_sms = ${input.payment_sms ?? current.payment_sms},
+    billing_sms = ${input.billing_sms ?? current.billing_sms},
+    sms_provider = ${sms_provider},
+    sms_sender_id = ${sms_sender_id},
+    sms_username = ${sms_username},
+    sms_api_key = ${seal(sms_api_key)},
+    sms_sandbox = ${input.sms_sandbox ?? current.sms_sandbox},
+    sms_gateways = ${seal(JSON.stringify(nextStore))},
+    updated_at = now()
+    where tenant_id = ${tenantId}`;
+  return getMessagingSettings(sql, tenantId);
 }

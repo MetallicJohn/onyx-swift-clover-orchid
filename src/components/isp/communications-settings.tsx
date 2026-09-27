@@ -1,17 +1,37 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/input";
+import { Input, Select, Textarea } from "@/components/ui/input";
 import { mergeKeptEdits } from "@/lib/isp/company-info-tabs";
 import {
   EMAIL_SAVE_FAIL,
   EMAIL_SAVE_OK,
-  SMS_SAVE_FAIL,
-  SMS_SAVE_OK,
   WHATSAPP_SAVE_FAIL,
   WHATSAPP_SAVE_OK,
   safeSettingsError,
+  type GatewayTestState,
 } from "@/lib/isp/settings-feedback";
-import { checkSmsAccount, getMessaging, saveMessaging, testMessaging } from "@/lib/isp/server-ops";
+import { getMessaging, saveMessaging, saveSmsGateway, testMessaging, testSmsConnection } from "@/lib/isp/server-ops";
+import {
+  emptyGateway,
+  EXISTING_SMS_GATEWAYS,
+  gatewayConfigured,
+  isSmsGatewayId,
+  NEW_SMS_GATEWAYS,
+  SMS_GATEWAY_SAVE_FAIL,
+  SMS_GATEWAY_SAVE_OK,
+  SMS_SEND_FAIL,
+  SMS_SEND_OK,
+  SMS_TEST_BUSY,
+  SMS_TEST_FAIL,
+  SMS_TEST_OK,
+  smsGatewayFields,
+  smsGatewayLabel,
+  smsGatewayNote,
+  type PublicSmsGateway,
+  type SmsGatewayConfig,
+  type SmsGatewayId,
+} from "@/lib/isp/sms-gateways";
+import { cn } from "@/lib/utils";
 import {
   SaveButton,
   SecretInput,
@@ -84,24 +104,87 @@ const EMPTY: MsgForm = {
   email_sandbox: true,
 };
 
+function publicToDraft(row: PublicSmsGateway): SmsGatewayConfig {
+  return {
+    auth: row.auth === "password" ? "password" : "apikey",
+    apiKey: "",
+    token: "",
+    password: "",
+    userId: row.userId,
+    partnerId: row.partnerId,
+    senderId: row.senderId,
+    messageType: row.messageType,
+  };
+}
+
+function sameConfig(a: SmsGatewayConfig, b: SmsGatewayConfig) {
+  return (
+    a.auth === b.auth &&
+    a.apiKey === b.apiKey &&
+    a.token === b.token &&
+    a.password === b.password &&
+    a.userId === b.userId &&
+    a.partnerId === b.partnerId &&
+    a.senderId === b.senderId &&
+    a.messageType === b.messageType
+  );
+}
+
+function draftReady(id: SmsGatewayId, draft: SmsGatewayConfig, row?: PublicSmsGateway) {
+  return gatewayConfigured(id, {
+    ...draft,
+    apiKey: draft.apiKey.trim() || (row?.apiKeySet ? "stored" : ""),
+    token: draft.token.trim() || (row?.tokenSet ? "stored" : ""),
+    password: draft.password.trim() || (row?.passwordSet ? "stored" : ""),
+  });
+}
+
+function secretPlaceholder(field: "apiKey" | "token" | "password", row?: PublicSmsGateway) {
+  if (!row) return "";
+  if (field === "apiKey") return row.apiKeySet ? row.apiKeyHint : "";
+  if (field === "token") return row.tokenSet ? row.tokenHint : "";
+  return row.passwordSet ? row.passwordHint : "";
+}
+
+function smsStatusLabel(configured: boolean, tested: GatewayTestState) {
+  if (tested === "ok") return "Connected";
+  if (tested === "fail") return "Connection failed";
+  return configured ? "Configured" : "Not configured";
+}
+
 export function CommunicationsSettings({ supportPhone, supportEmail }: { supportPhone: string; supportEmail: string }) {
   const [section, setSection] = useState<Channel>("sms");
   const [msg, setMsg] = useState<MsgForm>(EMPTY);
-  const [smsHint, setSmsHint] = useState("");
   const [waHint, setWaHint] = useState("");
   const [emailHint, setEmailHint] = useState("");
   const [smtpHint, setSmtpHint] = useState("");
   const [testPhone, setTestPhone] = useState(supportPhone);
   const [testEmail, setTestEmail] = useState(supportEmail);
+  const [testMessage, setTestMessage] = useState("");
   const [testOut, setTestOut] = useState<SettingsNote>(null);
+  const [connOut, setConnOut] = useState<SettingsNote>(null);
   const [note, setNote] = useState<SettingsNote>(null);
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [probing, setProbing] = useState(false);
+  const [gateways, setGateways] = useState<PublicSmsGateway[]>([]);
+  const [drafts, setDrafts] = useState<Partial<Record<SmsGatewayId, SmsGatewayConfig>>>({});
+  const [baselines, setBaselines] = useState<Partial<Record<SmsGatewayId, SmsGatewayConfig>>>({});
+  const [selected, setSelected] = useState<SmsGatewayId>("hostpinnacle");
+  const [defaultId, setDefaultId] = useState("africastalking");
+  const [makeDefault, setMakeDefault] = useState(false);
+  const [tested, setTested] = useState<Partial<Record<SmsGatewayId, GatewayTestState>>>({});
+  const [pendingSwitch, setPendingSwitch] = useState<SmsGatewayId | null>(null);
   const lock = useRef(false);
   const testLock = useRef(false);
   const msgRef = useRef(msg);
   const savedMsg = useRef<MsgForm>(EMPTY);
+  const draftsRef = useRef(drafts);
+  const baselinesRef = useRef(baselines);
+  const picked = useRef(false);
   msgRef.current = msg;
+  draftsRef.current = drafts;
+  baselinesRef.current = baselines;
 
   useEffect(() => {
     if (!testPhone && supportPhone) setTestPhone(supportPhone);
@@ -109,6 +192,25 @@ export function CommunicationsSettings({ supportPhone, supportEmail }: { support
   useEffect(() => {
     if (!testEmail && supportEmail) setTestEmail(supportEmail);
   }, [supportEmail, testEmail]);
+
+  function adoptGateways(list: PublicSmsGateway[], def: string) {
+    const nextDrafts = { ...draftsRef.current };
+    const nextBase = { ...baselinesRef.current };
+    for (const row of list) {
+      const base = publicToDraft(row);
+      const previous = nextBase[row.id] || base;
+      const current = nextDrafts[row.id] || previous;
+      nextDrafts[row.id] = sameConfig(current, previous) ? base : current;
+      nextBase[row.id] = base;
+    }
+    draftsRef.current = nextDrafts;
+    baselinesRef.current = nextBase;
+    setDrafts(nextDrafts);
+    setBaselines(nextBase);
+    setGateways(list);
+    setDefaultId(def);
+    if (!picked.current && isSmsGatewayId(def)) setSelected(def);
+  }
 
   async function load() {
     const m = await getMessaging();
@@ -145,55 +247,120 @@ export function CommunicationsSettings({ supportPhone, supportEmail }: { support
     savedMsg.current = next;
     msgRef.current = resolved;
     setMsg(resolved);
-    setSmsHint(m.sms_api_key_set ? m.sms_api_key_hint : "");
+    adoptGateways(m.sms_gateways || [], m.default_sms_gateway || m.sms_provider);
     setWaHint(m.wa_token_set ? m.wa_token_hint : "");
     setEmailHint(m.email_api_key_set ? m.email_api_key_hint : "");
     setSmtpHint(m.smtp_password_set ? m.smtp_password_hint : "");
   }
 
   useEffect(() => {
-    load().catch((err) => setNote({ ok: false, text: safeSettingsError(err, SMS_SAVE_FAIL) }));
+    load().catch((err) => setNote({ ok: false, text: safeSettingsError(err, SMS_GATEWAY_SAVE_FAIL) }));
+    // Load once when Communications opens. Later edits stay in this component.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function saveSms(e: React.FormEvent) {
-    e.preventDefault();
-    if (lock.current) return;
+  const selectedRow = gateways.find((row) => row.id === selected);
+  const draft = drafts[selected] || emptyGateway(selected);
+  const baseline = baselines[selected] || emptyGateway(selected);
+  const ready = draftReady(selected, draft, selectedRow);
+  const fields = smsGatewayFields(selected, draft);
+  const gatewayDirty = !sameConfig(draft, baseline) || (makeDefault && defaultId !== selected);
+  const channelsDirty =
+    msg.payment_sms !== savedMsg.current.payment_sms ||
+    msg.billing_sms !== savedMsg.current.billing_sms ||
+    msg.sms_sandbox !== savedMsg.current.sms_sandbox;
+
+  function patchDraft(patch: Partial<SmsGatewayConfig>) {
+    setDrafts((prev) => {
+      const next = { ...prev, [selected]: { ...(prev[selected] || emptyGateway(selected)), ...patch } };
+      draftsRef.current = next;
+      return next;
+    });
+    setTested((prev) => ({ ...prev, [selected]: null }));
+    setConnOut(null);
+  }
+
+  function gatewaySecrets() {
+    return [draft.apiKey, draft.token, draft.password];
+  }
+
+  async function saveGateway(id: SmsGatewayId = selected) {
+    if (lock.current) return false;
     setNote(null);
-    const sender = msg.sms_sender_id.trim();
-    if (!msg.sms_provider) {
-      setNote({ ok: false, text: "Choose an SMS provider." });
-      return;
+    const current = draftsRef.current[id] || emptyGateway(id);
+    const row = gateways.find((item) => item.id === id);
+    if (id === "bytewave") {
+      setNote({ ok: false, text: "Bytewave cannot be saved until its API contract is verified." });
+      return false;
     }
-    if (msg.sms_provider === "talksasa" && sender.length > 11) {
+    const wantsDefault = id === selected ? makeDefault || defaultId === id : defaultId === id;
+    const dirty = !sameConfig(current, baselinesRef.current[id] || emptyGateway(id)) || (id === selected && makeDefault && defaultId !== id);
+    if (!draftReady(id, current, row) && (dirty || wantsDefault)) {
+      setNote({ ok: false, text: "Enter the required fields for this gateway." });
+      return false;
+    }
+    if (id === "talksasa" && current.senderId.trim().length > 11) {
       setNote({ ok: false, text: "Talksasa sender ID must be 11 characters or fewer." });
-      return;
-    }
-    if (!msg.sms_sandbox && !msg.sms_api_key.trim() && !smsHint) {
-      setNote({ ok: false, text: "Enter an API key, or keep sandbox on until you go live." });
-      return;
+      return false;
     }
     lock.current = true;
     setBusy(true);
     try {
-      await saveMessaging({
-        data: {
-          payment_sms: msg.payment_sms,
-          billing_sms: msg.billing_sms,
-          sms_provider: msg.sms_provider,
-          sms_sender_id: sender,
-          sms_username: msg.sms_username.trim(),
-          sms_api_key: msg.sms_api_key,
-          sms_sandbox: msg.sms_sandbox,
-        },
-      });
+      if (draftReady(id, current, row)) {
+        await saveSmsGateway({
+          data: {
+            id,
+            config: current,
+            makeDefault: wantsDefault,
+            payment_sms: msgRef.current.payment_sms,
+            billing_sms: msgRef.current.billing_sms,
+            sms_sandbox: msgRef.current.sms_sandbox,
+          },
+        });
+      } else {
+        await saveMessaging({
+          data: {
+            payment_sms: msgRef.current.payment_sms,
+            billing_sms: msgRef.current.billing_sms,
+            sms_sandbox: msgRef.current.sms_sandbox,
+          },
+        });
+      }
+      setMakeDefault(false);
       await load();
-      setNote({ ok: true, text: SMS_SAVE_OK });
+      setNote({ ok: true, text: SMS_GATEWAY_SAVE_OK });
+      return true;
     } catch (err) {
-      setNote({ ok: false, text: safeSettingsError(err, SMS_SAVE_FAIL, [msg.sms_api_key]) });
+      setNote({ ok: false, text: safeSettingsError(err, SMS_GATEWAY_SAVE_FAIL, gatewaySecrets()) });
+      return false;
     } finally {
       lock.current = false;
       setBusy(false);
     }
+  }
+
+  function discardGateway(id: SmsGatewayId) {
+    const base = baselinesRef.current[id] || emptyGateway(id);
+    const next = { ...draftsRef.current, [id]: base };
+    draftsRef.current = next;
+    setDrafts(next);
+    setMakeDefault(false);
+    const restored = savedMsg.current;
+    msgRef.current = restored;
+    setMsg(restored);
+  }
+
+  function requestSwitch(id: SmsGatewayId) {
+    if (id === selected) return;
+    picked.current = true;
+    if (gatewayDirty || channelsDirty) {
+      setPendingSwitch(id);
+      return;
+    }
+    setSelected(id);
+    setMakeDefault(false);
+    setNote(null);
+    setConnOut(null);
   }
 
   async function saveWhatsApp(e: React.FormEvent) {
@@ -292,22 +459,70 @@ export function CommunicationsSettings({ supportPhone, supportEmail }: { support
         const r = await testMessaging({ data: { channel: "whatsapp", phone: testPhone } });
         setTestOut({ ok: r.status !== "failed", text: `WhatsApp ${r.status} · ${r.detail}` });
       } else {
-        const r = await testMessaging({ data: { channel: "sms", phone: testPhone } });
-        setTestOut({ ok: r.status !== "failed", text: `SMS ${r.status} · ${r.detail}` });
+        const r = await testMessaging({ data: { channel: "sms", phone: testPhone, message: testMessage } });
+        if (r.status === "sent") setTestOut({ ok: true, text: SMS_SEND_OK });
+        else if (r.status === "sandbox") setTestOut({ ok: false, text: "Not sent. SMS sandbox is on, so no message was delivered." });
+        else setTestOut({ ok: false, text: SMS_SEND_FAIL });
       }
     } catch (err) {
-      setTestOut({ ok: false, text: safeSettingsError(err, "Test failed. Check the gateway configuration.") });
+      setTestOut({ ok: false, text: safeSettingsError(err, channel === "sms" ? SMS_SEND_FAIL : "Test failed. Check the gateway configuration.", gatewaySecrets()) });
     } finally {
       testLock.current = false;
       setTesting(false);
     }
   }
 
-  const smsKeyRequired = !msg.sms_sandbox && !smsHint;
+  async function runConnectionTest() {
+    if (testLock.current || selected === "bytewave" || !ready) return;
+    setConnOut(null);
+    testLock.current = true;
+    setProbing(true);
+    try {
+      const r = await testSmsConnection({ data: { id: selected, config: draft } });
+      setTested((prev) => ({ ...prev, [selected]: r.ok ? "ok" : "fail" }));
+      setConnOut({ ok: r.ok, text: r.ok ? SMS_TEST_OK : r.detail || SMS_TEST_FAIL });
+    } catch (err) {
+      setTested((prev) => ({ ...prev, [selected]: "fail" }));
+      setConnOut({ ok: false, text: safeSettingsError(err, SMS_TEST_FAIL, gatewaySecrets()) });
+    } finally {
+      testLock.current = false;
+      setProbing(false);
+    }
+  }
+
   const waTokenRequired = !msg.wa_sandbox && !waHint;
   const emailFromRequired = !msg.email_sandbox;
   const resendKeyRequired = msg.email_provider === "resend" && !msg.email_sandbox && !emailHint;
   const smtpHostRequired = msg.email_provider === "smtp" && !msg.email_sandbox;
+  const title = smsGatewayLabel(selected);
+  const heading = title.endsWith("SMS") || title === "TextSMS" ? title : `${title} SMS`;
+
+  function gatewayButton(id: SmsGatewayId, label: string) {
+    const row = gateways.find((item) => item.id === id);
+    const active = selected === id;
+    const configured = row ? draftReady(id, drafts[id] || publicToDraft(row), row) : false;
+    const status = smsStatusLabel(configured, tested[id] || null);
+    return (
+      <button
+        key={id}
+        type="button"
+        role="tab"
+        aria-selected={active}
+        data-gateway={id}
+        className={cn(
+          "flex min-h-11 shrink-0 snap-start flex-col items-start rounded-xl border px-3 py-2 text-left lg:w-full",
+          active ? "border-accent bg-accent/10" : "border-border bg-surface hover:bg-elevated",
+        )}
+        onClick={() => requestSwitch(id)}
+      >
+        <span className="text-sm font-medium">
+          <span aria-hidden="true">{active ? "● " : "○ "}</span>
+          {label}
+        </span>
+        <span className="text-xs text-muted">{status}</span>
+      </button>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -323,89 +538,156 @@ export function CommunicationsSettings({ supportPhone, supportEmail }: { support
       />
 
       {section === "sms" ? (
-        <form className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4 md:p-5" onSubmit={(e) => void saveSms(e)}>
-          <div>
-            <h2 className="font-medium">SMS</h2>
-            <p className="text-sm text-muted">Provider used for receipts, billing reminders, and staff campaigns.</p>
-          </div>
+        <div className="space-y-4">
           <div className="grid gap-2 sm:grid-cols-2">
             <SettingsCheck label="Payment receipts · SMS" checked={msg.payment_sms} onChange={(v) => setMsg({ ...msg, payment_sms: v })} />
             <SettingsCheck label="Billing reminders · SMS" checked={msg.billing_sms} onChange={(v) => setMsg({ ...msg, billing_sms: v })} />
           </div>
-          <SettingsField label="Provider" required>
-            <Select value={msg.sms_provider} onChange={(e) => setMsg({ ...msg, sms_provider: e.target.value })}>
-              <option value="blessedtexts">Blessed Texts</option>
-              <option value="talksasa">Talksasa</option>
-              <option value="webfam">Webfam SMS</option>
-              <option value="africastalking">Africa's Talking</option>
-              <option value="advanta">Advanta SMS</option>
-              <option value="twilio">Twilio</option>
-            </Select>
-          </SettingsField>
-          <p className="text-xs text-subtle">
-            {msg.sms_provider === "talksasa"
-              ? "Talksasa: API token from bulksms.talksasa.com. Sender ID max 11 characters."
-              : msg.sms_provider === "blessedtexts"
-                ? "Blessed Texts: Partner ID + API key. Sender ID is your approved short name."
-                : msg.sms_provider === "webfam"
-                  ? "WebfamSMS: Bearer API key (WFK-…). POST /api/v1/sms/send"
-                  : msg.sms_provider === "twilio"
-                    ? "Twilio: Account SID as username, Auth Token as API key."
-                    : "Username / partner ID plus API key from the provider dashboard."}
-          </p>
-          <SettingsField label="Sender ID" optional hint="Approved short name. Talksasa allows 11 characters.">
-            <Input placeholder="ISPSOL" value={msg.sms_sender_id} onChange={(e) => setMsg({ ...msg, sms_sender_id: e.target.value })} />
-          </SettingsField>
-          <SettingsField
-            label={msg.sms_provider === "twilio" ? "Account SID" : "Partner ID / username"}
-            optional={msg.sms_provider === "talksasa" || msg.sms_provider === "webfam"}
-          >
-            <Input value={msg.sms_username} onChange={(e) => setMsg({ ...msg, sms_username: e.target.value })} />
-          </SettingsField>
-          <SettingsField label="API key" required={smsKeyRequired} optional={!smsKeyRequired} hint="Stored for this ISP only. Shown as a hint after save.">
-            <SecretInput
-              value={msg.sms_api_key}
-              placeholder={smsHint || (msg.sms_provider === "webfam" ? "WFK-…" : "Paste key")}
-              onChange={(sms_api_key) => setMsg({ ...msg, sms_api_key })}
-            />
-          </SettingsField>
           <SettingsCheck
             label="SMS sandbox (log only, do not hit live API)"
             checked={msg.sms_sandbox}
             onChange={(v) => setMsg({ ...msg, sms_sandbox: v })}
           />
-          <SettingsStatus note={note} />
-          <SaveButton busy={busy} label="Save changes" />
-          <h3 className="mt-2 text-sm font-medium">Send a test SMS</h3>
-          <SettingsField label="Phone" optional>
-            <Input placeholder="+2547…" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} />
-          </SettingsField>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" disabled={testing} aria-busy={testing} onClick={() => void runTest("sms")}>
-              {testing ? "Testing…" : "Test SMS"}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={testing}
-              onClick={() => {
-                if (testLock.current) return;
-                testLock.current = true;
-                setTesting(true);
-                checkSmsAccount()
-                  .then((r) => setTestOut({ ok: r.ok, text: `Account ${r.ok ? "ok" : "error"} · ${r.detail}` }))
-                  .catch((err) => setTestOut({ ok: false, text: safeSettingsError(err, "Could not check the Webfam balance.") }))
-                  .finally(() => {
-                    testLock.current = false;
-                    setTesting(false);
-                  });
+          <div className="grid items-start gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+            <div>
+              <h2 className="mb-2 text-xs font-medium tracking-wide text-muted uppercase">SMS gateways</h2>
+              <div role="tablist" aria-label="SMS gateways" className="flex snap-x gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
+                {NEW_SMS_GATEWAYS.map((gateway) => gatewayButton(gateway.id, gateway.label))}
+              </div>
+              <h3 className="mt-4 mb-2 text-xs font-medium tracking-wide text-muted uppercase">Existing gateways</h3>
+              <div role="tablist" aria-label="Existing SMS gateways" className="flex snap-x gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
+                {EXISTING_SMS_GATEWAYS.map((gateway) => gatewayButton(gateway.id, gateway.label))}
+              </div>
+            </div>
+            <form
+              role="tabpanel"
+              aria-label="SMS gateway configuration"
+              className="grid min-w-0 gap-3 rounded-xl border border-border bg-surface p-4 md:p-5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void saveGateway(selected);
               }}
             >
-              Check Webfam balance
-            </Button>
+              <div>
+                <h2 className="font-medium">{heading}</h2>
+                <p className="text-sm text-muted">{smsGatewayNote(selected)}</p>
+                <p className="text-xs text-muted">Status: {smsStatusLabel(ready, tested[selected] || null)}.</p>
+              </div>
+              {selected === "hostpinnacle" ? (
+                <fieldset className="grid gap-2">
+                  <legend className="text-sm font-medium">Authentication method</legend>
+                  <label className="flex h-11 items-center gap-2 rounded-md border border-border px-3 text-sm">
+                    <input type="radio" name="hostpinnacle-auth" checked={draft.auth !== "password"} onChange={() => patchDraft({ auth: "apikey" })} />
+                    API Key
+                  </label>
+                  <label className="flex h-11 items-center gap-2 rounded-md border border-border px-3 text-sm">
+                    <input type="radio" name="hostpinnacle-auth" checked={draft.auth === "password"} onChange={() => patchDraft({ auth: "password" })} />
+                    Username & Password
+                  </label>
+                </fieldset>
+              ) : null}
+              {fields.map((field) => (
+                <SettingsField key={field.key} label={field.label} required={field.required} optional={!field.required && !field.options} hint={field.hint}>
+                  {field.options ? (
+                    <Select value={draft[field.key] || field.options[0]?.value || ""} onChange={(e) => patchDraft({ [field.key]: e.target.value })}>
+                      {field.options.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : field.secret ? (
+                    <SecretInput
+                      value={draft[field.key]}
+                      placeholder={secretPlaceholder(field.key as "apiKey" | "token" | "password", selectedRow) || "Paste secret"}
+                      onChange={(value) => patchDraft({ [field.key]: value })}
+                    />
+                  ) : (
+                    <Input value={draft[field.key]} onChange={(e) => patchDraft({ [field.key]: e.target.value })} />
+                  )}
+                </SettingsField>
+              ))}
+              <label className="flex h-11 items-center gap-2 rounded-md border border-border bg-bg px-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={defaultId === selected || makeDefault}
+                  disabled={!ready}
+                  onChange={(e) => setMakeDefault(e.target.checked && defaultId !== selected)}
+                />
+                Default SMS gateway
+              </label>
+              {!ready ? <p className="text-xs text-muted">Only a configured gateway can be the default.</p> : null}
+              <SettingsStatus note={note} />
+              {selected === "bytewave" ? (
+                <Button type="button" disabled>
+                  Save changes
+                </Button>
+              ) : (
+                <SaveButton busy={busy} label="Save changes" />
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="secondary" disabled={probing || testing || !ready || selected === "bytewave"} aria-busy={probing} onClick={() => void runConnectionTest()}>
+                  {probing ? SMS_TEST_BUSY : "Test connection"}
+                </Button>
+              </div>
+              {probing ? <p className="text-sm text-muted">{SMS_TEST_BUSY}</p> : null}
+              <SettingsStatus note={connOut} />
+              <h3 className="mt-2 text-sm font-medium">Send Test SMS</h3>
+              <SettingsField label="Test phone number" required>
+                <Input placeholder="+2547…" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} />
+              </SettingsField>
+              <SettingsField label="Test message" optional hint="Leave blank to send the standard test text. Maximum 320 characters.">
+                <Textarea value={testMessage} maxLength={320} onChange={(e) => setTestMessage(e.target.value)} />
+              </SettingsField>
+              <Button type="button" variant="secondary" disabled={testing} aria-busy={testing} onClick={() => void runTest("sms")}>
+                {testing ? "Sending…" : "Send Test SMS"}
+              </Button>
+              <SettingsStatus note={testOut} />
+            </form>
           </div>
-          <SettingsStatus note={testOut} />
-        </form>
+          {pendingSwitch ? (
+            <div role="alertdialog" aria-label="Unsaved changes" className="grid max-w-xl gap-3 rounded-xl border border-border bg-surface p-4">
+              <div>
+                <p className="font-medium">Unsaved changes</p>
+                <p className="text-sm text-muted">
+                  You have unsaved changes to {smsGatewayLabel(selected)}. Do you want to save before switching?
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    void saveGateway(selected).then((ok) => {
+                      if (!ok || !pendingSwitch) return;
+                      setSelected(pendingSwitch);
+                      setPendingSwitch(null);
+                      setMakeDefault(false);
+                    });
+                  }}
+                >
+                  Save changes
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    discardGateway(selected);
+                    setSelected(pendingSwitch);
+                    setPendingSwitch(null);
+                    setNote(null);
+                    setConnOut(null);
+                  }}
+                >
+                  Discard
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => setPendingSwitch(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {section === "whatsapp" ? (

@@ -1,0 +1,963 @@
+## Objective
+
+Expand **Settings → Communications → SMS / SMS Gateways** to support the following SMS providers:
+
+1. HostPinnacle
+2. Texin
+3. Mobile Sasa
+4. Bytewave
+5. Celcom Africa
+6. Afrokatt
+7. TextSMS
+
+The critical UX requirement is:
+
+> **Only display the configuration fields required by the currently selected SMS gateway.**
+
+Do not show one large form containing credentials for every provider.
+
+The gateway configuration interface must make it immediately obvious which provider is being configured and exactly which credentials are required.
+
+---
+
+# 1. Gateway Selection Layout
+
+Use the same configuration pattern established for the redesigned Payment Settings page.
+
+Desktop:
+
+```text
+┌─────────────────────────┬──────────────────────────────────────────┐
+│ SMS GATEWAYS             │ CONFIGURATION                           │
+│                          │                                          │
+│ ● HostPinnacle           │ HostPinnacle SMS                        │
+│ ○ Texin                  │ Configure your HostPinnacle account.    │
+│ ○ Mobile Sasa            │                                          │
+│ ○ Bytewave               │ API Key *                               │
+│ ○ Celcom Africa          │ [••••••••••••••••••]                   │
+│ ○ Afrokatt               │                                          │
+│ ○ TextSMS                │ User ID *                               │
+│                          │ [____________________]                  │
+│                          │                                          │
+│                          │ Password                                │
+│                          │ [••••••••••••••••••]                   │
+│                          │                                          │
+│                          │ Default Sender ID                       │
+│                          │ [____________________]                  │
+│                          │                                          │
+│                          │ [Test Connection] [Save Changes]        │
+└─────────────────────────┴──────────────────────────────────────────┘
+```
+
+On mobile, stack the gateway selector above the configuration form.
+
+---
+
+# 2. Gateway List
+
+Display exactly:
+
+```text
+HostPinnacle
+Texin
+Mobile Sasa
+Bytewave
+Celcom Africa
+Afrokatt
+TextSMS
+```
+
+Use the application's existing selectable navigation/list component.
+
+The selected provider must have a clear active state.
+
+Do not display configuration fields belonging to another provider.
+
+---
+
+# 3. Dynamic Provider-Specific Forms
+
+When the user selects a gateway:
+
+```text
+selectedGateway = "texin"
+```
+
+render only the Texin configuration schema.
+
+When:
+
+```text
+selectedGateway = "mobilesasa"
+```
+
+render only Mobile Sasa fields.
+
+Do not merely hide fields with CSS if possible.
+
+Use provider-specific schemas/components so that:
+
+* validation only applies to the selected provider;
+* irrelevant fields are not submitted;
+* irrelevant secrets are not loaded into the browser;
+* provider-specific configuration remains strongly typed.
+
+---
+
+# 4. HostPinnacle
+
+HostPinnacle's documented SMS API supports authentication using either an API key or user ID/password credentials. Its send API also requires the sender ID, message, mobile number and message type.
+
+Configuration UI:
+
+```text
+HostPinnacle SMS
+
+Authentication Method
+(●) API Key
+( ) Username & Password
+```
+
+### API Key mode
+
+Display:
+
+```text
+API Key *
+[••••••••••••••••••]
+
+Default Sender ID *
+[________________]
+
+Message Type
+[ Text ▼ ]
+```
+
+### Username/password mode
+
+Display:
+
+```text
+User ID *
+[________________]
+
+Password *
+[••••••••••••••••••]
+
+Default Sender ID *
+[________________]
+
+Message Type
+[ Text ▼ ]
+```
+
+Do not show username/password fields when API Key mode is selected.
+
+Do not require API Key when username/password mode is selected.
+
+HostPinnacle's API endpoint is:
+
+```text
+https://smsportal.hostpinnacle.co.ke/SMSApi/send
+```
+
+Use the provider's existing API contract rather than hard-coding credentials into the frontend.
+
+---
+
+# 5. Texin
+
+Texin's current REST API requires an API key in the request body. Sender ID is optional and defaults to the provider's configured sender.
+
+Display:
+
+```text
+Texin SMS
+
+API Key *
+[••••••••••••••••••]
+
+Default Sender ID
+[________________]
+```
+
+Optional:
+
+```text
+API Base URL
+```
+
+Do not expose the Base URL field if the application already has a fixed provider endpoint.
+
+Default endpoint:
+
+```text
+https://sms.texin.co.ke/api/
+```
+
+The provider documents:
+
+```text
+POST /api/send_sms
+POST /api/send_bulk_sms
+POST /api/check_status
+POST /api/get_balance
+GET  /api/test_connection
+```
+
+Use these endpoints for the provider adapter.
+
+The system should also be capable of retrieving the available sender IDs using the provider's sender-ID endpoint when supported.
+
+---
+
+# 6. Mobile Sasa
+
+Mobile Sasa currently uses a bearer API token for its SMS API. Its send-message API requires an approved sender ID, phone number and message.
+
+Display:
+
+```text
+Mobile Sasa SMS
+
+API Token *
+[••••••••••••••••••]
+
+Default Sender ID *
+[________________]
+```
+
+Optional:
+
+```text
+Delivery Report Webhook
+[________________________________________]
+```
+
+Only show the webhook field if the existing ISP Solutions SMS architecture supports provider callbacks.
+
+Do not add it merely because the provider supports webhooks.
+
+Mobile Sasa's API endpoint is:
+
+```text
+https://api.mobilesasa.com/v1/send/message
+```
+
+Authentication:
+
+```text
+Authorization: Bearer <token>
+```
+
+Keep the token server-side. It must never be exposed to browser JavaScript or localStorage.
+
+---
+
+# 7. Bytewave
+
+Add Bytewave as a selectable provider.
+
+However:
+
+**Do not invent credential fields or API parameters that are not supported by Bytewave's actual API contract.**
+
+The currently available Bytewave public site confirms its Bulk SMS service and management portal, but the public material available during implementation does not provide enough API credential documentation to safely define the exact fields.
+
+Therefore:
+
+1. Check the repository for any existing Bytewave integration.
+2. Check any existing provider configuration/documentation already present in ISP Solutions.
+3. If API documentation is available, implement the exact required fields.
+4. If documentation is not available, create the provider adapter interface and configuration schema only after establishing the actual API contract.
+5. Do not guess field names such as `username`, `apiKey`, `token`, etc.
+
+The UI must still support:
+
+```text
+Bytewave
+```
+
+as a gateway option.
+
+---
+
+# 8. Celcom Africa
+
+Celcom Africa's current SMS API requires:
+
+* API Key
+* Partner ID
+* Sender ID / shortcode
+
+and the recipient/message are supplied when sending the SMS.
+
+Display:
+
+```text
+Celcom Africa SMS
+
+API Key *
+[••••••••••••••••••]
+
+Partner ID *
+[________________]
+
+Default Sender ID / Shortcode *
+[________________]
+```
+
+Do not display:
+
+```text
+Username
+Password
+```
+
+because they are not required by the documented REST send API.
+
+The documented endpoint is:
+
+```text
+https://isms.celcomafrica.com/api/services/sendsms/
+```
+
+Use the provider adapter to send:
+
+```text
+partnerID
+apikey
+mobile
+message
+shortcode
+```
+
+as required by the provider.
+
+---
+
+# 9. Afrokatt
+
+Afrokatt's current SMS API example uses:
+
+```text
+api_token
+recipient
+sender_id
+type
+message
+```
+
+and its API endpoint is:
+
+```text
+https://portal.afrokatt.com/api/http/sms/send
+```
+
+The configuration page should therefore display:
+
+```text
+Afrokatt SMS
+
+API Token *
+[••••••••••••••••••]
+
+Default Sender ID *
+[________________]
+
+Message Type
+[ Plain ▼ ]
+```
+
+Do not display:
+
+```text
+Username
+Password
+Partner ID
+API Key
+```
+
+unless the actual Afrokatt API contract used by the implementation requires them.
+
+---
+
+# 10. TextSMS
+
+TextSMS currently documents an API requiring:
+
+* API Key
+* Partner ID
+* Sender ID / shortcode
+
+for SMS sending.
+
+Display:
+
+```text
+TextSMS
+
+API Key *
+[••••••••••••••••••]
+
+Partner ID *
+[________________]
+
+Default Sender ID / Shortcode *
+[________________]
+```
+
+The documented endpoint is:
+
+```text
+https://sms.textsms.co.ke/api/services/sendsms/
+```
+
+TextSMS also documents a bulk endpoint:
+
+```text
+https://sms.textsms.co.ke/api/services/sendbulk/
+```
+
+and a delivery-report endpoint.
+
+Use the provider adapter for these capabilities.
+
+---
+
+# 11. Provider Configuration Model
+
+Do not create a separate database table structure containing unrelated columns such as:
+
+```text
+hostpinnacle_username
+hostpinnacle_password
+texin_api_key
+mobilesasa_token
+celcom_partner_id
+afrokatt_token
+...
+```
+
+unless the existing architecture already follows that pattern.
+
+Prefer a provider configuration model such as:
+
+```text
+sms_provider
+sms_provider_config
+```
+
+with a strongly typed provider-specific configuration structure.
+
+Conceptually:
+
+```text
+SMS Provider
+    │
+    ├── provider: hostpinnacle
+    ├── enabled: true
+    ├── credentials: encrypted
+    └── settings: encrypted/validated
+```
+
+or the equivalent architecture already used by ISP Solutions.
+
+---
+
+# 12. Do Not Send Irrelevant Fields
+
+This is critical.
+
+For each provider, construct the outbound API request from its own adapter.
+
+For example:
+
+```text
+Texin
+→ api_key
+→ recipient
+→ message
+→ sender_id
+```
+
+Do not send:
+
+```text
+partnerID
+username
+password
+api_token
+```
+
+unless Texin requires them.
+
+Likewise:
+
+```text
+Celcom
+→ partnerID
+→ apikey
+→ mobile
+→ message
+→ shortcode
+```
+
+Do not send unrelated credentials.
+
+This prevents provider-specific configuration from becoming a generic insecure credential dump.
+
+---
+
+# 13. Credentials Must Be Secure
+
+All API credentials must:
+
+* Be stored encrypted at rest where the existing architecture supports encrypted secrets.
+* Never be logged.
+* Never appear in browser console logs.
+* Never appear in API responses in plaintext after initial configuration.
+* Never be stored in localStorage.
+* Never be exposed to customer users.
+* Be masked in the UI.
+
+When editing an existing configuration:
+
+```text
+API Key
+••••••••••••••••
+```
+
+Do not send the masked value back to the backend as a replacement secret.
+
+Only update the credential if the administrator explicitly enters a new value.
+
+---
+
+# 14. Test Connection
+
+Each supported provider should have:
+
+```text
+[Test Connection]
+```
+
+where the provider API supports an appropriate connectivity/account check.
+
+The test must:
+
+1. Use the stored/current credentials.
+2. Call the provider.
+3. Return success/failure.
+4. Never send a real customer SMS merely to test credentials unless the provider specifically requires a test SMS and the administrator explicitly chooses that action.
+
+For providers with a balance endpoint, balance retrieval can be used as the connectivity test where appropriate.
+
+---
+
+# 15. Send Test SMS
+
+Provide a separate action:
+
+```text
+[Send Test SMS]
+```
+
+Do not combine this with Test Connection.
+
+When clicked, request:
+
+```text
+Test phone number
+[________________]
+
+Test message
+[____________________________]
+
+[Send Test SMS]
+```
+
+Require explicit user action before sending an actual SMS.
+
+Display:
+
+```text
+Test SMS sent successfully.
+```
+
+only after the provider confirms acceptance.
+
+---
+
+# 16. Gateway Status
+
+Each gateway should show:
+
+```text
+● Configured
+```
+
+or:
+
+```text
+○ Not configured
+```
+
+and, when a connection test has been performed:
+
+```text
+● Connected
+```
+
+or:
+
+```text
+● Connection failed
+```
+
+Do not claim a gateway is connected merely because credentials have been entered.
+
+---
+
+# 17. Default SMS Gateway
+
+Allow the administrator to designate one configured gateway as:
+
+```text
+Default SMS Gateway
+```
+
+Only allow a gateway to become the default if it has a valid configuration.
+
+Example:
+
+```text
+Default Gateway
+
+(●) Mobile Sasa
+( ) Texin
+( ) HostPinnacle
+```
+
+Do not allow an unconfigured gateway to be selected.
+
+---
+
+# 18. Gateway Failover
+
+Do not automatically introduce failover in this task unless ISP Solutions already has an SMS failover mechanism.
+
+If the existing system supports failover, preserve it and make the provider configuration compatible with it.
+
+If failover does not exist, keep the architecture extensible so it can be added later.
+
+---
+
+# 19. Sender ID
+
+Where the provider supports sender IDs:
+
+```text
+Default Sender ID
+```
+
+must be clearly separated from authentication credentials.
+
+For example:
+
+```text
+API Token *
+[••••••••••••••••]
+
+Default Sender ID *
+[IMANI_NET]
+```
+
+Do not confuse:
+
+```text
+API Key
+```
+
+with:
+
+```text
+Sender ID
+```
+
+They are different concepts.
+
+---
+
+# 20. Save Behaviour
+
+Every provider configuration must have:
+
+```text
+[Save Changes]
+```
+
+During save:
+
+```text
+Saving...
+```
+
+Disable the button to prevent duplicate submissions.
+
+After confirmed backend success:
+
+```text
+✓ SMS gateway settings saved successfully.
+```
+
+If saving fails:
+
+```text
+Unable to save SMS gateway settings.
+```
+
+Do not show a success message before backend confirmation.
+
+---
+
+# 21. Switching Providers
+
+When the administrator switches from:
+
+```text
+HostPinnacle
+```
+
+to:
+
+```text
+Texin
+```
+
+the configuration form must immediately change to the Texin-specific form.
+
+Do not retain irrelevant HostPinnacle fields on screen.
+
+Do not accidentally overwrite HostPinnacle configuration when saving Texin.
+
+Each provider's configuration must be independently stored.
+
+---
+
+# 22. Unsaved Changes
+
+If the user edits:
+
+```text
+Mobile Sasa
+```
+
+and then attempts to switch to:
+
+```text
+Celcom Africa
+```
+
+without saving, do not silently discard changes.
+
+Use the application's existing unsaved-change mechanism.
+
+Example:
+
+```text
+Unsaved changes
+
+You have unsaved changes to Mobile Sasa.
+Do you want to save before switching?
+
+[Save Changes] [Discard] [Cancel]
+```
+
+---
+
+# 23. SMS Gateway Abstraction
+
+Implement or extend the existing SMS provider abstraction.
+
+Conceptually:
+
+```text
+SmsGateway
+ ├── HostPinnacleAdapter
+ ├── TexinAdapter
+ ├── MobileSasaAdapter
+ ├── BytewaveAdapter
+ ├── CelcomAfricaAdapter
+ ├── AfrokattAdapter
+ └── TextSmsAdapter
+```
+
+Each adapter should implement the same internal interface, for example:
+
+```text
+send()
+sendBulk()
+testConnection()
+getBalance()
+getDeliveryStatus()
+```
+
+Only implement capabilities actually supported by each provider.
+
+Do not fake unsupported capabilities.
+
+---
+
+# 24. Normalize Internal SMS Interface
+
+The rest of ISP Solutions should not need to know whether the selected provider is:
+
+```text
+Texin
+```
+
+or:
+
+```text
+Celcom Africa
+```
+
+Internally use a normalized request:
+
+```text
+recipient
+message
+senderId
+metadata
+```
+
+The provider adapter translates this into the provider's API format.
+
+---
+
+# 25. Logging and Audit
+
+Record useful operational information such as:
+
+```text
+Gateway: Mobile Sasa
+Action: send
+Status: accepted
+Message ID: ...
+```
+
+Do NOT record:
+
+```text
+API Key
+API Token
+Password
+Secret
+Authorization Header
+```
+
+Audit configuration changes without storing secret values.
+
+---
+
+# 26. Tests
+
+Add/update tests for every provider.
+
+At minimum test:
+
+### HostPinnacle
+
+* API key configuration
+* Username/password configuration
+* Sender ID
+* Request construction
+
+### Texin
+
+* API key
+* Sender ID
+* Request construction
+
+### Mobile Sasa
+
+* Bearer token
+* Sender ID
+* Request construction
+
+### Bytewave
+
+* Actual documented configuration only
+* Do not invent credential requirements
+
+### Celcom Africa
+
+* API key
+* Partner ID
+* Sender ID
+* Request construction
+
+### Afrokatt
+
+* API token
+* Sender ID
+* Message type
+* Request construction
+
+### TextSMS
+
+* API key
+* Partner ID
+* Sender ID
+* Request construction
+
+Also test:
+
+* provider switching
+* validation
+* save success
+* save failure
+* secret masking
+* secret update behavior
+* test connection
+* test SMS
+* default gateway
+* duplicate submissions
+* tenant isolation
+
+---
+
+# Acceptance Criteria
+
+The implementation is complete only when:
+
+* [ ] All seven SMS gateways are available for selection.
+* [ ] Gateway configuration uses a left-side provider selector and right-side configuration panel on desktop.
+* [ ] Mobile layout stacks the selector and configuration correctly.
+* [ ] Only fields required by the selected gateway are displayed.
+* [ ] Irrelevant provider fields are not submitted.
+* [ ] Existing SMS architecture is reused where possible.
+* [ ] HostPinnacle supports its documented authentication options.
+* [ ] Texin supports API-key configuration.
+* [ ] Mobile Sasa supports bearer-token configuration.
+* [ ] Bytewave uses its verified API contract rather than guessed fields.
+* [ ] Celcom Africa supports API key + Partner ID + Sender ID configuration.
+* [ ] Afrokatt supports API token + Sender ID configuration.
+* [ ] TextSMS supports API key + Partner ID + Sender ID configuration.
+* [ ] Sensitive credentials are masked.
+* [ ] Sensitive credentials are not exposed in API responses or logs.
+* [ ] Test Connection is separate from Send Test SMS.
+* [ ] Save operations show proper loading and success/error feedback.
+* [ ] Switching providers does not overwrite another provider's configuration.
+* [ ] Unsaved changes are protected.
+* [ ] Default gateway selection only permits configured gateways.
+* [ ] Existing tenant isolation and RBAC remain intact.
+* [ ] No unrelated Settings or application functionality is broken.
+* [ ] TypeScript, lint and relevant tests pass.
+
+## Strict scope
+
+Implement the seven SMS gateway integrations and the redesigned **Settings → SMS Gateway configuration UI**.
+
+Do not modify unrelated billing, payment, customer, router, RADIUS, hotspot, authentication, or network functionality.
