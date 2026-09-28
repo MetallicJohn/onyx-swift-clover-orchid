@@ -245,6 +245,24 @@ export async function executeJob(sql: Sql, job: JobRow) {
     return syncAcsDevices(sql, tenantId);
   }
 
+  if (job.kind === "mikrotik.pool_network") {
+    if (!tenantId) throw new Error("mikrotik.pool_network requires tenantId");
+    const { syncPoolNetwork } = await import("./pool-provision.ts");
+    return syncPoolNetwork(sql, tenantId, String(payload.routerId || ""), String(payload.poolId || ""), String(payload.actorId || ""));
+  }
+
+  if (job.kind === "mikrotik.arp") {
+    if (!tenantId) throw new Error("mikrotik.arp requires tenantId");
+    const { syncServiceArp } = await import("./pool-provision.ts");
+    return syncServiceArp(
+      sql,
+      tenantId,
+      String(payload.serviceId || ""),
+      String(payload.actorId || ""),
+      payload.remove === true,
+    );
+  }
+
   if (job.kind === "maintenance.retention") {
     await applyRls(sql, { bypass: true });
     const { retainTrafficSamples } = await import("./traffic-collector.ts");

@@ -3,8 +3,9 @@ import { APP_NAME, APP_SLUG, ROS_ACTIVE_LIST } from "../brand.ts";
 import { initialCommandStatus } from "./command-policy";
 import { ensureOpsSchema } from "./ops-schema";
 import { applyRls } from "./rls";
-import { commandRosScript, wrapPullRosScript } from "./routeros";
-import { pcqFromPayload } from "./pcq";
+import { commandRosScript, wrapPullRosScript, rosQuote } from "./routeros";
+import { pcqFromPayload } from "./pcq.ts";
+import { arpRemoveScript, arpUpsertScript, dhcpOption43Script } from "./pool-network.ts";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -281,6 +282,54 @@ export function compileMikrotik(kind: string, payload: Record<string, unknown>):
 
   if (kind === "reboot") {
     return { rest: [{ method: "POST", path: "/rest/system/reboot" }], script };
+  }
+
+  if (kind === "dhcp.option43") {
+    const name = String(payload.option_name || "isp-opt43").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) || "isp-opt43";
+    const cidr = String(payload.cidr || "");
+    const value = String(payload.value || "");
+    const enabled = payload.enabled !== false;
+    if (!enabled) {
+      return {
+        rest: [{ method: "DELETE", path: `/rest/ip/dhcp-server/option/${encodeURIComponent(name)}` }],
+        script: `:do { /ip dhcp-server option remove [find where name=${rosQuote(name)}] } on-error={};`,
+      };
+    }
+    return {
+      rest: [
+        { method: "PUT", path: "/rest/ip/dhcp-server/option", body: { name, code: "43", value } },
+        {
+          method: "PATCH",
+          path: `/rest/ip/dhcp-server/network/${encodeURIComponent(cidr)}`,
+          body: { "dhcp-option": name },
+        },
+      ],
+      script: dhcpOption43Script(name, cidr, value),
+    };
+  }
+
+  if (kind === "arp.upsert") {
+    const address = String(payload.address || "");
+    const mac = String(payload.mac || "");
+    const comment = String(payload.comment || "");
+    return {
+      rest: [
+        {
+          method: "PUT",
+          path: "/rest/ip/arp",
+          body: { address, "mac-address": mac, comment },
+        },
+      ],
+      script: arpUpsertScript(address, mac, comment),
+    };
+  }
+
+  if (kind === "arp.remove") {
+    const address = String(payload.address || "");
+    return {
+      rest: [{ method: "DELETE", path: `/rest/ip/arp/${encodeURIComponent(address)}` }],
+      script: arpRemoveScript(address),
+    };
   }
 
   return { rest: [], script };

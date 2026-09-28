@@ -453,6 +453,10 @@ export const createRouterPoolFn = createServerFn({ method: "POST" })
         status: String(data.status || "active"),
         dns_servers: String(data.dns_servers || ""),
         package_id: String(data.package_id || ""),
+        dhcp_option_43_enabled: Boolean(data.dhcp_option_43_enabled),
+        dhcp_option_43_value: String(data.dhcp_option_43_value || ""),
+        dhcp_option_43_format: String(data.dhcp_option_43_format || "hex"),
+        static_arp_mode: String(data.static_arp_mode || "normal"),
       },
     });
   });
@@ -484,6 +488,10 @@ export const updateRouterPoolFn = createServerFn({ method: "POST" })
         status: String(data.status || "active"),
         dns_servers: String(data.dns_servers || ""),
         package_id: String(data.package_id || ""),
+        dhcp_option_43_enabled: Boolean(data.dhcp_option_43_enabled),
+        dhcp_option_43_value: String(data.dhcp_option_43_value || ""),
+        dhcp_option_43_format: String(data.dhcp_option_43_format || "hex"),
+        static_arp_mode: String(data.static_arp_mode || "normal"),
       },
     });
   });

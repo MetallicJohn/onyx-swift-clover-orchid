@@ -443,6 +443,9 @@ function ServiceRecordPage() {
           </Field>
           <Field label="MAC address">
             <Input value={form.mac_address} onChange={(e) => setForm({ ...form, mac_address: e.target.value })} />
+            {s.access_method === "static" ? (
+              <p className="mt-1 text-xs text-muted">Required for ARP Reply Only. This MAC address will be bound to the assigned IP on the router.</p>
+            ) : null}
           </Field>
           <div className="md:col-span-2">
             <Field label="Notes">

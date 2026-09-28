@@ -1039,6 +1039,9 @@ function ServicesPage() {
             </Field>
             <Field label="MAC address">
               <Input value={edit.mac_address} onChange={(e) => setEdit({ ...edit, mac_address: e.target.value })} />
+              {editFor.access_method === "static" ? (
+                <p className="mt-1 text-xs text-muted">Required for ARP Reply Only. This MAC address will be bound to the assigned IP on the router.</p>
+              ) : null}
             </Field>
             <Field label="Notes">
               <Input value={edit.notes} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} />

@@ -149,6 +149,17 @@ export const updateServiceFn = createServerFn({ method: "POST" })
         username: data.username || "",
       }));
     }
+    if (out.mac_changed) {
+      await writeAudit(
+        sql,
+        tenantId,
+        context.userId,
+        "service.cpe_mac",
+        "service",
+        data.id,
+        JSON.stringify({ mac_address: String(data.mac_address || "").slice(0, 32) }),
+      );
+    }
     await writeAudit(sql, tenantId, context.userId, "service.updated", "service", data.id, JSON.stringify(details));
     return out;
   });

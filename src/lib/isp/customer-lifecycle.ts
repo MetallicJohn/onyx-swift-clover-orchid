@@ -307,8 +307,25 @@ export async function updateService(
   }
   let username = data.username === undefined ? svc.username : data.username?.trim() || null;
   const staticIp = data.static_ip === undefined ? svc.static_ip : data.static_ip?.trim() || null;
-  const mac = data.mac_address === undefined ? svc.mac_address : sanitizeMac(data.mac_address);
+  const macRaw = data.mac_address === undefined ? svc.mac_address : data.mac_address;
+  let mac = data.mac_address === undefined ? svc.mac_address : sanitizeMac(data.mac_address);
+  const [link] = await sql<{ pool_id: string | null }>`
+    select pool_id from ip_addresses
+    where tenant_id = ${tenantId} and service_id = ${data.id} and pool_id is not null
+    limit 1`;
+  let replyOnly = false;
+  if (link?.pool_id) {
+    const { assertReplyOnlyMac } = await import("./pool-provision.ts");
+    const required = await assertReplyOnlyMac(sql, tenantId, link.pool_id, String(macRaw || ""), data.id);
+    if (required) {
+      mac = required;
+      replyOnly = true;
+    }
+  }
   const notes = data.notes === undefined ? svc.notes : data.notes.trim().slice(0, 4000);
+  const prevMac = String(svc.mac_address || "").replace(/[^0-9a-f]/gi, "").toUpperCase();
+  const nextMac = String(mac || "").replace(/[^0-9a-f]/gi, "").toUpperCase();
+  const macChanged = data.mac_address !== undefined && prevMac !== nextMac;
   const suppliedPass = data.password == null ? "" : String(data.password).trim();
   const credentialsChanged = svc.access_method === "pppoe" && (username !== svc.username || Boolean(suppliedPass));
   if (svc.access_method === "pppoe" && username && username !== svc.username) {
@@ -325,6 +342,15 @@ export async function updateService(
         mac_address = ${mac},
         notes = ${notes}
     where id = ${data.id} and tenant_id = ${tenantId}`;
+  if (replyOnly) {
+    const { enqueueJob } = await import("./jobs.ts");
+    await enqueueJob(sql, {
+      queue: "mikrotik",
+      kind: "mikrotik.arp",
+      tenantId,
+      payload: { serviceId: data.id },
+    });
+  }
   const next = await loadService(sql, tenantId, data.id);
   if (next && next.access_method === "pppoe" && (username || suppliedPass)) {
     const sealed = suppliedPass ? storeRadiusPassword(suppliedPass) : undefined;
@@ -349,7 +375,7 @@ export async function updateService(
   } else if (next) {
     await enqueueServiceCommand(sql, tenantId, next);
   }
-  return { id: data.id, credentials_changed: credentialsChanged };
+  return { id: data.id, credentials_changed: credentialsChanged, mac_changed: macChanged };
 }
 
 /**

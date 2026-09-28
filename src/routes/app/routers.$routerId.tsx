@@ -69,6 +69,10 @@ const EMPTY_POOL = {
   description: "",
   dns_servers: "",
   status: "active",
+  dhcp_option_43_enabled: false,
+  dhcp_option_43_value: "",
+  dhcp_option_43_format: "hex",
+  static_arp_mode: "normal",
 };
 
 function RouterRecordPage() {
@@ -186,6 +190,10 @@ function RouterRecordPage() {
         description: poolForm.description,
         dns_servers: poolForm.dns_servers,
         status: poolForm.status,
+        dhcp_option_43_enabled: poolForm.dhcp_option_43_enabled,
+        dhcp_option_43_value: poolForm.dhcp_option_43_value,
+        dhcp_option_43_format: poolForm.dhcp_option_43_format,
+        static_arp_mode: poolForm.static_arp_mode,
       };
       if (editingPool) {
         await updateRouterPoolFn({
@@ -714,6 +722,10 @@ function RouterRecordPage() {
                                         description: p.description,
                                         dns_servers: p.dns_servers,
                                         status: p.status,
+                                        dhcp_option_43_enabled: Boolean(p.dhcp_option_43_enabled),
+                                        dhcp_option_43_value: p.dhcp_option_43_value || "",
+                                        dhcp_option_43_format: p.dhcp_option_43_format || "hex",
+                                        static_arp_mode: p.static_arp_mode || "normal",
                                       });
                                       setConfirmImpact(false);
                                       setPoolOpen(true);
@@ -877,9 +889,57 @@ function RouterRecordPage() {
               <option value="pppoe">PPPoE</option>
               <option value="static">Static IP</option>
               <option value="hotspot">Hotspot</option>
+              <option value="dhcp">DHCP</option>
               <option value="other">Other</option>
             </Select>
           </Field>
+          {poolForm.access_type === "dhcp" || poolForm.access_type === "hotspot" ? (
+            <div className="sm:col-span-2 grid gap-3 rounded-md border border-border p-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={poolForm.dhcp_option_43_enabled}
+                  onChange={(e) => setPoolForm({ ...poolForm, dhcp_option_43_enabled: e.target.checked })}
+                />
+                Enable DHCP Option 43
+              </label>
+              {poolForm.dhcp_option_43_enabled ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Option 43 value">
+                    <Input
+                      value={poolForm.dhcp_option_43_value}
+                      onChange={(e) => setPoolForm({ ...poolForm, dhcp_option_43_value: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Format">
+                    <Select
+                      value={poolForm.dhcp_option_43_format}
+                      onChange={(e) => setPoolForm({ ...poolForm, dhcp_option_43_format: e.target.value })}
+                    >
+                      <option value="hex">Hex</option>
+                      <option value="ascii">ASCII</option>
+                    </Select>
+                  </Field>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {poolForm.access_type === "static" ? (
+            <div className="sm:col-span-2 grid gap-2">
+              <Field label="ARP behaviour">
+                <Select
+                  value={poolForm.static_arp_mode}
+                  onChange={(e) => setPoolForm({ ...poolForm, static_arp_mode: e.target.value })}
+                >
+                  <option value="normal">Normal</option>
+                  <option value="reply_only">Reply only</option>
+                </Select>
+              </Field>
+              {poolForm.static_arp_mode === "reply_only" ? (
+                <p className="text-sm text-muted">CPE MAC address is required because this pool uses ARP Reply Only.</p>
+              ) : null}
+            </div>
+          ) : null}
           <Field label="VLAN ID">
             <Input value={poolForm.vlan_id} onChange={(e) => setPoolForm({ ...poolForm, vlan_id: e.target.value })} />
           </Field>

@@ -227,6 +227,10 @@ export type RouterPoolRow = {
   dns_servers: string;
   package_id: string;
   package_name: string;
+  dhcp_option_43_enabled: boolean;
+  dhcp_option_43_value: string;
+  dhcp_option_43_format: string;
+  static_arp_mode: string;
   updated_at: string | null;
   total: number;
   used: number;
@@ -274,6 +278,10 @@ export async function listRouterPools(sql: Sql, tenantId: string, routerId: stri
     dns_servers: string;
     package_id: string;
     package_name: string;
+    dhcp_option_43_enabled: boolean;
+    dhcp_option_43_value: string;
+    dhcp_option_43_format: string;
+    static_arp_mode: string;
     updated_at: string | null;
   }>(
     `select p.id, p.name, coalesce(p.code,'') as code, p.cidr,
@@ -288,6 +296,10 @@ export async function listRouterPools(sql: Sql, tenantId: string, routerId: stri
             coalesce(p.dns_servers,'') as dns_servers,
             coalesce(p.package_id,'') as package_id,
             coalesce(pkg.name,'') as package_name,
+            coalesce(p.dhcp_option_43_enabled, false) as dhcp_option_43_enabled,
+            coalesce(p.dhcp_option_43_value,'') as dhcp_option_43_value,
+            coalesce(p.dhcp_option_43_format,'hex') as dhcp_option_43_format,
+            coalesce(p.static_arp_mode,'normal') as static_arp_mode,
             p.updated_at::text as updated_at
      from router_pool_assignments a
      join ip_pools p on p.id = a.pool_id
@@ -409,8 +421,9 @@ export async function createRouterPool(
     await sql.query(
       `insert into ip_pools (
           id, tenant_id, name, cidr, next_host, code, gateway, first_ip, last_ip,
-          access_type, vlan_id, site_pop, description, status, dns_servers, package_id, updated_at
-       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now())`,
+          access_type, vlan_id, site_pop, description, status, dns_servers, package_id,
+          dhcp_option_43_enabled, dhcp_option_43_value, dhcp_option_43_format, static_arp_mode, updated_at
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20, now())`,
       [
         id,
         opts.tenantId,
@@ -428,6 +441,10 @@ export async function createRouterPool(
         draft.status === "archived" ? "active" : draft.status,
         draft.dns_servers,
         draft.package_id || null,
+        draft.dhcp_option_43_enabled,
+        draft.dhcp_option_43_value,
+        draft.dhcp_option_43_format,
+        draft.static_arp_mode,
       ],
     );
     await sql.query(
@@ -448,6 +465,9 @@ export async function createRouterPool(
     detail: { pool_id: id, name: draft.name, cidr: draft.cidr },
   });
   await writeAudit(sql, opts.tenantId, opts.actorUserId, "ip_pool.created", "ip_pool", id, draft.cidr);
+  if (draft.dhcp_option_43_enabled || draft.access_type === "dhcp" || draft.access_type === "hotspot") {
+    await enqueuePoolNetwork(sql, opts.tenantId, opts.routerId, id, opts.actorUserId);
+  }
   const [created] = (await listRouterPools(sql, opts.tenantId, opts.routerId)).filter((p) => p.id === id);
   return created;
 }
@@ -479,10 +499,14 @@ export async function updateRouterPool(
     access_type: string;
     vlan_id: number | null;
     status: string;
+    static_arp_mode: string;
+    dhcp_option_43_enabled: boolean;
   }>(
     `select name, cidr, coalesce(gateway,'') as gateway, coalesce(first_ip,'') as first_ip,
             coalesce(last_ip,'') as last_ip, coalesce(access_type,'') as access_type,
-            vlan_id, coalesce(status,'active') as status
+            vlan_id, coalesce(status,'active') as status,
+            coalesce(static_arp_mode,'normal') as static_arp_mode,
+            coalesce(dhcp_option_43_enabled, false) as dhcp_option_43_enabled
      from ip_pools where id = $1 and tenant_id = $2 and archived_at is null`,
     [opts.poolId, opts.tenantId],
   );
@@ -517,13 +541,35 @@ export async function updateRouterPool(
       );
     }
   }
+  if (draft.static_arp_mode === "reply_only" && current.static_arp_mode !== "reply_only") {
+    const missing = await sql.query<{ id: string; customer_name: string }>(
+      `select s.id, coalesce(c.name,'') as customer_name
+       from ip_addresses a
+       join services s on s.id = a.service_id and s.tenant_id = a.tenant_id
+       left join customers c on c.id = s.customer_id and c.tenant_id = s.tenant_id
+       where a.tenant_id = $1 and a.pool_id = $2 and a.service_id is not null
+         and length(regexp_replace(coalesce(s.mac_address,''), '[^0-9A-Fa-f]', '', 'g')) <> 12`,
+      [opts.tenantId, opts.poolId],
+    );
+    if (missing.length) {
+      const who = missing
+        .slice(0, 8)
+        .map((row) => row.customer_name || row.id)
+        .join(", ");
+      throw new Error(
+        `This pool contains static services. ${missing.length} do not have CPE MAC addresses. Reply Only cannot be safely applied to those services. Affected: ${who}`,
+      );
+    }
+  }
   await assertUniqueNameCode(sql, opts.tenantId, draft, opts.poolId);
   await assertNoOverlap(sql, opts.tenantId, draft, opts.poolId);
   await sql.query(
     `update ip_pools set
         name = $3, cidr = $4, next_host = $5, code = $6, gateway = $7, first_ip = $8, last_ip = $9,
         access_type = $10, vlan_id = $11, site_pop = $12, description = $13, status = $14,
-        dns_servers = $15, package_id = $16, updated_at = now()
+        dns_servers = $15, package_id = $16,
+        dhcp_option_43_enabled = $17, dhcp_option_43_value = $18, dhcp_option_43_format = $19,
+        static_arp_mode = $20, updated_at = now()
      where id = $1 and tenant_id = $2`,
     [
       opts.poolId,
@@ -542,6 +588,10 @@ export async function updateRouterPool(
       draft.status === "archived" ? current.status : draft.status,
       draft.dns_servers,
       draft.package_id || null,
+      draft.dhcp_option_43_enabled,
+      draft.dhcp_option_43_value,
+      draft.dhcp_option_43_format,
+      draft.static_arp_mode,
     ],
   );
   await recordProvisionEvent(sql, {
@@ -551,9 +601,37 @@ export async function updateRouterPool(
     actorUserId: opts.actorUserId,
     detail: { pool_id: opts.poolId, name: draft.name },
   });
-  await writeAudit(sql, opts.tenantId, opts.actorUserId, "ip_pool.updated", "ip_pool", opts.poolId, draft.cidr);
+  await writeAudit(
+    sql,
+    opts.tenantId,
+    opts.actorUserId,
+    draft.static_arp_mode === "reply_only" ? "ip_pool.arp_reply_only" : "ip_pool.updated",
+    "ip_pool",
+    opts.poolId,
+    `${draft.cidr} arp=${draft.static_arp_mode} option43=${draft.dhcp_option_43_enabled ? "on" : "off"}`,
+  );
+  const pushDhcp =
+    draft.dhcp_option_43_enabled ||
+    current.dhcp_option_43_enabled ||
+    draft.access_type === "dhcp" ||
+    draft.access_type === "hotspot" ||
+    current.access_type === "dhcp" ||
+    current.access_type === "hotspot";
+  if (pushDhcp) {
+    await enqueuePoolNetwork(sql, opts.tenantId, opts.routerId, opts.poolId, opts.actorUserId);
+  }
   const [updated] = (await listRouterPools(sql, opts.tenantId, opts.routerId)).filter((p) => p.id === opts.poolId);
   return { pool: updated, usage };
+}
+
+async function enqueuePoolNetwork(sql: Sql, tenantId: string, routerId: string, poolId: string, actorId: string) {
+  const { enqueueJob } = await import("./jobs.ts");
+  await enqueueJob(sql, {
+    queue: "mikrotik",
+    kind: "mikrotik.pool_network",
+    tenantId,
+    payload: { routerId, poolId, actorId },
+  });
 }
 
 export async function listPoolAssignments(

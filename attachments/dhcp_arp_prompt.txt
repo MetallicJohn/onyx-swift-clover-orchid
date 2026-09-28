@@ -1,0 +1,1125 @@
+# ISP SOLUTIONS — IP POOL DHCP OPTION 43 & STATIC IP ARP REPLY-ONLY
+
+## Production Implementation Specification
+
+Implement two new router-specific IP assignment capabilities in the existing ISP Solutions IP Pool system:
+
+1. **DHCP Option 43**
+2. **Static IP ARP mode: reply-only**
+
+These settings must be configurable **per IP pool and per router** and automatically apply when services use that pool.
+
+This is an extension to the existing IP Pool / IP Assignment / MikroTik provisioning system.
+
+Do not rewrite the existing IP assignment architecture.
+
+---
+
+# 1. OBJECTIVE
+
+When creating or editing an IP pool for a specific router, allow the administrator to configure:
+
+### IP assignment behavior
+
+```text
+IP Assignment
+
+○ DHCP
+○ Static IP
+○ PPPoE
+○ Hotspot
+```
+
+and, where DHCP is applicable:
+
+```text
+DHCP Options
+
+[ ] Enable DHCP Option 43
+```
+
+For static IP pools:
+
+```text
+ARP Behavior
+
+○ Normal
+○ Reply Only
+```
+
+If:
+
+```text
+ARP Behavior = Reply Only
+```
+
+then:
+
+```text
+CPE MAC Address
+```
+
+becomes mandatory when creating/assigning the static IP service.
+
+The system must then provision the MikroTik ARP entry:
+
+```text
+IP Address → CPE MAC Address
+```
+
+with a comment containing:
+
+```text
+Customer Name / Phone Number
+```
+
+Example:
+
+```text
+192.168.10.25
+AA:BB:CC:DD:EE:FF
+John Kamau / 0712345678
+```
+
+---
+
+# 2. IMPORTANT ARCHITECTURAL RULE
+
+The configuration belongs to the **IP Pool**, not individual arbitrary service records.
+
+Conceptually:
+
+```text
+Router
+  │
+  └── IP Pool
+       │
+       ├── Assignment Type
+       ├── DHCP Option 43 configuration
+       ├── ARP Mode
+       └── Other existing pool settings
+              │
+              ▼
+        Customer Service
+              │
+              ├── Assigned IP
+              └── CPE MAC
+```
+
+The pool determines the default provisioning behavior.
+
+The service stores the customer-specific values required to execute that behavior.
+
+---
+
+# 3. INSPECT EXISTING IMPLEMENTATION FIRST
+
+Before modifying anything, inspect the existing implementation for:
+
+```text
+src/lib/isp/
+src/components/isp/
+migrations/
+```
+
+Specifically locate the existing:
+
+* IP pool database model
+* router-specific pool model
+* IP assignment logic
+* static IP service model
+* DHCP configuration
+* MikroTik provisioning
+* RouterOS API client
+* service creation/edit flow
+* service import flow
+* router configuration UI
+* pool creation/edit UI
+* IP assignment worker/job
+* provisioning retry mechanism
+* audit logging
+
+Do not create duplicate IP pool infrastructure.
+
+Extend the existing architecture.
+
+---
+
+# 4. DATA MODEL
+
+Extend the existing IP pool model with fields equivalent to:
+
+```text
+dhcp_option_43_enabled
+dhcp_option_43_value / dhcp_option_43_config
+static_arp_mode
+```
+
+Use naming consistent with the existing schema.
+
+For ARP mode use an explicit enum or constrained value:
+
+```text
+normal
+reply_only
+```
+
+Do not use ambiguous boolean names such as:
+
+```text
+arp = true
+```
+
+because the system may later support additional ARP modes.
+
+---
+
+# 5. DHCP OPTION 43
+
+Add DHCP Option 43 as a configurable feature of applicable IP pools.
+
+The UI should allow:
+
+```text
+DHCP Option 43
+
+[ Enable ]
+
+Option 43 value
+[ ______________________________ ]
+
+Format
+[ appropriate existing/selected format ]
+```
+
+The implementation must determine the actual format expected by the existing DHCP/MikroTik architecture.
+
+Do not assume all Option 43 values are plain text.
+
+Support the appropriate representation required by the existing RouterOS DHCP implementation.
+
+The stored value must be validated before provisioning.
+
+---
+
+# 6. OPTION 43 VALIDATION
+
+The backend must validate Option 43 configuration.
+
+Reject:
+
+* malformed values
+* invalid encoding
+* excessively large values
+* unsupported formats
+
+Do not allow arbitrary unsafe RouterOS command injection through the Option 43 field.
+
+Never construct RouterOS commands by unsafe string concatenation.
+
+Use the existing RouterOS command-generation/sanitization architecture.
+
+---
+
+# 7. ROUTER-SPECIFIC CONFIGURATION
+
+The pool configuration must belong to a specific router.
+
+Example:
+
+```text
+Router: Nanyuki-Main
+Pool: Static-Customers
+```
+
+The same pool name on another router must not accidentally inherit:
+
+```text
+ARP mode
+DHCP Option 43
+```
+
+from another router.
+
+Configuration must remain tenant-isolated and router-specific.
+
+---
+
+# 8. STATIC IP ARP MODE
+
+For static IP pools add:
+
+```text
+ARP Behavior
+```
+
+with:
+
+```text
+Normal
+Reply Only
+```
+
+### Normal
+
+Existing behavior remains unchanged.
+
+No additional ARP entry should be automatically created solely because this option exists.
+
+### Reply Only
+
+The MikroTik interface/subnet configuration must use the appropriate RouterOS ARP behavior required for the static-IP design.
+
+Where the existing architecture configures ARP behavior on the relevant interface/bridge/VLAN, update that configuration appropriately.
+
+Do not blindly set `arp=reply-only` globally on unrelated interfaces.
+
+The setting must affect only the network/interface/subnet associated with the configured pool.
+
+---
+
+# 9. CPE MAC REQUIREMENT
+
+If a static IP pool has:
+
+```text
+ARP Behavior = Reply Only
+```
+
+then:
+
+```text
+CPE MAC Address
+```
+
+is mandatory for every static IP service using that pool.
+
+The UI must clearly show:
+
+> CPE MAC Address is required because this pool uses ARP Reply Only.
+
+Validate MAC format.
+
+Accept standard MAC representations if the existing system supports normalization.
+
+Normalize before storage, preferably to:
+
+```text
+AA:BB:CC:DD:EE:FF
+```
+
+or the repository's existing canonical format.
+
+Reject:
+
+* empty MAC
+* malformed MAC
+* broadcast MAC
+* multicast MAC
+* invalid all-zero MAC
+* duplicate MAC where uniqueness is required by the relevant network context
+
+---
+
+# 10. STATIC IP SERVICE CREATION
+
+When creating a static IP service:
+
+```text
+IP Pool
+[ Static-Customers ]
+
+Assigned IP
+[ 192.168.10.25 ]
+
+CPE MAC Address
+[ AA:BB:CC:DD:EE:FF ]
+```
+
+If the selected pool uses:
+
+```text
+ARP = Reply Only
+```
+
+the form must prevent submission without a valid MAC.
+
+This validation must exist in:
+
+1. frontend
+2. backend
+
+Never rely solely on frontend validation.
+
+---
+
+# 11. EXISTING STATIC SERVICES
+
+Do not automatically break existing static IP services.
+
+If an administrator changes an existing pool from:
+
+```text
+Normal
+```
+
+to:
+
+```text
+Reply Only
+```
+
+the system must detect static services assigned to that pool that do not have a CPE MAC.
+
+Do not silently activate reply-only provisioning while required MAC information is missing.
+
+Instead provide a clear warning:
+
+> X static services require a CPE MAC address before Reply Only can be safely enabled.
+
+The administrator must be able to identify affected services.
+
+Do not automatically invent MAC addresses.
+
+---
+
+# 12. ARP ENTRY PROVISIONING
+
+For a static IP service using:
+
+```text
+ARP = Reply Only
+```
+
+the provisioning system must create or update the MikroTik ARP entry.
+
+Conceptually:
+
+```routeros
+/ip arp add \
+    address=192.168.10.25 \
+    mac-address=AA:BB:CC:DD:EE:FF \
+    comment="John Kamau / 0712345678"
+```
+
+Use the existing RouterOS API client.
+
+Do not expose RouterOS credentials to the frontend.
+
+---
+
+# 13. ARP ENTRY COMMENT
+
+The comment must identify the customer.
+
+Preferred format:
+
+```text
+Customer Name / Phone Number
+```
+
+Example:
+
+```text
+John Kamau / 0712345678
+```
+
+Use the customer's canonical phone number stored in the customer record.
+
+If the customer name contains characters unsuitable for RouterOS comments, sanitize safely.
+
+Do not include:
+
+* passwords
+* PPPoE credentials
+* API credentials
+* tokens
+* secrets
+
+---
+
+# 14. ARP ENTRY IDENTITY
+
+Do not blindly create a new ARP entry every time provisioning runs.
+
+Before creating an entry:
+
+1. Find existing ARP entry for the IP.
+2. Determine whether it belongs to the ISP Solutions managed configuration.
+3. Update the managed entry when appropriate.
+4. Avoid deleting unrelated administrator-created ARP entries.
+
+Use a recognizable managed comment prefix if the existing architecture permits.
+
+For example:
+
+```text
+ISP Solutions | John Kamau / 0712345678
+```
+
+However, if the user specifically requires the visible comment to be exactly:
+
+```text
+Customer Name / Phone
+```
+
+preserve that requirement and use another safe mechanism for identifying managed records if needed.
+
+---
+
+# 15. ARP UPDATE
+
+If the customer's MAC changes:
+
+```text
+old MAC
+    ↓
+new MAC
+```
+
+the provisioning worker must update the existing ARP entry.
+
+Do not create duplicates.
+
+Example:
+
+```text
+192.168.10.25
+AA:BB:CC:DD:EE:FF
+```
+
+becomes:
+
+```text
+192.168.10.25
+11:22:33:44:55:66
+```
+
+---
+
+# 16. CUSTOMER NAME / PHONE CHANGE
+
+If the customer's name or phone number changes, the managed ARP comment should be updated during the next relevant provisioning/update operation.
+
+Do not change the IP or MAC because the customer name changed.
+
+The ARP identity is:
+
+```text
+IP + MAC
+```
+
+The comment is descriptive metadata.
+
+---
+
+# 17. SERVICE DEACTIVATION
+
+When a static IP service is terminated/deleted/recycled, follow the existing IP assignment lifecycle.
+
+If the ARP entry was created by ISP Solutions, remove or disable the managed ARP entry according to the existing service deprovisioning model.
+
+Do not remove unrelated administrator-created ARP entries.
+
+This must be idempotent.
+
+---
+
+# 18. IP REASSIGNMENT
+
+When an IP is recycled from:
+
+```text
+Customer A
+```
+
+to:
+
+```text
+Customer B
+```
+
+the old ARP binding must not remain.
+
+The provisioning workflow must:
+
+1. remove/update the old managed ARP binding
+2. assign the IP to the new service
+3. create the new IP/MAC binding
+4. update the customer comment
+5. verify the resulting RouterOS state
+
+This is critical.
+
+Never allow:
+
+```text
+IP → old customer's MAC
+```
+
+to remain after reassignment.
+
+---
+
+# 19. ARP CONFLICT DETECTION
+
+Before applying a reply-only binding:
+
+Check whether the IP is already associated with a different MAC.
+
+Also check whether the MAC is already associated with another managed IP where the network design prohibits that.
+
+If a conflict exists:
+
+```text
+do not blindly overwrite
+```
+
+Return a clear provisioning error and create an audit event.
+
+Example:
+
+> ARP conflict: 192.168.10.25 is already bound to another MAC address.
+
+---
+
+# 20. PROVISIONING STATE
+
+ARP provisioning must use the existing job/provisioning system.
+
+Do not perform potentially slow RouterOS API calls directly inside the browser request.
+
+Preferred flow:
+
+```text
+Service saved
+      ↓
+Provisioning job
+      ↓
+Router API
+      ↓
+ARP configuration
+      ↓
+Verification
+      ↓
+Success / Failure
+```
+
+Use the existing job queue and retry/idempotency architecture.
+
+---
+
+# 21. VERIFICATION
+
+After applying the ARP entry, verify through RouterOS API.
+
+Expected:
+
+```text
+IP address = assigned IP
+MAC address = customer CPE MAC
+comment = expected customer identification
+```
+
+If the router does not match the expected state:
+
+```text
+mark provisioning as failed
+```
+
+and expose the error to authorized staff.
+
+Do not report success merely because the RouterOS command was sent.
+
+---
+
+# 22. DHCP OPTION 43 PROVISIONING
+
+Determine where the existing system configures DHCP.
+
+If DHCP Option 43 is configured at the pool/network level, generate the appropriate RouterOS configuration there.
+
+Do not create duplicate DHCP servers.
+
+Do not create a new DHCP architecture.
+
+Use the existing router configuration/provisioning mechanisms.
+
+---
+
+# 23. OPTION 43 CHANGE
+
+If an administrator changes:
+
+```text
+Option 43 value
+```
+
+the system must:
+
+1. validate the new value
+2. save it
+3. enqueue router configuration
+4. apply the configuration
+5. verify the resulting RouterOS state
+
+If provisioning fails, retain the desired configuration in ISP Solutions and mark the router configuration as out of sync using the existing mechanism.
+
+Do not silently report success.
+
+---
+
+# 24. POOL UI
+
+Extend the existing IP Pool create/edit UI.
+
+For DHCP-capable pools:
+
+```text
+DHCP Options
+────────────────────────
+
+Enable DHCP Option 43
+[ toggle ]
+
+Option 43 value
+[________________________]
+
+Format
+[________________________]
+```
+
+For static IP pools:
+
+```text
+Static IP Settings
+────────────────────────
+
+ARP behavior
+
+○ Normal
+○ Reply Only
+
+When Reply Only is selected:
+
+CPE MAC address
+Required when assigning a static IP
+```
+
+Do not display irrelevant options for unrelated pool types.
+
+---
+
+# 25. SERVICE UI
+
+When selecting a static pool configured as Reply Only:
+
+Show:
+
+```text
+CPE MAC Address *
+```
+
+with helper text:
+
+> Required for ARP Reply Only. This MAC address will be bound to the assigned IP on the router.
+
+When selecting a normal static pool:
+
+```text
+CPE MAC Address
+```
+
+may remain optional unless another existing business rule requires it.
+
+---
+
+# 26. IMPORT / BULK ASSIGNMENT
+
+Inspect the existing static-service import functionality.
+
+If importing services into a Reply Only pool:
+
+Require a valid:
+
+```text
+CPE MAC
+```
+
+column/value.
+
+The import must reject rows where the required MAC is missing.
+
+Provide row-level errors.
+
+Example:
+
+```text
+Row 24:
+CPE MAC Address is required because the selected pool uses ARP Reply Only.
+```
+
+Do not partially create an unsafe service unless the existing import architecture explicitly supports transactional partial imports.
+
+---
+
+# 27. EDITING POOL BEHAVIOR
+
+If an administrator changes:
+
+```text
+ARP = Normal
+```
+
+to:
+
+```text
+ARP = Reply Only
+```
+
+show an impact warning if services are affected.
+
+Example:
+
+> This pool contains 37 static services. 8 do not have CPE MAC addresses. Reply Only cannot be safely applied to those services.
+
+Provide a way to review the affected services.
+
+Do not silently activate an unsafe configuration.
+
+---
+
+# 28. ROUTER-SPECIFIC UI
+
+The pool screen should make the router association obvious.
+
+Example:
+
+```text
+Router
+Nanyuki Main Router
+
+Pool
+Static Customers
+
+Network
+192.168.10.0/24
+
+Assignment
+Static IP
+
+ARP
+Reply Only
+
+DHCP Option 43
+Disabled
+```
+
+Do not allow the user to accidentally configure a pool against the wrong router.
+
+---
+
+# 29. AUDIT LOGGING
+
+Record important configuration changes:
+
+```text
+IP pool created
+IP pool updated
+DHCP Option 43 enabled
+DHCP Option 43 changed
+ARP mode changed
+Static service CPE MAC added
+Static service CPE MAC changed
+ARP binding created
+ARP binding updated
+ARP binding removed
+Provisioning failure
+```
+
+Audit records should contain:
+
+* tenant
+* actor
+* router
+* pool
+* service/customer where applicable
+* old configuration
+* new configuration
+* timestamp
+* result
+
+Never log secrets.
+
+---
+
+# 30. SECURITY
+
+Maintain:
+
+* tenant isolation
+* RLS
+* RBAC
+* server-side authorization
+* existing audit controls
+
+Only authorized staff may change:
+
+```text
+DHCP Option 43
+ARP behavior
+CPE MAC
+IP pool configuration
+```
+
+Customers must not be able to alter these settings.
+
+Do not expose router API credentials.
+
+Do not expose provisioning secrets.
+
+---
+
+# 31. DATABASE MIGRATION
+
+Create a proper forward-only migration using the repository's existing migration conventions.
+
+Use:
+
+* safe defaults
+* nullable fields where required for backward compatibility
+* constrained values for ARP mode
+* appropriate indexes where useful
+
+Existing pools must continue working after migration.
+
+Recommended default:
+
+```text
+static_arp_mode = normal
+dhcp_option_43_enabled = false
+```
+
+This ensures existing customers are not unexpectedly affected.
+
+Do not automatically change existing router behavior.
+
+---
+
+# 32. BACKWARD COMPATIBILITY
+
+Existing pools:
+
+```text
+ARP = normal
+Option 43 = disabled
+```
+
+must behave exactly as before.
+
+Existing static services without MAC addresses must continue operating under normal ARP mode.
+
+Only pools explicitly configured for Reply Only should enforce the new MAC requirement.
+
+---
+
+# 33. TESTING
+
+Add tests for:
+
+### Pool configuration
+
+* [ ] DHCP Option 43 can be enabled.
+* [ ] Option 43 value is validated.
+* [ ] Option 43 can be disabled.
+* [ ] ARP mode defaults to normal.
+* [ ] ARP mode can be changed to reply-only.
+* [ ] Settings remain router-specific.
+
+### Static service
+
+* [ ] Normal static pool does not require MAC.
+* [ ] Reply-only pool requires MAC.
+* [ ] Invalid MAC is rejected.
+* [ ] Valid MAC is normalized.
+* [ ] Existing service can update MAC.
+
+### ARP provisioning
+
+* [ ] ARP entry created.
+* [ ] Correct IP used.
+* [ ] Correct MAC used.
+* [ ] Correct customer comment used.
+* [ ] Existing managed ARP entry updated instead of duplicated.
+* [ ] MAC change updates the binding.
+* [ ] Service deletion removes managed binding.
+* [ ] IP reassignment removes old binding.
+* [ ] ARP conflict is detected.
+* [ ] Provisioning is idempotent.
+* [ ] Verification confirms actual RouterOS state.
+
+### DHCP Option 43
+
+* [ ] Correct RouterOS configuration generated.
+* [ ] Configuration is applied through existing provisioning.
+* [ ] Result is verified.
+* [ ] Invalid configuration cannot be provisioned.
+
+### Security
+
+* [ ] Tenant isolation remains intact.
+* [ ] RBAC remains intact.
+* [ ] Unauthorized users cannot modify pool settings.
+* [ ] No secrets are logged.
+
+---
+
+# 34. ACCEPTANCE CRITERIA
+
+The feature is complete when:
+
+### Pool configuration
+
+An authorized staff member can create:
+
+```text
+Router: Router A
+Pool: Static Customers
+Assignment: Static
+ARP: Reply Only
+```
+
+and the system understands that:
+
+```text
+CPE MAC = mandatory
+```
+
+for services using that pool.
+
+### Static service
+
+Creating:
+
+```text
+Customer: John Kamau
+Phone: 0712345678
+Pool: Static Customers
+IP: 192.168.10.25
+MAC: AA:BB:CC:DD:EE:FF
+```
+
+results in the provisioning system creating/verifying:
+
+```text
+192.168.10.25
+AA:BB:CC:DD:EE:FF
+John Kamau / 0712345678
+```
+
+on the correct MikroTik router.
+
+### Missing MAC
+
+If the pool is Reply Only and MAC is missing:
+
+```text
+service creation must fail validation
+```
+
+and no unsafe provisioning job should be created.
+
+### IP reassignment
+
+If the IP is later assigned to another customer, the previous ARP binding must not remain.
+
+### DHCP Option 43
+
+An authorized user can configure Option 43 for the appropriate router-specific pool, and the existing router provisioning system applies and verifies it.
+
+---
+
+# 35. STRICT SCOPE
+
+This implementation must extend the existing:
+
+```text
+IP Pools
+IP Assignment
+Static IP Services
+DHCP
+MikroTik provisioning
+Router-specific configuration
+```
+
+Do not rewrite:
+
+* authentication
+* billing
+* customer management
+* RADIUS
+* PPPoE
+* WireGuard
+* GenieACS
+* WhatsApp
+* SMS
+* payments
+* job queue
+
+Reuse the existing RouterOS API client, provisioning worker, audit system, RLS, RBAC, and IP assignment architecture.
+
+---
+
+# 36. FINAL ENGINEERING REQUIREMENT
+
+Before implementation, inspect the existing code and determine exactly where:
+
+```text
+IP pool
+→ service
+→ IP assignment
+→ router
+→ RouterOS provisioning
+```
+
+currently flows.
+
+Then integrate the new functionality into that flow.
+
+Do not build a parallel provisioning path.
+
+The final architecture must be:
+
+```text
+Router
+   │
+   └── IP Pool
+        │
+        ├── Assignment Type
+        │
+        ├── DHCP Option 43
+        │
+        └── Static ARP Mode
+                 │
+                 ▼
+             Service
+                 │
+                 ├── Assigned IP
+                 └── CPE MAC
+                         │
+                         ▼
+                 Provisioning Job
+                         │
+                         ▼
+                    MikroTik API
+                         │
+             ┌───────────┴───────────┐
+             ▼                       ▼
+        DHCP Config             ARP Binding
+        Option 43               IP ↔ MAC
+                                      │
+                                      ▼
+                           Customer Name / Phone
+```
+
+The implementation must be **idempotent, tenant-safe, router-specific, auditable, retry-safe, and production-ready**.

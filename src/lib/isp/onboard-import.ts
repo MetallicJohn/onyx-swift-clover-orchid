@@ -1,6 +1,7 @@
 import { nid } from "../utils.ts";
 import { last9Phone } from "./customer-portal-format.ts";
 import { createOnboard } from "./onboard-create.ts";
+import { canonicalMac } from "./pool-network.ts";
 import {
   IMPORT_COLUMNS,
   MAX_IMPORT_ROWS,
@@ -59,6 +60,18 @@ async function loadContext(sql: Sql, tenantId: string): Promise<ImportContext> {
   return { packages, routers };
 }
 
+const REPLY_ONLY_MAC_REQUIRED = "CPE MAC Address is required because the selected pool uses ARP Reply Only.";
+
+async function defaultPoolIsReplyOnly(sql: Sql, tenantId: string) {
+  const [pool] = await sql<{ static_arp_mode: string }>`
+    select coalesce(static_arp_mode, 'normal') as static_arp_mode
+    from ip_pools
+    where tenant_id = ${tenantId} and archived_at is null
+    order by name
+    limit 1`;
+  return pool?.static_arp_mode === "reply_only";
+}
+
 export function parseImportFile(input: ImportFileInput) {
   const mode: ImportMode = isImportMode(input.mode) ? input.mode : "continuing";
   const parsed = parseDelimitedText(input.text);
@@ -79,6 +92,7 @@ export async function previewCustomerImport(
     ? input.map
     : suggestColumnMap(parsed.headers);
   const ctx = await loadContext(sql, tenantId);
+  const replyOnlyPool = await defaultPoolIsReplyOnly(sql, tenantId);
   const takenUsernames = new Set(
     (
       await sql<{ username: string }>`
@@ -124,6 +138,20 @@ export async function previewCustomerImport(
     if (preview.router) {
       const router = ctx.routers.find((r) => r.name.toLowerCase() === preview.router.toLowerCase());
       if (!router) preview.warnings.push({ field: "router", message: "Router name was not matched; the line is still imported" });
+    }
+    if (replyOnlyPool && preview.access_method === "static") {
+      if (!preview.mac_address) {
+        preview.errors.push({ field: "mac_address", message: REPLY_ONLY_MAC_REQUIRED });
+      } else {
+        try {
+          canonicalMac(preview.mac_address);
+        } catch (err) {
+          preview.errors.push({
+            field: "mac_address",
+            message: err instanceof Error ? err.message : "CPE MAC address is invalid",
+          });
+        }
+      }
     }
     rows.push(preview);
   }
@@ -211,7 +239,7 @@ export async function confirmCustomerImport(
             static_ip: row.static_ip,
             pool_id: "",
             router_id: router?.id || "",
-            mac_address: "",
+            mac_address: row.mac_address,
             cpe_id: "",
             expiry_ymd: row.expiry_ymd,
             activation: defaultActivationForOnboarding(row.onboarding_type, pkg.price_kes),

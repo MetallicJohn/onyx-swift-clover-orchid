@@ -523,7 +523,24 @@ export async function createOnboard(
     const preserveLive = migrating && Boolean(fields.username);
     const insertStatus = afterPay || (pkg.access_method === "pppoe" && !preserveLive) ? "pending" : "active";
     const suspendReason = afterPay ? AWAITING_PAYMENT : "";
-    const mac = fields.mac_address || "";
+    const macRaw = fields.mac_address || "";
+    let mac = macRaw;
+    let replyOnlyPool = false;
+    if (pkg.access_method === "static") {
+      const poolId = fields.pool_id;
+      const [pool] = poolId
+        ? await sql<{ id: string; static_arp_mode: string }>`
+            select id, coalesce(static_arp_mode,'normal') as static_arp_mode
+            from ip_pools where id = ${poolId} and tenant_id = ${tid}`
+        : await sql<{ id: string; static_arp_mode: string }>`
+            select id, coalesce(static_arp_mode,'normal') as static_arp_mode
+            from ip_pools where tenant_id = ${tid} order by name limit 1`;
+      if (pool?.static_arp_mode === "reply_only") {
+        replyOnlyPool = true;
+        const { assertReplyOnlyMac } = await import("./pool-provision.ts");
+        mac = await assertReplyOnlyMac(sql, tid, pool.id, macRaw);
+      }
+    }
     const serviceName = (service.name || pkg.name || "").trim().slice(0, 80);
     const enablePartial = service.activation === "after_partial";
     let startYmd: string | null = null;
@@ -564,6 +581,15 @@ export async function createOnboard(
         await assignStaticIp(sql, tid, id, customerId, fields.static_ip, fields.pool_id);
       } else {
         await allocateStaticIp(sql, tid, id, customerId, fields.pool_id);
+      }
+      if (replyOnlyPool) {
+        const { enqueueJob } = await import("./jobs.ts");
+        await enqueueJob(sql, {
+          queue: "mikrotik",
+          kind: "mikrotik.arp",
+          tenantId: tid,
+          payload: { serviceId: id },
+        });
       }
     }
 

@@ -23,6 +23,7 @@ export const IMPORT_COLUMNS = [
   { key: "package_name", label: "Package", required: true },
   { key: "username", label: "Service username", required: false },
   { key: "static_ip", label: "Static IP", required: false },
+  { key: "mac_address", label: "CPE MAC", required: false },
   { key: "router", label: "Router", required: false },
   { key: "pppoe_password", label: "PPPoE password", required: false },
   { key: "subscription_start_date", label: "Subscription start", required: false },
@@ -44,6 +45,7 @@ export type MappedImportRow = {
   package_name: string;
   username: string;
   static_ip: string;
+  mac_address: string;
   router: string;
   pppoe_password: string;
   subscription_start_date: string;
@@ -69,6 +71,7 @@ export type ImportPreviewRow = {
   send_onboarding_notification: boolean;
   username: string;
   static_ip: string;
+  mac_address: string;
   account_number: string;
   pppoe_password: string;
   router: string;
@@ -138,6 +141,10 @@ const HEADER_ALIASES: Record<string, ImportColumnKey> = {
   pppoe_username: "username",
   static_ip: "static_ip",
   ip: "static_ip",
+  mac_address: "mac_address",
+  mac: "mac_address",
+  cpe_mac: "mac_address",
+  cpe_mac_address: "mac_address",
   router: "router",
   pppoe_password: "pppoe_password",
   password: "pppoe_password",
@@ -273,6 +280,7 @@ export function mapRow(headers: string[], cols: string[], map: Record<ImportColu
     package_name: get("package_name"),
     username: get("username"),
     static_ip: get("static_ip"),
+    mac_address: get("mac_address"),
     router: get("router"),
     pppoe_password: get("pppoe_password"),
     subscription_start_date: get("subscription_start_date"),
@@ -362,6 +370,7 @@ export function previewImportRow(
     send_onboarding_notification: send,
     username: raw.username.trim(),
     static_ip: raw.static_ip.trim(),
+    mac_address: String(raw.mac_address || "").trim(),
     account_number: raw.account_number.trim(),
     pppoe_password: raw.pppoe_password.trim(),
     router: raw.router.trim(),

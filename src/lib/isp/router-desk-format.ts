@@ -1,11 +1,12 @@
 import { likeNeedle } from "./customer-desk-format.ts";
 import { cidrSpan, ipv4InCidr, parseIpv4, parseV4Cidr } from "./ipam.ts";
+import { isArpMode, isOption43Format, option43Hex, type ArpMode, type Option43Format } from "./pool-network.ts";
 
 export { likeNeedle };
 
 export const ROUTER_DESK_PAGE_SIZE = 50;
 
-export const POOL_ACCESS_TYPES = ["pppoe", "static", "hotspot", "other"] as const;
+export const POOL_ACCESS_TYPES = ["pppoe", "static", "hotspot", "dhcp", "other"] as const;
 export type PoolAccessType = (typeof POOL_ACCESS_TYPES)[number] | "";
 
 export const POOL_STATUSES = ["active", "disabled", "archived"] as const;
@@ -78,6 +79,10 @@ export type PoolDraft = {
   status?: string;
   dns_servers?: string;
   package_id?: string;
+  dhcp_option_43_enabled?: boolean;
+  dhcp_option_43_value?: string;
+  dhcp_option_43_format?: string;
+  static_arp_mode?: string;
 };
 
 export type NormalizedPoolDraft = {
@@ -94,6 +99,10 @@ export type NormalizedPoolDraft = {
   status: PoolStatus;
   dns_servers: string;
   package_id: string;
+  dhcp_option_43_enabled: boolean;
+  dhcp_option_43_value: string;
+  dhcp_option_43_format: Option43Format;
+  static_arp_mode: ArpMode;
   first_int: number;
   last_int: number;
   next_host: number;
@@ -148,7 +157,7 @@ export function poolUsage(total: number, used: number) {
 
 function asAccess(raw: string | undefined): PoolAccessType {
   const v = String(raw || "").trim().toLowerCase();
-  if (v === "pppoe" || v === "static" || v === "hotspot" || v === "other") return v;
+  if (v === "pppoe" || v === "static" || v === "hotspot" || v === "dhcp" || v === "other") return v;
   return "";
 }
 
@@ -186,6 +195,17 @@ export function validatePoolDraft(input: PoolDraft): NormalizedPoolDraft {
     if (!Number.isInteger(n) || n < 1 || n > 4094) throw new Error("VLAN ID must be 1–4094");
     vlan_id = n;
   }
+  const access = asAccess(input.access_type);
+  const dhcpCapable = access === "dhcp" || access === "hotspot";
+  const optionEnabled = dhcpCapable && Boolean(input.dhcp_option_43_enabled);
+  const optionFormat: Option43Format = isOption43Format(String(input.dhcp_option_43_format || "").toLowerCase())
+    ? (String(input.dhcp_option_43_format).toLowerCase() as Option43Format)
+    : "hex";
+  const optionValue = String(input.dhcp_option_43_value || "").trim().slice(0, 512);
+  if (optionEnabled) option43Hex(optionFormat, optionValue);
+  const arpMode: ArpMode = access === "static" && isArpMode(String(input.static_arp_mode || ""))
+    ? (input.static_arp_mode as ArpMode)
+    : "normal";
   const nextHost = Math.min(254, Math.max(1, (firstInt & 255) || 10));
   return {
     name,
@@ -194,13 +214,17 @@ export function validatePoolDraft(input: PoolDraft): NormalizedPoolDraft {
     gateway,
     first_ip: first,
     last_ip: last,
-    access_type: asAccess(input.access_type),
+    access_type: access,
     vlan_id,
     site_pop: String(input.site_pop || "").trim().slice(0, 80),
     description: String(input.description || "").trim().slice(0, 500),
     status: asStatus(input.status),
     dns_servers: String(input.dns_servers || "").trim().slice(0, 200),
     package_id: String(input.package_id || "").trim(),
+    dhcp_option_43_enabled: optionEnabled,
+    dhcp_option_43_value: optionEnabled ? optionValue : "",
+    dhcp_option_43_format: optionFormat,
+    static_arp_mode: arpMode,
     first_int: firstInt,
     last_int: lastInt,
     next_host: nextHost,

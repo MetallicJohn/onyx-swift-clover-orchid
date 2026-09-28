@@ -231,6 +231,15 @@ export async function archiveService(sql: Sql, tenantId: string, serviceId: stri
         original_status = ${svc.status},
         restore_metadata = ${meta}
     where id = ${svc.id} and tenant_id = ${tenantId} and deleted_at is null`;
+  if (svc.static_ip) {
+    const { enqueueJob } = await import("./jobs.ts");
+    await enqueueJob(sql, {
+      queue: "mikrotik",
+      kind: "mikrotik.arp",
+      tenantId,
+      payload: { serviceId: svc.id, remove: true, actorId: opts.actorId },
+    });
+  }
   await writeAudit(sql, tenantId, opts.actorId, "service.archived", "service", svc.id, {
     customer_id: svc.customer_id,
     customer_name: svc.customer_name,
