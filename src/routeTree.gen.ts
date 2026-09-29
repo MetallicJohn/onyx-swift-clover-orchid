@@ -76,6 +76,7 @@ import { Route as ApiInternalJobsRouteImport } from './routes/api/internal/jobs'
 import { Route as ApiInternalTrafficRouteImport } from './routes/api/internal/traffic'
 import { Route as ApiPlatformTelemetryRouteImport } from './routes/api/platform/telemetry'
 import { Route as ApiRoutersIndexRouteImport } from './routes/api/routers/index'
+import { Route as ApiTicketsLiveRouteImport } from './routes/api/tickets/live'
 import { Route as ApiV1HealthRouteImport } from './routes/api/v1/health'
 import { Route as ApiV1ReadyRouteImport } from './routes/api/v1/ready'
 import { Route as AppCustomersCustomerIdRouteImport } from './routes/app/customers.$customerId'
@@ -440,6 +441,11 @@ const ApiRoutersIndexRoute = ApiRoutersIndexRouteImport.update({
   path: '/api/routers/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTicketsLiveRoute = ApiTicketsLiveRouteImport.update({
+  id: '/api/tickets/live',
+  path: '/api/tickets/live',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiV1HealthRoute = ApiV1HealthRouteImport.update({
   id: '/api/v1/health',
   path: '/api/v1/health',
@@ -653,6 +659,7 @@ export interface FileRoutesByFullPath {
   '/api/internal/jobs': typeof ApiInternalJobsRoute
   '/api/internal/traffic': typeof ApiInternalTrafficRoute
   '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
+  '/api/tickets/live': typeof ApiTicketsLiveRoute
   '/api/v1/health': typeof ApiV1HealthRoute
   '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
@@ -746,6 +753,7 @@ export interface FileRoutesByTo {
   '/api/internal/jobs': typeof ApiInternalJobsRoute
   '/api/internal/traffic': typeof ApiInternalTrafficRoute
   '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
+  '/api/tickets/live': typeof ApiTicketsLiveRoute
   '/api/v1/health': typeof ApiV1HealthRoute
   '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
@@ -844,6 +852,7 @@ export interface FileRoutesById {
   '/api/internal/jobs': typeof ApiInternalJobsRoute
   '/api/internal/traffic': typeof ApiInternalTrafficRoute
   '/api/platform/telemetry': typeof ApiPlatformTelemetryRoute
+  '/api/tickets/live': typeof ApiTicketsLiveRoute
   '/api/v1/health': typeof ApiV1HealthRoute
   '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
@@ -943,6 +952,7 @@ export interface FileRouteTypes {
     | '/api/internal/jobs'
     | '/api/internal/traffic'
     | '/api/platform/telemetry'
+    | '/api/tickets/live'
     | '/api/v1/health'
     | '/api/v1/ready'
     | '/app/customers/$customerId'
@@ -1036,6 +1046,7 @@ export interface FileRouteTypes {
     | '/api/internal/jobs'
     | '/api/internal/traffic'
     | '/api/platform/telemetry'
+    | '/api/tickets/live'
     | '/api/v1/health'
     | '/api/v1/ready'
     | '/app/customers/$customerId'
@@ -1133,6 +1144,7 @@ export interface FileRouteTypes {
     | '/api/internal/jobs'
     | '/api/internal/traffic'
     | '/api/platform/telemetry'
+    | '/api/tickets/live'
     | '/api/v1/health'
     | '/api/v1/ready'
     | '/app/customers/$customerId'
@@ -1191,6 +1203,7 @@ export interface RootRouteChildren {
   ApiInternalJobsRoute: typeof ApiInternalJobsRoute
   ApiInternalTrafficRoute: typeof ApiInternalTrafficRoute
   ApiPlatformTelemetryRoute: typeof ApiPlatformTelemetryRoute
+  ApiTicketsLiveRoute: typeof ApiTicketsLiveRoute
   ApiV1HealthRoute: typeof ApiV1HealthRoute
   ApiV1ReadyRoute: typeof ApiV1ReadyRoute
   ApiRoutersIndexRoute: typeof ApiRoutersIndexRoute
@@ -1685,6 +1698,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiRoutersIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/tickets/live': {
+      id: '/api/tickets/live'
+      path: '/api/tickets/live'
+      fullPath: '/api/tickets/live'
+      preLoaderRoute: typeof ApiTicketsLiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/v1/health': {
       id: '/api/v1/health'
       path: '/api/v1/health'
@@ -2123,6 +2143,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalJobsRoute: ApiInternalJobsRoute,
   ApiInternalTrafficRoute: ApiInternalTrafficRoute,
   ApiPlatformTelemetryRoute: ApiPlatformTelemetryRoute,
+  ApiTicketsLiveRoute: ApiTicketsLiveRoute,
   ApiV1HealthRoute: ApiV1HealthRoute,
   ApiV1ReadyRoute: ApiV1ReadyRoute,
   ApiRoutersIndexRoute: ApiRoutersIndexRoute,

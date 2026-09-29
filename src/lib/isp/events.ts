@@ -9,7 +9,11 @@ export type DomainEvent = {
     | "service.changed"
     | "customer.created"
     | "ticket.created"
-    | "ticket.updated";
+    | "ticket.updated"
+    | "ticket.assigned"
+    | "ticket.status_changed"
+    | "ticket.comment_added"
+    | "ticket.sla_warning";
   tenantId: string;
   payload: Record<string, unknown>;
 };

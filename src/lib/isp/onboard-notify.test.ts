@@ -4,8 +4,11 @@ import { formatDate, setActiveDateFormat } from "./display.ts";
 import { nairobiDate } from "./empty-tenant.ts";
 import {
   buildServiceNotifyVars,
+  notifyCustomerEvent,
   notifyQuietly,
+  notifyServiceCreationInvoice,
   renderNotifyTemplate,
+  shouldSendInvoiceSms,
 } from "./notifications.ts";
 import { createOnboard } from "./onboard-create.ts";
 import { applyConfirmedPayment } from "./payments.ts";
@@ -460,6 +463,153 @@ test("partial payment does not activate an awaiting service or send an active SM
       select event_code from notification_logs
       where tenant_id = 'ten_n' and event_code in ('service.activated','payment.received.awaiting')`;
     assert.ok(!logs.some((l) => l.event_code === "service.activated"));
+  } finally {
+    await close();
+  }
+});
+
+test("service-creation invoice SMS is only for business customers", () => {
+  assert.equal(shouldSendInvoiceSms({ type: "individual" }), false);
+  assert.equal(shouldSendInvoiceSms({ type: "business" }), true);
+  assert.equal(shouldSendInvoiceSms({ type: "residential" }), false);
+  assert.equal(shouldSendInvoiceSms({ type: "" }), false);
+  assert.equal(shouldSendInvoiceSms(null), false);
+  assert.equal(shouldSendInvoiceSms(undefined), false);
+});
+
+test("individual service creation sends the service SMS only; business still gets the invoice SMS", async () => {
+  const { sql, bypass, asRole, close } = await openTestDb();
+  try {
+    await bypass();
+    await seed(sql);
+    await sql`insert into customers (id, tenant_id, name, phone, email, account_number, type)
+      values ('cus_biz', 'ten_n', 'Acme Ltd', '0712000222', 'acme@example.com', 'IMN-C-2', 'business')`;
+    await asRole("ten_n");
+    const service = {
+      access_method: "pppoe" as const,
+      package_id: "pkg_home",
+      username: "",
+      auto_username: true,
+      static_ip: "",
+      pool_id: "",
+      router_id: "",
+      mac_address: "",
+      cpe_id: "",
+      expiry_ymd: "",
+      activation: "after_payment" as const,
+      notes: "",
+      hotspot_mode: "account" as const,
+    };
+    const home = await createOnboard(sql, {
+      tenantId: "ten_n",
+      tenantName: "IMANI NETWORKS",
+      actorId: "usr_staff",
+      input: { customer_mode: "existing", customer_id: "cus_n", include_service: true, service },
+    });
+    const biz = await createOnboard(sql, {
+      tenantId: "ten_n",
+      tenantName: "IMANI NETWORKS",
+      actorId: "usr_staff",
+      input: { customer_mode: "existing", customer_id: "cus_biz", include_service: true, service },
+    });
+    assert.ok(home.invoice_id);
+    assert.ok(biz.invoice_id);
+    assert.ok(home.service_id);
+    assert.ok(biz.service_id);
+    const invoices = await sql<{ id: string; customer_id: string; amount_kes: number }>`
+      select id, customer_id, amount_kes from invoices where tenant_id = 'ten_n' and id in (${home.invoice_id}, ${biz.invoice_id})`;
+    assert.equal(invoices.length, 2);
+    assert.ok(invoices.every((row) => row.amount_kes === 2000));
+
+    const homeService = await sql<{ n: number }>`
+      select count(*)::int as n from notification_logs
+      where tenant_id = 'ten_n' and event_code = 'service.created.awaiting_payment' and entity_id = ${home.service_id} and channel = 'sms'`;
+    const homeInvoice = await sql<{ n: number }>`
+      select count(*)::int as n from notification_logs
+      where tenant_id = 'ten_n' and customer_id = 'cus_n' and event_code = 'invoice.created'`;
+    const skipped = await sql<{ status: string; subject: string; destination: string; body: string }>`
+      select status, subject, destination, body from notification_logs
+      where tenant_id = 'ten_n' and customer_id = 'cus_n' and event_code = 'invoice.sms.skipped' and entity_id = ${home.invoice_id}`;
+    assert.equal(homeService[0]?.n, 1);
+    assert.equal(homeInvoice[0]?.n, 0);
+    assert.equal(skipped.length, 1);
+    assert.equal(skipped[0]?.status, "skipped");
+    assert.equal(skipped[0]?.destination, "");
+    assert.match(skipped[0]?.subject || "", /not sent/i);
+    assert.match(skipped[0]?.body || "", /individual customer/);
+    const [audit] = await sql<{ details: string }>`
+      select details from audit_logs
+      where tenant_id = 'ten_n' and action = 'invoice.sms.skipped' and entity_id = ${home.service_id}`;
+    assert.equal(audit?.details, "Not sent — individual customer");
+
+    const bizService = await sql<{ n: number }>`
+      select count(*)::int as n from notification_logs
+      where tenant_id = 'ten_n' and event_code = 'service.created.awaiting_payment' and entity_id = ${biz.service_id} and channel = 'sms'`;
+    const bizInvoiceSms = await sql<{ n: number }>`
+      select count(*)::int as n from notification_logs
+      where tenant_id = 'ten_n' and customer_id = 'cus_biz' and event_code = 'invoice.created' and channel = 'sms'`;
+    const bizSkip = await sql<{ n: number }>`
+      select count(*)::int as n from notification_logs
+      where tenant_id = 'ten_n' and customer_id = 'cus_biz' and event_code = 'invoice.sms.skipped'`;
+    assert.equal(bizService[0]?.n, 1);
+    assert.equal(bizInvoiceSms[0]?.n, 1);
+    assert.equal(bizSkip[0]?.n, 0);
+
+    const vars = await buildServiceNotifyVars(sql, "ten_n", "IMANI NETWORKS", {
+      customerId: home.customer_id,
+      serviceId: home.service_id,
+      amountKes: 2000,
+    });
+    await notifyQuietly(sql, "ten_n", "IMANI NETWORKS", home.customer_id, "service.created.awaiting_payment", home.service_id, vars);
+    await notifyServiceCreationInvoice(sql, {
+      tenantId: "ten_n",
+      ispName: "IMANI NETWORKS",
+      customerId: home.customer_id,
+      invoiceId: home.invoice_id,
+      serviceId: home.service_id,
+      actorId: "usr_staff",
+      vars: { customer_name: "", invoice_number: "INV", amount: "KES 2000", due_date: "2026-09-29" },
+    });
+    await notifyQuietly(sql, "ten_n", "IMANI NETWORKS", biz.customer_id, "invoice.created", biz.invoice_id, {
+      customer_name: "",
+      invoice_number: "INV",
+      amount: "KES 2000",
+      due_date: "2026-09-29",
+    });
+    const homeServiceAgain = await sql<{ n: number }>`
+      select count(*)::int as n from notification_logs
+      where tenant_id = 'ten_n' and event_code = 'service.created.awaiting_payment' and entity_id = ${home.service_id} and channel = 'sms'`;
+    const skippedAgain = await sql<{ n: number }>`
+      select count(*)::int as n from notification_logs
+      where tenant_id = 'ten_n' and event_code = 'invoice.sms.skipped' and entity_id = ${home.invoice_id}`;
+    const bizInvoiceAgain = await sql<{ n: number }>`
+      select count(*)::int as n from notification_logs
+      where tenant_id = 'ten_n' and customer_id = 'cus_biz' and event_code = 'invoice.created' and channel = 'sms'`;
+    assert.equal(homeServiceAgain[0]?.n, 1);
+    assert.equal(skippedAgain[0]?.n, 1);
+    assert.equal(bizInvoiceAgain[0]?.n, 1);
+
+    const due = await notifyCustomerEvent(sql, "ten_n", "IMANI NETWORKS", home.customer_id, "invoice.due", home.invoice_id, {
+      customer_name: "",
+      invoice_number: "INV",
+      amount: "KES 2000",
+      due_date: "2026-09-29",
+    });
+    assert.ok(due >= 1);
+    const manual = await notifyCustomerEvent(sql, "ten_n", "IMANI NETWORKS", home.customer_id, "invoice.created", home.invoice_id, {
+      customer_name: "",
+      invoice_number: "INV",
+      amount: "KES 2000",
+      due_date: "2026-09-29",
+    });
+    assert.ok(manual >= 1);
+    const manualAgain = await notifyCustomerEvent(sql, "ten_n", "IMANI NETWORKS", home.customer_id, "invoice.created", home.invoice_id, {
+      customer_name: "",
+      invoice_number: "INV",
+      amount: "KES 2000",
+      due_date: "2026-09-29",
+    });
+    assert.equal(manualAgain, 0);
   } finally {
     await close();
   }

@@ -1,0 +1,1005 @@
+# ISP SOLUTIONS — TICKETS PAGE REDESIGN
+
+## Production Implementation Prompt
+
+Redesign the existing **Tickets page** in the ISP Solutions application.
+
+The objective is to create a cleaner, more modern, operationally efficient ticket-management interface while preserving all existing ticket functionality and business logic.
+
+The redesigned page must include:
+
+1. A modern ticket-management layout.
+2. A prominent **New Ticket** action.
+3. A **dialog/modal for creating a new ticket**.
+4. Customer search inside the new-ticket dialog.
+5. Customer selection before ticket details are entered.
+6. Pagination for previous/existing tickets.
+7. Useful filtering/search controls.
+8. Responsive desktop/tablet/mobile behavior.
+9. Full compatibility with the existing **Modernize** theme and existing themes.
+
+Do not rewrite the ticketing backend unless a small API adjustment is required to support pagination or customer search.
+
+---
+
+# 1. MANDATORY FIRST STEP — INSPECT EXISTING IMPLEMENTATION
+
+Before modifying anything, inspect the existing ticket implementation.
+
+Locate the actual:
+
+```text
+ticket page
+ticket components
+ticket API/routes
+ticket database model
+ticket creation logic
+ticket status logic
+ticket assignment logic
+customer search
+technician assignment
+ticket comments/replies
+ticket attachments
+RBAC
+tenant/RLS handling
+```
+
+Likely areas include:
+
+```text
+src/routes/
+src/components/isp/
+src/lib/isp/
+migrations/
+```
+
+Do not assume filenames.
+
+Determine:
+
+* how tickets are currently fetched
+* how tickets are created
+* how customers are identified
+* existing ticket statuses
+* existing priorities
+* existing categories
+* existing assignments
+* existing ticket detail view
+* existing permissions
+* existing pagination, if any
+* existing search utilities
+* existing API contracts
+
+Reuse existing functionality.
+
+---
+
+# 2. STRICT NO-REWRITE RULE
+
+This task is primarily a **frontend UX/UI redesign**.
+
+Do not rewrite:
+
+* customer management
+* ticket business logic
+* authentication
+* RBAC
+* RLS
+* billing
+* payments
+* service management
+* technician system
+* notification system
+* SMS
+* WhatsApp
+* database architecture
+
+Do not duplicate ticket APIs.
+
+Do not create a second ticket-management system.
+
+---
+
+# 3. NEW PAGE STRUCTURE
+
+The redesigned page should follow this general hierarchy:
+
+```text
+Tickets
+
+Manage customer support requests, technical issues and service enquiries.
+
+[ Search tickets ]   [ Status ] [ Priority ] [ Assigned to ]   [ + New Ticket ]
+
+
+Overview / summary
+──────────────────────────────────────────────────────────────
+
+Open       Pending       In Progress       Resolved
+
+
+Previous tickets
+──────────────────────────────────────────────────────────────
+
+Ticket   Customer   Subject   Priority   Status   Assigned   Updated
+
+TK-001   John Kamau  No internet  High     Open     James      2m ago
+TK-002   Mary Wanjiku Slow speed   Medium   Pending  Peter      18m ago
+TK-003   Acme Ltd    Installation  Low      Resolved  James     Yesterday
+
+
+                    < 1 2 3 4 5 >
+```
+
+The exact layout must follow the existing application design system and Modernize theme.
+
+---
+
+# 4. PAGE HEADER
+
+Use the existing `PageHeader` primitive if available.
+
+Header:
+
+```text
+Tickets
+Manage customer support requests and technical issues.
+```
+
+Primary action:
+
+```text
++ New Ticket
+```
+
+The button should be visually prominent.
+
+Do not place the entire ticket creation form directly on the page.
+
+---
+
+# 5. NEW TICKET — DIALOG
+
+Clicking:
+
+```text
++ New Ticket
+```
+
+must open a modal/dialog.
+
+Do not navigate away from the Tickets page.
+
+Use the application's existing Dialog component if available.
+
+Example:
+
+```text
+┌──────────────────────────────────────────────┐
+│ Create new ticket                         ×  │
+│                                              │
+│ Customer                                     │
+│ ┌──────────────────────────────────────────┐ │
+│ │ Search customer by name, phone, account │ │
+│ └──────────────────────────────────────────┘ │
+│                                              │
+│ Search results                               │
+│                                              │
+│ ○ John Kamau                                 │
+│   0712 345 678 · CUST-001                    │
+│                                              │
+│ ○ Mary Wanjiku                               │
+│   0722 456 789 · CUST-002                    │
+│                                              │
+└──────────────────────────────────────────────┘
+```
+
+Customer selection should be the first step.
+
+---
+
+# 6. CUSTOMER SEARCH
+
+The customer search must be a real backend-backed search.
+
+Do not load the entire customer database into the browser.
+
+Search should support existing customer identifiers such as:
+
+* customer name
+* phone number
+* customer/account number
+* email where applicable
+
+Use the existing customer search API/service if one exists.
+
+If no reusable search exists, add a minimal endpoint specifically for this purpose.
+
+The endpoint must:
+
+* enforce tenant isolation
+* enforce RBAC
+* return only necessary customer fields
+* support pagination/limit
+* prevent unrestricted bulk customer enumeration
+* use indexed/search-friendly fields where available
+
+---
+
+# 7. CUSTOMER SEARCH UX
+
+The search input should support debounced searching.
+
+Example:
+
+```text
+Search customer...
+```
+
+After typing:
+
+```text
+John
+```
+
+show results such as:
+
+```text
+John Kamau
+0712 345 678
+CUST-001
+
+John Mwangi
+0718 222 444
+CUST-018
+```
+
+Each result should be selectable.
+
+Do not display unnecessary sensitive information.
+
+---
+
+# 8. CUSTOMER SELECTION
+
+After selecting a customer, replace the search results with a compact customer summary.
+
+Example:
+
+```text
+Customer
+
+John Kamau
+0712 345 678
+CUST-001
+
+[Change customer]
+```
+
+Then reveal the ticket fields.
+
+This prevents the user from accidentally creating a ticket against the wrong customer.
+
+---
+
+# 9. TICKET CREATION FORM
+
+After customer selection, show the existing ticket fields supported by the application.
+
+At minimum preserve existing fields such as:
+
+```text
+Subject
+Description
+Category
+Priority
+Service
+Assignment
+```
+
+Only display fields that actually exist in the current implementation.
+
+Do not invent business fields.
+
+Example:
+
+```text
+Subject
+[ No internet connection                         ]
+
+Category
+[ Connectivity                              ▼ ]
+
+Priority
+[ High                                     ▼ ]
+
+Service
+[ Select customer service                   ▼ ]
+
+Description
+[                                            ]
+[                                            ]
+[                                            ]
+
+Assigned to
+[ Auto / Select technician                  ▼ ]
+
+                         [Cancel] [Create ticket]
+```
+
+---
+
+# 10. CUSTOMER SERVICES
+
+If the existing system supports multiple services per customer, allow the user to select the affected service.
+
+Example:
+
+```text
+Service
+
+○ Home Fibre — 20 Mbps
+○ PPPoE — 10 Mbps
+○ Static IP — 192.168.10.25
+```
+
+If there is only one relevant service, preselect it where the existing business logic permits.
+
+Do not expose services belonging to another customer.
+
+---
+
+# 11. VALIDATION
+
+Client-side validation should provide immediate feedback.
+
+Backend validation remains authoritative.
+
+Required fields should follow the existing ticket business rules.
+
+At minimum:
+
+```text
+Customer
+Subject
+Description
+```
+
+must be validated if those are required by the existing system.
+
+Do not allow ticket creation without a valid customer.
+
+---
+
+# 12. CREATE TICKET
+
+When the user clicks:
+
+```text
+Create ticket
+```
+
+use the existing ticket creation API/service.
+
+Do not duplicate creation logic in the frontend.
+
+Show a loading state:
+
+```text
+Creating ticket...
+```
+
+Prevent duplicate submissions.
+
+On success:
+
+1. close the dialog
+2. show success feedback
+3. refresh the ticket list
+4. optionally navigate/open the newly created ticket using the existing ticket-detail mechanism
+
+Example:
+
+> Ticket TK-1042 created successfully.
+
+---
+
+# 13. TICKET LIST
+
+The main Tickets page should display existing tickets in a clean table/list.
+
+Recommended columns:
+
+```text
+Ticket
+Customer
+Subject
+Priority
+Status
+Assigned to
+Updated
+```
+
+Only include columns supported by the existing ticket model.
+
+Avoid excessively wide tables on smaller screens.
+
+---
+
+# 14. TICKET IDENTIFIER
+
+Display the existing ticket number/reference prominently but not excessively.
+
+Example:
+
+```text
+TK-1042
+```
+
+If the existing system uses another identifier, preserve it.
+
+Do not create a second ticket-number system.
+
+---
+
+# 15. STATUS
+
+Use semantic badges.
+
+For example:
+
+```text
+Open          → info/accent
+Pending       → warning
+In Progress   → info
+Resolved      → success
+Closed        → neutral
+```
+
+Use the actual statuses already supported by the application.
+
+Do not rename backend statuses merely for visual purposes.
+
+---
+
+# 16. PRIORITY
+
+Use semantic visual treatment.
+
+Example:
+
+```text
+Low       → neutral
+Medium    → info
+High      → warning
+Critical  → danger
+```
+
+Only use statuses that actually exist.
+
+Do not use the primary company accent for every priority.
+
+---
+
+# 17. SEARCH TICKETS
+
+Add a search field above the ticket list:
+
+```text
+Search tickets...
+```
+
+Search should support existing ticket identifiers such as:
+
+* ticket number
+* subject
+* customer name
+* customer phone
+
+Use server-side search when the dataset is large.
+
+Do not load thousands of tickets into the browser merely to filter them.
+
+---
+
+# 18. FILTERS
+
+Add filters appropriate to the existing ticket model.
+
+Suggested:
+
+```text
+Status
+Priority
+Assigned to
+Category
+```
+
+Do not add filters for data that the backend does not support.
+
+Filters should work together.
+
+Example:
+
+```text
+Search: internet
+Status: Open
+Priority: High
+Assigned: James
+```
+
+should return tickets matching all selected conditions.
+
+---
+
+# 19. PAGINATION
+
+Previous/existing tickets must use real server-side pagination.
+
+Do not render all tickets at once.
+
+Recommended default:
+
+```text
+20 tickets per page
+```
+
+or use the existing application page-size convention if one already exists.
+
+Allow page-size selection if consistent with the application:
+
+```text
+20 / 50 / 100
+```
+
+The backend should return:
+
+```text
+items
+page
+pageSize
+total
+totalPages
+```
+
+or the equivalent structure already used by the repository.
+
+---
+
+# 20. PAGINATION UI
+
+At the bottom:
+
+```text
+Showing 21–40 of 126 tickets
+
+[Previous]  1  2  3  4  5  [Next]
+```
+
+On mobile:
+
+```text
+Showing 21–40 of 126
+
+[← Previous]       [Next →]
+```
+
+Disable Previous on page 1.
+
+Disable Next on the final page.
+
+Do not show meaningless pagination when there is only one page.
+
+---
+
+# 21. PAGINATION + FILTERS
+
+Changing:
+
+```text
+search
+status
+priority
+assignment
+category
+```
+
+must reset pagination to page 1.
+
+Example:
+
+```text
+Page 7
+↓
+Search "internet"
+↓
+Page 1
+```
+
+Changing page must preserve active filters.
+
+Refreshing data must preserve the current filter state where the existing application architecture supports it.
+
+---
+
+# 22. LOADING STATE
+
+Do not make the entire page flash blank while tickets load.
+
+Use a table/list skeleton or subtle loading state.
+
+Example:
+
+```text
+Customer        Subject              Status
+────────────    ─────────────────    ────────
+████████        █████████████        █████
+████████        █████████████        █████
+████████        █████████████        █████
+```
+
+Use the existing loading/skeleton primitives.
+
+---
+
+# 23. EMPTY STATE
+
+When there are no tickets:
+
+```text
+No tickets found
+
+There are no tickets matching your current filters.
+```
+
+If there are genuinely no tickets at all:
+
+```text
+No tickets yet
+
+Create a ticket to start managing customer support requests.
+
+[Create ticket]
+```
+
+Do not show a large empty table.
+
+---
+
+# 24. TICKET DETAIL
+
+Do not redesign the ticket-detail functionality as part of this task unless necessary for consistency.
+
+Clicking a ticket should continue using the existing:
+
+* route
+* dialog
+* detail page
+* comments
+* status changes
+* assignment
+* attachments
+* actions
+
+Only make minimal visual adjustments if required by the new shared design primitives.
+
+---
+
+# 25. RESPONSIVE DESIGN
+
+Desktop:
+
+Use the table/list layout.
+
+Tablet:
+
+Reduce secondary columns where appropriate.
+
+Mobile:
+
+Use a compact ticket row/card:
+
+```text
+TK-1042 · HIGH
+
+No internet connection
+John Kamau
+0712 345 678
+
+Open · James
+Updated 2m ago
+```
+
+Clicking opens the existing ticket detail.
+
+Do not force a horizontally scrolling desktop table onto a phone unless the existing application specifically requires it.
+
+---
+
+# 26. MODERNIZE THEME COMPATIBILITY
+
+The Tickets page must work with:
+
+```text
+Default theme
+Modernize theme
+Light mode
+Dark mode
+```
+
+When Modernize is active:
+
+* avoid excessive cards
+* use the shared surface hierarchy
+* use restrained borders
+* use semantic badges
+* use clear typography
+* use the existing Modernize spacing/radius tokens
+* use the shared Dialog
+* use the shared PageHeader
+* use the shared EmptyState
+* use the shared Table/list primitives
+
+Do not introduce ticket-specific visual styling that bypasses the design system.
+
+---
+
+# 27. DIALOG BEHAVIOR
+
+The New Ticket dialog must:
+
+* be keyboard accessible
+* trap focus appropriately
+* close with the close button
+* support Escape where the existing Dialog system permits
+* preserve entered form data when appropriate
+* prevent accidental duplicate submission
+* show validation errors
+* show server errors
+* reset after successful creation
+
+If the customer search is open, selecting a customer should not unexpectedly close the entire dialog.
+
+---
+
+# 28. CUSTOMER SEARCH PERFORMANCE
+
+Use debouncing.
+
+Recommended:
+
+```text
+250–350ms
+```
+
+Do not make a request on every keystroke.
+
+Do not search until a reasonable minimum query length is reached unless the existing search system supports efficient short queries.
+
+Example:
+
+```text
+2–3 characters minimum
+```
+
+Use the repository's established search conventions where available.
+
+---
+
+# 29. PERMISSIONS
+
+Respect existing ticket permissions.
+
+For example, if the current RBAC system allows only authorized staff to create tickets, the New Ticket button must not bypass that.
+
+The backend must continue enforcing authorization.
+
+Do not rely only on hiding the button.
+
+---
+
+# 30. TENANT ISOLATION
+
+Customer search and ticket retrieval must remain tenant-scoped.
+
+A staff user belonging to:
+
+```text
+Tenant A
+```
+
+must never receive:
+
+```text
+Tenant B customers
+Tenant B tickets
+```
+
+through:
+
+* customer search
+* ticket search
+* pagination
+* filters
+* direct ticket lookup
+
+Preserve existing RLS and server-side authorization.
+
+---
+
+# 31. API / BACKEND REQUIREMENTS
+
+If existing ticket APIs already support pagination/search/filtering:
+
+**reuse them.**
+
+If they do not, extend them minimally.
+
+Do not create parallel APIs.
+
+The preferred query model is conceptually:
+
+```text
+GET /tickets?
+  page=1&
+  pageSize=20&
+  search=internet&
+  status=open&
+  priority=high&
+  assignedTo=...
+```
+
+Use the application's existing routing/API conventions rather than blindly creating this exact endpoint.
+
+Customer search should similarly use the existing customer API conventions.
+
+---
+
+# 32. DATABASE PERFORMANCE
+
+Inspect the existing schema before modifying it.
+
+If pagination/search requires indexes, add only the indexes justified by actual queries.
+
+Potential searchable fields may include:
+
+```text
+ticket number
+subject
+customer ID
+customer name
+customer phone
+status
+priority
+assigned user
+created_at
+updated_at
+```
+
+Do not add unnecessary indexes.
+
+For large datasets, ensure the ticket list query does not perform expensive unbounded scans.
+
+---
+
+# 33. AUDIT / BUSINESS LOGIC
+
+Creating a ticket must continue to use the existing audit/business logic.
+
+Do not bypass:
+
+* audit events
+* notifications
+* ticket numbering
+* assignment rules
+* SLA calculations
+* status workflows
+* automation
+
+The redesign must call the same backend ticket creation pathway.
+
+---
+
+# 34. TESTING
+
+Add/update tests for:
+
+### Customer search
+
+* [ ] Search returns only authorized tenant customers.
+* [ ] Name search works.
+* [ ] Phone search works.
+* [ ] Account/customer number search works where supported.
+* [ ] Results are limited/paginated.
+* [ ] Unauthorized customer data is not returned.
+
+### Ticket list
+
+* [ ] Tickets load.
+* [ ] Pagination works.
+* [ ] Search works.
+* [ ] Status filter works.
+* [ ] Priority filter works.
+* [ ] Assignment filter works where supported.
+* [ ] Combined filters work.
+* [ ] Changing filters resets page to 1.
+
+### Ticket creation
+
+* [ ] Dialog opens.
+* [ ] Customer search works.
+* [ ] Customer can be selected.
+* [ ] Selected customer is displayed.
+* [ ] Required fields validate.
+* [ ] Ticket is created through existing API/service.
+* [ ] Duplicate submissions are prevented.
+* [ ] Dialog closes after success.
+* [ ] Ticket list refreshes.
+
+### Security
+
+* [ ] Existing RBAC remains enforced.
+* [ ] RLS remains enforced.
+* [ ] Tenant isolation remains enforced.
+
+---
+
+# 35. ACCEPTANCE CRITERIA
+
+The redesign is complete when an authorized staff member can:
+
+1. Open **Tickets**.
+2. See a clean ticket-management dashboard.
+3. Search existing tickets.
+4. Filter tickets.
+5. Navigate through previous tickets using pagination.
+6. Click **New Ticket**.
+7. Search for a customer inside a dialog.
+8. Select the correct customer.
+9. Enter ticket details.
+10. Create the ticket.
+11. Return to the refreshed ticket list.
+12. Open the newly created ticket using the existing ticket-detail functionality.
+
+The interface must work correctly on:
+
+```text
+Desktop
+Tablet
+Mobile
+```
+
+and with:
+
+```text
+Default theme
+Modernize theme
+Light mode
+Dark mode
+```
+
+---
+
+# 36. STRICT IMPLEMENTATION RULE
+
+Before modifying code:
+
+**inspect the existing Tickets page, ticket APIs, ticket schema, customer search, and shared UI primitives.**
+
+Then implement the redesign using the existing architecture.
+
+Do not rewrite the ticketing system.
+
+Do not duplicate business logic.
+
+Do not bypass RLS/RBAC.
+
+Do not create fake/mock customer or ticket data.
+
+Do not hardcode customers.
+
+Do not load the entire customer or ticket database into the browser.
+
+Use real backend search and real server-side pagination.
+
+The final result should feel like a modern operational support center while remaining fully integrated with the existing ISP Solutions platform.

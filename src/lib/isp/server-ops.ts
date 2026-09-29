@@ -373,11 +373,12 @@ export const listField = createServerFn({ method: "GET" })
             phone: string | null;
             address: string | null;
             created_at: string;
-          }>`select t.id, t.title, t.category, t.priority, t.status, t.assigned_to, c.name as customer_name, c.phone, c.address, t.created_at::text as created_at
+            due_at: string | null;
+          }>`select t.id, t.title, t.category, t.priority, t.status, t.assigned_to, c.name as customer_name, c.phone, c.address, t.created_at::text as created_at, t.due_at::text as due_at
        from tickets t left join customers c on c.id = t.customer_id
        where t.tenant_id = ${tenantId} and t.status not in ('closed','resolved')
          and (t.assigned_to = ${context.userId} or t.assigned_to = '')
-       order by case t.priority when 'urgent' then 0 when 'high' then 1 else 2 end, t.created_at`
+       order by t.due_at asc nulls last, t.created_at`
         : await sql<{
             id: string;
             title: string;
@@ -389,10 +390,11 @@ export const listField = createServerFn({ method: "GET" })
             phone: string | null;
             address: string | null;
             created_at: string;
-          }>`select t.id, t.title, t.category, t.priority, t.status, t.assigned_to, c.name as customer_name, c.phone, c.address, t.created_at::text as created_at
+            due_at: string | null;
+          }>`select t.id, t.title, t.category, t.priority, t.status, t.assigned_to, c.name as customer_name, c.phone, c.address, t.created_at::text as created_at, t.due_at::text as due_at
        from tickets t left join customers c on c.id = t.customer_id
        where t.tenant_id = ${tenantId} and t.status not in ('closed','resolved')
-       order by case t.priority when 'urgent' then 0 when 'high' then 1 else 2 end, t.created_at`;
+       order by t.due_at asc nulls last, t.created_at`;
     return { tickets };
   });
 

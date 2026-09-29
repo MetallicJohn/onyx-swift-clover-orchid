@@ -50,6 +50,9 @@ export type NotifyVars = {
   available_credit?: string;
   current_period_amount?: string;
   receipt_number?: string;
+  ticket_title?: string;
+  ticket_status?: string;
+  technician_name?: string;
 };
 
 const DEFAULTS: Array<{
@@ -328,6 +331,66 @@ const DEFAULTS: Array<{
     subject: "Service suspended",
     body: "{customer_name} / {service_name} suspended after unpaid {invoice_number}.",
   },
+  {
+    event_code: "ticket_opened",
+    channel: "sms",
+    subject: "Support ticket opened",
+    body: "Hi {customer_name}, {isp_name} opened a ticket: {ticket_title}. We'll update you when a technician is on the way.",
+  },
+  {
+    event_code: "ticket_opened",
+    channel: "whatsapp",
+    subject: "Support ticket opened",
+    body: "Hi {customer_name}, {isp_name} opened a ticket: {ticket_title}. We'll message you when a technician is on the way.",
+  },
+  {
+    event_code: "ticket_opened",
+    channel: "in_app",
+    subject: "Support ticket opened",
+    body: "{ticket_title} was opened on your account.",
+  },
+  {
+    event_code: "ticket_assigned",
+    channel: "whatsapp",
+    subject: "Ticket assigned",
+    body: "{isp_name}: {ticket_title} for {customer_name} is assigned to you. Reply accepted, on the way, on site, or resolved.",
+  },
+  {
+    event_code: "ticket_status_changed",
+    channel: "sms",
+    subject: "Technician on the way",
+    body: "{customer_name}, your technician is on the way for {ticket_title}. — {isp_name}",
+  },
+  {
+    event_code: "ticket_status_changed",
+    channel: "whatsapp",
+    subject: "Technician on the way",
+    body: "Hi {customer_name}, your {isp_name} technician is on the way for {ticket_title}.",
+  },
+  {
+    event_code: "ticket_resolved",
+    channel: "sms",
+    subject: "Ticket resolved",
+    body: "{customer_name}, {ticket_title} is resolved. Reply if it is still a problem. — {isp_name}",
+  },
+  {
+    event_code: "ticket_resolved",
+    channel: "whatsapp",
+    subject: "Ticket resolved",
+    body: "Hi {customer_name}, {ticket_title} is resolved. Reply if it is still a problem. — {isp_name}",
+  },
+  {
+    event_code: "ticket_resolved",
+    channel: "in_app",
+    subject: "Ticket resolved",
+    body: "{ticket_title} is resolved.",
+  },
+  {
+    event_code: "ticket_sla_warning",
+    channel: "whatsapp",
+    subject: "Ticket SLA warning",
+    body: "{isp_name}: {ticket_title} for {customer_name} is due within 30 minutes. Reply on site or resolved when you can.",
+  },
 ];
 
 const DATE_KEYS: Array<keyof NotifyVars> = ["due_date", "grace_until", "renewal_date", "service_expiry_date"];
@@ -577,6 +640,81 @@ export async function notifyQuietly(
     return await notifyCustomerEvent(sql, tenantId, ispName, customerId, event, entityId, vars);
   } catch {
     return 0;
+  }
+}
+
+/** Automatic invoice SMS during service creation. Only `customers.type = business`. */
+export function shouldSendInvoiceSms(customer: { type?: string | null } | null | undefined) {
+  return customer?.type === "business";
+}
+
+const INVOICE_SMS_SKIPPED = "invoice.sms.skipped";
+const INVOICE_SMS_SKIPPED_NOTE = "Not sent — individual customer";
+
+/**
+ * Queue the invoice notice that follows a new service.
+ * Business customers use the existing invoice.created templates and gateway.
+ * Everyone else is not queued. Recurring, reminder, and manual invoice sends do not use this.
+ */
+export async function notifyServiceCreationInvoice(
+  sql: Sql,
+  opts: {
+    tenantId: string;
+    ispName: string;
+    customerId: string;
+    invoiceId: string;
+    serviceId: string;
+    actorId?: string;
+    vars: NotifyVars;
+  },
+) {
+  try {
+    const [customer] = await sql<{ type: string }>`
+      select type from customers
+      where id = ${opts.customerId} and tenant_id = ${opts.tenantId} and deleted_at is null`;
+    if (!shouldSendInvoiceSms(customer)) {
+      await recordSkippedServiceInvoiceSms(sql, opts);
+      return 0;
+    }
+    return await notifyQuietly(
+      sql,
+      opts.tenantId,
+      opts.ispName,
+      opts.customerId,
+      "invoice.created",
+      opts.invoiceId,
+      opts.vars,
+    );
+  } catch {
+    return 0;
+  }
+}
+
+async function recordSkippedServiceInvoiceSms(
+  sql: Sql,
+  opts: {
+    tenantId: string;
+    customerId: string;
+    invoiceId: string;
+    serviceId: string;
+    actorId?: string;
+  },
+) {
+  const [existing] = await sql<{ id: string }>`
+    select id from notification_logs
+    where tenant_id = ${opts.tenantId} and event_code = ${INVOICE_SMS_SKIPPED}
+      and entity_id = ${opts.invoiceId} and channel = 'sms'`;
+  if (!existing) {
+    await sql`insert into notification_logs (id, tenant_id, customer_id, event_code, channel, entity_id, subject, body, destination, status)
+      values (${nid("ntf")}, ${opts.tenantId}, ${opts.customerId}, ${INVOICE_SMS_SKIPPED}, 'sms', ${opts.invoiceId},
+        ${"Invoice notification — not sent (individual customer)"}, ${INVOICE_SMS_SKIPPED_NOTE}, '', 'skipped')`;
+  }
+  const [audited] = await sql<{ id: string }>`
+    select id from audit_logs
+    where tenant_id = ${opts.tenantId} and action = ${INVOICE_SMS_SKIPPED} and entity_id = ${opts.serviceId}`;
+  if (!audited) {
+    await sql`insert into audit_logs (id, tenant_id, user_id, action, entity_type, entity_id, details)
+      values (${nid("aud")}, ${opts.tenantId}, ${opts.actorId || "system"}, ${INVOICE_SMS_SKIPPED}, 'service', ${opts.serviceId}, ${INVOICE_SMS_SKIPPED_NOTE})`;
   }
 }
 

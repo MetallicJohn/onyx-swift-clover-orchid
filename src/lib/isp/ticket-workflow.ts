@@ -30,3 +30,22 @@ export function canTechnicianSet(from: string, to: string) {
   if (i < 0 || j < 0) return false;
   return j >= i && j - i <= 2;
 }
+
+export function technicianMoves(from: string): TicketStatus[] {
+  return TICKET_STATUSES.filter((to) => to !== from && canTechnicianSet(from, to));
+}
+
+/** Field replies on WhatsApp. Full message only, so a customer sentence is not a status change. */
+export function parseTechnicianCommand(text: string): TicketStatus | null {
+  const q = String(text || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+  if (/^(on site|onsite|arrived|i am here|i'm here|at site)$/.test(q)) return "on_site";
+  if (/^(resolved|resolve|done|fixed|complete|completed)$/.test(q)) return "resolved";
+  if (/^(travelling|traveling|on the way|en route|enroute|otw)$/.test(q)) return "travelling";
+  if (/^(accepted|accept|i accept)$/.test(q)) return "accepted";
+  if (/^(waiting|on hold)$/.test(q)) return "waiting";
+  return null;
+}

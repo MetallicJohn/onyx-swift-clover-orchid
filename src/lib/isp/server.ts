@@ -5,6 +5,7 @@ import { nid } from "@/lib/utils";
 import {
   ensureDefaultTemplates,
   notifyCustomerEvent,
+  notifyServiceCreationInvoice,
   runBillingCycle,
 } from "./notifications";
 import { provisionServiceAccess, seedOpsForTenant } from "./access";
@@ -15,7 +16,7 @@ import { nairobiDate } from "./empty-tenant";
 import { loadChurnScores } from "./churn";
 import { loadDashboard } from "./dashboard";
 import { requestPublicOrigin } from "./auth-origins";
-import { completeOperatorReset, requestOperatorReset } from "./password-reset";
+import { completeOperatorReset } from "./password-reset";
 import { agentPullUrl, agentScript, enrollFields, enqueueAgentCommand, enqueuePackageProfiles, nextWgAddress } from "./agent";
 import { mikrotikProfileName } from "./pcq";
 import { mikrotikRateLimit } from "./radius-format";
@@ -36,9 +37,9 @@ import {
 import { ensureServiceAccountNumber } from "./account-numbers";
 import { allocateCustomerId } from "./customer-ids";
 import { applyRls } from "./rls";
-import { loadAuthUser, provisionTenant, setCredentialPassword, changeOwnPassword, isPlatformAdmin, canonicalizeOperatorEmail } from "./accounts";
+import { loadAuthUser, provisionTenant, setCredentialPassword, changeOwnPassword, isPlatformAdmin } from "./accounts";
 import { resolveActiveTenant, setActiveTenant } from "./tenant-context";
-import { openTicket } from "./tickets";
+import { changeTicketStatus, listTicketCustomerServices, openStaffTicket, queryTicketList } from "./tickets";
 import type {
   AccessMethod,
   CustomerRow,
@@ -48,7 +49,6 @@ import type {
   PaymentRow,
   ServiceRow,
   ServiceStatus,
-  TicketRow,
   Workspace,
 } from "./types";
 
@@ -837,11 +837,19 @@ export const createService = createServerFn({ method: "POST" })
           },
         ],
       });
-      await notifyCustomerEvent(sql, tid, workspace.tenantName, data.customer_id, "invoice.created", inv.id, {
-        customer_name: "",
-        invoice_number: inv.number,
-        amount: `KES ${inv.amount_kes}`,
-        due_date: dueDate,
+      await notifyServiceCreationInvoice(sql, {
+        tenantId: tid,
+        ispName: workspace.tenantName,
+        customerId: data.customer_id,
+        invoiceId: inv.id,
+        serviceId: id,
+        actorId: context.userId,
+        vars: {
+          customer_name: "",
+          invoice_number: inv.number,
+          amount: `KES ${inv.amount_kes}`,
+          due_date: dueDate,
+        },
       });
     }
     await audit(sql, tid, context.userId, "service.created", "service", id, JSON.stringify({ account_number: serviceAccount }));
@@ -1219,7 +1227,7 @@ export const addRouter = createServerFn({ method: "POST" })
     const { tenantPublicOriginOrEmpty, previewTenantDomain } = await import("./domain-resolve");
     const preview = await previewTenantDomain(sql, workspace.tenantId, "router_bootstrap");
     let issued: Awaited<ReturnType<typeof issueProvisioningToken>> | null = null;
-    let domainError = preview.ok ? "" : preview.error;
+    const domainError = preview.ok ? "" : preview.error;
     if (preview.ok) {
       issued = await issueProvisioningToken(sql, {
         tenantId: workspace.tenantId,
@@ -1259,26 +1267,40 @@ export const addRouter = createServerFn({ method: "POST" })
 
 export const listTickets = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
-  .handler(async ({ context }) => {
+  .validator((d: Parameters<typeof queryTicketList>[2] | undefined) => d ?? {})
+  .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "tickets.read");
-    const tickets = await sql<TicketRow>`
-      select t.id, t.customer_id, c.name as customer_name, t.title, t.category, t.priority, t.status, t.assigned_to, t.created_at::text as created_at
-      from tickets t left join customers c on c.id = t.customer_id
-      where t.tenant_id = ${workspace.tenantId}
-      order by t.created_at desc`;
-    const customers = await sql<{ id: string; name: string }>`select id, name from customers where tenant_id = ${workspace.tenantId} and deleted_at is null order by name`;
-    return { workspace, tickets, customers };
+    const list = await queryTicketList(sql, workspace.tenantId, data);
+    return { workspace, ...list };
+  });
+
+export const ticketCustomerServices = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .validator((d: { customer_id: string }) => d)
+  .handler(async ({ context, data }) => {
+    const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "tickets.manage");
+    const services = await listTicketCustomerServices(sql, workspace.tenantId, data.customer_id || "");
+    return { services };
   });
 
 export const createTicket = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { title: string; category: string; priority: string; customer_id?: string }) => d)
+  .validator(
+    (d: {
+      title: string;
+      category: string;
+      priority: string;
+      customer_id?: string;
+      service_id?: string;
+      assigned_to?: string;
+    }) => d,
+  )
   .handler(async ({ context, data }) => {
     const { sql, workspace } = await requireTenant(context.userId);
     assertPermission(workspace.role, "tickets.manage");
-    if (!data.title.trim()) throw new Error("Title is required");
-    const opened = await openTicket(sql, workspace.tenantId, data);
+    const opened = await openStaffTicket(sql, workspace.tenantId, data);
     await audit(sql, workspace.tenantId, context.userId, "ticket.created", "ticket", opened.id);
     return opened;
   });
@@ -1294,7 +1316,9 @@ export const setTicketStatus = createServerFn({ method: "POST" })
         select assigned_to from tickets where id = ${data.id} and tenant_id = ${workspace.tenantId}`;
       if (t && t.assigned_to && t.assigned_to !== context.userId) throw new Error("Not assigned to you");
     }
-    await sql`update tickets set status = ${data.status} where id = ${data.id} and tenant_id = ${workspace.tenantId}`;
+    await changeTicketStatus(sql, workspace.tenantId, data.id, data.status, {
+      technicianUserId: workspace.role === "technician" ? context.userId : "",
+    });
     return { ok: true };
   });
 

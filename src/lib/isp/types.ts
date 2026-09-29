@@ -39,7 +39,12 @@ export type BillingEvent =
   | "credit.warning"
   | "credit.limit_reached"
   | "payment.received.business"
-  | "service.restored.business";
+  | "service.restored.business"
+  | "ticket_opened"
+  | "ticket_assigned"
+  | "ticket_status_changed"
+  | "ticket_resolved"
+  | "ticket_sla_warning";
 
 export type ServiceStatus =
   | "pending"

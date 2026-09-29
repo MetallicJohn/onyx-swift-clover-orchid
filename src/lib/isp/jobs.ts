@@ -318,6 +318,11 @@ export async function executeJob(sql: Sql, job: JobRow) {
     return { routers: out.length, results: out };
   }
 
+  if (job.kind === "tickets.sla_warning") {
+    const { scanTicketSla } = await import("./ticket-notify.ts");
+    return scanTicketSla(sql);
+  }
+
   throw new Error(`Unknown job kind ${job.kind}`);
 }
 
@@ -382,6 +387,19 @@ export async function jobHealth(sql: Sql) {
 export function billingIdempotencyKey(tenantId: string, at = new Date()) {
   const day = at.toISOString().slice(0, 10);
   return `billing.cycle:${tenantId}:${day}`;
+}
+
+export function ticketSlaIdempotencyKey(at = new Date()) {
+  const bucket = Math.floor(at.getTime() / (10 * 60_000));
+  return `tickets.sla:${bucket}`;
+}
+
+export async function enqueueTicketSlaScan(sql: Sql) {
+  return enqueueJob(sql, {
+    queue: "notifications",
+    kind: "tickets.sla_warning",
+    idempotencyKey: ticketSlaIdempotencyKey(),
+  });
 }
 
 export async function enqueueBillingForAllTenants(sql: Sql) {

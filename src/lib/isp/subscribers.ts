@@ -7,7 +7,7 @@ import { nid } from "../utils.ts";
 import { syncRadiusAccount } from "./radius";
 import { creditReseller } from "./resellers";
 import { convertReferral } from "./referrals";
-import { writeInbox } from "./inbox";
+import { fanoutTicketEvent } from "./ticket-notify";
 
 let wired = false;
 
@@ -175,20 +175,23 @@ export function wireModules() {
   });
 
   on("ticket.created", async (sql, event) => {
-    const cid = String(event.payload.customer_id || "");
-    if (!cid) return;
-    try {
-      await writeInbox(
-        sql,
-        event.tenantId,
-        cid,
-        "Support ticket opened",
-        String(event.payload.title || "A ticket was opened on your account"),
-        "ticket.created",
-      );
-    } catch {
-      /* inbox is best-effort */
-    }
+    await fanoutTicketEvent(sql, event);
+  });
+
+  on("ticket.assigned", async (sql, event) => {
+    await fanoutTicketEvent(sql, event);
+  });
+
+  on("ticket.status_changed", async (sql, event) => {
+    await fanoutTicketEvent(sql, event);
+  });
+
+  on("ticket.comment_added", async (sql, event) => {
+    await fanoutTicketEvent(sql, event);
+  });
+
+  on("ticket.sla_warning", async (sql, event) => {
+    await fanoutTicketEvent(sql, event);
   });
 
   on("customer.created", async (sql, event) => {

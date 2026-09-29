@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
-import { enqueueBillingForAllTenants, processQueuedJobs } from "@/lib/isp/jobs";
+import { enqueueBillingForAllTenants, enqueueTicketSlaScan, processQueuedJobs } from "@/lib/isp/jobs";
 import { applyRls } from "@/lib/isp/rls";
 
 export const Route = createFileRoute("/api/v1/cron/billing")({
@@ -16,8 +16,10 @@ export const Route = createFileRoute("/api/v1/cron/billing")({
         const sql = await getSql();
         await applyRls(sql, { bypass: true });
         const queued = await enqueueBillingForAllTenants(sql);
+        await enqueueTicketSlaScan(sql).catch(() => null);
         const processed = await processQueuedJobs(sql, { workerId: "cron-billing", queue: "billing", limit: 32 });
-        return Response.json({ ok: true, ran: queued.tenants, queued, processed });
+        const sla = await processQueuedJobs(sql, { workerId: "cron-sla", queue: "notifications", limit: 4 }).catch(() => null);
+        return Response.json({ ok: true, ran: queued.tenants, queued, processed, sla });
       },
     },
   },

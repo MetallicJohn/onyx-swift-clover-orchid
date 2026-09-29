@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getSql } from "@/lib/db";
 import { authorizedInternal, requestIdOf } from "@/lib/isp/internal-auth";
-import { enqueueJob, jobHealth, processQueuedJobs } from "@/lib/isp/jobs";
+import { enqueueJob, enqueueTicketSlaScan, jobHealth, processQueuedJobs } from "@/lib/isp/jobs";
 import { applyRls } from "@/lib/isp/rls";
 import { loadServiceConfig } from "@/lib/isp/runtime-config";
 
@@ -32,6 +32,8 @@ export const Route = createFileRoute("/api/internal/jobs")({
           kind: "mikrotik.health",
           idempotencyKey: `mikrotik.health:${new Date().toISOString().slice(0, 16)}`,
         }).catch(() => null);
+        await enqueueTicketSlaScan(sql).catch(() => null);
+        await processQueuedJobs(sql, { workerId: "sla", queue: "notifications", limit: 4 }).catch(() => null);
         const out = await processQueuedJobs(sql, {
           workerId: String(body.workerId || request.headers.get("x-worker-id") || "worker"),
           queue,

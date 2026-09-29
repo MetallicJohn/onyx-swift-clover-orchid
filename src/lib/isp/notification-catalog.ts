@@ -97,6 +97,16 @@ export const NOTIFICATION_CATALOG: Array<{
       { code: "service.restored.business", label: "Business Service Restored" },
     ],
   },
+  {
+    category: "Tickets",
+    events: [
+      { code: "ticket_opened", label: "Ticket Opened" },
+      { code: "ticket_assigned", label: "Ticket Assigned" },
+      { code: "ticket_status_changed", label: "Technician On The Way" },
+      { code: "ticket_resolved", label: "Ticket Resolved" },
+      { code: "ticket_sla_warning", label: "Ticket SLA Warning" },
+    ],
+  },
 ];
 
 export const PAYMENT_NOTIFY_EVENTS = new Set<BillingEvent>([

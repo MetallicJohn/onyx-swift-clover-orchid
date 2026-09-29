@@ -9,6 +9,7 @@ import { rateLimit } from "./rate-limit.ts";
 import { open, seal } from "./secrets.ts";
 import { createStkIntent } from "./payments.ts";
 import { remainingKes } from "./billing.ts";
+import { applyTechnicianWhatsAppStatus, openTicket } from "./tickets.ts";
 
 type Sql = {
   <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
@@ -959,6 +960,13 @@ export async function handleCustomerWhatsApp(
     });
   };
 
+  const text = input.text.trim();
+  const tech = await applyTechnicianWhatsAppStatus(sql, input.tenantId, phone, text);
+  if (tech.handled) {
+    await say(tech.reply, "ticket.status");
+    return { duplicate: false, replies };
+  }
+
   if (!settings.enabled) {
     await say("WhatsApp self-service is not turned on for this ISP. Please contact support.");
     return { duplicate: false, replies };
@@ -968,7 +976,6 @@ export async function handleCustomerWhatsApp(
     return { duplicate: false, replies };
   }
 
-  const text = input.text.trim();
   if (/^\d{6}$/.test(text)) {
     const checked = await verifyOtp(sql, input.tenantId, convo, text, settings);
     await say(checked.reply);

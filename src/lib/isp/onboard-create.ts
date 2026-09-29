@@ -9,7 +9,7 @@ import { last9Phone } from "./customer-portal-format.ts";
 import { likeNeedle } from "./customer-desk-format.ts";
 import { nairobiDate } from "./empty-tenant.ts";
 import { emit } from "./events.ts";
-import { buildServiceNotifyVars, notifyQuietly } from "./notifications.ts";
+import { buildServiceNotifyVars, notifyQuietly, notifyServiceCreationInvoice } from "./notifications.ts";
 import {
   AWAITING_PAYMENT,
   billingAnchorYmd,
@@ -282,6 +282,7 @@ async function issueServiceInvoice(
   opts: {
     tenantId: string;
     tenantName: string;
+    actorId: string;
     customerId: string;
     serviceId: string;
     packageId: string;
@@ -317,11 +318,19 @@ async function issueServiceInvoice(
     ],
   });
   try {
-    await notifyQuietly(sql, opts.tenantId, opts.tenantName, opts.customerId, "invoice.created", inv.id, {
-      customer_name: "",
-      invoice_number: inv.number,
-      amount: `KES ${inv.amount_kes}`,
-      due_date: dueDate,
+    await notifyServiceCreationInvoice(sql, {
+      tenantId: opts.tenantId,
+      ispName: opts.tenantName,
+      customerId: opts.customerId,
+      invoiceId: inv.id,
+      serviceId: opts.serviceId,
+      actorId: opts.actorId,
+      vars: {
+        customer_name: "",
+        invoice_number: inv.number,
+        amount: `KES ${inv.amount_kes}`,
+        due_date: dueDate,
+      },
     });
   } catch {
     /* invoice stands even if the notice fails */
@@ -786,6 +795,7 @@ export async function createOnboard(
       const inv = await issueServiceInvoice(sql, {
         tenantId: tid,
         tenantName: opts.tenantName,
+        actorId: opts.actorId,
         customerId,
         serviceId: id,
         packageId: pkg.id,
@@ -799,6 +809,7 @@ export async function createOnboard(
       const inv = await issueServiceInvoice(sql, {
         tenantId: tid,
         tenantName: opts.tenantName,
+        actorId: opts.actorId,
         customerId,
         serviceId: id,
         packageId: pkg.id,
