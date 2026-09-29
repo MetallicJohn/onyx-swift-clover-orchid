@@ -179,6 +179,89 @@ export function describeFilter(filter: AudienceFilter, packageNames: string[] = 
   return bits.join(" · ");
 }
 
+const STATUS_SUMMARY_ORDER = ["active", "suspended", "expired", "grace"] as const;
+const ACCESS_SUMMARY_ORDER = ["pppoe", "static", "hotspot"] as const;
+const STATUS_SUMMARY: Record<string, string> = {
+  active: "Active",
+  suspended: "Suspended",
+  expired: "Expired",
+  grace: "Grace",
+};
+const ACCESS_SUMMARY: Record<string, string> = {
+  pppoe: "PPPoE",
+  static: "Static IP",
+  hotspot: "Hotspot",
+};
+
+export type AudienceSummaryLabels = {
+  packageNames?: string[];
+  tagNames?: string[];
+  typeLabel?: string;
+};
+
+/** Short Audience-panel line. Empty means the default eligible audience, not “all statuses” as an active filter. */
+export function audienceSummary(filter: AudienceFilter, labels: AudienceSummaryLabels = {}) {
+  const tokens: string[] = [];
+  const statuses = filter.statuses ?? [];
+  for (const id of STATUS_SUMMARY_ORDER) {
+    if (statuses.includes(id)) tokens.push(STATUS_SUMMARY[id] ?? id);
+  }
+  for (const id of statuses) {
+    if (!STATUS_SUMMARY_ORDER.includes(id as (typeof STATUS_SUMMARY_ORDER)[number])) tokens.push(id);
+  }
+  const access = filter.access ?? [];
+  for (const id of ACCESS_SUMMARY_ORDER) {
+    if (access.includes(id)) tokens.push(ACCESS_SUMMARY[id] ?? id);
+  }
+  for (const id of access) {
+    if (!ACCESS_SUMMARY_ORDER.includes(id as (typeof ACCESS_SUMMARY_ORDER)[number])) tokens.push(id);
+  }
+  const area = filter.area?.trim();
+  if (area) tokens.push(area);
+  const types = (filter.types ?? []).map((type) => type.trim()).filter(Boolean);
+  if (types.length === 1 && labels.typeLabel?.trim()) tokens.push(labels.typeLabel.trim());
+  else tokens.push(...types);
+  if (filter.package_ids?.length) {
+    const names = (labels.packageNames ?? []).map((name) => name.trim()).filter(Boolean);
+    if (names.length) tokens.push(...names);
+    else tokens.push(filter.package_ids.length === 1 ? "1 package" : `${filter.package_ids.length} packages`);
+  }
+  if (filter.overdue) tokens.push("Overdue");
+  if ((filter.expiring_days ?? 0) > 0) tokens.push(`Expiring in ${filter.expiring_days} days`);
+  if ((filter.new_days ?? 0) > 0) tokens.push(`New (${filter.new_days} days)`);
+  if ((filter.long_term_days ?? 0) > 0) {
+    tokens.push(filter.long_term_days === 365 ? "Long-term (1y+)" : `Long-term (${filter.long_term_days}d+)`);
+  }
+  if (filter.tag_ids?.length) {
+    const names = (labels.tagNames ?? []).map((name) => name.trim()).filter(Boolean);
+    if (names.length) tokens.push(...names);
+    else tokens.push(filter.tag_ids.length === 1 ? "1 tag" : `${filter.tag_ids.length} tags`);
+  }
+  if (!tokens.length) return "All eligible customers";
+  if (tokens.length <= 3) return tokens.join(" · ");
+  const extra = tokens.length - 3;
+  return `${tokens.slice(0, 3).join(" · ")} · +${extra} ${extra === 1 ? "filter" : "filters"}`;
+}
+
+/** Windows the composer toggles write onto AudienceFilter. resolveAudience uses these numbers as-is. */
+export const ACTIVITY_WINDOWS = {
+  expiringDays: 7,
+  newDays: 30,
+  longTermDays: 365,
+} as const;
+
+export const ACTIVITY_HELP = `Overdue means the customer still owes on an open invoice. Expiring means a service period ends within the next ${ACTIVITY_WINDOWS.expiringDays} days and has not already ended. New customers were created in the last ${ACTIVITY_WINDOWS.newDays} days. Long-term customers were created at least ${ACTIVITY_WINDOWS.longTermDays} days ago. These apply together with any service or customer filters.`;
+
+export function toggleFilterValue<T>(list: readonly T[] | undefined, value: T): T[] {
+  const current = list ?? [];
+  return current.includes(value) ? current.filter((item) => item !== value) : [...current, value];
+}
+
+/** True only for the latest preview request. Older responses must not replace it. */
+export function isCurrentPreview(requestId: number, latestId: number) {
+  return requestId === latestId;
+}
+
 export function parseAudienceFilter(raw: string): AudienceFilter {
   try {
     const v = JSON.parse(raw) as AudienceFilter;

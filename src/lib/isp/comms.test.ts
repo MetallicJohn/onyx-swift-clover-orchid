@@ -13,7 +13,7 @@ import {
   resolveAudience,
   summarizeAudience,
 } from "./comms.ts";
-import { type AudienceFilter, filterSignature, parseAudienceFilter, renderCommTemplate, smsSegments } from "./comms-format.ts";
+import { type AudienceFilter, ACTIVITY_HELP, ACTIVITY_WINDOWS, audienceSummary, filterSignature, isCurrentPreview, parseAudienceFilter, renderCommTemplate, smsSegments, toggleFilterValue } from "./comms-format.ts";
 import { assertPermission, hasPermission } from "./rbac.ts";
 import { openTestDb } from "./test-db.ts";
 
@@ -221,6 +221,69 @@ test("large audience insert and filter signature stay stable", async () => {
     const camp = await dispatchCampaign(sql, "ten_c", created.id);
     assert.ok(camp.sent_count >= 40);
     assert.equal(filterSignature(filter), filterSignature({ area: "Nanyuki", access: ["pppoe"], statuses: ["active"] }));
+  } finally {
+    await close();
+  }
+});
+
+test("audience summary, exclusive message choice, and stale preview", () => {
+  assert.equal(audienceSummary({}), "All eligible customers");
+  assert.equal(audienceSummary({ statuses: [], access: [], area: "   ", overdue: false }), "All eligible customers");
+  assert.equal(
+    audienceSummary({ statuses: ["active"], access: ["pppoe"], area: "Kilimani" }),
+    "Active · PPPoE · Kilimani",
+  );
+  assert.equal(audienceSummary({ statuses: ["suspended", "active"] }), "Active · Suspended");
+  assert.equal(
+    audienceSummary(
+      {
+        statuses: ["active"],
+        access: ["pppoe"],
+        area: "Kilimani",
+        package_ids: ["pkg_10"],
+        overdue: true,
+        tag_ids: ["tag_vip"],
+      },
+      { packageNames: ["10 Mbps"], tagNames: ["VIP"] },
+    ),
+    "Active · PPPoE · Kilimani · +3 filters",
+  );
+  assert.equal(audienceSummary({ overdue: true }), "Overdue");
+  assert.equal(audienceSummary({ expiring_days: ACTIVITY_WINDOWS.expiringDays }), "Expiring in 7 days");
+  assert.equal(audienceSummary({ new_days: ACTIVITY_WINDOWS.newDays }), "New (30 days)");
+  assert.equal(audienceSummary({ long_term_days: ACTIVITY_WINDOWS.longTermDays }), "Long-term (1y+)");
+  assert.match(ACTIVITY_HELP, /owes on an open invoice/);
+  assert.match(ACTIVITY_HELP, /within the next 7 days and has not already ended/);
+  assert.match(ACTIVITY_HELP, /last 30 days/);
+  assert.match(ACTIVITY_HELP, /at least 365 days ago/);
+
+  let category = "planned_maintenance";
+  category = "unplanned_outage";
+  assert.equal(category, "unplanned_outage");
+  assert.equal(category.includes(","), false);
+  const statuses = toggleFilterValue(toggleFilterValue<NonNullable<AudienceFilter["statuses"]>[number]>(undefined, "active"), "suspended");
+  assert.deepEqual(statuses, ["active", "suspended"]);
+  const access = toggleFilterValue(toggleFilterValue<NonNullable<AudienceFilter["access"]>[number]>(["pppoe"], "hotspot"), "pppoe");
+  assert.deepEqual(access, ["hotspot"]);
+
+  assert.equal(isCurrentPreview(1, 2), false);
+  assert.equal(isCurrentPreview(2, 2), true);
+  assert.equal(isCurrentPreview(3, 2), false);
+});
+
+test("activity windows match resolveAudience", async () => {
+  const { sql, bypass, asRole, close } = await openTestDb();
+  try {
+    await bypass();
+    await seed(sql);
+    await asRole("ten_c");
+    const expiring = await resolveAudience(sql, "ten_c", { expiring_days: ACTIVITY_WINDOWS.expiringDays });
+    assert.deepEqual(names(expiring), ["Amina", "LongTerm", "Njeri", "NoPhone", "Otieno"]);
+    const fresh = await resolveAudience(sql, "ten_c", { new_days: ACTIVITY_WINDOWS.newDays });
+    assert.equal(names(fresh).includes("LongTerm"), false);
+    assert.deepEqual(names(fresh), ["Amina", "Kamau", "Njeri", "NoPhone", "Otieno", "Wanjiku"]);
+    const tenured = await resolveAudience(sql, "ten_c", { long_term_days: ACTIVITY_WINDOWS.longTermDays });
+    assert.deepEqual(names(tenured), ["LongTerm"]);
   } finally {
     await close();
   }
