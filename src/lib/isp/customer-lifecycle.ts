@@ -169,6 +169,20 @@ export async function searchReassignCustomers(
           where s.tenant_id = c.tenant_id and s.customer_id = c.id and s.deleted_at is null
             and coalesce(s.account_number,'') ilike ${like} escape '#'
         )
+        or exists (
+          select 1 from account_number_aliases a
+          where a.tenant_id = c.tenant_id
+            and a.alias ilike ${like} escape '#'
+            and (
+              (a.entity_type = 'customer' and a.entity_id = c.id)
+              or upper(a.account_number) = upper(coalesce(c.account_number,''))
+              or exists (
+                select 1 from services s
+                where s.tenant_id = c.tenant_id and s.customer_id = c.id and s.deleted_at is null
+                  and upper(coalesce(s.account_number,'')) = upper(a.account_number)
+              )
+            )
+        )
       )
     order by c.name
     limit ${limit}`;

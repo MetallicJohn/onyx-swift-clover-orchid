@@ -305,6 +305,16 @@ export async function searchAcsAssignmentTargets(
         or c.email ilike ${like} escape '#'
         or coalesce(c.account_number,'') ilike ${like} escape '#'
         or coalesce(s.account_number,'') ilike ${like} escape '#'
+        or exists (
+          select 1 from account_number_aliases a
+          where a.tenant_id = s.tenant_id
+            and a.alias ilike ${like} escape '#'
+            and (
+              upper(a.account_number) = upper(coalesce(s.account_number,''))
+              or upper(a.account_number) = upper(coalesce(c.account_number,''))
+              or (a.entity_type = 'customer' and a.entity_id = c.id)
+            )
+        )
         or coalesce(s.username,'') ilike ${like} escape '#'
         or coalesce(s.static_ip,'') ilike ${like} escape '#'
         or (${last9.length >= 9} and right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 9) = ${last9})

@@ -261,6 +261,15 @@ function ticketListWhere(tenantId: string, q: ReturnType<typeof normalizeTicketL
       or coalesce(c.name,'') ilike ${like} escape '#'
       or coalesce(c.phone,'') ilike ${like} escape '#'
       or coalesce(c.account_number,'') ilike ${like} escape '#'
+      or exists (
+        select 1 from account_number_aliases a
+        where a.tenant_id = t.tenant_id
+          and a.alias ilike ${like} escape '#'
+          and (
+            (a.entity_type = 'customer' and a.entity_id = c.id)
+            or upper(a.account_number) = upper(coalesce(c.account_number,''))
+          )
+      )
       or (${phone.length >= 9} and right(regexp_replace(coalesce(c.phone,''), '[^0-9]', '', 'g'), 9) = ${phoneParam})
     )`);
   }

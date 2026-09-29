@@ -64,6 +64,11 @@ export const PERMISSIONS = [
   "recycle_bin.restore_customer",
   "recycle_bin.restore_service",
   "recycle_bin.permanent_delete",
+  "account_numbers.view",
+  "account_numbers.configure",
+  "account_numbers.assign",
+  "account_numbers.override",
+  "account_numbers.migrate",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number] | "*";
@@ -95,6 +100,7 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "communications.view",
     "communications.send",
     "recycle_bin.view",
+    "account_numbers.view",
   ],
   customer_care: [
     "customers.read",
@@ -129,6 +135,7 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "acs.devices.reassign",
     "acs.devices.optical.view",
     "acs.tasks.view",
+    "account_numbers.view",
   ],
   network_engineer: [
     "customers.read",
@@ -168,6 +175,8 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "acs.tasks.retry",
     "recycle_bin.view",
     "recycle_bin.restore_service",
+    "account_numbers.view",
+    "account_numbers.assign",
   ],
   technician: [
     "tickets.assigned.read",
@@ -198,6 +207,7 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "traffic.view",
     "recycle_bin.view",
     "billing.business_credit.view",
+    "account_numbers.view",
   ],
 };
 
