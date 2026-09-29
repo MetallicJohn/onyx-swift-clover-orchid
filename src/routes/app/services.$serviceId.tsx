@@ -363,7 +363,7 @@ function ServiceRecordPage() {
           onSubmit={(e) => {
             e.preventDefault();
             void run(async () => {
-              if (form.account_number !== (s.account_number || "") && allowManualAccount) {
+              if (!s.account_number && form.account_number !== (s.account_number || "") && allowManualAccount) {
                 await changeServiceAccountNumberFn({
                   data: { service_id: s.id, account_number: form.account_number },
                 });
@@ -402,14 +402,23 @@ function ServiceRecordPage() {
             <Input
               value={form.account_number}
               onChange={(e) => setForm({ ...form, account_number: e.target.value.toUpperCase() })}
-              disabled={!allowManualAccount}
+              readOnly={Boolean(s.account_number)}
+              disabled={Boolean(s.account_number) || !allowManualAccount}
             />
           </Field>
-          {!allowManualAccount ? (
+          {s.account_number ? (
             <p className="text-xs text-muted md:col-span-2">
-              Manual editing of service account numbers is turned off.
+              This account number cannot be changed after it is assigned.
             </p>
-          ) : null}
+          ) : !allowManualAccount ? (
+            <p className="text-xs text-muted md:col-span-2">
+              A number is assigned automatically and cannot be edited afterwards.
+            </p>
+          ) : (
+            <p className="text-xs text-muted md:col-span-2">
+              You can type the first account number. After it is saved, nobody can change it.
+            </p>
+          )}
           {s.access_method === "pppoe" ? (
             <div className="md:col-span-2">
               <PppoeCredentialFields

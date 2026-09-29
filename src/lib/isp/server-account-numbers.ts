@@ -89,12 +89,11 @@ export const changeServiceAccountNumberFn = createServerFn({ method: "POST" })
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertAny(role, ["services.manage", "account_numbers.assign", "account_numbers.override"]);
     const settings = await getAccountNumberSettings(sql, tenantId);
-    const override = hasPermission(role, "account_numbers.override") || hasPermission(role, "settings.manage");
     const changed = await changeServiceAccountNumber(sql, {
       tenantId,
       serviceId: data.service_id,
       next: data.account_number,
-      allowManual: settings.allow_manual || override,
+      allowManual: settings.allow_manual,
       actorId: context.userId,
       reason: data.reason || "",
     });

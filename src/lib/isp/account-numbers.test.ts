@@ -80,7 +80,7 @@ test("skips a number that is already assigned and does not reuse it", async () =
   }
 });
 
-test("manual edit is blocked until enabled, then rejects duplicates", async () => {
+test("an assigned account number cannot be changed, even when manual entry is on", async () => {
   const { sql, bypass, asRole, close } = await openTestDb();
   try {
     await bypass();
@@ -93,29 +93,43 @@ test("manual edit is blocked until enabled, then rejects duplicates", async () =
       digits: 3,
       start_n: 1,
       next_n: 1,
-      allow_manual: false,
+      allow_manual: true,
     });
     const a = await allocateAccountNumber(sql, "ten_man");
     const b = await allocateAccountNumber(sql, "ten_man");
     await sql`insert into customers (id, tenant_id, name, account_number)
-      values ('cus_m1', 'ten_man', 'One', ${a}), ('cus_m2', 'ten_man', 'Two', ${b})`;
+      values ('cus_m1', 'ten_man', 'One', ${a}), ('cus_m2', 'ten_man', 'Two', ${b}), ('cus_blank', 'ten_man', 'Blank', '')`;
+    await assert.rejects(
+      () => changeCustomerAccountNumber(sql, { tenantId: "ten_man", customerId: "cus_m1", next: "NANY099", allowManual: true }),
+      /cannot be changed/,
+    );
     await assert.rejects(
       () => changeCustomerAccountNumber(sql, { tenantId: "ten_man", customerId: "cus_m1", next: "NANY099", allowManual: false }),
+      /cannot be changed/,
+    );
+    await saveAccountNumberSettings(sql, "ten_man", "man", { allow_manual: false });
+    await assert.rejects(
+      () => changeCustomerAccountNumber(sql, { tenantId: "ten_man", customerId: "cus_blank", next: "NANY099", allowManual: false }),
       /turned off/,
     );
     await saveAccountNumberSettings(sql, "ten_man", "man", { allow_manual: true });
     const changed = await changeCustomerAccountNumber(sql, {
       tenantId: "ten_man",
-      customerId: "cus_m1",
+      customerId: "cus_blank",
       next: "NANY099",
       allowManual: true,
     });
     assert.equal(changed.next, "NANY099");
     await assert.rejects(
+      () => changeCustomerAccountNumber(sql, { tenantId: "ten_man", customerId: "cus_blank", next: "NANY100", allowManual: true }),
+      /cannot be changed/,
+    );
+    await sql`insert into customers (id, tenant_id, name, account_number) values ('cus_blank2', 'ten_man', 'Blank 2', '')`;
+    await assert.rejects(
       () =>
         changeCustomerAccountNumber(sql, {
           tenantId: "ten_man",
-          customerId: "cus_m2",
+          customerId: "cus_blank2",
           next: "NANY099",
           allowManual: true,
         }),

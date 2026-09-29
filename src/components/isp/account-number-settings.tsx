@@ -294,7 +294,7 @@ export function AccountNumberSettings() {
         <h2 className="font-medium">Account numbers</h2>
         <p className="text-sm text-muted">
           The billing account number for this ISP. It is not the customer ID, not the service ID, and not an invoice or
-          payment reference. Saving a new format never rewrites numbers that are already assigned.
+          payment reference. Once a number is assigned, nobody can change it — not customer care, and not an administrator.
         </p>
       </div>
 
@@ -347,13 +347,14 @@ export function AccountNumberSettings() {
           </Field>
           <SettingsCheck label="Generate numbers automatically" checked={form.enabled && uiMode !== "manual"} onChange={(enabled) => setForm({ ...form, enabled })} />
           <SettingsCheck
-            label="Allow staff to type a number"
+            label="Allow a number to be typed on first assignment"
             checked={uiMode === "manual" || form.allow_manual}
             onChange={(allow_manual) => setForm({ ...form, allow_manual })}
           />
           <p className="text-sm text-muted md:col-span-2">
-            Customer IDs stay on their own numeric sequence. Choosing customer or service only records what this number
-            identifies. The number is assigned when the service is created and is left alone after that.
+            Customer IDs stay on their own numeric sequence. A typed number is accepted only when the account has none.
+            After assignment the number is permanent. Saving a new format does not rewrite existing numbers, invoices, or
+            payments.
           </p>
         </section>
 

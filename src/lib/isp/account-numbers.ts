@@ -890,6 +890,7 @@ export async function changeCustomerAccountNumber(
   if (checked.errors.length) throw new Error(checked.errors[0]);
   const next = checked.value || normalizeAccountNumber(opts.next);
   if (next === previous) return { previous, next };
+  if (previous) throw new Error("Account numbers cannot be changed after they are assigned.");
   if (!opts.allowManual) {
     throw new Error("Manual editing of account numbers is turned off.");
   }
@@ -931,6 +932,7 @@ export async function changeServiceAccountNumber(
   const previous = row.account_number || "";
   const next = checked.value || normalizeAccountNumber(opts.next);
   if (next === previous) return { previous, next };
+  if (previous) throw new Error("Account numbers cannot be changed after they are assigned.");
   if (!opts.allowManual) {
     throw new Error("Manual editing of account numbers is turned off.");
   }

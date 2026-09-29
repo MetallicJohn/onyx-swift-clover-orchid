@@ -4,6 +4,7 @@ import {
   addAccountReservation,
   allocateAccountNumber,
   changeCustomerAccountNumber,
+  changeServiceAccountNumber,
   ensureServiceAccountNumber,
   listAccountVersions,
   saveAccountNumberSettings,
@@ -46,7 +47,7 @@ test("pattern prefix sequence skips taken and reserved numbers", async () => {
     await assert.rejects(() => allocateAccountNumber(sql, "ten_pat", "TEST-9", { source: "import" }), /reserved/i);
     await assert.rejects(
       () => changeCustomerAccountNumber(sql, { tenantId: "ten_pat", customerId: "cus_pat", next: "ACC-000009", allowManual: false }),
-      /turned off/i,
+      /cannot be changed/i,
     );
   } finally {
     await close();
@@ -264,6 +265,16 @@ test("tenants do not share sequences and existing service numbers stay put", asy
     await saveAccountNumberSettings(sql, "ten_iso_a", "isoa", { pattern: "{YEAR}-{SEQ:5}", mode: "period" });
     const again = await ensureServiceAccountNumber(sql, "ten_iso_a", "svc_iso");
     assert.equal(again, issued);
+    await assert.rejects(
+      () =>
+        changeServiceAccountNumber(sql, {
+          tenantId: "ten_iso_a",
+          serviceId: "svc_iso",
+          next: "OTHER-1",
+          allowManual: true,
+        }),
+      /cannot be changed/i,
+    );
     const versions = await listAccountVersions(sql, "ten_iso_a");
     assert.ok(versions.length >= 2);
   } finally {
@@ -278,7 +289,7 @@ test("legacy alias is searchable and case duplicates are rejected", async () => 
     await tenant(sql, "ten_alias", "alias");
     await asRole("ten_alias");
     await sql`insert into customers (id, tenant_id, name, account_number)
-      values ('cus_alias', 'ten_alias', 'Legacy', 'IMN-000245'), ('cus_other', 'ten_alias', 'Other', 'IMN-000001')`;
+      values ('cus_alias', 'ten_alias', 'Legacy', 'IMN-000245'), ('cus_other', 'ten_alias', 'Other', ''), ('cus_held', 'ten_alias', 'Held', 'IMN-000001')`;
     await linkLegacyAccountNumber(sql, {
       tenantId: "ten_alias",
       alias: "cust-10482",
@@ -298,6 +309,16 @@ test("legacy alias is searchable and case duplicates are rejected", async () => 
           allowManual: true,
         }),
       /already assigned/i,
+    );
+    await assert.rejects(
+      () =>
+        changeCustomerAccountNumber(sql, {
+          tenantId: "ten_alias",
+          customerId: "cus_held",
+          next: "IMN-000999",
+          allowManual: true,
+        }),
+      /cannot be changed/i,
     );
   } finally {
     await close();
