@@ -979,7 +979,9 @@ export const listBilling = createServerFn({ method: "GET" })
              i.status, i.due_date::text as due_date, i.issued_at::text as issued_at, i.notes,
              coalesce(i.service_id, '') as service_id,
              coalesce(s.account_number, '') as service_account,
-             coalesce(nullif(s.name, ''), p.name, '') as service_name
+             coalesce(nullif(s.name, ''), p.name, '') as service_name,
+             coalesce(i.etims_status, 'not_applicable') as etims_status,
+             case when i.etims_status = 'submitted' then coalesce(i.etims_rcpt_no, '') else '' end as etims_rcpt_no
       from invoices i
       join customers c on c.id = i.customer_id
       left join services s on s.id = i.service_id and s.tenant_id = i.tenant_id

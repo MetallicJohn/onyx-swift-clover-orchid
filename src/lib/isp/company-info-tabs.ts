@@ -3,6 +3,7 @@ export const COMPANY_INFO_TABS = [
   { id: "contact", label: "Contact information" },
   { id: "branding", label: "Branding" },
   { id: "legal", label: "Business / legal" },
+  { id: "etims", label: "eTIMS" },
   { id: "additional", label: "Additional information" },
 ] as const;
 

@@ -121,6 +121,7 @@ export type PortalInvoice = {
   balance_kes: number;
   status: PortalInvoiceStatus;
   status_label: string;
+  etims_invoice_no?: string;
 };
 
 export type PortalPayment = {

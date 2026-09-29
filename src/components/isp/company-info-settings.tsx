@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { AppearanceSettings } from "@/components/isp/appearance-settings";
+import { EtimsSettings } from "@/components/isp/etims-settings";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { APP_NAME } from "@/lib/brand";
@@ -354,6 +355,16 @@ export function CompanyInfoSettings({
           </Field>
           <SaveRow note={legalNote} busy={brandBusy} label="Save business information" />
         </form>
+      </section>
+
+      <section
+        id="company-panel-etims"
+        role="tabpanel"
+        aria-labelledby="company-tab-etims"
+        hidden={section !== "etims"}
+        className={section === "etims" ? "rounded-xl border border-border bg-surface p-4 md:p-5" : "hidden"}
+      >
+        {section === "etims" ? <EtimsSettings /> : null}
       </section>
 
       <section

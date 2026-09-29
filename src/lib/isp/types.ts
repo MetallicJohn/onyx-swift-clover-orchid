@@ -181,6 +181,8 @@ export type InvoiceRow = {
   due_date: string;
   issued_at: string;
   notes?: string;
+  etims_status?: string;
+  etims_rcpt_no?: string;
 };
 
 export type PaymentRow = {

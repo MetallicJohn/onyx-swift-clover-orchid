@@ -1,0 +1,1291 @@
+# ISP SOLUTIONS — KRA eTIMS OSCU INTEGRATION
+
+## Production Implementation Specification
+
+Implement KRA eTIMS **OSCU system-to-system integration** into the existing ISP Solutions multi-tenant SaaS billing platform.
+
+The integration must allow each ISP tenant to independently enable and configure eTIMS using its own KRA taxpayer information and submit eligible invoices to KRA.
+
+KRA's current documentation describes OSCU as the system-to-system integration intended for taxpayers whose invoicing system operates online, while VSCU is another system-to-system option aimed at extensive/bulk invoicing. For ISP Solutions' cloud SaaS architecture, implement OSCU as the supported integration mode in this phase.
+
+KRA requires system-to-system integrations to undergo development/testing and certification/onboarding. ISP Solutions must not attempt to bypass KRA onboarding, taxpayer approval, testing or certification requirements.
+
+---
+
+# 1. CORE ARCHITECTURE
+
+The architecture must be:
+
+```text
+ISP Tenant
+   │
+   ├── KRA PIN
+   ├── Branch ID
+   ├── Device/eTIMS registration
+   └── Communication Key
+            │
+            ▼
+      ISP Solutions
+            │
+            ▼
+       eTIMS OSCU API
+            │
+      ┌─────┴─────┐
+      ▼           ▼
+   Sandbox     Production
+```
+
+KRA's documented OSCU endpoints are:
+
+```text
+Sandbox:
+https://etims-api-sbx.kra.go.ke/etims-api/
+
+Production:
+https://etims-api.kra.go.ke/etims-api/
+```
+
+Use the actual endpoint paths and request/response structures from the current KRA OSCU specification rather than inventing API contracts.
+
+---
+
+# 2. IMPORTANT MULTI-TENANT RULE
+
+Every tenant must have its own eTIMS configuration.
+
+Example:
+
+```text
+Tenant A
+KRA PIN: A123456789X
+Branch: 00
+Device: ...
+Communication Key: ...
+
+Tenant B
+KRA PIN: P987654321Y
+Branch: 01
+Device: ...
+Communication Key: ...
+```
+
+Never share:
+
+* KRA PIN
+* branch information
+* device information
+* communication key
+* invoice numbering state
+* KRA response data
+
+between tenants.
+
+All eTIMS data must be tenant-scoped.
+
+---
+
+# 3. DO NOT IMPLEMENT VSCU IN THIS PHASE
+
+Do not add:
+
+* VSCU JAR runtime
+* VSCU local server
+* VSCU device daemon
+* local taxpayer runtime
+* VSCU-specific deployment
+
+The current implementation should expose:
+
+```text
+eTIMS Integration
+    → OSCU
+```
+
+as the supported system-to-system mode.
+
+The architecture should nevertheless keep the internal eTIMS service abstraction sufficiently clean that another integration mode could be introduced later without rewriting invoice logic.
+
+---
+
+# 4. DATABASE — TENANT SETTINGS
+
+Create a tenant-scoped table following existing migration/RLS conventions.
+
+Conceptually:
+
+```text
+etims_settings
+
+id
+tenant_id
+enabled
+environment
+kra_pin
+branch_id
+device_serial
+comm_key_sealed
+status
+initialized_at
+last_success_at
+last_error
+created_at
+updated_at
+```
+
+Use the repository's existing ID/timestamp conventions.
+
+Do not blindly use these exact column names if equivalent conventions already exist.
+
+---
+
+# 5. ENVIRONMENT
+
+Supported environments:
+
+```text
+sandbox
+production
+```
+
+Default:
+
+```text
+sandbox
+```
+
+Production must never be enabled accidentally.
+
+When switching:
+
+```text
+Sandbox → Production
+```
+
+display a strong warning explaining that invoices will be transmitted to KRA's production environment.
+
+Require an explicit confirmation.
+
+Do not silently switch an existing tenant to production.
+
+---
+
+# 6. KRA PIN
+
+Store the tenant's KRA PIN.
+
+Validate its format according to KRA's current specification where possible.
+
+The KRA PIN is tenant configuration data and must never be exposed to another tenant.
+
+Do not place the PIN into client-side JavaScript unnecessarily.
+
+---
+
+# 7. BRANCH ID
+
+Store the tenant's KRA branch identifier.
+
+The UI should explain that the branch must correspond to the branch/device configuration registered with KRA.
+
+Do not assume every tenant uses the same branch.
+
+---
+
+# 8. DEVICE SERIAL
+
+Store the OSCU/eTIMS device serial or equipment identifier returned/required by the KRA onboarding process.
+
+Do not fabricate a device serial that pretends to be KRA-issued.
+
+Where the current KRA flow requires equipment information during initialization, collect and transmit the appropriate fields exactly as specified by the current OSCU specification.
+
+---
+
+# 9. COMMUNICATION KEY
+
+The communication key is a secret.
+
+Never store it in plaintext.
+
+Use the existing:
+
+```text
+src/lib/.../secrets.ts
+```
+
+or equivalent envelope-encryption mechanism already used for:
+
+* M-Pesa secrets
+* Kopo Kopo credentials
+* SMS credentials
+* WhatsApp secrets
+
+Store:
+
+```text
+comm_key_sealed
+```
+
+or equivalent.
+
+Never expose the decrypted key to the frontend.
+
+Never log it.
+
+Never include it in API responses.
+
+Never include it in error messages.
+
+---
+
+# 10. INITIALIZATION
+
+Implement an eTIMS initialization operation equivalent to:
+
+```text
+initializeDevice(tenantId)
+```
+
+The operation must:
+
+1. Load tenant eTIMS configuration.
+2. Verify authorization.
+3. Load the tenant's KRA PIN.
+4. Load branch information.
+5. Load device/equipment information.
+6. Call the appropriate KRA OSCU initialization endpoint.
+7. Validate the response.
+8. Store the returned communication key securely.
+9. Store initialization status.
+10. Record the result in the audit trail.
+
+KRA's published onboarding guide states that OSCU initialization involves the taxpayer PIN, branch office ID and equipment information, after which the system receives the communication key from the KRA eTIMS API.
+
+Do not assume the initialization endpoint or response schema. Implement directly from the current KRA OSCU specification.
+
+---
+
+# 11. INITIALIZATION MUST BE IDEMPOTENT
+
+Do not allow repeated clicks on:
+
+```text
+Register / Initialize Device
+```
+
+to create uncontrolled duplicate initialization requests.
+
+Use:
+
+* database state
+* idempotency
+* request locking
+* existing job infrastructure
+
+where appropriate.
+
+If the tenant is already initialized, show:
+
+```text
+Already initialized
+```
+
+and provide an appropriate reinitialization/recovery workflow only where KRA's API permits it.
+
+Do not blindly request a new communication key every time the settings page loads.
+
+---
+
+# 12. INVOICE STATUS
+
+Extend the existing `invoices` model with eTIMS state.
+
+Conceptually:
+
+```text
+etims_status
+```
+
+with values:
+
+```text
+not_applicable
+pending
+submitted
+failed
+```
+
+Consider additional states if required by the KRA lifecycle, such as:
+
+```text
+processing
+rejected
+cancelled
+```
+
+Do not collapse KRA rejection and transport failure into the same state if doing so would make operational troubleshooting impossible.
+
+---
+
+# 13. KRA INVOICE DATA
+
+Store the KRA-returned invoice metadata required by the application.
+
+Conceptually:
+
+```text
+etims_invoice_number
+etims_qr_code
+etims_signature
+etims_submitted_at
+```
+
+Add other fields required by the current KRA OSCU response where necessary.
+
+Do not invent KRA response fields.
+
+Preserve the raw KRA response only if the existing data-retention/security architecture permits it and sensitive information is handled appropriately.
+
+---
+
+# 14. INVOICE SUBMISSION
+
+Implement:
+
+```text
+submitInvoice(tenantId, invoiceId)
+```
+
+The operation must:
+
+1. Load invoice.
+2. Verify tenant ownership.
+3. Verify eTIMS is enabled.
+4. Verify environment.
+5. Load tenant eTIMS credentials securely.
+6. Load required invoice/customer/item/tax data.
+7. Construct the KRA-compliant payload.
+8. Submit to OSCU.
+9. Validate the response.
+10. Store KRA invoice metadata.
+11. Update eTIMS status.
+12. Record audit information.
+13. Return a safe result.
+
+---
+
+# 15. DO NOT SUBMIT SYNCHRONOUSLY DURING INVOICE CREATION
+
+Invoice creation must not depend on KRA being immediately available.
+
+Correct flow:
+
+```text
+Invoice issued
+      │
+      ▼
+invoice.issued
+      │
+      ▼
+eTIMS job queued
+      │
+      ▼
+Worker
+      │
+      ▼
+KRA OSCU
+      │
+ ┌────┴─────┐
+ ▼          ▼
+Success    Failure
+```
+
+Invoice creation must succeed even if:
+
+* KRA is unavailable
+* network timeout occurs
+* KRA returns temporary error
+* eTIMS worker is temporarily unavailable
+
+The invoice should become:
+
+```text
+etims_status = pending
+```
+
+and subsequently be processed by the worker.
+
+---
+
+# 16. EXISTING EVENT BUS
+
+Use the existing event architecture.
+
+Add:
+
+```text
+invoice.issued
+```
+
+if it does not already exist.
+
+Then subscribe the eTIMS worker/subscriber to that event.
+
+Conceptually:
+
+```text
+invoice.issued
+       │
+       ├── existing subscribers
+       │
+       └── eTIMS subscriber
+```
+
+Do not put eTIMS logic directly into the invoice creation route.
+
+---
+
+# 17. ELIGIBILITY
+
+Before queuing an eTIMS submission, determine whether the invoice is applicable.
+
+At minimum:
+
+```text
+Tenant eTIMS enabled?
+Correct environment?
+Valid configuration?
+Invoice eligible?
+```
+
+If eTIMS is disabled:
+
+```text
+etims_status = not_applicable
+```
+
+and no eTIMS job should be queued.
+
+---
+
+# 18. VAT / TAX CONFIGURATION
+
+Use the existing tenant tax/VAT configuration.
+
+Do not duplicate:
+
+```text
+VAT rate
+tax settings
+customer tax information
+```
+
+if those already exist.
+
+The eTIMS payload must use the authoritative existing billing/tax data.
+
+Do not simply assume:
+
+```text
+tenants.vat_rate_pct
+```
+
+is sufficient without inspecting the existing invoice/tax model.
+
+The implementation must map actual invoice line-item tax information into the KRA-required structure.
+
+---
+
+# 19. INVOICE ITEMS
+
+Map actual `invoice_items` into the KRA invoice payload.
+
+For every line item determine the fields required by the KRA OSCU specification, including as applicable:
+
+* item classification
+* item/service name
+* tax type
+* quantity
+* unit price
+* discount
+* tax amount
+* total amount
+* applicable tax rate
+* unit of measure
+
+Do not invent KRA codes.
+
+Where KRA requires a classification/code, provide an administrative mapping mechanism.
+
+---
+
+# 20. ITEM CLASSIFICATION
+
+Because KRA requires standard data/code information for eTIMS invoicing, do not hardcode arbitrary product classifications.
+
+KRA's OSCU documentation describes standard data management including item classification and other standard codes needed to generate invoice data.
+
+Design the data model so ISP products/packages can eventually map to the required KRA item classification.
+
+Example:
+
+```text
+ISP Product
+     │
+     └── eTIMS Item Code / Classification
+```
+
+The exact KRA code must come from KRA's current standard data/API, not from assumptions in the application.
+
+---
+
+# 21. CUSTOMER TAX INFORMATION
+
+Inspect the existing customer/company model for tax information.
+
+Where required by KRA, support appropriate customer tax fields.
+
+Do not force KRA-specific fields onto all customers if KRA only requires them under particular circumstances.
+
+Keep the model extensible.
+
+---
+
+# 22. RETRIES
+
+Use the existing job queue.
+
+Do not create a second eTIMS retry system.
+
+Retry transient failures such as:
+
+* connection timeout
+* DNS/network error
+* HTTP 5xx
+* temporary KRA service failure
+
+Do not endlessly retry permanent validation/rejection errors.
+
+Use exponential backoff and the repository's existing retry conventions.
+
+---
+
+# 23. IDEMPOTENCY
+
+This is critical.
+
+An invoice must not accidentally be submitted multiple times because:
+
+* worker retries
+* timeout after KRA accepted the invoice
+* process restart
+* duplicate event
+* user manually retries
+* queue duplication
+
+Use an idempotency strategy based on the tenant + invoice identity and the KRA-supported mechanism where applicable.
+
+Before submission:
+
+```text
+If already successfully submitted:
+    do not submit again.
+```
+
+If the result is ambiguous because the network failed after request transmission, use the KRA-supported query/verification mechanism where available rather than blindly submitting a second invoice.
+
+---
+
+# 24. FAILURE HANDLING
+
+If KRA rejects an invoice because the payload is invalid:
+
+```text
+etims_status = failed/rejected
+```
+
+Store a sanitized error.
+
+Do not repeatedly retry an invoice with the same permanent validation error.
+
+Expose an authorized staff action:
+
+```text
+Retry eTIMS submission
+```
+
+only when retrying is meaningful.
+
+---
+
+# 25. KRA API CLIENT
+
+Create:
+
+```text
+src/lib/isp/etims.ts
+```
+
+or follow the repository's actual provider-client naming convention.
+
+Separate:
+
+```text
+transport
+authentication
+initialization
+standard-data retrieval
+invoice submission
+response parsing
+error classification
+```
+
+Do not place all eTIMS logic in one enormous function.
+
+---
+
+# 26. HTTP CLIENT
+
+Reuse the existing HTTP/client conventions in the repository.
+
+Implement:
+
+* timeout
+* safe error handling
+* response validation
+* retry classification
+* structured logging without secrets
+
+Never log:
+
+* communication key
+* authentication tokens
+* passwords
+* raw secret headers
+
+---
+
+# 27. KRA API VERSIONING
+
+Do not hardcode assumptions from an old API document if the current KRA OSCU specification differs.
+
+Create a clear adapter boundary so KRA changes can be implemented in one place.
+
+Keep:
+
+```text
+Invoice domain model
+```
+
+separate from:
+
+```text
+KRA OSCU payload model
+```
+
+---
+
+# 28. SETTINGS → COMPANY
+
+Add an:
+
+**eTIMS**
+
+configuration panel to Company Settings.
+
+Use the same visual/interaction patterns as:
+
+```text
+payment-settings.tsx
+settings-ui.tsx
+SettingsStatus
+SettingsCheck
+```
+
+where appropriate.
+
+Do not create an unrelated settings design.
+
+---
+
+# 29. SETTINGS UI
+
+Display:
+
+```text
+eTIMS
+
+Enable eTIMS
+[ Off / On ]
+
+Environment
+[ Sandbox ▼ ]
+
+KRA PIN
+[ ************ ]
+
+Branch ID
+[ __________ ]
+
+Device Serial
+[ __________ ]
+
+Status
+● Not initialized
+
+[ Register device ]
+```
+
+After initialization:
+
+```text
+Status
+● Initialized
+
+Environment
+Sandbox
+
+Device
+********
+
+Initialized
+29 Sep 2026
+```
+
+Never display the communication key.
+
+---
+
+# 30. PRODUCTION WARNING
+
+When selecting Production:
+
+Show:
+
+> Production eTIMS is connected to KRA's live environment. Only enable this after the taxpayer and integration have completed the required KRA onboarding/testing/certification process.
+
+Require explicit confirmation.
+
+Do not allow a casual environment toggle to transmit live invoices.
+
+KRA explicitly requires development/testing and certification/onboarding for system-to-system integrations.
+
+---
+
+# 31. TEST CONNECTION
+
+Provide:
+
+```text
+[Test connection]
+```
+
+where supported.
+
+The test must:
+
+* authenticate using tenant credentials
+* call the appropriate safe KRA endpoint
+* report actual success/failure
+* not create a real invoice
+
+Use:
+
+```text
+SettingsStatus
+SettingsCheck
+```
+
+or existing equivalent components.
+
+---
+
+# 32. PDF INVOICE
+
+Update:
+
+```text
+pdf/invoice.ts
+```
+
+or the actual existing invoice PDF module.
+
+When eTIMS has successfully submitted the invoice, conditionally display the KRA-provided information required by the applicable KRA specification.
+
+Potential fields include:
+
+```text
+eTIMS invoice number
+QR code
+signature
+```
+
+Do not display these values until they actually exist.
+
+Example:
+
+```text
+KRA eTIMS Invoice No:
+XXXX-XXXX
+
+[QR CODE]
+```
+
+Do not display:
+
+```text
+eTIMS Pending
+```
+
+as though it were a KRA invoice number.
+
+---
+
+# 33. QR CODE
+
+Inspect the existing dependency tree before adding a QR library.
+
+If no suitable QR generator exists, add a small well-maintained dependency appropriate for server-side PDF generation.
+
+The QR code must be generated from the exact KRA-provided value/data required by the current KRA specification.
+
+Do not invent a QR payload.
+
+The generated QR must remain scannable after PDF rendering.
+
+Add an automated QR-generation/rendering test where practical.
+
+---
+
+# 34. CUSTOMER PORTAL
+
+If the customer portal displays invoices, show the KRA/eTIMS information when available.
+
+Do not expose:
+
+* communication key
+* KRA integration credentials
+* internal errors
+* API response internals
+
+Customer-facing display should be limited to legitimate invoice information.
+
+---
+
+# 35. CREDIT NOTES / MODIFICATIONS
+
+Do not ignore the relationship between original invoices and subsequent credit notes/adjustments.
+
+KRA currently states that credit notes are generated from the eTIMS solution where the original invoice was raised.
+
+Therefore design the invoice model so future eTIMS credit-note support can reference:
+
+```text
+original eTIMS invoice
+```
+
+Do not implement credit notes in this phase unless they already exist and require integration for correctness.
+
+But do not design the schema in a way that makes them impossible later.
+
+---
+
+# 36. INVOICE NUMBERING
+
+Do not replace ISP Solutions' internal invoice numbering with the KRA eTIMS invoice number.
+
+Maintain separate concepts:
+
+```text
+ISP Solutions Invoice Number
+KRA eTIMS Invoice Number
+```
+
+This is important because KRA notes that different eTIMS solutions have their own invoice number sequences.
+
+The relationship should be:
+
+```text
+ISP Invoice
+      │
+      └── eTIMS submission
+             │
+             └── KRA Invoice Number
+```
+
+---
+
+# 37. AUDIT LOGGING
+
+Record:
+
+```text
+ETIMS_ENABLED
+ETIMS_DISABLED
+ETIMS_INITIALIZATION_STARTED
+ETIMS_INITIALIZED
+ETIMS_INITIALIZATION_FAILED
+ETIMS_INVOICE_QUEUED
+ETIMS_INVOICE_SUBMITTED
+ETIMS_INVOICE_REJECTED
+ETIMS_INVOICE_FAILED
+ETIMS_INVOICE_RETRY
+```
+
+Include:
+
+* tenant
+* actor where applicable
+* invoice
+* event
+* timestamp
+* result
+* sanitized error information
+
+Never log:
+
+* communication key
+* credentials
+* authorization headers
+* secret payloads
+
+---
+
+# 38. TENANT SECURITY
+
+Every eTIMS operation must verify:
+
+```text
+tenant_id
+```
+
+server-side.
+
+Never trust:
+
+```text
+tenantId
+```
+
+supplied by a normal client request without authorization validation.
+
+Superadmin functionality may inspect tenant configuration only according to existing platform RBAC.
+
+Tenant staff must only access their own eTIMS configuration.
+
+---
+
+# 39. RLS
+
+The new:
+
+```text
+etims_settings
+```
+
+table must use the same tenant RLS architecture as other tenant-scoped tables.
+
+Any additional eTIMS tables must also use RLS.
+
+Test:
+
+```text
+Tenant A cannot read Tenant B eTIMS settings.
+Tenant A cannot submit Tenant B invoices.
+Tenant A cannot access Tenant B KRA data.
+```
+
+---
+
+# 40. PRODUCTION DISABLEMENT
+
+If eTIMS is:
+
+```text
+disabled
+```
+
+no eTIMS invoice jobs should be generated for newly issued invoices.
+
+Existing pending jobs must be handled safely according to the current worker architecture.
+
+Do not delete pending records merely because the tenant temporarily disabled eTIMS.
+
+---
+
+# 41. OBSERVABILITY
+
+Provide enough operational information to diagnose failures.
+
+For each tenant:
+
+```text
+Enabled
+Environment
+Initialization status
+Last successful submission
+Last failed submission
+Pending submissions
+Failed submissions
+```
+
+Do not expose secrets.
+
+---
+
+# 42. ADMIN E-TIMS STATUS
+
+Company settings should provide a concise status:
+
+```text
+● Connected
+Last submission: 2 minutes ago
+```
+
+or:
+
+```text
+● Action required
+Device has not been initialized
+```
+
+or:
+
+```text
+● Error
+Last submission failed
+```
+
+Use the existing status components.
+
+---
+
+# 43. MIGRATIONS
+
+Create forward-only migrations following the repository's migration conventions.
+
+Add:
+
+```text
+etims_settings
+```
+
+and invoice fields required for eTIMS.
+
+Use safe defaults.
+
+Existing invoices should default to:
+
+```text
+etims_status = not_applicable
+```
+
+or an equivalent state that accurately reflects that eTIMS was not enabled when they were issued.
+
+Do not retroactively submit historical invoices automatically.
+
+---
+
+# 44. HISTORICAL INVOICES
+
+Do not automatically submit all existing invoices when a tenant enables eTIMS.
+
+Only newly issued invoices should enter the normal eTIMS event flow.
+
+If historical submission is eventually required, implement it as an explicit administrative workflow with:
+
+* preview
+* eligibility checks
+* controlled batch processing
+* audit trail
+* rate limiting
+* KRA compliance review
+
+Do not implement automatic historical submission in this phase.
+
+---
+
+# 45. KRA STANDARD DATA
+
+The eTIMS integration should eventually support retrieval/caching of KRA standard data required for invoice generation.
+
+Examples described by KRA include:
+
+* item classification codes
+* location codes
+* package/weight codes
+* PIN-related standard information
+* other standard reference data
+
+KRA's OSCU specification describes this as part of the basic data-management functionality used by the TIS.
+
+Do not hardcode these values where the KRA API provides authoritative data.
+
+If full standard-data synchronization is too large for the initial implementation, structure `etims.ts` so it can be added without redesigning invoice submission.
+
+---
+
+# 46. THIRD-PARTY INTEGRATOR CONSIDERATION
+
+ISP Solutions itself may need to undergo KRA's third-party integrator certification process if operating as the integration provider for tenant ISPs.
+
+Do not represent the software as KRA-certified until the actual certification has been obtained.
+
+KRA's current onboarding information explicitly describes a certification process for third-party software developers/integrators.
+
+The application should therefore distinguish:
+
+```text
+Development / Sandbox
+```
+
+from:
+
+```text
+Production / KRA-certified integration
+```
+
+---
+
+# 47. TESTING
+
+Create comprehensive tests.
+
+### Configuration
+
+* [ ] eTIMS disabled by default.
+* [ ] Sandbox is default.
+* [ ] Tenant settings are isolated.
+* [ ] Secrets are sealed.
+* [ ] Production requires confirmation.
+
+### Initialization
+
+* [ ] Initialization calls correct KRA endpoint.
+* [ ] PIN/branch/device data mapped correctly.
+* [ ] Communication key is securely stored.
+* [ ] Communication key never appears in logs.
+* [ ] Repeated initialization is controlled.
+
+### Invoice
+
+* [ ] Invoice creation remains independent of KRA availability.
+* [ ] `invoice.issued` triggers eTIMS processing.
+* [ ] Disabled tenants do not submit.
+* [ ] Eligible invoices are queued.
+* [ ] Invoice payload maps correctly.
+* [ ] Successful response stores KRA metadata.
+* [ ] Failed response is classified correctly.
+* [ ] Retries work.
+* [ ] Duplicate submissions are prevented.
+
+### PDF
+
+* [ ] KRA invoice number appears after successful submission.
+* [ ] QR appears only when valid data exists.
+* [ ] QR remains scannable.
+* [ ] Pending/failed invoices do not display fake KRA information.
+
+### Security
+
+* [ ] RLS works.
+* [ ] RBAC works.
+* [ ] Cross-tenant access is impossible.
+* [ ] Communication key cannot be returned to frontend.
+* [ ] Secrets are absent from logs.
+
+---
+
+# 48. ACCEPTANCE CRITERIA
+
+The feature is complete when an authorized tenant administrator can:
+
+1. Open **Settings → Company → eTIMS**.
+2. Enable eTIMS.
+3. Select Sandbox.
+4. Enter the tenant's KRA PIN.
+5. Enter branch information.
+6. Enter/configure the required device/equipment information.
+7. Initialize the eTIMS device using KRA's OSCU process.
+8. See initialization status.
+9. Create an invoice normally.
+10. Have the invoice automatically enter the eTIMS submission queue.
+11. Have the worker submit it through OSCU.
+12. See the resulting KRA invoice number and applicable returned data.
+13. Generate a PDF containing the appropriate eTIMS information.
+14. See failures and retry them safely.
+15. Switch to Production only after completing the appropriate KRA onboarding/certification requirements.
+
+---
+
+# 49. STRICT NON-GOALS
+
+Do not:
+
+* implement VSCU
+* create a local VSCU runtime
+* bypass KRA certification
+* fabricate KRA invoice numbers
+* fabricate KRA QR codes
+* submit invoices synchronously during invoice creation
+* replace internal invoice numbering
+* share eTIMS credentials between tenants
+* hardcode KRA item classifications
+* hardcode KRA tax codes without authoritative mapping
+* expose communication keys
+* create a second job queue
+* create a second secrets system
+* create a second notification system
+* rewrite billing
+
+---
+
+# 50. FINAL ARCHITECTURE
+
+The final architecture should be:
+
+```text
+                    ISP SOLUTIONS
+                         │
+             ┌───────────┴───────────┐
+             │                       │
+        Tenant Billing          Company Settings
+             │                       │
+      Invoice Issued              eTIMS
+             │                       │
+             ▼                       ├── Enabled
+       Event Bus                     ├── Environment
+             │                       ├── KRA PIN
+             ▼                       ├── Branch
+       eTIMS Job Queue               ├── Device
+             │                       └── Sealed Key
+             ▼
+       eTIMS Worker
+             │
+             ▼
+        etims.ts
+             │
+             ▼
+       KRA OSCU API
+        │          │
+     Sandbox    Production
+        │          │
+        └────┬─────┘
+             ▼
+      KRA eTIMS Response
+             │
+       ┌─────┴─────┐
+       ▼           ▼
+ Invoice Status   KRA Metadata
+                  │
+        ┌─────────┼─────────┐
+        ▼         ▼         ▼
+      Number     QR       Signature
+                  │
+                  ▼
+             Invoice PDF
+```
+
+The implementation must remain **multi-tenant, asynchronous, idempotent, secure, auditable, retry-safe, and compatible with the existing ISP Solutions billing architecture**.
+
+Do not treat KRA as a payment provider. eTIMS is a **tax-invoicing integration** and should remain architecturally separate from M-Pesa, Kopo Kopo and other payment integrations.

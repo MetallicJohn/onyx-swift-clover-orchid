@@ -9,6 +9,7 @@ import {
   type InvoiceLine,
   type StatementDocument,
 } from "./document-format.ts";
+import { etimsCustomerFields } from "./etims-format.ts";
 import { normalizeDateFormat } from "./display.ts";
 import { customerBalance, serviceBalance } from "./ledger.ts";
 import { DEFAULT_APPEARANCE, DEFAULT_PRESET, isAppearance, isPresetId } from "../theme/presets.ts";
@@ -160,8 +161,16 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
     due_date: string;
     issued_at: string;
     notes: string;
+    etims_status: string;
+    etims_rcpt_no: string;
+    etims_qr_url: string;
+    etims_rcpt_sign: string;
   }>`select id, customer_id, service_id, number, amount_kes, subtotal_kes, tax_kes, tax_rate, paid_kes, status,
-            due_date::text as due_date, issued_at::text as issued_at, coalesce(notes,'') as notes
+            due_date::text as due_date, issued_at::text as issued_at, coalesce(notes,'') as notes,
+            coalesce(etims_status, 'not_applicable') as etims_status,
+            coalesce(etims_rcpt_no, '') as etims_rcpt_no,
+            coalesce(etims_qr_url, '') as etims_qr_url,
+            coalesce(etims_rcpt_sign, '') as etims_rcpt_sign
      from invoices where id = ${invoiceId} and tenant_id = ${tenantId}`;
   if (!inv) throw new Error("Invoice not found");
   const [customer] = await sql<{ id: string; name: string; phone: string; email: string; address: string; account_number: string }>`
@@ -302,6 +311,12 @@ export async function loadInvoiceDocument(sql: Sql, tenantId: string, invoiceId:
       amount: p.amount_kes,
       paidAt: p.paid_at,
     })),
+    etims: etimsCustomerFields({
+      status: inv.etims_status,
+      rcptNo: inv.etims_rcpt_no,
+      qrUrl: inv.etims_qr_url,
+      signature: inv.etims_rcpt_sign,
+    }),
   };
 }
 

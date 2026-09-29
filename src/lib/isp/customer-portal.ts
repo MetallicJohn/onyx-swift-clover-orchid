@@ -274,7 +274,11 @@ export async function loadPortalInvoices(sql: Sql, ctx: PortalCtx): Promise<Port
     status: string;
     due_date: string;
     issued_at: string;
-  }>`select i.id, i.number, i.service_id, i.amount_kes, i.paid_kes, i.status, i.due_date::text as due_date, i.issued_at::text as issued_at
+    etims_status: string;
+    etims_rcpt_no: string;
+  }>`select i.id, i.number, i.service_id, i.amount_kes, i.paid_kes, i.status, i.due_date::text as due_date, i.issued_at::text as issued_at,
+            coalesce(i.etims_status, 'not_applicable') as etims_status,
+            case when i.etims_status = 'submitted' then coalesce(i.etims_rcpt_no, '') else '' end as etims_rcpt_no
      from invoices i
      where i.tenant_id = ${ctx.tenantId} and i.customer_id = ${ctx.customer.id}
      order by i.issued_at desc`;
@@ -327,6 +331,7 @@ export async function loadPortalInvoices(sql: Sql, ctx: PortalCtx): Promise<Port
       balance_kes: remaining,
       status,
       status_label: invoiceStatusLabel(status),
+      etims_invoice_no: row.etims_status === "submitted" && row.etims_rcpt_no ? row.etims_rcpt_no : "",
     };
   });
 }
@@ -667,7 +672,7 @@ export async function startPortalPayment(
   opts: { invoice_id?: string; service_id?: string; phone?: string; provider?: string; confirm_account?: string; amount_kes?: number },
 ): Promise<PortalStkStart> {
   let invoiceId = (opts.invoice_id || "").trim();
-  let serviceId = (opts.service_id || "").trim();
+  const serviceId = (opts.service_id || "").trim();
   if (!invoiceId && !serviceId) throw new Error("Select the service you want to pay");
 
   if (serviceId) {

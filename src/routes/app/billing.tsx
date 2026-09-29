@@ -618,8 +618,14 @@ function BillingPage() {
           }
           headers={["Number", "Customer", "Service", "Total", "Remaining", "Due", "Status"]}
           rows={visible.map((i) => [
-            <button key={i.id} type="button" className="font-mono text-accent hover:underline" onClick={() => openInvoice(i.id)}>
+            <button key={i.id} type="button" className="text-left font-mono text-accent hover:underline" onClick={() => openInvoice(i.id)}>
               {i.number}
+              {i.etims_status === "submitted" && i.etims_rcpt_no ? (
+                <span className="mt-0.5 block text-xs font-sans text-muted">KRA {i.etims_rcpt_no}</span>
+              ) : null}
+              {i.etims_status === "failed" || i.etims_status === "rejected" ? (
+                <span className="mt-0.5 block text-xs font-sans text-danger">eTIMS {i.etims_status}</span>
+              ) : null}
             </button>,
             i.customer_name,
             i.service_account || i.service_name || "—",
@@ -680,6 +686,7 @@ function invoiceSearchText(
 ) {
   return [
     i.number,
+    i.etims_rcpt_no,
     i.customer_name,
     i.service_account,
     i.service_name,

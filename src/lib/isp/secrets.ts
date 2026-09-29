@@ -56,7 +56,7 @@ export function redact(value: string) {
 }
 
 export function looksLikeSecret(key: string) {
-  return /secret|password|token|passkey|api[_-]?key|private/i.test(key);
+  return /secret|password|token|passkey|api[_-]?key|private|cmckey|comm[_-]?key/i.test(key);
 }
 
 export function redactRecord(input: Record<string, unknown>) {

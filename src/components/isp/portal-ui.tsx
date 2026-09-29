@@ -267,6 +267,7 @@ export function InvoiceRow({
             {invoice.service_name || invoice.package_name}
             {invoice.account_number ? ` · ${invoice.account_number}` : ""}
           </p>
+          {invoice.etims_invoice_no ? <p className="text-xs text-muted">KRA eTIMS {invoice.etims_invoice_no}</p> : null}
         </div>
         <Badge tone={statusTone(invoice.status)}>{invoice.status_label}</Badge>
       </div>

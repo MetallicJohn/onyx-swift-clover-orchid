@@ -13,7 +13,8 @@ export type DomainEvent = {
     | "ticket.assigned"
     | "ticket.status_changed"
     | "ticket.comment_added"
-    | "ticket.sla_warning";
+    | "ticket.sla_warning"
+    | "invoice.issued";
   tenantId: string;
   payload: Record<string, unknown>;
 };

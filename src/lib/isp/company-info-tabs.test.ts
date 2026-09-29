@@ -37,7 +37,7 @@ const brand: CompanyBrandFields = {
 test("company info tabs use the setup order", () => {
   assert.deepEqual(
     COMPANY_INFO_TABS.map((tab) => tab.label),
-    ["Basic information", "Contact information", "Branding", "Business / legal", "Additional information"],
+    ["Basic information", "Contact information", "Branding", "Business / legal", "eTIMS", "Additional information"],
   );
   assert.equal(COMPANY_SAVE_OK, "Company information saved successfully.");
 });
@@ -58,6 +58,7 @@ test("tab dirty state follows the fields on that tab", () => {
   assert.equal(companyTabDirty("additional", { ...profile, dateFormat: "yyyy-mm-dd" }, profile, brand, brand, false), true);
   assert.equal(companyTabDirty("additional", profile, profile, brand, brand, true), true);
   assert.equal(companyTabDirty("branding", { ...profile, name: "Other" }, profile, { ...brand, tax_pin: "P9" }, brand, true), false);
+  assert.equal(companyTabDirty("etims", profile, profile, brand, brand, false), false);
 });
 
 test("unsaved profile and brand are detectable without wiping siblings", () => {

@@ -246,6 +246,89 @@ function messageSections(): ChoiceSection[] {
   }));
 }
 
+function CampaignStepProgress({
+  step,
+  busy,
+  onStep,
+}: {
+  step: number;
+  busy: boolean;
+  onStep: (index: number) => void;
+}) {
+  const total = WIZARD_STEPS.length;
+  const current = WIZARD_STEPS[step] ?? WIZARD_STEPS[0];
+  const percent = Math.round(((step + 1) / total) * 100);
+  return (
+    <div className="mb-4 space-y-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-sm font-medium">{current.label}</p>
+        <p className="text-xs tabular-nums text-muted">
+          Step {step + 1} of {total}
+          <span className="text-fg"> · {percent}%</span>
+        </p>
+      </div>
+      <div
+        className="flex h-3 gap-1 rounded-full border border-border bg-bg p-1"
+        role="progressbar"
+        aria-valuemin={1}
+        aria-valuemax={total}
+        aria-valuenow={step + 1}
+        aria-valuetext={`${current.label}, step ${step + 1} of ${total}`}
+        aria-label="Campaign progress"
+      >
+        {WIZARD_STEPS.map((item, index) => (
+          <span
+            key={item.id}
+            className={cn(
+              "h-full min-w-0 flex-1 rounded-full transition-colors duration-300",
+              index <= step ? "bg-accent" : "bg-elevated",
+            )}
+          />
+        ))}
+      </div>
+      <div className="relative">
+        <span className="pointer-events-none absolute left-[10%] right-[10%] top-[17px] h-0.5 rounded-full bg-border" aria-hidden />
+        <span
+          className="pointer-events-none absolute left-[10%] top-[17px] h-0.5 rounded-full bg-accent transition-[width] duration-300"
+          style={{ width: `${(step / Math.max(1, total - 1)) * 80}%` }}
+          aria-hidden
+        />
+        <ol className="relative grid grid-cols-5 gap-1" aria-label="Campaign steps">
+        {WIZARD_STEPS.map((item, index) => {
+          const done = index < step;
+          const active = index === step;
+          return (
+            <li key={item.id} className="relative min-w-0">
+              <button
+                type="button"
+                disabled={index > step || busy}
+                aria-current={active ? "step" : undefined}
+                onClick={() => {
+                  if (index < step) onStep(index);
+                }}
+                className="relative z-10 flex w-full flex-col items-center gap-1.5 rounded-md px-0.5 py-1 text-center disabled:cursor-default"
+              >
+                <span
+                  className={cn(
+                    "flex size-7 items-center justify-center rounded-full border text-xs font-medium",
+                    done && "border-accent bg-accent text-accent-fg",
+                    active && "border-accent bg-surface text-accent",
+                    !done && !active && "border-border bg-surface text-muted",
+                  )}
+                >
+                  {done ? <Check className="size-3.5" aria-hidden /> : index + 1}
+                </span>
+                <span className={cn("line-clamp-2 text-[11px] leading-tight", active ? "font-medium text-fg" : "text-muted")}>{item.label}</span>
+              </button>
+            </li>
+          );
+        })}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
 function formatWhen(iso: string | null | undefined) {
   return formatShortDateTime(iso);
 }
@@ -658,7 +741,7 @@ export function Communications() {
         open={wizardOpen}
         onOpenChange={setWizardOpen}
         title="New campaign"
-        description={`Step ${wizardStep + 1} of ${WIZARD_STEPS.length}. ${step.hint}`}
+        description={step.hint}
         className="sm:max-w-3xl"
         footer={
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -681,31 +764,7 @@ export function Communications() {
           </div>
         }
       >
-        <ol className="mb-4 flex flex-wrap gap-2" aria-label="Campaign steps">
-          {WIZARD_STEPS.map((item, index) => (
-            <li key={item.id}>
-              <button
-                type="button"
-                disabled={index > wizardStep || busy}
-                aria-current={index === wizardStep ? "step" : undefined}
-                onClick={() => {
-                  if (index < wizardStep) setWizardStep(index);
-                }}
-                className={cn(
-                  "inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs",
-                  index === wizardStep
-                    ? "border-border bg-elevated font-medium text-fg"
-                    : index < wizardStep
-                      ? "border-border text-muted hover:text-fg"
-                      : "border-transparent text-muted",
-                )}
-              >
-                <span>{index + 1}</span>
-                {item.label}
-              </button>
-            </li>
-          ))}
-        </ol>
+        <CampaignStepProgress step={wizardStep} busy={busy} onStep={setWizardStep} />
         <div className="space-y-4">
             <section className={cn("space-y-3 rounded-xl border border-border bg-surface p-4", wizardStep !== 0 && "hidden")}>
               <h2 className="font-medium">Message type</h2>

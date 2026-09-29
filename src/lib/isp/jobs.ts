@@ -183,6 +183,12 @@ export async function executeJob(sql: Sql, job: JobRow) {
     return executeQueuedWhatsAppAction(sql, tenantId, String(payload.actionId || ""), { notify: true });
   }
 
+  if (job.kind === "etims.submit") {
+    if (!tenantId) throw new Error("etims.submit requires tenantId");
+    const { submitInvoiceToEtims } = await import("./etims.ts");
+    return submitInvoiceToEtims(sql, tenantId, String(payload.invoiceId || ""));
+  }
+
   if (job.kind === "billing.cycle") {
     if (!tenantId) throw new Error("billing.cycle requires tenantId");
     const locked = await lockKey(job.kind, tenantId, String(payload.day || ""));
@@ -362,6 +368,19 @@ async function processQueuedJobsOnSession(
       await applyRls(sql, { bypass: true });
       const message = err instanceof Error ? err.message : String(err);
       await failJob(sql, job, message);
+      if (job.kind === "etims.submit" && job.attempts >= job.max_attempts) {
+        try {
+          const body = JSON.parse(job.payload || "{}") as { invoiceId?: string };
+          const tenantId = job.tenant_id || "";
+          const invoiceId = String(body.invoiceId || "");
+          if (tenantId && invoiceId) {
+            const { markEtimsFailed } = await import("./etims.ts");
+            await markEtimsFailed(sql, tenantId, invoiceId, message);
+          }
+        } catch {
+          /* the job is already dead; invoice status is best-effort */
+        }
+      }
       results.push({ id: job.id, kind: job.kind, ok: false, error: message });
     }
   }

@@ -1,13 +1,19 @@
+import QRCode from "qrcode";
 import { formatBrandDay, formatMoney, invoiceStatusTone, type InvoiceDocument } from "../document-format.ts";
 import { buildPdf, contentWidth, MARGIN, PdfCtx } from "./engine.ts";
 
 export { invoiceStatusTone };
 
-export async function renderInvoicePdf(doc: InvoiceDocument): Promise<Buffer> {
-  return buildPdf((ctx) => drawInvoice(ctx, doc));
+export async function etimsQrPng(url: string) {
+  return QRCode.toBuffer(url, { type: "png", errorCorrectionLevel: "M", margin: 1, width: 180 });
 }
 
-function drawInvoice(ctx: PdfCtx, inv: InvoiceDocument) {
+export async function renderInvoicePdf(doc: InvoiceDocument): Promise<Buffer> {
+  const qr = doc.etims?.qrUrl ? await etimsQrPng(doc.etims.qrUrl).catch(() => null) : null;
+  return buildPdf((ctx) => drawInvoice(ctx, doc, qr));
+}
+
+function drawInvoice(ctx: PdfCtx, inv: InvoiceDocument, qr: Buffer | null) {
   const money = (n: number) => formatMoney(n, inv.brand.currency);
   ctx.useBrand(inv.brand);
   ctx.continuation = `${inv.brand.name}  ·  Invoice ${inv.invoice.number}  ·  continued`;
@@ -109,6 +115,22 @@ function drawInvoice(ctx: PdfCtx, inv: InvoiceDocument) {
       ctx.y += 13;
     }
     ctx.y += 8;
+  }
+
+  if (inv.etims?.invoiceNo) {
+    ctx.ensure(qr ? 150 : 36);
+    ctx.text("KRA eTIMS", MARGIN.left, ctx.y, { size: 7, font: "bold", color: ctx.muted });
+    ctx.y += 14;
+    ctx.text(`Invoice No: ${inv.etims.invoiceNo}`, MARGIN.left, ctx.y, { size: 10, font: "bold" });
+    ctx.y += 16;
+    if (qr) {
+      try {
+        ctx.doc.image(qr, MARGIN.left, ctx.y, { width: 96, height: 96 });
+        ctx.y += 104;
+      } catch {
+        /* leave the KRA number; do not draw a stand-in QR */
+      }
+    }
   }
 
   if (t.totalPayable > 0) {

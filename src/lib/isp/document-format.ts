@@ -73,6 +73,7 @@ export type InvoiceDocument = {
     availableCredit?: number;
   };
   payments: Array<{ provider: string; reference: string; amount: number; paidAt: string }>;
+  etims?: { invoiceNo: string; qrUrl: string; signature: string } | null;
 };
 
 export type StatementRow = {

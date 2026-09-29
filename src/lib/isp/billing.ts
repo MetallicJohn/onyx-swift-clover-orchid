@@ -146,6 +146,12 @@ export async function issueInvoice(
     refId: id,
     memo: number,
   });
+  try {
+    const { emit } = await import("./events.ts");
+    await emit(sql, { type: "invoice.issued", tenantId: opts.tenantId, payload: { invoice_id: id, number } });
+  } catch {
+    /* invoice issuance must not depend on eTIMS or other subscribers */
+  }
   return { id, number, amount_kes: totals.total, subtotal_kes: totals.subtotal, tax_kes: totals.tax, tax_rate: totals.tax_rate, service_id: serviceId || "" };
 }
 

@@ -8,6 +8,7 @@ import { syncRadiusAccount } from "./radius";
 import { creditReseller } from "./resellers";
 import { convertReferral } from "./referrals";
 import { fanoutTicketEvent } from "./ticket-notify";
+import { queueEtimsForInvoice } from "./etims";
 
 let wired = false;
 
@@ -23,6 +24,15 @@ async function auditSystem(sql: Sql, tenantId: string, action: string, entityTyp
 export function wireModules() {
   if (wired) return;
   wired = true;
+
+  on("invoice.issued", async (sql, event) => {
+    try {
+      await queueEtimsForInvoice(sql, event.tenantId, String(event.payload.invoice_id || ""));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not queue eTIMS";
+      await auditSystem(sql, event.tenantId, "ETIMS_INVOICE_FAILED", "invoice", String(event.payload.invoice_id || ""), message.slice(0, 300));
+    }
+  });
 
   on("payment.confirmed", async (sql, event) => {
     const p = event.payload;

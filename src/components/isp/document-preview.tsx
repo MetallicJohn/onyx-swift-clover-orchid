@@ -150,6 +150,14 @@ export function InvoicePreview({ doc }: { doc: InvoiceDocument }) {
           </section>
         ) : null}
 
+        {doc.etims?.invoiceNo ? (
+          <section>
+            <h3 className="text-xs font-semibold tracking-wide text-paper-muted">KRA eTIMS</h3>
+            <p className="mt-1 font-mono text-sm">Invoice No: {doc.etims.invoiceNo}</p>
+            <p className="text-xs text-paper-muted">The scannable QR is on the PDF.</p>
+          </section>
+        ) : null}
+
         {doc.brand.paymentMethods.length && t.totalPayable > 0 ? (
           <section>
             <h3 className="text-xs font-semibold tracking-wide text-paper-muted">HOW TO PAY</h3>
