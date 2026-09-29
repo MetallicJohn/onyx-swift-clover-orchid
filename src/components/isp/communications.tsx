@@ -3,6 +3,7 @@ import { Check, ChevronDown, CircleCheck, TriangleAlert, Wrench } from "lucide-r
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { DateYmdInput } from "@/components/isp/date-ymd-input";
 import {
@@ -47,7 +48,7 @@ type Meta = Awaited<ReturnType<typeof getCommsMetaFn>>;
 type CampaignRow = Awaited<ReturnType<typeof listCampaignsFn>>["campaigns"][number];
 type CampaignDetail = Awaited<ReturnType<typeof getCampaignFn>>;
 type Preview = Awaited<ReturnType<typeof previewAudienceFn>>;
-type Pane = "compose" | "templates" | "history" | "report";
+type Pane = "templates" | "history" | "report";
 type StatusKey = NonNullable<AudienceFilter["statuses"]>[number];
 type AccessKey = NonNullable<AudienceFilter["access"]>[number];
 
@@ -62,6 +63,14 @@ const ACCESS: { id: AccessKey; label: string }[] = [
   { id: "static", label: "Static IP" },
   { id: "hotspot", label: "Hotspot" },
 ];
+
+const WIZARD_STEPS = [
+  { id: "type", label: "Message type", hint: "Choose one message type." },
+  { id: "channel", label: "Send as", hint: "Choose one channel." },
+  { id: "audience", label: "Audience", hint: "Choose who should receive this. Leave a group empty to include everyone in that group." },
+  { id: "message", label: "Message", hint: "Write the message. A template fills the body, and you can edit it." },
+  { id: "summary", label: "Summary", hint: "Check the message and audience. Nothing is sent until you confirm." },
+] as const;
 
 const MESSAGE_GROUPS: { id: string; label: string; ids: CommCategory[] }[] = [
   {
@@ -276,7 +285,7 @@ export function Communications() {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [pane, setPane] = useState<Pane>("compose");
+  const [pane, setPane] = useState<Pane>("history");
   const [category, setCategory] = useState<CommCategory>("planned_maintenance");
   const [channel, setChannel] = useState<CommChannel>("sms");
   const [templateId, setTemplateId] = useState("");
@@ -287,7 +296,6 @@ export function Communications() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
   const [showSkipped, setShowSkipped] = useState(false);
-  const [review, setReview] = useState(false);
   const [confirmLarge, setConfirmLarge] = useState(false);
   const [confirmDuplicate, setConfirmDuplicate] = useState(false);
   const [duplicateNote, setDuplicateNote] = useState<string | null>(null);
@@ -300,8 +308,9 @@ export function Communications() {
   const [restoreOf, setRestoreOf] = useState<string | undefined>(undefined);
   const [tplForm, setTplForm] = useState({ id: "", category: "planned_maintenance" as CommCategory, name: "", body: "" });
   const [serviceMore, setServiceMore] = useState(false);
-  const [customerMore, setCustomerMore] = useState(false);
   const [previewPending, setPreviewPending] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState(0);
   const previewRequest = useRef(0);
 
   const filterKey = filterSignature(filter);
@@ -369,10 +378,6 @@ export function Communications() {
   }, [filter.package_ids]);
 
   useEffect(() => {
-    if (filter.tag_ids?.length) setCustomerMore(true);
-  }, [filter.tag_ids]);
-
-  useEffect(() => {
     if (pane !== "report" || report?.campaign.status !== "sending" || !report.campaign.id) return;
     const timer = setInterval(() => {
       tickCampaignFn({ data: { id: report.campaign.id } })
@@ -409,6 +414,35 @@ export function Communications() {
     typeLabel: filter.types?.length === 1 ? filter.types[0] : undefined,
   });
   const large = valid >= 50;
+  const step = WIZARD_STEPS[wizardStep] ?? WIZARD_STEPS[0];
+  const canAdvance = wizardStep === 2 ? Boolean(preview && !previewPending && valid > 0) : wizardStep === 3 ? Boolean(body.trim()) : true;
+
+  function beginCampaign() {
+    const first = meta?.templates.find((tpl) => tpl.enabled);
+    if (first) {
+      setCategory(first.category as CommCategory);
+      setTemplateId(first.id);
+      setBody(first.body);
+    } else {
+      setCategory("planned_maintenance");
+      setTemplateId("");
+      setBody("");
+    }
+    setChannel("sms");
+    setName("");
+    setFilter({});
+    setExtras({});
+    setPreviewPage(1);
+    setShowSkipped(false);
+    setConfirmLarge(false);
+    setConfirmDuplicate(false);
+    setDuplicateNote(null);
+    setRestoreOf(undefined);
+    setServiceMore(false);
+    setWizardStep(0);
+    setWizardOpen(true);
+    setNote(null);
+  }
 
   function applyTemplate(id: string, nextCategory = category) {
     const tpl = (meta?.templates ?? []).find((t) => t.id === id);
@@ -429,7 +463,6 @@ export function Communications() {
     } else {
       setTemplateId("");
     }
-    setReview(false);
   }
 
   async function startRestore(id: string) {
@@ -439,7 +472,11 @@ export function Communications() {
     setExtras({ area: prev.area });
     pickCategory("service_restored");
     setRestoreOf(id);
-    setPane("compose");
+    setWizardStep(0);
+    setWizardOpen(true);
+    setConfirmLarge(false);
+    setConfirmDuplicate(false);
+    setDuplicateNote(null);
     setNote("Audience copied from the earlier outage campaign.");
   }
 
@@ -485,13 +522,15 @@ export function Communications() {
       if (res.duplicate) {
         setDuplicateNote(res.message);
         setConfirmDuplicate(false);
-        setReview(true);
+        setWizardStep(WIZARD_STEPS.length - 1);
+        setWizardOpen(true);
         return;
       }
-      setReview(false);
       setConfirmDuplicate(false);
       setConfirmLarge(false);
       setRestoreOf(undefined);
+      setWizardOpen(false);
+      setWizardStep(0);
       await loadHistory();
       await openReport(res.campaign.id);
       setNote(res.campaign.status === "sending" ? "Sending in batches…" : "Campaign sent.");
@@ -564,30 +603,33 @@ export function Communications() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <p className="text-sm text-muted">
-          Choose what is happening, who is affected, then preview and send. Recipients are resolved on the server from
-          live customer and service data.
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          SMS: <span className="font-medium text-fg">{meta.sender_id}</span>
-          {meta.sandbox ? " · sandbox" : ` · ${meta.provider}`}
-          {" · Email: "}
-          <span className="font-medium text-fg">{meta.email_from}</span>
-          {meta.email_sandbox ? " · sandbox" : ` · ${meta.email_provider}`}
-          {" · "}
-          <Link to="/app/settings" search={{ tab: "communications" }} className="text-accent hover:underline">
-            Messaging settings
-          </Link>
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-muted">
+            Start a campaign to choose the message, who receives it, and review a summary before it is sent.
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            SMS: <span className="font-medium text-fg">{meta.sender_id}</span>
+            {meta.sandbox ? " · sandbox" : ` · ${meta.provider}`}
+            {" · Email: "}
+            <span className="font-medium text-fg">{meta.email_from}</span>
+            {meta.email_sandbox ? " · sandbox" : ` · ${meta.email_provider}`}
+            {" · "}
+            <Link to="/app/settings" search={{ tab: "communications" }} className="text-accent hover:underline">
+              Messaging settings
+            </Link>
+          </p>
+        </div>
+        <Button type="button" onClick={beginCampaign}>
+          New campaign
+        </Button>
       </div>
 
       <div role="tablist" aria-label="Communications" className="flex gap-1 overflow-x-auto rounded-xl border border-border bg-surface p-1">
         {(
           [
-            ["compose", "New message"],
-            ["templates", "Message templates"],
             ["history", "Campaign history"],
+            ["templates", "Message templates"],
             ["report", "Delivery reports"],
           ] as const
         ).map(([id, label]) => (
@@ -602,7 +644,6 @@ export function Communications() {
             )}
             onClick={() => {
               setPane(id);
-              setReview(false);
               if (id === "history") void loadHistory();
             }}
           >
@@ -613,10 +654,60 @@ export function Communications() {
 
       {note ? <p className="text-sm text-accent">{note}</p> : null}
 
-      {pane === "compose" ? (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          <div className="space-y-4">
-            <section className="space-y-3 rounded-xl border border-border bg-surface p-4">
+      <Dialog
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        title="New campaign"
+        description={`Step ${wizardStep + 1} of ${WIZARD_STEPS.length}. ${step.hint}`}
+        className="sm:max-w-3xl"
+        footer={
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Button type="button" variant="ghost" disabled={wizardStep === 0 || busy} onClick={() => setWizardStep((current) => Math.max(0, current - 1))}>
+              Back
+            </Button>
+            {wizardStep < WIZARD_STEPS.length - 1 ? (
+              <Button type="button" disabled={!canAdvance || busy} onClick={() => setWizardStep((current) => Math.min(WIZARD_STEPS.length - 1, current + 1))}>
+                Next
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                disabled={busy || previewPending || !preview || !canSend || !body.trim() || !valid || (large && !confirmLarge) || Boolean(duplicateNote && !confirmDuplicate)}
+                onClick={() => void send(confirmDuplicate)}
+              >
+                {busy ? "Sending…" : "Send campaign"}
+              </Button>
+            )}
+          </div>
+        }
+      >
+        <ol className="mb-4 flex flex-wrap gap-2" aria-label="Campaign steps">
+          {WIZARD_STEPS.map((item, index) => (
+            <li key={item.id}>
+              <button
+                type="button"
+                disabled={index > wizardStep || busy}
+                aria-current={index === wizardStep ? "step" : undefined}
+                onClick={() => {
+                  if (index < wizardStep) setWizardStep(index);
+                }}
+                className={cn(
+                  "inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs",
+                  index === wizardStep
+                    ? "border-border bg-elevated font-medium text-fg"
+                    : index < wizardStep
+                      ? "border-border text-muted hover:text-fg"
+                      : "border-transparent text-muted",
+                )}
+              >
+                <span>{index + 1}</span>
+                {item.label}
+              </button>
+            </li>
+          ))}
+        </ol>
+        <div className="space-y-4">
+            <section className={cn("space-y-3 rounded-xl border border-border bg-surface p-4", wizardStep !== 0 && "hidden")}>
               <h2 className="font-medium">Message type</h2>
               <ChoiceGroup
                 name="message-type"
@@ -636,9 +727,12 @@ export function Communications() {
                   </p>
                 </div>
               ) : null}
+              {restoreOf ? (
+                <p className="text-xs text-muted">Audience copied from the earlier outage campaign. Continue through the steps to confirm it.</p>
+              ) : null}
             </section>
 
-            <section className="space-y-3 rounded-xl border border-border bg-surface p-4">
+            <section className={cn("space-y-3 rounded-xl border border-border bg-surface p-4", wizardStep !== 1 && "hidden")}>
               <h2 className="font-medium">Send as</h2>
               <ChoiceGroup
                 name="send-as"
@@ -659,7 +753,7 @@ export function Communications() {
               </p>
             </section>
 
-            <section className="space-y-4 rounded-xl border border-border bg-surface p-4">
+            <section className={cn("space-y-4 rounded-xl border border-border bg-surface p-4", wizardStep !== 2 && "hidden")}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-medium">Who should receive this</h2>
                 <Button
@@ -712,6 +806,30 @@ export function Communications() {
                       </FilterChip>
                     ))}
                   </div>
+                </div>
+                <div>
+                  <p className="mb-1.5 text-xs font-medium tracking-wide text-muted">Tags</p>
+                  {meta.tags.length ? (
+                    <>
+                      <p className="mb-1.5 text-xs text-muted">A customer must have every selected tag.</p>
+                      <div className="flex flex-wrap gap-2">
+                        {meta.tags.map((t) => (
+                          <FilterChip
+                            key={t.id}
+                            on={Boolean(filter.tag_ids?.includes(t.id))}
+                            onClick={() => {
+                              setFilter((f) => ({ ...f, tag_ids: toggleFilterValue(f.tag_ids, t.id) }));
+                              setPreviewPage(1);
+                            }}
+                          >
+                            {t.name}
+                          </FilterChip>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted">No tags yet. Create them under Settings → Customer tags.</p>
+                  )}
                 </div>
                 <MoreFilters open={serviceMore} count={filter.package_ids?.length ?? 0} onToggle={() => setServiceMore((open) => !open)}>
                   {meta.packages.length ? (
@@ -778,30 +896,6 @@ export function Communications() {
                     ))}
                   </datalist>
                 ) : null}
-                <MoreFilters open={customerMore} count={filter.tag_ids?.length ?? 0} onToggle={() => setCustomerMore((open) => !open)}>
-                  {meta.tags.length ? (
-                    <div>
-                      <p className="mb-1.5 text-xs font-medium tracking-wide text-muted">Tags</p>
-                      <p className="mb-1.5 text-xs text-muted">A customer must have every selected tag.</p>
-                      <div className="flex flex-wrap gap-2">
-                        {meta.tags.map((t) => (
-                          <FilterChip
-                            key={t.id}
-                            on={Boolean(filter.tag_ids?.includes(t.id))}
-                            onClick={() => {
-                              setFilter((f) => ({ ...f, tag_ids: toggleFilterValue(f.tag_ids, t.id) }));
-                              setPreviewPage(1);
-                            }}
-                          >
-                            {t.name}
-                          </FilterChip>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted">No customer tags yet.</p>
-                  )}
-                </MoreFilters>
               </div>
 
               <div className="space-y-3 border-t border-border pt-4">
@@ -858,7 +952,7 @@ export function Communications() {
               </div>
             </section>
 
-            <section className="space-y-3 rounded-xl border border-border bg-surface p-4">
+            <section className={cn("space-y-3 rounded-xl border border-border bg-surface p-4", wizardStep !== 3 && "hidden")}>
               <h2 className="font-medium">Message</h2>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Template">
@@ -935,16 +1029,15 @@ export function Communications() {
                 </div>
               </div>
             </section>
-          </div>
 
-          <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+            <div className={cn("space-y-4", wizardStep !== 2 && "hidden")}>
             <section aria-busy={previewPending} className="space-y-3 rounded-xl border border-border bg-surface p-4">
               <h2 className="font-medium">Audience</h2>
               <p className="text-sm font-medium">{summary}</p>
               {!preview ? (
                 <p className="text-sm text-muted">Updating audience…</p>
               ) : total === 0 && !previewPending ? (
-                <p className="text-sm text-muted">No customers match these filters.</p>
+                <p className="text-sm text-muted">No customers match these filters. Change a filter before continuing.</p>
               ) : (
                 <p className={cn("text-sm", previewPending && "opacity-60")}>
                   <span className="font-medium">{valid}</span>{" "}
@@ -959,7 +1052,7 @@ export function Communications() {
                   {showSkipped ? "View recipients" : "Review skipped"}
                 </Button>
               ) : (
-                <p className="text-xs text-muted">View recipients below. Phone numbers without a valid mobile are listed as skipped — they are not sent silently.</p>
+                <p className="text-xs text-muted">Customers without a valid contact for this channel are skipped. They are not sent silently.</p>
               )}
               <div className={cn("text-sm text-muted", previewPending && "opacity-60")}>
                 {channel === "email" ? (
@@ -975,16 +1068,6 @@ export function Communications() {
                 )}
               </div>
               {!canSend ? <p className="text-sm text-warn">You can preview this audience but you cannot send bulk SMS.</p> : null}
-              <Button
-                type="button"
-                disabled={!canSend || !body.trim() || !valid || busy || previewPending || !preview}
-                onClick={() => {
-                  setReview(true);
-                  setDuplicateNote(null);
-                }}
-              >
-                Review & send
-              </Button>
             </section>
 
             <section className="space-y-2 rounded-xl border border-border bg-surface p-4">
@@ -1026,20 +1109,38 @@ export function Communications() {
                 </ul>
               )}
             </section>
-          </aside>
+            </div>
 
-          {review ? (
-            <div className="space-y-3 rounded-xl border border-border bg-surface p-4 lg:col-span-2">
-              <h2 className="font-medium">Confirm send</h2>
+            <section className={cn("space-y-3 rounded-xl border border-border bg-surface p-4", wizardStep !== 4 && "hidden")}>
+              <h2 className="font-medium">Summary</h2>
+              <dl className="space-y-2 text-sm">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-muted">Message type</dt>
+                  <dd className="font-medium">{categoryLabel(category)}</dd>
+                </div>
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-muted">Send as</dt>
+                  <dd className="font-medium">{COMM_CHANNELS.find((item) => item.id === channel)?.label}</dd>
+                </div>
+                <div className="flex flex-wrap justify-between gap-2">
+                  <dt className="text-muted">Campaign</dt>
+                  <dd className="font-medium">{name.trim() || campaignName(category, { ...extras, area: extras.area || filter.area })}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted">Audience</dt>
+                  <dd className="mt-1 font-medium">{summary}</dd>
+                </div>
+              </dl>
               <p className="whitespace-pre-wrap rounded-md bg-elevated p-3 text-sm">{sample}</p>
               <p className={cn("text-sm", previewPending && "opacity-60")}>
-                Audience: <span className="font-medium">{valid} customers</span>
+                <span className="font-medium">{valid}</span> customers
                 {skipped ? ` · ${skipped} skipped` : ""}
                 {previewPending ? " · updating…" : ""}
               </p>
-              <p className="text-sm text-muted">{summary}</p>
-              <p className="text-sm">
-                SMS: {estimated} · Sender: {meta.sender_id}
+              <p className="text-sm text-muted">
+                {channel === "email"
+                  ? `${valid} email recipients`
+                  : `${estimated} SMS · Sender ${meta.sender_id}${channel === "both" ? " · plus email where available" : ""}`}
               </p>
               {duplicateNote ? (
                 <label className="flex items-start gap-2 text-sm text-warn">
@@ -1053,18 +1154,10 @@ export function Communications() {
                   You are about to send this message to {valid} customers.
                 </label>
               ) : null}
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" disabled={busy || previewPending || !preview || (large && !confirmLarge) || Boolean(duplicateNote && !confirmDuplicate)} onClick={() => void send(confirmDuplicate)}>
-                  {busy ? "Sending…" : "Send message"}
-                </Button>
-                <Button type="button" variant="ghost" onClick={() => setReview(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          ) : null}
+              {!canSend ? <p className="text-sm text-warn">You can preview this audience but you cannot send bulk SMS.</p> : null}
+            </section>
         </div>
-      ) : null}
+      </Dialog>
 
       {pane === "templates" ? (
         <div className="space-y-4">
