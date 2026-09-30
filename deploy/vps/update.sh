@@ -200,28 +200,45 @@ write_deploy_meta "$DEPLOY_REPORT" \
   "Pre-counts: $( [[ -f "$BEFORE_COUNTS" ]] && cat "$BEFORE_COUNTS" || echo none )"
 
 echo "[ispsolutions] building $SHORT (compose up -d --build, never destroy named volumes)"
-if ! protect_compose up -d --build; then
-  echo "[ispsolutions] compose up failed" >&2
-  if [[ "$BEFORE" != "$(git rev-parse HEAD)" ]]; then
-    echo "[ispsolutions] rolling back code to $BEFORE (database left as-is)"
-    git reset --hard "$BEFORE"
-    PREV_SHORT="$(git rev-parse --short HEAD)"
-    export ISPSOLUTIONS_GIT_SHA="$PREV_SHORT"
-    export GRIDLINE_GIT_SHA="$PREV_SHORT"
-    protect_compose up -d --build || true
+# genieacs-init used to be part of this `up`. It is one-shot (restart: "no")
+# and Compose often exits 1 after a green "[+] up N/N" once that container
+# exits. Long-running services still have to be running or this rolls back.
+set +e
+protect_compose up -d --build
+compose_rc=$?
+set -e
+if [[ "$compose_rc" -ne 0 ]]; then
+  missing=""
+  for svc in postgres redis web worker collector mongo genieacs caddy cwmp-edge overlay-dial freeradius; do
+    if [[ -z "$(protect_compose ps -q "$svc" 2>/dev/null || true)" ]]; then
+      missing+="$svc "
+    fi
+  done
+  if [[ -z "$missing" ]]; then
+    echo "[ispsolutions] compose exit ${compose_rc} ignored — services are running; genieacs-init is one-shot and exits on purpose" | tee -a "$DEPLOY_REPORT"
+  else
+    echo "[ispsolutions] compose up failed (not running: ${missing})" >&2
+    if [[ "$BEFORE" != "$(git rev-parse HEAD)" ]]; then
+      echo "[ispsolutions] rolling back code to $BEFORE (database left as-is)"
+      git reset --hard "$BEFORE"
+      PREV_SHORT="$(git rev-parse --short HEAD)"
+      export ISPSOLUTIONS_GIT_SHA="$PREV_SHORT"
+      export GRIDLINE_GIT_SHA="$PREV_SHORT"
+      protect_compose up -d --build || true
+    fi
+    echo "DEPLOYMENT FAILED / MANUAL REVIEW" | tee -a "$DEPLOY_REPORT"
+    exit 1
   fi
-  echo "DEPLOYMENT FAILED / MANUAL REVIEW" | tee -a "$DEPLOY_REPORT"
-  exit 1
 fi
 
 echo "[ispsolutions] applying GenieACS CWMP config"
-protect_compose run --rm --no-deps genieacs-init \
+protect_compose --profile init run --rm --no-deps genieacs-init \
   || echo "[ispsolutions] genieacs-init skipped (ACS config will apply from the app)"
 
 HEALTH="$INSTALL_DIR/deploy/vps/healthcheck.sh"
 if [[ -x "$HEALTH" ]] || [[ -f "$HEALTH" ]]; then
   chmod +x "$HEALTH" 2>/dev/null || true
-  if ! INSTALL_DIR="$INSTALL_DIR" bash "$HEALTH" 180; then
+  if ! INSTALL_DIR="$INSTALL_DIR" PROJECT="$PROJECT" COMPOSE="$COMPOSE" ENV_FILE="$ENV_FILE" bash "$HEALTH" 180; then
     echo "[ispsolutions] health failed after $SHORT" >&2
     if [[ -n "$BEFORE" && "$BEFORE" != "$(git rev-parse HEAD)" ]]; then
       echo "[ispsolutions] rolling back code to $BEFORE"
@@ -230,7 +247,7 @@ if [[ -x "$HEALTH" ]] || [[ -f "$HEALTH" ]]; then
       export ISPSOLUTIONS_GIT_SHA="$PREV_SHORT"
       export GRIDLINE_GIT_SHA="$PREV_SHORT"
       protect_compose up -d --build || true
-      if INSTALL_DIR="$INSTALL_DIR" bash "$HEALTH" 180; then
+      if INSTALL_DIR="$INSTALL_DIR" PROJECT="$PROJECT" COMPOSE="$COMPOSE" ENV_FILE="$ENV_FILE" bash "$HEALTH" 180; then
         echo "[ispsolutions] rollback healthy at $PREV_SHORT"
         if [[ -n "$BACKUP" ]]; then
           echo "[ispsolutions] database backup kept at $BACKUP (not restored; schema is additive)"

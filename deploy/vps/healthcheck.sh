@@ -15,9 +15,13 @@ if [[ ! -f "$ENV_FILE" && -f "$INSTALL_DIR/gridline.env" ]]; then
   ENV_FILE="$INSTALL_DIR/gridline.env"
 fi
 TIMEOUT="${1:-180}"
-PROJECT=ispsolutions
-if docker volume inspect gridline_pgdata >/dev/null 2>&1; then
-  PROJECT=gridline
+# Same rule as update.sh. A leftover gridline_pgdata volume must not point
+# this check at an empty project while the live containers are ispsolutions-*.
+if [[ -z "${PROJECT:-}" ]]; then
+  PROJECT=ispsolutions
+  if docker volume inspect gridline_pgdata >/dev/null 2>&1 && ! docker volume inspect ispsolutions_pgdata >/dev/null 2>&1; then
+    PROJECT=gridline
+  fi
 fi
 
 deadline=$((SECONDS + TIMEOUT))

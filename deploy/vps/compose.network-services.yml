@@ -25,8 +25,6 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
-      genieacs-init:
-        condition: service_completed_successfully
     environment:
       GENIEACS_MONGODB_CONNECTION_URL: ${GENIEACS_MONGODB_CONNECTION_URL:-mongodb://mongo/genieacs}
       GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
@@ -49,7 +47,9 @@ services:
       - "7567"
       - "3000"
 
+  # One-shot. Not part of `up` — see docker-compose.yml.
   genieacs-init:
+    profiles: ["init"]
     image: mongo:7
     depends_on:
       mongo:

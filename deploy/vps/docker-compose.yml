@@ -146,8 +146,6 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
-      genieacs-init:
-        condition: service_completed_successfully
     environment:
       GENIEACS_MONGODB_CONNECTION_URL: ${GENIEACS_MONGODB_CONNECTION_URL:-mongodb://mongo/genieacs}
       GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
@@ -173,7 +171,11 @@ services:
       - "7567"
       - "3000"
 
+  # One-shot CWMP config. Not started by `up`: Compose returns non-zero when
+  # this container exits, and update.sh would then roll a healthy release back.
+  # update.sh applies it with `compose run` after the stack is up.
   genieacs-init:
+    profiles: ["init"]
     image: mongo:7
     depends_on:
       mongo:
