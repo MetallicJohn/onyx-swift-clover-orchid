@@ -12,6 +12,26 @@ export const ACS_RESERVED_PORTS = new Set([
 
 export const ACS_PORT_RANGE_DEFAULT = { start: 7551, end: 7999 };
 
+/** OLT ACS username/password length. 12 fits Tenda; 24 is the hard maximum. */
+export const ACS_CREDENTIAL_LENGTH_DEFAULT = 12;
+export const ACS_CREDENTIAL_LENGTH_MIN = 8;
+export const ACS_CREDENTIAL_LENGTH_MAX = 24;
+
+export function clampAcsCredentialLength(raw: unknown, fallback = ACS_CREDENTIAL_LENGTH_DEFAULT) {
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(ACS_CREDENTIAL_LENGTH_MAX, Math.max(ACS_CREDENTIAL_LENGTH_MIN, n));
+}
+
+/** Length used for the next generate. A stored value above 24 is a legacy 32-character secret. */
+export function resolveAcsCredentialLength(saved: unknown, platformDefault: unknown) {
+  const platform = clampAcsCredentialLength(platformDefault);
+  if (saved == null || saved === "") return platform;
+  const n = Math.floor(Number(saved));
+  if (!Number.isFinite(n) || n > ACS_CREDENTIAL_LENGTH_MAX || n < ACS_CREDENTIAL_LENGTH_MIN) return platform;
+  return n;
+}
+
 export type AcsPlatformSettings = {
   acs_public_host: string;
   acs_dns_host: string;
@@ -21,6 +41,7 @@ export type AcsPlatformSettings = {
   acs_require_cpe_auth: boolean;
   acs_lock_url: boolean;
   acs_provision_service: boolean;
+  acs_credential_length: number;
 };
 
 export function normalizeAcsHost(raw: string) {
@@ -87,7 +108,8 @@ export async function loadAcsPlatformSettings(sql: Sql): Promise<AcsPlatformSett
     select key, value from platform_settings
     where key in (
       'acs_public_host', 'acs_dns_host', 'acs_port_start', 'acs_port_end',
-      'acs_tls', 'acs_require_cpe_auth', 'acs_lock_url', 'acs_provision_service'
+      'acs_tls', 'acs_require_cpe_auth', 'acs_lock_url', 'acs_provision_service',
+      'acs_credential_length'
     )`;
   const map: Record<string, string> = {};
   for (const r of rows) map[r.key] = r.value;
@@ -101,6 +123,7 @@ export async function loadAcsPlatformSettings(sql: Sql): Promise<AcsPlatformSett
     acs_require_cpe_auth: parseBoolSetting(map.acs_require_cpe_auth, true),
     acs_lock_url: parseBoolSetting(map.acs_lock_url, true),
     acs_provision_service: parseBoolSetting(map.acs_provision_service, true),
+    acs_credential_length: clampAcsCredentialLength(map.acs_credential_length),
   };
 }
 

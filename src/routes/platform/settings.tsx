@@ -40,6 +40,7 @@ function SettingsPage() {
     acs_require_cpe_auth: true,
     acs_lock_url: true,
     acs_provision_service: true,
+    acs_credential_length: 12,
     traffic_enabled: true,
     traffic_interval_sec: 30,
     traffic_router_interval_sec: 60,
@@ -253,6 +254,19 @@ function SettingsPage() {
           <p className="text-xs text-muted">
             Each ISP gets the next free port in this range. The TR-069 edge forwards those ports to the shared ACS. The
             northbound API stays private. Changing the range does not reassign ports already issued.
+          </p>
+          <Field label="ACS credential length">
+            <Input
+              type="number"
+              min={8}
+              max={24}
+              value={form.acs_credential_length}
+              onChange={(e) => setForm({ ...form, acs_credential_length: Number(e.target.value) })}
+            />
+          </Field>
+          <p className="text-xs text-muted">
+            Default length for a new ACS username and password. 12 fits a Tenda OLT. The hard maximum is 24. An ISP can
+            use a different length on its ACS credentials page. Existing passwords stay until that ISP regenerates them.
           </p>
           <Field label="ACS URL scheme">
             <Select

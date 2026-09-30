@@ -3,8 +3,12 @@ import { nid } from "../utils.ts";
 import {
   allocateAcsPort,
   buildAcsUrl,
+  ACS_CREDENTIAL_LENGTH_DEFAULT,
+  ACS_CREDENTIAL_LENGTH_MAX,
+  clampAcsCredentialLength,
   ensureTenantAcsPort,
   loadAcsPlatformSettings,
+  resolveAcsCredentialLength,
   resolveAcsPublicHost,
   withAcsPortLock,
 } from "./acs-ports.ts";
@@ -35,30 +39,63 @@ export type AcsIspCredentials = {
   last_verified_at: string | null;
   last_verify_ok: boolean | null;
   last_verify_error: string;
+  credential_length: number;
+  credentials_fit: boolean;
   created_at: string | null;
   updated_at: string | null;
 };
 
-export function acsUsernameFor(slug: string) {
-  const s = (slug || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_|_$/g, "")
-    .slice(0, 24);
-  return `tenant_${s || "isp"}`;
+const ACS_ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789";
+
+export function acsNameToken(source: string) {
+  return (source || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-export function acsConnreqUserFor(slug: string) {
-  const s = (slug || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_|_$/g, "")
-    .slice(0, 22);
-  return `cr_${s || "isp"}`;
+function randomAcsChars(n: number) {
+  if (n <= 0) return "";
+  const buf = randomBytes(n);
+  let out = "";
+  for (let i = 0; i < n; i += 1) out += ACS_ALPHABET[buf[i]! % ACS_ALPHABET.length]!;
+  return out;
 }
 
-export function newAcsSecret() {
-  return randomBytes(16).toString("hex");
+/** Whole ISP name when it fits, otherwise the leading part. A tail is only added to avoid a collision. */
+export function acsUsernameFor(slug: string, length = ACS_CREDENTIAL_LENGTH_DEFAULT, tail = "") {
+  const len = clampAcsCredentialLength(length);
+  const name = acsNameToken(slug) || "isp";
+  const salt = acsNameToken(tail);
+  if (!salt) return name.slice(0, len);
+  const tailLen = Math.min(Math.max(salt.length, 2), len - 1);
+  const useTail = salt.slice(0, tailLen);
+  return `${name.slice(0, len - useTail.length)}${useTail}`.slice(0, len);
+}
+
+/** Connection-request username stays alphanumeric, within the same length, and different from the ACS username. */
+export function acsConnreqUserFor(slug: string, length = ACS_CREDENTIAL_LENGTH_DEFAULT, acsUser = "", tail = "") {
+  const len = clampAcsCredentialLength(length);
+  const name = acsNameToken(slug) || "isp";
+  const salt = acsNameToken(tail);
+  const acs = acsNameToken(acsUser);
+  if (!salt) {
+    let id = `c${name}`.slice(0, len);
+    if (id === acs) id = `${name}c`.slice(0, len);
+    if (id === acs) id = `c${name.slice(0, Math.max(0, len - 2))}x`.slice(0, len);
+    return id;
+  }
+  const tailLen = Math.min(salt.length, Math.max(1, len - 2));
+  const useTail = salt.slice(0, tailLen);
+  const head = name.slice(0, Math.max(0, len - 1 - useTail.length));
+  let id = `c${head}${useTail}`.slice(0, len);
+  if (id === acs) id = `x${id.slice(1)}`.slice(0, len);
+  return id;
+}
+
+/** Random ACS secret of the configured length. A short ISP mark is included when at least 6 random characters remain. */
+export function newAcsSecret(length = ACS_CREDENTIAL_LENGTH_DEFAULT, isp = "") {
+  const len = clampAcsCredentialLength(length);
+  const name = acsNameToken(isp);
+  const markLen = name && len >= 10 ? Math.min(4, name.length, len - 6) : 0;
+  return `${name.slice(0, markLen)}${randomAcsChars(len - markLen)}`.slice(0, len);
 }
 
 export function defaultCwmpUrl(publicBase: string, port?: number | null, scheme: "http" | "https" = "http") {
@@ -94,13 +131,14 @@ type Row = {
   last_verified_at: string | null;
   last_verify_ok: boolean | null;
   last_verify_error: string;
+  credential_length: number | null;
   created_at: string | null;
   updated_at: string | null;
 };
 
 function asPublic(
   row: Row | undefined,
-  extras: { dnsHost?: string; resolvedHost?: string; secrets?: boolean; scheme?: "http" | "https" },
+  extras: { dnsHost?: string; resolvedHost?: string; secrets?: boolean; scheme?: "http" | "https"; credentialLength?: number },
 ): AcsIspCredentials | null {
   if (!row) return null;
   const host = row.public_host || extras.resolvedHost || "";
@@ -109,6 +147,10 @@ function asPublic(
   const alt = extras.dnsHost && row.cwmp_port ? buildAcsUrl(extras.dnsHost, row.cwmp_port, scheme) : "";
   const password = extras.secrets ? open(row.password_ref || "") : "";
   const connreq = extras.secrets ? open(row.connreq_pass_ref || "") : "";
+  const length = resolveAcsCredentialLength(row.credential_length, extras.credentialLength ?? ACS_CREDENTIAL_LENGTH_DEFAULT);
+  const actualPassword = open(row.password_ref || "");
+  const usernameOk = nameFits(row.username || "", length);
+  const connreqOk = nameFits(row.connreq_user || "", length);
   return {
     tenant_id: row.tenant_id,
     enabled: row.enabled !== false,
@@ -129,6 +171,13 @@ function asPublic(
     last_verified_at: row.last_verified_at,
     last_verify_ok: row.last_verify_ok,
     last_verify_error: row.last_verify_error || "",
+    credential_length: length,
+    credentials_fit:
+      actualPassword.length === length &&
+      actualPassword.length <= ACS_CREDENTIAL_LENGTH_MAX &&
+      usernameOk &&
+      connreqOk &&
+      (row.username || "") !== (row.connreq_user || ""),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -138,7 +187,7 @@ async function readRow(sql: Sql, tenantId: string) {
   const [row] = await sql<Row>`
     select tenant_id, enabled, cwmp_url, public_host, cwmp_port, username, password_ref, connreq_user, connreq_pass_ref,
            inform_interval, generated_at::text as generated_at, password_rotated_at::text as password_rotated_at,
-           last_verified_at::text as last_verified_at, last_verify_ok, last_verify_error,
+           last_verified_at::text as last_verified_at, last_verify_ok, last_verify_error, credential_length,
            created_at::text as created_at, updated_at::text as updated_at
     from acs_isp_credentials where tenant_id = ${tenantId}`;
   return row;
@@ -147,7 +196,7 @@ async function readRow(sql: Sql, tenantId: string) {
 async function extrasFor(sql: Sql, row?: Row, publicBase = "") {
   const plat = await loadAcsPlatformSettings(sql);
   const resolved = row?.public_host || (await resolveAcsPublicHost(sql, publicBase));
-  return { dnsHost: plat.acs_dns_host, resolvedHost: resolved, scheme: plat.acs_tls };
+  return { dnsHost: plat.acs_dns_host, resolvedHost: resolved, scheme: plat.acs_tls, credentialLength: plat.acs_credential_length };
 }
 
 export async function loadAcsCredentials(sql: Sql, tenantId: string, opts: { secrets?: boolean; publicBase?: string } = {}) {
@@ -160,6 +209,67 @@ async function writeAudit(sql: Sql, tenantId: string, userId: string, action: st
   const payload = JSON.stringify(details);
   await sql`insert into audit_logs (id, tenant_id, user_id, action, entity_type, entity_id, details)
     values (${nid("aud")}, ${tenantId}, ${userId}, ${action}, 'acs_credentials', ${tenantId}, ${payload})`;
+}
+
+function nameFits(value: string, length: number) {
+  return Boolean(value) && value.length <= length && value.length <= ACS_CREDENTIAL_LENGTH_MAX && /^[a-z0-9]+$/.test(value);
+}
+
+async function takenAcsNames(sql: Sql, tenantId: string) {
+  const rows = await sql<{ username: string; connreq_user: string }>`
+    select username, connreq_user from acs_isp_credentials where tenant_id <> ${tenantId}`;
+  const taken = new Set<string>();
+  for (const row of rows) {
+    if (row.username) taken.add(row.username.toLowerCase());
+    if (row.connreq_user) taken.add(row.connreq_user.toLowerCase());
+  }
+  return taken;
+}
+
+async function allocateAcsNames(
+  sql: Sql,
+  tenantId: string,
+  slug: string,
+  length: number,
+  existing?: Row,
+) {
+  const currentUser = existing?.username || "";
+  const currentCr = existing?.connreq_user || "";
+  if (nameFits(currentUser, length) && nameFits(currentCr, length) && currentUser !== currentCr) {
+    return { username: currentUser, connreq: currentCr };
+  }
+  const taken = await takenAcsNames(sql, tenantId);
+  for (let i = 0; i < 20; i += 1) {
+    const tail = i === 0 ? "" : randomAcsChars(3);
+    const username = acsUsernameFor(slug, length, tail);
+    const crTail = i === 0 ? "" : randomAcsChars(2);
+    let connreq = acsConnreqUserFor(slug, length, username, crTail);
+    if (connreq === username) connreq = acsConnreqUserFor(slug, length, username, randomAcsChars(3));
+    if (!username || !connreq || username === connreq) continue;
+    if (taken.has(username) || taken.has(connreq)) continue;
+    return { username, connreq };
+  }
+  throw new Error("Could not allocate a unique ACS username");
+}
+
+async function allocateAcsSecrets(sql: Sql, tenantId: string, slug: string, length: number) {
+  const rows = await sql<{ password_ref: string; connreq_pass_ref: string }>`
+    select password_ref, connreq_pass_ref from acs_isp_credentials where tenant_id <> ${tenantId}`;
+  const used = new Set<string>();
+  for (const row of rows) {
+    const password = open(row.password_ref || "");
+    const connreq = open(row.connreq_pass_ref || "");
+    if (password) used.add(password);
+    if (connreq) used.add(connreq);
+  }
+  for (let i = 0; i < 8; i += 1) {
+    const password = newAcsSecret(length, slug);
+    const connreq = newAcsSecret(length, slug);
+    if (password === connreq || password.length !== length || connreq.length !== length) continue;
+    if (used.has(password) || used.has(connreq)) continue;
+    return { password, connreq };
+  }
+  throw new Error("Could not allocate a unique ACS password");
 }
 
 export async function generateAcsCredentials(
@@ -178,13 +288,13 @@ export async function generateAcsCredentials(
     await ensureTenantAcsPort(sql, { tenantId: opts.tenantId, slug: opts.slug, publicBase: opts.publicBase });
     const host = await resolveAcsPublicHost(sql, opts.publicBase || "");
     const plat = await loadAcsPlatformSettings(sql);
-    const username = existing?.username || acsUsernameFor(opts.slug);
-    const connreqUser =
-      existing?.connreq_user && existing.connreq_user !== existing.username
-        ? existing.connreq_user
-        : acsConnreqUserFor(opts.slug);
-    const password = newAcsSecret();
-    const connreqPass = newAcsSecret();
+    const length = resolveAcsCredentialLength(existing?.credential_length, plat.acs_credential_length);
+    const names = await allocateAcsNames(sql, opts.tenantId, opts.slug, length, existing);
+    const secrets = await allocateAcsSecrets(sql, opts.tenantId, opts.slug, length);
+    const username = names.username;
+    const connreqUser = names.connreq;
+    const password = secrets.password;
+    const connreqPass = secrets.connreq;
     const inform = clampInform(existing?.inform_interval ?? 300);
     const passRef = seal(password);
     const crRef = seal(connreqPass);
@@ -192,17 +302,17 @@ export async function generateAcsCredentials(
     await sql`
       insert into acs_isp_credentials
         (tenant_id, enabled, cwmp_url, public_host, username, password_ref, connreq_user, connreq_pass_ref,
-         inform_interval, generated_at, password_rotated_at, updated_at)
+         inform_interval, credential_length, generated_at, password_rotated_at, updated_at)
       values (
         ${opts.tenantId}, true, ${url}, ${host}, ${username}, ${passRef}, ${connreqUser}, ${crRef},
-        ${inform}, now(), now(), now()
+        ${inform}, ${length}, now(), now(), now()
       )
       on conflict (tenant_id) do update set
-        username = case when acs_isp_credentials.username <> '' then acs_isp_credentials.username else excluded.username end,
-        connreq_user = case when acs_isp_credentials.connreq_user <> '' and acs_isp_credentials.connreq_user <> acs_isp_credentials.username
-          then acs_isp_credentials.connreq_user else excluded.connreq_user end,
+        username = excluded.username,
+        connreq_user = excluded.connreq_user,
         password_ref = excluded.password_ref,
         connreq_pass_ref = excluded.connreq_pass_ref,
+        credential_length = excluded.credential_length,
         public_host = case when acs_isp_credentials.public_host <> '' then acs_isp_credentials.public_host else excluded.public_host end,
         cwmp_url = case when excluded.cwmp_url <> '' then excluded.cwmp_url else acs_isp_credentials.cwmp_url end,
         generated_at = coalesce(acs_isp_credentials.generated_at, now()),
@@ -224,17 +334,33 @@ export async function generateAcsCredentials(
 export async function saveAcsCredentialSettings(
   sql: Sql,
   tenantId: string,
-  patch: { enabled?: boolean; inform_interval?: number; userId?: string },
+  patch: { enabled?: boolean; inform_interval?: number; credential_length?: number; userId?: string },
 ) {
   const existing = await loadAcsCredentials(sql, tenantId);
   if (!existing) throw new Error("Generate ACS credentials first.");
   const inform = patch.inform_interval !== undefined ? clampInform(patch.inform_interval) : existing.inform_interval;
   const enabled = patch.enabled !== undefined ? Boolean(patch.enabled) : existing.enabled;
-  await sql`update acs_isp_credentials
-    set inform_interval = ${inform}, enabled = ${enabled}, updated_at = now()
-    where tenant_id = ${tenantId}`;
+  let length = existing.credential_length;
+  if (patch.credential_length !== undefined) {
+    const requested = Math.floor(Number(patch.credential_length));
+    if (clampAcsCredentialLength(patch.credential_length) !== requested) {
+      throw new Error(`ACS credential length must be between 8 and ${ACS_CREDENTIAL_LENGTH_MAX} characters`);
+    }
+    length = requested;
+    await sql`update acs_isp_credentials
+      set inform_interval = ${inform}, enabled = ${enabled}, credential_length = ${length}, updated_at = now()
+      where tenant_id = ${tenantId}`;
+  } else {
+    await sql`update acs_isp_credentials
+      set inform_interval = ${inform}, enabled = ${enabled}, updated_at = now()
+      where tenant_id = ${tenantId}`;
+  }
   if (patch.userId) {
-    await writeAudit(sql, tenantId, patch.userId, "acs.credentials_updated", { enabled, inform_interval: inform });
+    await writeAudit(sql, tenantId, patch.userId, "acs.credentials_updated", {
+      enabled,
+      inform_interval: inform,
+      credential_length: length,
+    });
   }
   return loadAcsCredentials(sql, tenantId);
 }
@@ -352,6 +478,14 @@ set tr069 password ${pass}
 set tr069 inform-interval ${interval}
 apply
 `;
+  const tenda = `# Tenda OLT — TR-069 profile. Username and password are at most 24 characters.
+ACS URL: ${url}
+ACS username: ${user}
+ACS password: ${pass}
+Connection-request username: ${crUser}
+Connection-request password: ${crPass}
+Inform interval: ${interval}
+`;
   const params = `InternetGatewayDevice.ManagementServer.URL=${url}
 InternetGatewayDevice.ManagementServer.Username=${user}
 InternetGatewayDevice.ManagementServer.Password=${pass}
@@ -362,5 +496,5 @@ InternetGatewayDevice.ManagementServer.ConnectionRequestPassword=${crPass}
 Device.ManagementServer.URL=${url}
 Device.ManagementServer.Username=${user}
 Device.ManagementServer.Password=${pass}`;
-  return { huawei, zte, fiberhome, params };
+  return { huawei, zte, fiberhome, tenda, params };
 }

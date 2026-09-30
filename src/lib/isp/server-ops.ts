@@ -522,13 +522,14 @@ export const generateAcsCredentialsFn = createServerFn({ method: "POST" })
 
 export const saveAcsCredentialsFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((d: { enabled?: boolean; inform_interval?: number }) => d)
+  .validator((d: { enabled?: boolean; inform_interval?: number; credential_length?: number }) => d)
   .handler(async ({ context, data }) => {
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "acs.credentials.manage");
     const row = await saveAcsCredentialSettings(sql, tenantId, {
       enabled: data.enabled,
       inform_interval: data.inform_interval,
+      credential_length: data.credential_length,
       userId: context.userId,
     });
     if (!row) throw new Error("Generate ACS credentials first.");

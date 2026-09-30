@@ -77,7 +77,8 @@ export function AcsCredentialsPanel({
 }) {
   const [inform, setInform] = useState(creds?.inform_interval || 300);
   const [enabled, setEnabled] = useState(creds?.enabled !== false);
-  const [snippet, setSnippet] = useState<"huawei" | "zte" | "fiberhome" | "params" | "">("");
+  const [length, setLength] = useState(creds?.credential_length || 12);
+  const [snippet, setSnippet] = useState<"huawei" | "zte" | "fiberhome" | "tenda" | "params" | "">("");
   const revealed = Boolean(creds?.password);
   const snipText = snippet && creds?.snippets ? creds.snippets[snippet] : "";
 
@@ -87,7 +88,7 @@ export function AcsCredentialsPanel({
   }
 
   async function generate(rotate: boolean) {
-    if (rotate && !window.confirm("Rotate ACS and connection-request passwords? Update the OLT TR-069 profile or ONUs will stop informing. Existing serials are not renamed.")) {
+    if (rotate && !window.confirm("Regenerate ACS credentials at the saved length? Usernames that are too long are replaced. Update the OLT TR-069 profile or ONUs will stop informing.")) {
       return;
     }
     setBusy(true);
@@ -97,6 +98,7 @@ export function AcsCredentialsPanel({
       setCreds(row);
       setInform(row.inform_interval);
       setEnabled(row.enabled);
+      setLength(row.credential_length || 12);
       setNote(
         rotate
           ? "Passwords rotated. Copy them onto the OLT before ONUs retry inform."
@@ -115,8 +117,9 @@ export function AcsCredentialsPanel({
         <div className="rounded-xl border border-border bg-surface p-5">
           <h2 className="font-medium">ACS credentials</h2>
           <p className="mt-1 text-sm text-muted">
-            Generate a unique TR-069 URL, username, and password for this ISP. Put them on the OLT so every ONU informs
-            the shared ACS automatically.
+            Generate a unique TR-069 URL, username, and password for this ISP. The username uses this ISP's name.
+            Passwords are 12 characters by default, never more than 24, so they fit a Tenda OLT. Copy them onto the OLT
+            so every ONU informs the shared ACS.
           </p>
           {can.manage ? (
             <Button className="mt-4" disabled={busy} onClick={() => void generate(false)}>
@@ -243,8 +246,7 @@ export function AcsCredentialsPanel({
         }}
       />
       <CopyRow label="Connection-request username" value={creds.connreq_user} onCopy={flash} />
-      <CopyRow
-        label="Connection-request password"
+      <CopyRow label="Connection-request password"
         value={revealed ? creds.connreq_password : ""}
         secret
         onCopy={(ok, msg) => {
@@ -255,6 +257,12 @@ export function AcsCredentialsPanel({
           flash(ok, ok ? "Password copied" : msg);
         }}
       />
+      {creds.credentials_fit === false ? (
+        <p className="text-sm text-warn">
+          These credentials are longer than the current length ({creds.credential_length}). Regenerate them, then copy the
+          new username and password onto the OLT. Existing ONU serials are not renamed.
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         <Button
@@ -339,9 +347,10 @@ export function AcsCredentialsPanel({
             setBusy(true);
             setNote(null);
             try {
-              const row = await saveAcsCredentialsFn({ data: { enabled, inform_interval: inform } });
+              const row = await saveAcsCredentialsFn({ data: { enabled, inform_interval: inform, credential_length: length } });
               setCreds({ ...row, password: creds.password, connreq_password: creds.connreq_password, snippets: creds.password ? creds.snippets : row.snippets, config_text: creds.password ? creds.config_text : row.config_text });
-              setNote("Saved. Changing enablement or inform interval does not rewrite existing ONU account numbers or serials.");
+              setLength(row.credential_length || length);
+              setNote("Saved. Regenerate credentials to apply a new length. Existing ONU serials are not renamed.");
             } catch (err) {
               setNote(err instanceof Error ? err.message : "Could not save");
             } finally {
@@ -356,9 +365,15 @@ export function AcsCredentialsPanel({
           <Field label="Periodic inform (seconds)">
             <Input type="number" min={30} max={86400} value={inform} onChange={(e) => setInform(Number(e.target.value))} />
           </Field>
+          <Field label="Credential length">
+            <Input type="number" min={8} max={24} value={length} onChange={(e) => setLength(Number(e.target.value))} />
+          </Field>
           <p className="text-xs text-subtle md:col-span-2">
-            The ACS URL and port are assigned by the platform. Changing them requires a superadmin and a warning — ONUs
-            keep the old URL until the OLT profile is updated.
+            12 is the default and fits a Tenda OLT. 24 is the maximum. The username uses this ISP's name, whole or shortened.
+            Saving the length does not change the password already on the OLT — regenerate, then copy the new values.
+            The same username and password are what CPE provisioning expects on Inform. The ACS URL and port are assigned
+            by the platform. Changing them requires a superadmin and a warning — ONUs keep the old URL until the OLT
+            profile is updated.
           </p>
           <div className="md:col-span-2">
             <Button type="submit" disabled={busy}>
@@ -376,6 +391,7 @@ export function AcsCredentialsPanel({
               ["huawei", "Huawei"],
               ["zte", "ZTE"],
               ["fiberhome", "Fiberhome"],
+              ["tenda", "Tenda"],
               ["params", "TR-069 parameters"],
             ] as const
           ).map(([id, label]) => (

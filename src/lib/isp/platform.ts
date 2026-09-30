@@ -80,6 +80,7 @@ export async function getPlatformSettings(sql: Sql) {
     acs_require_cpe_auth: map.acs_require_cpe_auth !== "false",
     acs_lock_url: map.acs_lock_url !== "false",
     acs_provision_service: map.acs_provision_service !== "false",
+    acs_credential_length: Number(map.acs_credential_length || 12),
     traffic_enabled: map.traffic_enabled !== "false",
     traffic_interval_sec: Number(map.traffic_interval_sec || 30),
     traffic_router_interval_sec: Number(map.traffic_router_interval_sec || 60),
@@ -113,6 +114,7 @@ export async function savePlatformSettings(
     acs_require_cpe_auth: boolean;
     acs_lock_url: boolean;
     acs_provision_service: boolean;
+    acs_credential_length: number;
     traffic_enabled: boolean;
     traffic_interval_sec: number;
     traffic_router_interval_sec: number;
@@ -167,6 +169,15 @@ export async function savePlatformSettings(
   }
   if (patch.acs_provision_service != null) {
     entries.push(["acs_provision_service", patch.acs_provision_service ? "true" : "false"]);
+  }
+  if (patch.acs_credential_length != null) {
+    const { clampAcsCredentialLength, ACS_CREDENTIAL_LENGTH_MAX } = await import("./acs-ports");
+    const requested = Math.floor(Number(patch.acs_credential_length));
+    const length = clampAcsCredentialLength(requested);
+    if (length !== requested) {
+      throw new Error(`ACS credential length must be between 8 and ${ACS_CREDENTIAL_LENGTH_MAX} characters`);
+    }
+    entries.push(["acs_credential_length", String(length)]);
   }
   if (patch.traffic_enabled != null) entries.push(["traffic_enabled", patch.traffic_enabled ? "true" : "false"]);
   if (patch.traffic_interval_sec != null) {
