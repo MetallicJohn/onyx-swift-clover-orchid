@@ -236,6 +236,14 @@ function Overview() {
           icon={Radio}
           tone={t.atRiskHigh > 0 ? "danger" : t.atRiskMedium > 0 ? "warn" : "ok"}
         />
+        <a href="/app/leads" className="block">
+          <Kpi
+            label="Leads"
+            value={String(data.leads.total)}
+            hint={`${data.leads.fresh} new · ${data.leads.conversionRate}% converted. Not included in customer count.`}
+            icon={UserPlus}
+          />
+        </a>
       </div>
 
       <Card>

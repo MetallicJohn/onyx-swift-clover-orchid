@@ -488,6 +488,14 @@ function CustomersPage() {
             {label}
           </button>
         ))}
+        {!role || hasPermission(role, "leads.view") ? (
+          <Link
+            to="/app/leads"
+            className="inline-flex h-11 shrink-0 items-center rounded-lg px-4 text-sm font-medium text-muted hover:bg-elevated hover:text-fg"
+          >
+            Leads
+          </Link>
+        ) : null}
       </div>
 
       {activeTab === "communications" ? <Communications /> : null}

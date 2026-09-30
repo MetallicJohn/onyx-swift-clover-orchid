@@ -264,6 +264,16 @@ export type DashboardData = {
     atRiskHigh: number;
     atRiskMedium: number;
   };
+  leads: {
+    total: number;
+    fresh: number;
+    qualified: number;
+    followups: number;
+    installationPending: number;
+    converted: number;
+    lost: number;
+    conversionRate: number;
+  };
   revenueDays: Array<{ day: string; amount: number; count: number }>;
   recentPayments: PaymentRow[];
   recentTickets: TicketRow[];

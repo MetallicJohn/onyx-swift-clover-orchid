@@ -31,7 +31,15 @@ import { endSaasSupport, getMyEntitlements } from "@/lib/isp/server-platform";
 
 const NAV: SidebarNavItem[] = [
   { to: "/app", label: "Overview", icon: LayoutDashboard },
-  { to: "/app/customers", label: "Customers", icon: Users },
+  {
+    to: "/app/customers",
+    label: "Customers",
+    icon: Users,
+    children: [
+      { to: "/app/customers", label: "Customers" },
+      { to: "/app/leads", label: "Leads" },
+    ],
+  },
   { to: "/app/packages", label: "Packages", icon: Boxes },
   { to: "/app/services", label: "Services", icon: Wifi },
   { to: "/app/radius", label: "RADIUS", icon: Radio },
@@ -100,10 +108,18 @@ export function AppShell({
     "/app/partners": "reseller",
     "/app/reports": "reports",
   };
-  const visible = NAV.filter((item) => {
+  const visible = NAV.flatMap((item) => {
     const feat = featureNav[item.to];
-    if (feat && Object.keys(features).length > 0 && !features[feat]) return false;
-    return canAccessAppPath(role, item.to);
+    if (feat && Object.keys(features).length > 0 && !features[feat]) return [];
+    const children = (item.children || []).filter((child) => canAccessAppPath(role, child.to));
+    const self = canAccessAppPath(role, item.to);
+    if (!self && children.length === 0) return [];
+    if (!self) {
+      const first = children[0];
+      if (!first) return [];
+      return [{ ...item, to: first.to, label: first.label, children: children.length > 1 ? children : undefined }];
+    }
+    return [{ ...item, children: children.length > 1 ? children : undefined }];
   });
   const allowed = canAccessAppPath(role, pathname);
   const showRecycleBin = canAccessAppPath(role, RECYCLE_BIN.to);

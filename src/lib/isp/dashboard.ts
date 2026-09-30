@@ -158,6 +158,26 @@ export async function loadDashboard(sql: Sql, workspace: Workspace): Promise<Das
       balance_kes: c.balanceKes,
     }));
 
+  const [leadRow] = await sql<{
+    total: number;
+    fresh: number;
+    qualified: number;
+    followups: number;
+    installation_pending: number;
+    converted: number;
+    lost: number;
+  }>`select
+      count(*)::int as total,
+      count(*) filter (where status = 'new')::int as fresh,
+      count(*) filter (where status = 'qualified')::int as qualified,
+      count(*) filter (where next_follow_up_at is not null and next_follow_up_at <= now() and conversion_status = 'open' and status not in ('lost','cancelled','duplicate','not_interested','outside_coverage'))::int as followups,
+      count(*) filter (where conversion_status = 'open' and (status in ('installation_pending','installation_scheduled') or installation_status in ('scheduled','in_progress')))::int as installation_pending,
+      count(*) filter (where conversion_status = 'converted')::int as converted,
+      count(*) filter (where status in ('lost','cancelled','not_interested','outside_coverage','duplicate'))::int as lost
+    from leads where tenant_id = ${tid} and archived_at is null`;
+  const leadTotal = leadRow?.total ?? 0;
+  const leadConverted = leadRow?.converted ?? 0;
+
   return {
     workspace,
     totals: {
@@ -182,6 +202,16 @@ export async function loadDashboard(sql: Sql, workspace: Workspace): Promise<Das
       renewalsToday: (renewSoon?.n ?? 0) + (dueSoon?.n ?? 0),
       atRiskHigh,
       atRiskMedium,
+    },
+    leads: {
+      total: leadTotal,
+      fresh: leadRow?.fresh ?? 0,
+      qualified: leadRow?.qualified ?? 0,
+      followups: leadRow?.followups ?? 0,
+      installationPending: leadRow?.installation_pending ?? 0,
+      converted: leadConverted,
+      lost: leadRow?.lost ?? 0,
+      conversionRate: leadTotal > 0 ? Math.round((leadConverted / leadTotal) * 100) : 0,
     },
     revenueDays: fillRevenueDays(dailyRaw),
     recentPayments,

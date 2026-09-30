@@ -33,6 +33,7 @@ import { Route as AppCustomersRouteImport } from './routes/app/customers'
 import { Route as AppFieldRouteImport } from './routes/app/field'
 import { Route as AppHotspotRouteImport } from './routes/app/hotspot'
 import { Route as AppImportRouteImport } from './routes/app/import'
+import { Route as AppLeadsRouteImport } from './routes/app/leads'
 import { Route as AppNotificationsRouteImport } from './routes/app/notifications'
 import { Route as AppPackagesRouteImport } from './routes/app/packages'
 import { Route as AppPartnersRouteImport } from './routes/app/partners'
@@ -224,6 +225,11 @@ const AppHotspotRoute = AppHotspotRouteImport.update({
 const AppImportRoute = AppImportRouteImport.update({
   id: '/import',
   path: '/import',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppLeadsRoute = AppLeadsRouteImport.update({
+  id: '/leads',
+  path: '/leads',
   getParentRoute: () => AppRoute,
 } as any)
 const AppNotificationsRoute = AppNotificationsRouteImport.update({
@@ -616,6 +622,7 @@ export interface FileRoutesByFullPath {
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
   '/app/import': typeof AppImportRoute
+  '/app/leads': typeof AppLeadsRoute
   '/app/notifications': typeof AppNotificationsRoute
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
@@ -710,6 +717,7 @@ export interface FileRoutesByTo {
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
   '/app/import': typeof AppImportRoute
+  '/app/leads': typeof AppLeadsRoute
   '/app/notifications': typeof AppNotificationsRoute
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
@@ -809,6 +817,7 @@ export interface FileRoutesById {
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
   '/app/import': typeof AppImportRoute
+  '/app/leads': typeof AppLeadsRoute
   '/app/notifications': typeof AppNotificationsRoute
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
@@ -909,6 +918,7 @@ export interface FileRouteTypes {
     | '/app/field'
     | '/app/hotspot'
     | '/app/import'
+    | '/app/leads'
     | '/app/notifications'
     | '/app/packages'
     | '/app/partners'
@@ -1003,6 +1013,7 @@ export interface FileRouteTypes {
     | '/app/field'
     | '/app/hotspot'
     | '/app/import'
+    | '/app/leads'
     | '/app/notifications'
     | '/app/packages'
     | '/app/partners'
@@ -1101,6 +1112,7 @@ export interface FileRouteTypes {
     | '/app/field'
     | '/app/hotspot'
     | '/app/import'
+    | '/app/leads'
     | '/app/notifications'
     | '/app/packages'
     | '/app/partners'
@@ -1395,6 +1407,13 @@ declare module '@tanstack/react-router' {
       path: '/import'
       fullPath: '/app/import'
       preLoaderRoute: typeof AppImportRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/leads': {
+      id: '/app/leads'
+      path: '/leads'
+      fullPath: '/app/leads'
+      preLoaderRoute: typeof AppLeadsRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/notifications': {
@@ -1961,6 +1980,7 @@ interface AppRouteChildren {
   AppFieldRoute: typeof AppFieldRoute
   AppHotspotRoute: typeof AppHotspotRoute
   AppImportRoute: typeof AppImportRoute
+  AppLeadsRoute: typeof AppLeadsRoute
   AppNotificationsRoute: typeof AppNotificationsRoute
   AppPackagesRoute: typeof AppPackagesRoute
   AppPartnersRoute: typeof AppPartnersRoute
@@ -1985,6 +2005,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppFieldRoute: AppFieldRoute,
   AppHotspotRoute: AppHotspotRoute,
   AppImportRoute: AppImportRoute,
+  AppLeadsRoute: AppLeadsRoute,
   AppNotificationsRoute: AppNotificationsRoute,
   AppPackagesRoute: AppPackagesRoute,
   AppPartnersRoute: AppPartnersRoute,

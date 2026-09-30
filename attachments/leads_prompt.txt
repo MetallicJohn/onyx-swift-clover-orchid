@@ -1,0 +1,1198 @@
+# MILESTONE — ENQUIRIES & LEADS CRM
+
+## Objective
+
+Implement **Enquiries & Leads as a core CRM milestone** in the existing ISP SaaS application.
+
+Do NOT rebuild the existing CRM or Customer module.
+
+The existing application already has Customers, Services, Packages, Billing, and related ISP functionality. Extend the current architecture and reuse existing components, authentication, tenant context, database conventions, UI patterns, permissions, audit logging, and migrations.
+
+The key business rule is:
+
+> **A Lead is NOT a Customer.**
+
+Leads must not increase customer counts, active customer counts, revenue customer metrics, customer reports, or service/customer statistics until the lead is successfully converted into a real Customer after the installation/activation process.
+
+---
+
+# 1. Navigation
+
+Place the new module under:
+
+```text
+Customers
+├── Customers
+└── Leads
+```
+
+Do not create a completely separate top-level Sales/CRM menu unless the existing application architecture requires it.
+
+The primary page should be:
+
+```text
+Customers → Leads
+```
+
+The Leads page should have an:
+
+```text
++ Add Lead
+```
+
+button.
+
+Clicking **Add Lead** must open a dialog/modal rather than navigating to a separate page.
+
+---
+
+# 2. Lead lifecycle
+
+Implement the following lifecycle:
+
+```text
+Lead Created
+      ↓
+Contacted
+      ↓
+Qualified
+      ↓
+Coverage Check
+      ↓
+Installation Pending
+      ↓
+Installation Scheduled
+      ↓
+Installation Completed
+      ↓
+Confirmed
+      ↓
+Convert to Customer
+      ↓
+Customer + Service Created
+```
+
+Also support:
+
+```text
+Lost
+Cancelled
+Duplicate
+Not Interested
+Outside Coverage
+```
+
+The exact statuses should be configurable where practical.
+
+### Important
+
+Do NOT automatically create a Customer simply because a Lead is created.
+
+Do NOT count Leads as Customers.
+
+A Lead becomes a Customer only after the configured conversion requirements are satisfied.
+
+---
+
+# 3. Lead → Customer conversion
+
+The core workflow must be:
+
+```text
+Lead
+  ↓
+Installation completed
+  ↓
+Lead confirmed
+  ↓
+Convert
+  ↓
+Existing Customer check
+  ↓
+Create/reuse Customer
+  ↓
+Create Service
+  ↓
+Transfer relevant lead information
+  ↓
+Mark Lead as Converted
+```
+
+The Lead record must remain in the database after conversion for historical and reporting purposes.
+
+Do NOT delete the Lead.
+
+Add fields such as:
+
+```text
+converted_at
+converted_by
+customer_id
+service_id
+conversion_status
+```
+
+Example:
+
+```text
+Lead #LD-000123
+       ↓
+Customer #CUS-001245
+       ↓
+Service #SRV-001890
+```
+
+Maintain these relationships permanently.
+
+---
+
+# 4. Prevent duplicate customers
+
+Before conversion, perform a duplicate check using appropriate existing customer identifiers.
+
+At minimum check:
+
+- Phone number
+- Alternative phone number
+- Email where available
+- National/company identifier if the existing Customer model supports it
+- Name + phone combination
+
+If a matching customer exists:
+
+```text
+Existing Customer Found
+```
+
+show the user the matching customer and allow:
+
+```text
+Use Existing Customer
+```
+
+rather than creating a duplicate.
+
+If no customer exists:
+
+```text
+Create New Customer
+```
+
+---
+
+# 5. Lead does not count as a customer
+
+This is a strict business rule.
+
+Every existing customer metric must continue to use actual Customer records.
+
+Do NOT include Leads in:
+
+- Total Customers
+- Active Customers
+- Customer growth
+- Customer revenue
+- Customer balances
+- Customer service counts
+- Active subscriptions
+- Customer reports
+- Customer portal users
+- Customer billing
+- Customer AR
+- Customer retention calculations
+
+Lead statistics must be separate.
+
+For example:
+
+```text
+Customers
+1,245
+
+Leads
+327
+```
+
+not:
+
+```text
+Customers
+1,572
+```
+
+---
+
+# 6. Add Lead dialog
+
+The **Add Lead** button must open a responsive modal/dialog.
+
+Organize the form into logical sections.
+
+## Lead Information
+
+Fields:
+
+- Lead name
+- Phone number
+- Alternative phone
+- Email
+- Lead source
+- Lead type
+- Interested service/package
+- Preferred contact method
+- Notes
+
+Lead source examples:
+
+```text
+Website
+WhatsApp
+Facebook
+Instagram
+Phone Call
+Walk-in
+Referral
+Field Marketing
+Existing Customer Referral
+Reseller
+Other
+```
+
+Make the source configurable where appropriate.
+
+---
+
+# 7. Location / GPS coordinates
+
+This is an important ISP-specific requirement.
+
+The Add Lead dialog must contain a **Location** section.
+
+Fields:
+
+```text
+Latitude
+Longitude
+```
+
+Use appropriate numeric validation.
+
+Example:
+
+```text
+Latitude: 0.016947
+Longitude: 37.072811
+```
+
+Add a convenient:
+
+```text
+📍 Get Current Location
+```
+
+button where browser/device geolocation permission is available.
+
+When clicked:
+
+```text
+Browser Geolocation API
+        ↓
+latitude
+longitude
+        ↓
+populate form
+```
+
+Do not silently obtain location without user action/permission.
+
+Also provide:
+
+```text
+Select on Map
+```
+
+if a map component already exists or can be added without introducing unnecessary infrastructure.
+
+The user should be able to manually edit the coordinates.
+
+### Validation
+
+Latitude:
+
+```text
+-90 to +90
+```
+
+Longitude:
+
+```text
+-180 to +180
+```
+
+Store coordinates as proper numeric/decimal values, not concatenated text.
+
+Recommended database fields:
+
+```text
+latitude
+longitude
+```
+
+Use sufficient precision for ISP field operations.
+
+---
+
+# 8. Address/location details
+
+In addition to GPS coordinates, capture:
+
+- County
+- Town
+- Estate/area
+- Building/plot
+- Physical address
+- Location notes
+
+Do not require every field.
+
+A lead may initially have only GPS coordinates.
+
+---
+
+# 9. Serviceability / coverage
+
+Add a Lead action:
+
+```text
+Check Coverage
+```
+
+The initial implementation should provide the architectural foundation for future automated coverage checking.
+
+The result should support:
+
+```text
+Covered
+Potentially Covered
+Requires Survey
+Outside Coverage
+Unknown
+```
+
+Do not fabricate coverage results.
+
+If automated network coverage is not yet implemented, allow staff to manually record the result.
+
+Store:
+
+```text
+coverage_status
+coverage_checked_at
+coverage_checked_by
+coverage_notes
+```
+
+Future versions can connect this to:
+
+- Wireless towers
+- Sectors
+- Fibre routes
+- OLTs
+- PON ports
+- Network POPs
+- IP/service availability
+
+---
+
+# 10. Installation workflow
+
+A Lead should have installation information.
+
+Fields:
+
+```text
+installation_status
+installation_date
+scheduled_installation_date
+assigned_technician
+installation_notes
+```
+
+Statuses:
+
+```text
+Not Scheduled
+Scheduled
+In Progress
+Completed
+Failed
+Cancelled
+```
+
+When installation is marked:
+
+```text
+Completed
+```
+
+the system should NOT automatically create the customer unless the configured conversion workflow explicitly requires it.
+
+Instead, make the next action:
+
+```text
+Confirm & Convert
+```
+
+---
+
+# 11. Confirm & Convert workflow
+
+Create a clear action:
+
+```text
+Confirm & Convert to Customer
+```
+
+Only authorized users should be able to perform this action.
+
+Before conversion, display a confirmation dialog containing:
+
+```text
+Lead Details
+Installation Status
+Selected Package
+Installation Date
+Customer Information
+Location
+```
+
+Then show:
+
+```text
+This action will create/reuse a Customer and create the selected Service.
+The Lead will remain available as historical CRM data.
+```
+
+Require explicit confirmation.
+
+---
+
+# 12. Customer creation
+
+When converting a Lead:
+
+Map appropriate fields:
+
+```text
+Lead name
+→ Customer name
+
+Phone
+→ Customer phone
+
+Alternative phone
+→ Customer alternative phone
+
+Email
+→ Customer email
+
+Physical address
+→ Customer address
+
+GPS coordinates
+→ Customer location
+
+Notes
+→ Customer notes
+```
+
+Do not blindly copy lead-specific fields into Customer fields.
+
+Keep Lead-specific information on the Lead.
+
+---
+
+# 13. Service creation
+
+If the Lead has a selected package/service, use it to create the initial Customer Service.
+
+Example:
+
+```text
+Lead
+ ├── Package: 10 Mbps
+ ├── Billing: Monthly
+ └── Installation: Completed
+
+        ↓ Convert
+
+Customer
+ └── Service
+      ├── Package: 10 Mbps
+      ├── Status: Active/Pending
+      └── Installation date
+```
+
+Reuse the existing Service/Package creation logic.
+
+Do NOT create a parallel service model.
+
+---
+
+# 14. Existing expiry-date behavior
+
+If the existing Customer/Service module supports manually specifying an expiry date for continuing/onboarding customers, reuse that functionality when converting a Lead.
+
+Do not introduce a second expiry-date mechanism.
+
+The Lead conversion workflow must respect the existing billing/service lifecycle.
+
+---
+
+# 15. Lead list page
+
+Create a professional responsive Leads page.
+
+Columns should include:
+
+```text
+Lead
+Phone
+Area
+Interested Package
+Source
+Status
+Coverage
+Installation
+Assigned To
+Created
+Next Follow-up
+Actions
+```
+
+Support:
+
+- Search
+- Filtering
+- Sorting
+- Pagination
+- Compact list mode if the existing application supports it
+- Mobile-responsive layout
+
+Search by:
+
+- Name
+- Phone
+- Email
+- Lead number
+- Area
+
+---
+
+# 16. Lead details
+
+Clicking a Lead should open a detailed view/drawer/page using the application's existing UI conventions.
+
+Display:
+
+### Contact
+
+Name, phone, email, contact preferences.
+
+### Location
+
+Address + GPS coordinates.
+
+Provide:
+
+```text
+Open Map
+Copy Coordinates
+```
+
+where supported.
+
+### Sales
+
+Source, assigned staff, package interest, notes.
+
+### Coverage
+
+Coverage status and survey information.
+
+### Installation
+
+Schedule, technician, status, notes.
+
+### Activity Timeline
+
+Example:
+
+```text
+30 Sep 2026 14:20
+Lead created
+
+30 Sep 2026 15:10
+Customer contacted by phone
+
+01 Oct 2026 09:30
+Coverage checked
+
+02 Oct 2026 11:00
+Installation scheduled
+
+03 Oct 2026 16:30
+Installation completed
+
+03 Oct 2026 17:00
+Lead converted to Customer
+```
+
+---
+
+# 17. Follow-ups
+
+Support follow-up scheduling.
+
+Fields:
+
+```text
+next_follow_up_at
+assigned_to
+follow_up_note
+```
+
+Provide actions:
+
+```text
+Call
+WhatsApp
+SMS
+Email
+Add Note
+Schedule Follow-up
+```
+
+Reuse the existing communication/notification infrastructure.
+
+Do not create separate SMS or WhatsApp systems.
+
+---
+
+# 18. Lead activities
+
+Create a reusable lead activity model if the current CRM does not already have one.
+
+Possible activity types:
+
+```text
+NOTE
+CALL
+SMS
+WHATSAPP
+EMAIL
+MEETING
+COVERAGE_CHECK
+SITE_SURVEY
+INSTALLATION
+FOLLOW_UP
+STATUS_CHANGE
+CONVERSION
+```
+
+Activities must be tenant-scoped.
+
+---
+
+# 19. Database
+
+Create a proper migration.
+
+Do not modify the database schema dynamically from application startup.
+
+Use the existing migration system.
+
+Suggested conceptual tables:
+
+```text
+leads
+lead_activities
+lead_follow_ups
+```
+
+Do not create unnecessary duplicate tables if an existing CRM activity model can be reused.
+
+Suggested `leads` fields:
+
+```text
+id
+tenant_id
+lead_number
+name
+phone
+alternative_phone
+email
+
+lead_source
+lead_type
+
+status
+coverage_status
+
+interested_package_id
+interested_service_type
+
+latitude
+longitude
+
+county
+town
+area
+physical_address
+location_notes
+
+preferred_contact_method
+
+assigned_to
+next_follow_up_at
+
+installation_status
+scheduled_installation_at
+completed_installation_at
+assigned_technician
+
+notes
+
+converted_at
+converted_by
+customer_id
+service_id
+
+lost_reason
+
+created_at
+updated_at
+```
+
+Use the project's existing ID, timestamp, tenant, and audit conventions rather than inventing a new pattern.
+
+---
+
+# 20. Tenant isolation
+
+Every Lead must belong to exactly one ISP tenant.
+
+All queries must use the existing Active Tenant Context.
+
+Never allow:
+
+```text
+Tenant A
+```
+
+to access:
+
+```text
+Tenant B Leads
+```
+
+Apply the same authorization and isolation architecture already used for Customers.
+
+Add automated cross-tenant tests.
+
+---
+
+# 21. Permissions
+
+Add granular permissions where the existing RBAC architecture supports them.
+
+Suggested:
+
+```text
+leads.view
+leads.create
+leads.update
+leads.delete
+leads.assign
+leads.coverage
+leads.installation
+leads.convert
+leads.export
+```
+
+Conversion should be more restricted than ordinary lead creation.
+
+For example:
+
+```text
+Sales
+→ Create/Edit/View
+
+Technician
+→ Installation/View relevant details
+
+Manager
+→ Convert
+
+Owner/Admin
+→ Full access
+```
+
+Respect the application's existing RBAC conventions.
+
+---
+
+# 22. Audit logging
+
+Record important actions:
+
+```text
+Lead created
+Lead updated
+Lead assigned
+Lead status changed
+Coverage checked
+Installation scheduled
+Installation completed
+Lead converted
+Lead marked lost
+Lead deleted/archived
+```
+
+For conversion, record:
+
+```text
+lead_id
+customer_id
+service_id
+user_id
+timestamp
+```
+
+Never delete conversion history.
+
+---
+
+# 23. Dashboard metrics
+
+Add Lead metrics separately from Customer metrics.
+
+Suggested cards:
+
+```text
+New Leads
+Qualified Leads
+Follow-ups Due
+Installation Pending
+Converted Leads
+Lost Leads
+```
+
+And:
+
+```text
+Lead → Customer Conversion Rate
+```
+
+Do NOT include Leads in existing customer KPIs.
+
+---
+
+# 24. Conversion reporting
+
+Provide reporting such as:
+
+```text
+Total Leads
+Qualified Leads
+Converted Leads
+Lost Leads
+Conversion Rate
+Average Time to Conversion
+Leads by Source
+Leads by Area
+Leads by Package
+Leads by Salesperson
+Lost Reasons
+```
+
+Revenue attribution can later show:
+
+```text
+Lead Source
+→ Leads
+→ Customers
+→ Revenue
+```
+
+But don't implement inaccurate marketing ROI calculations without the required cost data.
+
+---
+
+# 25. Customer count integrity
+
+Add automated tests proving:
+
+```text
+Create Lead
+→ customer count unchanged
+
+Create 100 Leads
+→ customer count unchanged
+
+Convert 1 Lead
+→ customer count +1
+
+Convert another Lead for an existing Customer
+→ customer count does not incorrectly increase
+
+Lost Lead
+→ customer count unchanged
+```
+
+This is a critical acceptance criterion.
+
+---
+
+# 26. Conversion integrity
+
+Test:
+
+### New customer
+
+```text
+Lead
+→ Convert
+→ Customer created
+→ Service created
+→ Lead linked to Customer
+→ Lead marked converted
+```
+
+### Existing customer
+
+```text
+Lead
+→ Duplicate check
+→ Existing Customer selected
+→ New Service created
+→ Lead linked to existing Customer
+→ No duplicate Customer
+```
+
+### Failed conversion
+
+If Customer/Service creation fails:
+
+```text
+Lead remains unconverted
+No partial/broken customer
+No orphan service
+Transaction rolls back
+```
+
+Use a database transaction.
+
+---
+
+# 27. UI requirements
+
+Follow the existing application's design system.
+
+Do not introduce a separate visual style.
+
+The Add Lead dialog should be:
+
+- Responsive
+- Keyboard accessible
+- Mobile friendly
+- Validated
+- Clear error states
+- Loading states
+- Success feedback
+- Unsaved-change protection where appropriate
+
+GPS acquisition must clearly show:
+
+```text
+Getting location...
+Location acquired
+Unable to get location
+Permission denied
+```
+
+Never silently fail.
+
+---
+
+# 28. Do not duplicate existing functionality
+
+Before implementing anything, inspect the current repository for:
+
+- Customers
+- Customer contacts
+- Addresses
+- Services
+- Packages
+- Users
+- Technicians
+- Activities
+- Notifications
+- Audit logs
+- Maps/location components
+- RBAC
+- Tenant context
+
+Reuse existing models/components/services wherever appropriate.
+
+Do not create duplicate versions.
+
+---
+
+# 29. Future extensibility
+
+Design the Lead model so it can later support:
+
+- Website enquiry forms
+- WhatsApp leads
+- Facebook/Instagram leads
+- API-created leads
+- Call-center leads
+- Field-sales mobile app
+- Reseller-generated leads
+- Referral leads
+- Coverage automation
+- AI lead qualification
+- Sales forecasting
+- Marketing campaigns
+- Fibre availability checking
+- Wireless tower/sector coverage
+- GPON/OLT availability
+- Site surveys
+
+Do not over-engineer these features now. Build clean extension points.
+
+---
+
+# 30. Definition of Done
+
+This milestone is complete only when:
+
+### Database
+- [ ] Leads migration implemented
+- [ ] Tenant isolation implemented
+- [ ] Indexes added for common searches
+- [ ] Foreign keys and constraints implemented
+- [ ] Existing migration architecture used
+- [ ] No runtime schema mutation
+
+### UI
+- [ ] Customers → Leads navigation exists
+- [ ] Leads list works
+- [ ] Add Lead opens dialog
+- [ ] GPS latitude/longitude supported
+- [ ] Browser location acquisition supported
+- [ ] Lead details work
+- [ ] Search/filter/sort work
+- [ ] Mobile responsive
+
+### CRM
+- [ ] Lead lifecycle implemented
+- [ ] Follow-ups implemented
+- [ ] Activities implemented
+- [ ] Assignment implemented
+- [ ] Coverage status implemented
+- [ ] Installation workflow implemented
+
+### Conversion
+- [ ] Lead is never counted as Customer
+- [ ] Duplicate Customer detection implemented
+- [ ] Existing Customer reuse supported
+- [ ] New Customer creation supported
+- [ ] Service creation supported
+- [ ] Lead retained after conversion
+- [ ] Conversion transaction is atomic
+- [ ] Conversion audit trail exists
+
+### Security
+- [ ] Tenant isolation tested
+- [ ] RBAC enforced
+- [ ] Conversion permission enforced
+- [ ] Audit logging implemented
+- [ ] No secrets exposed
+
+### Testing
+Add automated tests for:
+
+- Lead creation
+- Lead editing
+- Lead search
+- Lead status changes
+- GPS validation
+- Tenant isolation
+- Customer count integrity
+- Duplicate detection
+- New customer conversion
+- Existing customer conversion
+- Service creation
+- Failed conversion rollback
+- Audit events
+
+---
+
+# Implementation rule
+
+**Do not stop at creating the UI.**
+
+Implement the complete vertical slice:
+
+```text
+Database
+   ↓
+Server/API
+   ↓
+Tenant/RBAC
+   ↓
+Lead CRUD
+   ↓
+GPS/location
+   ↓
+Activities
+   ↓
+Installation
+   ↓
+Conversion
+   ↓
+Customer
+   ↓
+Service
+   ↓
+Audit
+   ↓
+Tests
+```
+
+After implementation, run:
+
+```text
+npm run typecheck
+npm run lint
+npm test
+```
+
+Fix all regressions caused by this milestone.
+
+Then provide a concise implementation report containing:
+
+1. Files changed
+2. Database migrations added
+3. New routes/pages
+4. New server functions/API endpoints
+5. New permissions
+6. Lead lifecycle implemented
+7. Customer conversion behavior
+8. Tests added
+9. Test results
+10. Any remaining limitations
+
+**Do not move to another major milestone until this milestone passes its Definition of Done.**

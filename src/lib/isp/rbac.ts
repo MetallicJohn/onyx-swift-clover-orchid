@@ -69,6 +69,15 @@ export const PERMISSIONS = [
   "account_numbers.assign",
   "account_numbers.override",
   "account_numbers.migrate",
+  "leads.view",
+  "leads.create",
+  "leads.update",
+  "leads.delete",
+  "leads.assign",
+  "leads.coverage",
+  "leads.installation",
+  "leads.convert",
+  "leads.export",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number] | "*";
@@ -101,6 +110,8 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "communications.send",
     "recycle_bin.view",
     "account_numbers.view",
+    "leads.view",
+    "leads.export",
   ],
   customer_care: [
     "customers.read",
@@ -136,6 +147,12 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "acs.devices.optical.view",
     "acs.tasks.view",
     "account_numbers.view",
+    "leads.view",
+    "leads.create",
+    "leads.update",
+    "leads.assign",
+    "leads.coverage",
+    "leads.export",
   ],
   network_engineer: [
     "customers.read",
@@ -177,6 +194,9 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "recycle_bin.restore_service",
     "account_numbers.view",
     "account_numbers.assign",
+    "leads.view",
+    "leads.coverage",
+    "leads.installation",
   ],
   technician: [
     "tickets.assigned.read",
@@ -188,6 +208,8 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "acs.devices.view",
     "acs.devices.optical.view",
     "acs.tasks.view",
+    "leads.view",
+    "leads.installation",
   ],
   support: [
     "customers.read",
@@ -208,6 +230,7 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "recycle_bin.view",
     "billing.business_credit.view",
     "account_numbers.view",
+    "leads.view",
   ],
 };
 
@@ -240,16 +263,17 @@ export const ROLE_GUIDE: { role: TenantRole; label: string; summary: string }[] 
   {
     role: "customer_care",
     label: "Customer care",
-    summary: "Customers, tickets, SMS/WhatsApp, invoices (read), grace, service expiry, and Recycle Bin.",
+    summary: "Customers, leads, tickets, SMS/WhatsApp, invoices (read), grace, service expiry, and Recycle Bin.",
   },
   { role: "network_engineer", label: "Network engineer", summary: "Services, routers, RADIUS, hotspot, WireGuard, and ACS." },
-  { role: "technician", label: "Technician", summary: "Assigned tickets and field jobs. No billing or router changes." },
+  { role: "technician", label: "Technician", summary: "Assigned tickets, lead installations, and field jobs. No billing or router changes." },
   { role: "support", label: "Support", summary: "Read-only when ISP Solutions staff is inside this workspace." },
 ];
 
 /** Longest prefix first. Overview (`/app`) has no entry and is open to every member. */
 const PAGE_PERMISSIONS: { prefix: string; permission: Permission }[] = [
   { prefix: "/app/recycle-bin", permission: "recycle_bin.view" },
+  { prefix: "/app/leads", permission: "leads.view" },
   { prefix: "/app/customers", permission: "customers.read" },
   { prefix: "/app/packages", permission: "packages.read" },
   { prefix: "/app/services", permission: "services.read" },

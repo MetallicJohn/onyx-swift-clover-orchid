@@ -3,7 +3,12 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
-export type SidebarNavItem = { to: string; label: string; icon: LucideIcon };
+export type SidebarNavItem = {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  children?: { to: string; label: string }[];
+};
 
 const COLLAPSE_KEY = "isp-sidebar-collapsed";
 
@@ -50,23 +55,45 @@ export function SidebarNav({
   return (
     <nav className="app-nav-list">
       {items.map((item) => {
-        const active = navActive(pathname, item.to, root);
+        const active = navActive(pathname, item.to, root) && !(item.children || []).some((child) => navActive(pathname, child.to, root) && child.to !== item.to);
         const Icon = item.icon;
         return (
-          <Link
-            key={item.to}
-            to={item.to}
-            preload={false}
-            title={collapsed ? item.label : undefined}
-            data-active={active ? "true" : undefined}
-            activeProps={{ className: undefined }}
-            activeOptions={{ exact: item.to === root, includeSearch: false }}
-            onClick={onNavigate}
-            className="app-nav-item"
-          >
-            <Icon className="size-4" strokeWidth={1.75} />
-            <span className="app-nav-label">{item.label}</span>
-          </Link>
+          <div key={item.to}>
+            <Link
+              to={item.to}
+              preload={false}
+              title={collapsed ? item.label : undefined}
+              data-active={active ? "true" : undefined}
+              activeProps={{ className: undefined }}
+              activeOptions={{ exact: item.to === root, includeSearch: false }}
+              onClick={onNavigate}
+              className="app-nav-item"
+            >
+              <Icon className="size-4" strokeWidth={1.75} />
+              <span className="app-nav-label">{item.label}</span>
+            </Link>
+            {!collapsed && item.children && item.children.length > 1 ? (
+              <div className="ml-4 border-l border-border">
+                {item.children.map((child) => {
+                  const childActive = navActive(pathname, child.to, root);
+                  return (
+                    <Link
+                      key={child.to}
+                      to={child.to}
+                      preload={false}
+                      data-active={childActive ? "true" : undefined}
+                      activeProps={{ className: undefined }}
+                      activeOptions={{ exact: child.to === root, includeSearch: false }}
+                      onClick={onNavigate}
+                      className="app-nav-item pl-4"
+                    >
+                      <span className="app-nav-label">{child.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
         );
       })}
     </nav>
