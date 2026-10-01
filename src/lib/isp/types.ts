@@ -1,3 +1,5 @@
+import type { DashboardOps } from "./dashboard-period.ts";
+
 export type TenantRole =
   | "isp_owner"
   | "isp_admin"
@@ -312,4 +314,5 @@ export type DashboardData = {
     paid_kes: number;
     due_date: string;
   }>;
+  ops: DashboardOps;
 };

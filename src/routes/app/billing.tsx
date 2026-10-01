@@ -25,7 +25,22 @@ import { confirmStk, sendStk } from "@/lib/isp/server-ops";
 import type { InvoiceRow, PaymentRow } from "@/lib/isp/types";
 import { cn, kes } from "@/lib/utils";
 
-export const Route = createFileRoute("/app/billing")({ component: BillingPage });
+export const Route = createFileRoute("/app/billing")({
+  validateSearch: (search: Record<string, unknown>): { status?: string; tab?: "payments" } => ({
+    status:
+      search.status === "open" ||
+      search.status === "all" ||
+      search.status === "issued" ||
+      search.status === "due" ||
+      search.status === "overdue" ||
+      search.status === "partial" ||
+      search.status === "paid"
+        ? search.status
+        : undefined,
+    tab: search.tab === "payments" ? "payments" : undefined,
+  }),
+  component: BillingPage,
+});
 
 type Quote = {
   customer_id: string;
@@ -73,6 +88,7 @@ function defaultDue() {
 }
 
 function BillingPage() {
+  const search = Route.useSearch();
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [customers, setCustomers] = useState<CustomerHit[]>([]);
@@ -81,11 +97,11 @@ function BillingPage() {
   const [vatRate, setVatRate] = useState(16);
   const [totals, setTotals] = useState({ outstanding: 0, overdue: 0, collected: 0, open: 0 });
   const [aging, setAging] = useState<Record<string, { count: number; amount: number }>>({});
-  const [tab, setTab] = useState<"invoices" | "payments">("invoices");
+  const [tab, setTab] = useState<"invoices" | "payments">(search.tab === "payments" ? "payments" : "invoices");
   const [density, setDensity] = useState<ViewDensity>("comfortable");
   const [invoiceHidden, setInvoiceHidden] = useState<string[]>([]);
   const [paymentHidden, setPaymentHidden] = useState<string[]>([]);
-  const [filter, setFilter] = useState("open");
+  const [filter, setFilter] = useState(search.status || "open");
   const [query, setQuery] = useState("");
   const [form, setForm] = useState({ customer_id: "", due_date: "", notes: "" });
   const [lines, setLines] = useState<Line[]>([]);
@@ -101,6 +117,11 @@ function BillingPage() {
   const [dateFormat, setDateFormat] = useState("dd/mm/yy");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [cycleNote, setCycleNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (search.status) setFilter(search.status);
+    if (search.tab === "payments") setTab("payments");
+  }, [search.status, search.tab]);
 
   const preview = useMemo(() => {
     const subtotal = lines.reduce((sum, line) => sum + Math.max(1, line.quantity || 1) * Math.max(0, line.unit_kes || 0), 0);

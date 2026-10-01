@@ -419,11 +419,58 @@ export const switchTenant = createServerFn({ method: "POST" })
     return ws;
   });
 
+const dashboardCache = new Map<string, { at: number; data: DashboardData }>();
+
 export const getDashboard = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
-  .handler(async ({ context }): Promise<DashboardData> => {
+  .validator((d: { period?: string; fresh?: boolean } | undefined) => ({
+    period: d?.period === "7d" || d?.period === "30d" ? d.period : ("today" as const),
+    fresh: Boolean(d?.fresh),
+  }))
+  .handler(async ({ context, data }): Promise<DashboardData> => {
     const { sql, workspace } = await requireTenant(context.userId);
-    return loadDashboard(sql, workspace);
+    const key = `${workspace.tenantId}|${workspace.role}|${context.userId}|${data.period}`;
+    const hit = dashboardCache.get(key);
+    if (!data.fresh && hit && Date.now() - hit.at < 20_000) return hit.data;
+    const user = await loadAuthUser(sql, context.userId);
+    const next = await loadDashboard(sql, workspace, {
+      period: data.period,
+      viewerName: user?.name ?? "",
+      userId: context.userId,
+    });
+    dashboardCache.set(key, { at: Date.now(), data: next });
+    if (dashboardCache.size > 80) {
+      const oldest = [...dashboardCache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+      if (oldest) dashboardCache.delete(oldest[0]);
+    }
+    return next;
+  });
+
+export const dashboardNudgeFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { customerId?: string; event?: string; entityId?: string }) => {
+    const event = d?.event === "invoice.overdue" ? ("invoice.overdue" as const) : d?.event === "invoice.due" ? ("invoice.due" as const) : null;
+    if (!event) throw new Error("Unsupported reminder");
+    const customerId = String(d?.customerId || "").trim();
+    const entityId = String(d?.entityId || "").trim();
+    if (!customerId || !entityId) throw new Error("Missing reminder target");
+    return { customerId, event, entityId };
+  })
+  .handler(async ({ context, data }) => {
+    const { sql, workspace } = await requireTenant(context.userId);
+    assertPermission(workspace.role, "communications.send");
+    const sent = await notifyCustomerEvent(
+      sql,
+      workspace.tenantId,
+      workspace.tenantName,
+      data.customerId,
+      data.event,
+      data.entityId,
+      { customer_name: "" },
+    );
+    if (!sent) throw new Error("No message was sent. Check the customer phone and the notification template.");
+    dashboardCache.clear();
+    return { ok: true as const, sent };
   });
 
 export const listCustomers = createServerFn({ method: "GET" })

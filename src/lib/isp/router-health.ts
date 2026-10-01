@@ -1,4 +1,5 @@
 import { ROS_API_USER } from "../brand.ts";
+import type { Sql } from "../db.ts";
 import { nid } from "../utils.ts";
 import { metricIncr, metricSet } from "./metrics.ts";
 import { logEvent } from "./obs.ts";
@@ -7,10 +8,6 @@ import { compositeEnrollState, recordEnrollState, type EnrollState } from "./rou
 import { rosOverlayUserName } from "./routeros.ts";
 import { open } from "./secrets.ts";
 import { findDumpPeer, handshakeLive, parseWgDump, removeHostPeer, type WgDumpPeer } from "./wg-host.ts";
-
-type Sql = {
-  <T = Record<string, unknown>>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
-};
 
 export type RouterHealthRow = {
   id: string;

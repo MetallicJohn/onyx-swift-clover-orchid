@@ -237,10 +237,12 @@ function ticketListWhere(tenantId: string, q: ReturnType<typeof normalizeTicketL
     params.push(q.status);
     where.push(`t.status = $${params.length}`);
   }
-  if (q.priority !== "all") {
+  if (q.priority === "elevated") where.push(`t.priority in ('high','urgent')`);
+  else if (q.priority !== "all") {
     params.push(q.priority);
     where.push(`t.priority = $${params.length}`);
   }
+  if (q.sla === "past") where.push(`t.due_at is not null and t.due_at < now() and t.status not in ('resolved','closed')`);
   if (q.category !== "all") {
     params.push(q.category);
     where.push(`t.category = $${params.length}`);

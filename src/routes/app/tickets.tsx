@@ -31,6 +31,7 @@ export const Route = createFileRoute("/app/tickets")({
     priority: typeof search.priority === "string" ? search.priority : undefined,
     category: typeof search.category === "string" ? search.category : undefined,
     assigned: typeof search.assigned === "string" ? search.assigned : undefined,
+    sla: search.sla === "past" ? "past" : undefined,
     page: Number(search.page) > 1 ? Math.trunc(Number(search.page)) : undefined,
     pageSize: Number(search.pageSize) === 50 || Number(search.pageSize) === 100 ? Number(search.pageSize) : undefined,
   }),
@@ -43,6 +44,7 @@ type TicketSearch = {
   priority?: string;
   category?: string;
   assigned?: string;
+  sla?: "past";
   page?: number;
   pageSize?: number;
 };
@@ -93,6 +95,7 @@ function toSearch(q: ReturnType<typeof normalizeTicketListQuery>): TicketSearch 
     priority: q.priority === "all" ? undefined : q.priority,
     category: q.category === "all" ? undefined : q.category,
     assigned: q.assignedTo === "all" ? undefined : q.assignedTo,
+    sla: q.sla === "past" ? "past" : undefined,
     page: q.page > 1 ? q.page : undefined,
     pageSize: q.pageSize === 20 ? undefined : q.pageSize,
   };
@@ -105,6 +108,7 @@ function queryFromSearch(search: TicketSearch): TicketListQuery {
     priority: search.priority,
     category: search.category,
     assignedTo: search.assigned,
+    sla: search.sla,
     page: search.page,
     pageSize: search.pageSize,
   };
@@ -652,6 +656,7 @@ export function TicketsDesk({
         onRemove={(id) => {
           if (id === "status") write({ status: "open" });
           if (id === "priority") write({ priority: "all" });
+          if (id === "sla") write({ sla: "all" });
           if (id === "category") write({ category: "all" });
           if (id === "assigned") write({ assignedTo: "all" });
           if (id === "q") {
@@ -661,7 +666,7 @@ export function TicketsDesk({
         }}
         onClearAll={() => {
           setQ("");
-          write({ status: "open", q: "", priority: "all", category: "all", assignedTo: "all" });
+          write({ status: "open", q: "", priority: "all", category: "all", assignedTo: "all", sla: "all" });
         }}
       />
 

@@ -24,6 +24,7 @@ export type DeskFilters = {
   overdue: boolean;
   tagIds: string[];
   tagMode: DeskTagMode;
+  risk: "" | "high";
   page: number;
   pageSize: number;
 };
@@ -101,6 +102,7 @@ export const EMPTY_DESK_FILTERS: DeskFilters = {
   overdue: false,
   tagIds: [],
   tagMode: "any",
+  risk: "",
   page: 1,
   pageSize: DESK_PAGE_SIZE,
 };
@@ -143,6 +145,7 @@ export function normalizeDeskQuery(raw?: Partial<DeskFilters> | Record<string, u
     overdue: asBool((src as DeskFilters).overdue),
     tagIds,
     tagMode,
+    risk: (src as DeskFilters).risk === "high" ? "high" : "",
     page,
     pageSize,
   };
@@ -164,6 +167,7 @@ export function hasActiveDeskFilters(q: DeskFilters) {
       q.expiringSoon ||
       q.onGrace ||
       q.overdue ||
+      q.risk === "high" ||
       q.tagIds.length,
   );
 }
@@ -180,6 +184,7 @@ export function activeDeskFilterCount(q: DeskFilters) {
   if (q.expiringSoon) n += 1;
   if (q.onGrace) n += 1;
   if (q.overdue) n += 1;
+  if (q.risk === "high") n += 1;
   if (q.tagIds.length) n += 1;
   return n;
 }
@@ -332,6 +337,7 @@ export function deskFilterChips(
   if (q.expiringSoon) chips.push({ id: "expiring", label: "Expiring soon", patch: { expiringSoon: false, page: 1 } });
   if (q.onGrace) chips.push({ id: "grace", label: "Grace", patch: { onGrace: false, page: 1 } });
   if (q.overdue && q.billing !== "overdue") chips.push({ id: "overdue", label: "Overdue", patch: { overdue: false, page: 1 } });
+  if (q.risk === "high") chips.push({ id: "risk", label: "High churn risk", patch: { risk: "", page: 1 } });
   for (const id of q.tagIds) {
     const tag = tags.find((t) => t.id === id);
     chips.push({

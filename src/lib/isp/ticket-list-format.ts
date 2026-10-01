@@ -10,24 +10,36 @@ export type TicketListQuery = {
   priority?: string;
   category?: string;
   assignedTo?: string;
+  sla?: "past" | "all";
   page?: number;
   pageSize?: number;
 };
 
-export function normalizeTicketListQuery(raw?: Partial<TicketListQuery> | null) {
+export function normalizeTicketListQuery(raw?: Partial<TicketListQuery> | null): {
+  q: string;
+  status: string;
+  priority: string;
+  category: string;
+  assignedTo: string;
+  sla: "past" | "all";
+  page: number;
+  pageSize: number;
+} {
   const status = String(raw?.status || "open");
   const priority = String(raw?.priority || "all");
   const category = String(raw?.category || "all").trim().slice(0, 40) || "all";
   const assignedTo = String(raw?.assignedTo || "all").trim().slice(0, 80) || "all";
+  const sla = raw?.sla === "past" ? "past" : "all";
   const pageSizeRaw = Number(raw?.pageSize);
   const pageSize = (TICKET_PAGE_SIZES as readonly number[]).includes(pageSizeRaw) ? pageSizeRaw : 20;
   const page = Math.max(1, Math.trunc(Number(raw?.page) || 1));
   return {
     q: String(raw?.q || "").trim().slice(0, 80),
     status: TICKET_STATUS_FILTERS.has(status) ? status : "open",
-    priority: priority === "all" || (TICKET_PRIORITIES as readonly string[]).includes(priority) ? priority : "all",
+    priority: priority === "all" || priority === "elevated" || (TICKET_PRIORITIES as readonly string[]).includes(priority) ? priority : "all",
     category,
     assignedTo,
+    sla,
     page,
     pageSize,
   };
@@ -53,7 +65,13 @@ export function ticketListChips(
 ): { id: string; label: string }[] {
   const chips: { id: string; label: string }[] = [];
   if (query.status !== "open") chips.push({ id: "status", label: `Status: ${chipLabel(query.status)}` });
-  if (query.priority !== "all") chips.push({ id: "priority", label: `Priority: ${chipLabel(query.priority)}` });
+  if (query.priority !== "all") {
+    chips.push({
+      id: "priority",
+      label: query.priority === "elevated" ? "Priority: urgent or high" : `Priority: ${chipLabel(query.priority)}`,
+    });
+  }
+  if (query.sla === "past") chips.push({ id: "sla", label: "Past SLA" });
   if (query.category !== "all") chips.push({ id: "category", label: `Category: ${chipLabel(query.category)}` });
   if (query.assignedTo !== "all") {
     const who = query.assignedTo === "unassigned" ? "Unassigned" : assignedLabel || "Staff";

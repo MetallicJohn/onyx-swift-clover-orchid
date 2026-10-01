@@ -8,6 +8,12 @@ import { connect, createServer } from "node:net";
 import { chmodSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 
+/**
+ * @param {string} host
+ * @param {string | number} port
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {boolean}
+ */
 export function overlayDialAllowed(host, port, env = process.env) {
   const p = Number(port);
   if (!Number.isInteger(p) || p < 1 || p > 65535) return false;
@@ -29,9 +35,11 @@ function start() {
   const server = createServer((client) => {
     let buf = Buffer.alloc(0);
     let opened = false;
+    /** @param {string} message */
     const fail = (message) => {
       if (!client.destroyed) client.end(`ERR ${String(message || "dial failed").slice(0, 180)}\n`);
     };
+    /** @param {Buffer} chunk */
     function onData(chunk) {
       if (opened) return;
       buf = Buffer.concat([buf, chunk]);

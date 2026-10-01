@@ -57,6 +57,7 @@ type Search = {
   overdue?: boolean;
   tags?: string;
   tagMode?: DeskFilters["tagMode"];
+  risk?: "high";
   page?: number;
 };
 
@@ -97,6 +98,7 @@ function searchToFilters(search: Search): DeskFilters {
     overdue: Boolean(search.overdue) || search.billing === "overdue",
     tagIds: parseTags(search.tags),
     tagMode: search.tagMode === "all" ? "all" : "any",
+    risk: search.risk === "high" ? "high" : "",
     page: Math.max(1, search.page || 1),
   };
 }
@@ -116,6 +118,7 @@ function filtersToSearch(tab: PageTab, filters: DeskFilters): Search {
     overdue: filters.overdue || undefined,
     tags: filters.tagIds.length ? filters.tagIds.join(",") : undefined,
     tagMode: filters.tagIds.length && filters.tagMode === "all" ? "all" : undefined,
+    risk: filters.risk === "high" ? "high" : undefined,
     page: filters.page > 1 ? filters.page : undefined,
   };
 }
@@ -146,6 +149,7 @@ export const Route = createFileRoute("/app/customers")({
     overdue: search.overdue === true || search.overdue === "true" ? true : undefined,
     tags: typeof search.tags === "string" ? search.tags : undefined,
     tagMode: search.tagMode === "all" ? "all" : undefined,
+    risk: search.risk === "high" ? "high" : undefined,
     page: typeof search.page === "number" ? search.page : typeof search.page === "string" ? Number(search.page) || undefined : undefined,
   }),
   component: CustomersRoute,
@@ -222,6 +226,7 @@ function CustomersPage() {
           overdue: nextFilters.overdue,
           tagIds: nextFilters.tagIds,
           tagMode: nextFilters.tagMode,
+          risk: nextFilters.risk,
           page: nextFilters.page,
           pageSize: nextFilters.pageSize,
         },

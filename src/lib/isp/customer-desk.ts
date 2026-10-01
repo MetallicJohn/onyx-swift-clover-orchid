@@ -13,6 +13,7 @@ import {
   type DeskServiceLine,
 } from "./customer-desk-format.ts";
 import { listTags } from "./tags.ts";
+import { loadChurnScores } from "./churn.ts";
 
 export {
   accountState,
@@ -416,7 +417,18 @@ export async function queryCustomersDesk(
   raw?: Partial<DeskFilters> | Record<string, unknown> | null,
 ): Promise<DeskResult> {
   const q = normalizeDeskQuery(raw);
-  const { clause, params } = deskWhere(tenantId, q);
+  const where = deskWhere(tenantId, q);
+  let clause = where.clause;
+  const params = where.params;
+  if (q.risk === "high") {
+    const scores = await loadChurnScores(sql, tenantId);
+    const ids = scores.filter((c) => c.band === "high" || c.band === "churned").map((c) => c.customerId);
+    if (!ids.length) clause += " and false";
+    else {
+      params.push(ids);
+      clause += ` and c.id = any($${params.length}::text[])`;
+    }
+  }
   const [countRow] = await sql.query<{ n: number }>(`select count(*)::int as n from customers c where ${clause}`, params);
   const total = countRow?.n ?? 0;
   const pages = Math.max(1, Math.ceil(total / q.pageSize) || 1);

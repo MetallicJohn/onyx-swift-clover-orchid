@@ -1,5 +1,8 @@
 import { remainingKes } from "./billing.ts";
 import { loadChurnScores } from "./churn.ts";
+import { loadDashboardOps } from "./dashboard-ops.ts";
+import type { DashboardPeriod } from "./dashboard-period.ts";
+import { hasPermission } from "./rbac.ts";
 import type { DashboardData, PaymentRow, RouterRow, TicketRow, Workspace } from "./types.ts";
 
 type Sql = {
@@ -29,7 +32,11 @@ export function fillRevenueDays(
   return out;
 }
 
-export async function loadDashboard(sql: Sql, workspace: Workspace): Promise<DashboardData> {
+export async function loadDashboard(
+  sql: Sql,
+  workspace: Workspace,
+  opts?: { period?: DashboardPeriod | string; viewerName?: string; userId?: string; now?: Date },
+): Promise<DashboardData> {
   const tid = workspace.tenantId;
 
   const [cust] = await sql<{ n: number }>`select count(*)::int as n from customers where tenant_id = ${tid} and deleted_at is null`;
@@ -183,7 +190,8 @@ export async function loadDashboard(sql: Sql, workspace: Workspace): Promise<Das
       (select count(*)::int from tickets where tenant_id = ${tid} and status not in ('resolved', 'closed') and priority in ('high', 'urgent')) as urgent
   `;
 
-  return {
+  const ops = await loadDashboardOps(sql, workspace, { ...opts, churn });
+  const payload: DashboardData = {
     workspace,
     totals: {
       customers: cust?.n ?? 0,
@@ -228,5 +236,27 @@ export async function loadDashboard(sql: Sql, workspace: Workspace): Promise<Das
     newConnections,
     renewals,
     dueInvoices,
+    ops,
   };
+  return redactLegacyDashboard(payload, workspace.role);
+}
+
+/** Legacy dashboard fields travel with the same response. Zero money the role cannot read. */
+function redactLegacyDashboard(data: DashboardData, role: string): DashboardData {
+  if (!hasPermission(role, "payments.read")) {
+    data.totals.revenueMonth = 0;
+    data.totals.revenueLastMonth = 0;
+    data.totals.paymentsToday = 0;
+    data.totals.paymentsTodayCount = 0;
+    data.revenueDays = data.revenueDays.map((day) => ({ ...day, amount: 0, count: 0 }));
+    data.recentPayments = [];
+  }
+  if (!hasPermission(role, "invoices.read")) {
+    data.totals.outstanding = 0;
+    data.totals.overdueInvoices = 0;
+    data.dueInvoices = [];
+    data.atRisk = data.atRisk.map((row) => ({ ...row, balance_kes: 0 }));
+    data.renewals = data.renewals.map((row) => ({ ...row, price_kes: 0 }));
+  }
+  return data;
 }
