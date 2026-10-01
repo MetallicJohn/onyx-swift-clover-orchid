@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { nairobiTime } from "@/components/platform/format";
 import { HealthDot, Meter, PageHead, Panel, StatusPill, Telemetry } from "@/components/platform/ui";
 import { Button } from "@/components/ui/button";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { kes } from "@/lib/utils";
 import {
@@ -198,16 +199,18 @@ function TenantDetailPage() {
             className="flex flex-wrap items-end gap-2"
             onSubmit={(e) => {
               e.preventDefault();
+              void (async () => {
               const next = Number(acsPort);
               const current = data.acs?.cwmp_port ?? null;
               const confirmChange = Boolean(current && current !== next);
-              if (confirmChange && !window.confirm(`Change this ISP ACS port from ${current} to ${next}? Update the OLT TR-069 profile or ONUs will stop informing.`)) {
+              if (confirmChange && !(await askConfirm({ title: "Change ACS port?", description: `Change this ISP ACS port from ${current} to ${next}? Update the OLT TR-069 profile or ONUs will stop informing.`, confirmLabel: "Change port", variant: "danger" }))) {
                 return;
               }
               void run(
                 () => assignSaasAcsPort({ data: { tenant_id: tenantId, port: next || undefined, confirm: confirmChange } }),
                 "ACS port saved",
               );
+              })();
             }}
           >
             <Field label="Port">

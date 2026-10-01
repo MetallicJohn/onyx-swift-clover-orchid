@@ -1,0 +1,919 @@
+# UI/UX MILESTONE — COMPLETION PASS
+
+The previous UI/UX modernization milestone is substantially implemented, but the following items remain incomplete.
+
+This is a **targeted completion pass**.
+
+Do NOT redesign the application again.
+
+Do NOT undo working UI improvements.
+
+Do NOT change backend business logic unnecessarily.
+
+Inspect the current implementation first, then complete every item below.
+
+---
+
+# 1. TICKET DESK — COMPLETE BULK ACTIONS
+
+The Ticket Desk currently has no row selection.
+
+Implement row selection using the same reusable bulk-selection pattern already implemented for Customers.
+
+Add:
+
+- Select individual ticket
+- Select all visible tickets
+- Selection count
+- Clear selection
+- Bulk Assign
+- Bulk Change Priority
+- Bulk Change Status
+- Bulk Close
+
+Example:
+
+```text
+5 tickets selected
+
+[Assign] [Priority] [Status] [Close] [More]
+```
+
+## Bulk Assign
+
+Allow selecting:
+
+- Technician
+- Support user
+- Team, if the existing ticket architecture supports teams
+
+## Bulk Priority
+
+Allow:
+
+- Low
+- Medium
+- High
+- Critical
+
+## Bulk Status
+
+Use the existing ticket statuses.
+
+Do not invent incompatible statuses.
+
+## Bulk Close
+
+Closing multiple tickets must require the shared `ConfirmDialog`.
+
+Show:
+
+```text
+Close 8 tickets?
+
+This will mark the selected tickets as closed.
+```
+
+Use the shared confirmation component.
+
+Bulk operations must:
+
+- Respect RBAC
+- Respect tenant isolation
+- Validate each selected ticket
+- Handle partial failures
+- Show a final result
+- Write appropriate audit/activity events
+
+Example:
+
+```text
+6 tickets updated successfully
+2 tickets could not be updated
+```
+
+Do not silently fail.
+
+---
+
+# 2. SAVED VIEWS — MOVE BEYOND LOCALSTORAGE
+
+The current Saved Views implementation is personal `localStorage` only and limited to 20 views.
+
+This is insufficient for a multi-user ISP SaaS.
+
+Implement persistent Saved Views using the application's database and tenant architecture.
+
+## Saved View model
+
+Use the existing migration architecture.
+
+Conceptually:
+
+```text
+saved_views
+```
+
+Fields should include appropriate equivalents of:
+
+```text
+id
+tenant_id
+user_id
+name
+resource
+filters
+sort
+columns
+density
+is_shared
+created_at
+updated_at
+```
+
+Do not blindly use these exact fields if the existing schema conventions suggest a better structure.
+
+---
+
+# 2.1 Personal and shared views
+
+Support:
+
+```text
+My Views
+Team Views
+```
+
+Example:
+
+```text
+My Views
+  My overdue customers
+
+Team Views
+  Customers expiring this week
+  Unassigned tickets
+  Nanyuki customers
+```
+
+Personal views:
+
+- Visible only to the creator
+
+Shared views:
+
+- Visible to authorized users within the same tenant
+
+Never expose another tenant's views.
+
+---
+
+# 2.2 Saved view configuration
+
+Saved views must remember:
+
+- Filters
+- Sort order
+- Visible columns
+- Row density
+
+Do NOT limit saved views to filters alone.
+
+---
+
+# 2.3 Remove arbitrary 20-view limitation
+
+Do not retain the current hard-coded:
+
+```text
+max 20
+```
+
+limitation.
+
+Use reasonable server-side pagination when listing saved views if necessary.
+
+---
+
+# 3. COLUMN SHOW/HIDE
+
+Add column visibility controls to the reusable data-table pattern.
+
+Example:
+
+```text
+Columns
+
+☑ Customer
+☑ Phone
+☑ Package
+☑ Status
+☐ Email
+☐ Address
+☐ Created
+```
+
+Users must be able to show/hide optional columns.
+
+The configuration should be persisted in the user's saved view.
+
+Do not make essential identification/action columns impossible to use.
+
+---
+
+# 4. ROW DENSITY
+
+Add a reusable row-density selector:
+
+```text
+Comfortable
+Compact
+```
+
+Optionally:
+
+```text
+Dense
+```
+
+if it fits the current design.
+
+The selected density should be persisted as part of the saved view or user preference according to the architecture.
+
+Apply the same pattern to:
+
+- Customers
+- Services
+- Billing
+- Tickets
+
+and other data-heavy tables where appropriate.
+
+---
+
+# 5. COMMAND SEARCH — COMPLETE ENTITY COVERAGE
+
+The global command/search palette currently does not include:
+
+- Services
+- Payments
+
+Add them.
+
+Search should support at minimum:
+
+```text
+Customers
+Leads
+Services
+Payments
+Invoices
+Routers
+Tickets
+```
+
+Use server-side search.
+
+Do NOT load entire datasets into the browser.
+
+---
+
+# 5.1 Record-level navigation
+
+Currently:
+
+- Invoices open the invoice list
+- Leads open the lead list
+
+because record routes do not exist.
+
+Fix this.
+
+Where the application's architecture supports individual record pages, add proper record-level routes.
+
+Examples:
+
+```text
+/customers/:id
+/leads/:id
+/services/:id
+/invoices/:id
+/payments/:id
+/tickets/:id
+/routers/:id
+```
+
+Use the application's existing routing conventions.
+
+Do not create duplicate detail pages if an existing drawer/detail component can be promoted into a proper route.
+
+---
+
+# 5.2 Command palette results
+
+Search results should navigate directly to the record.
+
+Example:
+
+```text
+Invoices
+INV-2026-00451
+Customer: John Kamau
+KSh 3,500
+Overdue
+
+→ opens invoice record
+```
+
+Lead:
+
+```text
+Leads
+LD-000124
+Jane Wanjiku
+10 Mbps
+
+→ opens lead record
+```
+
+Service:
+
+```text
+Services
+John Kamau — 10 Mbps PPPoE
+Active
+
+→ opens service record
+```
+
+Payment:
+
+```text
+Payments
+M-Pesa QWE123456
+KSh 3,500
+Confirmed
+
+→ opens payment record
+```
+
+Respect tenant isolation and permissions.
+
+---
+
+# 6. SETTINGS — CONSISTENT SAVE EXPERIENCE
+
+The sticky save bar is currently implemented for:
+
+- Company basic
+- Contact
+- Legal
+- Date/password
+
+However:
+
+- Branding
+- eTIMS
+
+still have their own save buttons.
+
+Standardize the experience.
+
+Where the settings page uses editable forms, use the shared settings save pattern.
+
+The goal is:
+
+```text
+Unsaved changes
+
+[Discard] [Save changes]
+```
+
+rather than each settings page inventing its own save UX.
+
+Do not force unrelated settings into one form.
+
+Each sub-route should remain independently saveable.
+
+---
+
+# 6.1 Branding
+
+Refactor Branding to use the shared dirty-state/save-bar pattern.
+
+Requirements:
+
+- Detect changes
+- Sticky save bar
+- Save
+- Saving state
+- Success toast
+- Error state
+- Discard changes
+
+Do not save automatically unless the existing feature explicitly requires it.
+
+---
+
+# 6.2 eTIMS
+
+Apply the same pattern to eTIMS settings.
+
+Maintain any security-sensitive confirmation required by the existing eTIMS implementation.
+
+Do not expose secrets in the UI.
+
+---
+
+# 7. UNSAVED CHANGES — BROWSER VS IN-APP
+
+Current behavior:
+
+- In-app navigation → shared ConfirmDialog
+- Browser refresh/tab close → browser leave prompt
+
+This is acceptable and should remain.
+
+However, ensure the implementation is intentional and consistent.
+
+## In-app navigation
+
+Use the application's shared confirmation mechanism.
+
+Example:
+
+```text
+Unsaved changes
+
+You have unsaved changes. Leave without saving?
+
+[Stay] [Leave]
+```
+
+Do not use native `confirm()`.
+
+## Browser refresh / close
+
+Continue using the browser's native `beforeunload` mechanism where required.
+
+Do NOT attempt to replace the browser's security-controlled leave prompt with a custom dialog; browsers do not permit arbitrary custom dialogs during tab close/refresh.
+
+Ensure `beforeunload` is registered only while the form is actually dirty.
+
+When saved or discarded:
+
+```text
+dirty = false
+```
+
+and the browser leave warning must disappear.
+
+---
+
+# 8. CONFIRM DIALOG MUST REMAIN OPEN WHILE ACTION EXECUTES
+
+Current behavior:
+
+```text
+Confirm
+ ↓
+dialog closes
+ ↓
+page performs action
+ ↓
+page shows saving state
+```
+
+Improve this.
+
+The shared `ConfirmDialog` must support an async confirmation lifecycle.
+
+Correct behavior:
+
+```text
+ConfirmDialog
+     ↓
+User clicks Confirm
+     ↓
+Button becomes:
+"Deleting..."
+     ↓
+Dialog remains open
+     ↓
+Action completes
+     ↓
+Success
+     ↓
+Dialog closes
+```
+
+For example:
+
+```text
+Delete Customer
+
+This action cannot be undone.
+
+[Cancel] [Deleting...]
+```
+
+The Confirm button must be disabled while the operation is executing.
+
+Cancel should also be disabled during the operation.
+
+If the operation fails:
+
+```text
+Delete Customer
+
+Unable to delete this customer.
+
+[Cancel] [Try Again]
+```
+
+Keep the dialog open so the user understands the operation failed.
+
+The calling page should not need to duplicate the primary saving state.
+
+---
+
+# 8.1 Shared API
+
+Refactor the ConfirmDialog API so it can accept an async action.
+
+Conceptually:
+
+```ts
+onConfirm: () => Promise<void>
+```
+
+The component should manage:
+
+```text
+idle
+loading
+error
+success
+```
+
+where appropriate.
+
+Do not create individual loading implementations for every page.
+
+---
+
+# 9. REMOVE ACS `window.prompt()`
+
+The ACS factory reset currently uses:
+
+```text
+window.prompt()
+```
+
+Remove it.
+
+Replace it with a proper application dialog.
+
+Example:
+
+```text
+Factory Reset CPE
+
+This will reset the selected CPE to factory defaults.
+
+To continue, type:
+
+RESET
+
+[Cancel] [Reset Device]
+```
+
+Use the shared dialog/modal architecture.
+
+The reset action must:
+
+- Require appropriate permission
+- Clearly identify the CPE
+- Require explicit confirmation
+- Show loading state
+- Keep dialog open while action executes
+- Report success/failure
+- Record audit activity
+
+Do not use:
+
+```text
+window.prompt()
+window.confirm()
+```
+
+for application workflows.
+
+Search the entire repository for all remaining usages of:
+
+```text
+window.prompt(
+prompt(
+window.confirm(
+confirm(
+```
+
+and replace application-level usages appropriately.
+
+Do not replace browser APIs that are legitimately required for browser security behavior.
+
+---
+
+# 10. EMPTY STATES — COMPLETE THE STANDARDIZATION
+
+Not every module currently has the new empty-state component.
+
+Do not blindly replace every existing empty state.
+
+Inspect each major module.
+
+Where the existing empty copy is already specific, useful and consistent with the design system, preserve it.
+
+Where an empty state is generic or poor, upgrade it.
+
+Priority modules:
+
+- Customers
+- Leads
+- Services
+- Billing
+- Payments
+- Invoices
+- Tickets
+- Routers
+- Network
+- IPAM
+- RADIUS
+- Hotspot
+- Notifications
+- Technicians
+- Reports
+- Resellers
+
+A good empty state should communicate:
+
+1. What is empty
+2. Why the user is seeing it
+3. What they can do next
+
+Example:
+
+```text
+No leads yet
+
+Capture enquiries and convert qualified leads into
+customers after installation.
+
+[Add Lead]
+```
+
+Do not add unnecessary illustrations everywhere.
+
+---
+
+# 11. REUSABLE DATA TABLE ARCHITECTURE
+
+Before implementing the above, inspect the current table components.
+
+Avoid creating separate implementations for:
+
+- Customers
+- Services
+- Tickets
+- Billing
+
+Create or improve reusable primitives for:
+
+```text
+DataTable
+RowSelection
+BulkActionBar
+FilterBar
+FilterChip
+SavedViews
+ColumnVisibility
+RowDensity
+```
+
+Each module should provide its own:
+
+```text
+columns
+filters
+actions
+permissions
+```
+
+while sharing the UI infrastructure.
+
+---
+
+# 12. UX CONSISTENCY
+
+After implementation, perform a repository-wide audit for:
+
+### Confirmation
+
+No native application-level:
+
+```text
+confirm()
+window.confirm()
+prompt()
+window.prompt()
+```
+
+### Navigation
+
+Internal routes use the application's router.
+
+Do not replace external links.
+
+### Saving
+
+Forms consistently show:
+
+```text
+dirty
+saving
+saved
+error
+```
+
+### Tables
+
+Data-heavy pages should use consistent:
+
+- selection
+- filters
+- saved views
+- column visibility
+- density
+
+where appropriate.
+
+---
+
+# 13. TESTING
+
+Add or update tests for:
+
+## Tickets
+
+- Row selection
+- Select all
+- Bulk assign
+- Bulk priority
+- Bulk status
+- Bulk close
+- Partial failures
+- Permissions
+
+## Saved Views
+
+- Create
+- Edit
+- Delete
+- Personal view
+- Shared view
+- Tenant isolation
+- Filters persistence
+- Columns persistence
+- Density persistence
+
+## Command Palette
+
+- Customer
+- Lead
+- Service
+- Invoice
+- Payment
+- Ticket
+- Router
+- Direct record navigation
+
+## ConfirmDialog
+
+- Remains open while async operation runs
+- Loading state
+- Success closes dialog
+- Failure keeps dialog open
+- Retry works
+- Escape behavior is correct
+
+## Unsaved changes
+
+- In-app navigation
+- Browser refresh/close
+- Save clears dirty state
+- Discard clears dirty state
+
+## ACS
+
+- Factory reset dialog
+- Confirmation
+- Loading
+- Failure
+- Success
+- Audit
+
+---
+
+# 14. REGRESSION CHECK
+
+Run:
+
+```bash
+npm run typecheck
+npm run lint
+npm test
+```
+
+Also run any project-specific checks already configured.
+
+Fix all regressions.
+
+Do not disable tests simply to make the suite pass.
+
+---
+
+# 15. DEFINITION OF DONE
+
+This completion pass is finished only when:
+
+- [ ] Ticket row selection implemented
+- [ ] Ticket bulk assign implemented
+- [ ] Ticket bulk priority implemented
+- [ ] Ticket bulk status implemented
+- [ ] Ticket bulk close implemented
+- [ ] Saved Views moved from localStorage to persistent tenant-aware storage
+- [ ] Personal Saved Views supported
+- [ ] Shared Team Views supported
+- [ ] No arbitrary 20-view limit
+- [ ] Column visibility implemented
+- [ ] Row density implemented
+- [ ] Services included in Command Palette
+- [ ] Payments included in Command Palette
+- [ ] Invoice record navigation implemented
+- [ ] Lead record navigation implemented
+- [ ] Other supported entity record routes implemented
+- [ ] Branding uses shared save bar
+- [ ] eTIMS uses shared save bar
+- [ ] Browser leave prompt only appears when appropriate
+- [ ] In-app unsaved navigation uses shared ConfirmDialog
+- [ ] ConfirmDialog remains open during async actions
+- [ ] ConfirmDialog displays action-specific loading state
+- [ ] Failed actions keep dialog open
+- [ ] ACS factory reset no longer uses window.prompt
+- [ ] Repository checked for remaining native confirm/prompt usage
+- [ ] Empty states reviewed across major modules
+- [ ] Existing useful empty states preserved
+- [ ] Shared table architecture reused
+- [ ] Tenant isolation verified
+- [ ] RBAC verified
+- [ ] Tests added/updated
+- [ ] Typecheck passes
+- [ ] Lint passes
+- [ ] Tests pass
+
+---
+
+# IMPORTANT
+
+Do not report an item as complete merely because the UI exists.
+
+For each item, verify the actual behavior.
+
+In particular:
+
+- A Saved View is not complete if it only exists in localStorage.
+- Command Search is not complete if it only opens list pages when a record route is available.
+- ConfirmDialog is not complete if it closes before the async operation finishes.
+- Bulk Tickets are not complete without row selection.
+- Settings save UX is not complete if Branding and eTIMS behave differently without a deliberate reason.
+- ACS factory reset is not complete while `window.prompt()` remains.
+- Empty-state standardization does not mean replacing useful existing empty states unnecessarily.
+
+After completion, provide a concise report with:
+
+1. Files changed
+2. Database migrations
+3. New reusable components
+4. New routes
+5. Ticket bulk-action implementation
+6. Saved View implementation
+7. Command Palette entities/routes
+8. Settings save behavior
+9. ConfirmDialog async behavior
+10. ACS prompt replacement
+11. Empty-state changes
+12. Tests added
+13. Test results
+14. Any remaining limitations
+
+STOP after this completion pass.

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { TicketLive } from "@/components/isp/ticket-live";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { commentOpenTicket } from "@/lib/isp/server-more";
 import { listField } from "@/lib/isp/server-ops";
 import { setTicketStatus } from "@/lib/isp/server";
@@ -45,7 +46,9 @@ function FieldPage() {
         <p className="text-sm text-muted">Your queue, soonest deadline first. Only the next allowed steps are shown.</p>
       </div>
       {note ? <p className="rounded-md border border-border bg-surface px-3 py-2 text-sm">{note}</p> : null}
-      {tickets.length === 0 ? <p className="text-sm text-muted">No open jobs.</p> : null}
+      {tickets.length === 0 ? (
+        <EmptyState title="No open jobs" description="Tickets assigned to you show up here, soonest deadline first." />
+      ) : null}
       <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
         {tickets.map((t) => (
           <li key={t.id} className="grid gap-3 px-4 py-3 sm:grid-cols-[1fr_auto] sm:items-center">

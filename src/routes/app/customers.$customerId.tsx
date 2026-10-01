@@ -10,6 +10,7 @@ import { PartialPaymentPanel } from "@/components/isp/partial-payment-panel";
 import { BusinessCreditPanel } from "@/components/isp/business-credit-panel";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -414,7 +415,7 @@ function CustomerRecordPage() {
               }
               onPassword={(id) =>
                 void run(async () => {
-                  if (!window.confirm("Rotate the PPPoE password? The current password stops working immediately.")) return;
+                  if (!(await askConfirm({ title: "Rotate PPPoE password?", description: "The current password stops working immediately.", confirmLabel: "Rotate password", variant: "danger" }))) return;
                   const r = await rotateServiceSecret({ data: { id, confirm: true } });
                   setNote(`New PPPoE password for ${r.username}: ${r.password}`);
                 })

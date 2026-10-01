@@ -263,6 +263,8 @@ export type DashboardData = {
     renewalsToday: number;
     atRiskHigh: number;
     atRiskMedium: number;
+    overdueInvoices: number;
+    urgentTickets: number;
   };
   leads: {
     total: number;

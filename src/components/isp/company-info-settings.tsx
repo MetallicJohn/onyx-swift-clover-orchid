@@ -1,13 +1,19 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useBlocker } from "@tanstack/react-router";
 import { AppearanceSettings } from "@/components/isp/appearance-settings";
 import { EtimsSettings } from "@/components/isp/etims-settings";
 import { Button } from "@/components/ui/button";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
+import { StickySaveBar } from "@/components/ui/sticky-save-bar";
+import { useToast } from "@/components/ui/toast";
 import { APP_NAME } from "@/lib/brand";
 import {
   basicInfoComplete,
   COMPANY_INFO_TABS,
   COMPANY_SAVE_OK,
+  companyBrandDirty,
+  companyProfileDirty,
   companySaveError,
   companyTabDirty,
   PASSWORD_SAVE_OK,
@@ -51,6 +57,8 @@ export function CompanyInfoSettings({
   const [section, setSection] = useState<CompanyInfoTabId>("basic");
   const [brandingSeen, setBrandingSeen] = useState(false);
   const [brandingDirty, setBrandingDirty] = useState(false);
+  const [etimsSeen, setEtimsSeen] = useState(false);
+  const [etimsDirty, setEtimsDirty] = useState(false);
   const [profileBusy, setProfileBusy] = useState(false);
   const [brandBusy, setBrandBusy] = useState(false);
   const [pwBusy, setPwBusy] = useState(false);
@@ -60,9 +68,12 @@ export function CompanyInfoSettings({
   const [dateNote, setDateNote] = useState<Note>(null);
   const [pwNote, setPwNote] = useState<Note>(null);
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
+  const [savedFlash, setSavedFlash] = useState(false);
   const profileLock = useRef(false);
   const brandLock = useRef(false);
   const pwLock = useRef(false);
+  const askingLeave = useRef(false);
+  const toast = useToast();
   const passwordDirty = Boolean(pw.current || pw.next || pw.confirm);
 
   function dirty(tab: CompanyInfoTabId) {
@@ -71,6 +82,7 @@ export function CompanyInfoSettings({
 
   function openSection(id: CompanyInfoTabId) {
     if (id === "branding") setBrandingSeen(true);
+    if (id === "etims") setEtimsSeen(true);
     const el = document.getElementById(`company-tab-${id}`);
     el?.scrollIntoView({ inline: "nearest", block: "nearest" });
     setSection(id);
@@ -91,8 +103,12 @@ export function CompanyInfoSettings({
       await renameTenant({ data: submitted });
       await reloadProfile(submitted);
       setNote({ ok: true, text: COMPANY_SAVE_OK });
+      setSavedFlash(true);
+      toast.success("Settings saved");
     } catch (err) {
-      setNote({ ok: false, text: companySaveError(err) });
+      const text = companySaveError(err);
+      setNote({ ok: false, text });
+      toast.error("Unable to save company information", text);
     } finally {
       profileLock.current = false;
       setProfileBusy(false);
@@ -109,8 +125,12 @@ export function CompanyInfoSettings({
       await saveDocumentBranding({ data: submitted });
       await reloadBrand(submitted);
       setLegalNote({ ok: true, text: COMPANY_SAVE_OK });
+      setSavedFlash(true);
+      toast.success("Settings saved");
     } catch (err) {
-      setLegalNote({ ok: false, text: companySaveError(err) });
+      const text = companySaveError(err);
+      setLegalNote({ ok: false, text });
+      toast.error("Unable to save company information", text);
     } finally {
       brandLock.current = false;
       setBrandBusy(false);
@@ -137,12 +157,18 @@ export function CompanyInfoSettings({
         await saveDocumentBranding({ data: submittedBrand });
         await reloadBrand(submittedBrand);
       } catch (err) {
-        setContactNote({ ok: false, text: companySaveError(err) });
+        const text = companySaveError(err);
+        setContactNote({ ok: false, text });
+        toast.error("Unable to save company information", text);
         return;
       }
       setContactNote({ ok: true, text: COMPANY_SAVE_OK });
+      setSavedFlash(true);
+      toast.success("Settings saved");
     } catch (err) {
-      setContactNote({ ok: false, text: companySaveError(err) });
+      const text = companySaveError(err);
+      setContactNote({ ok: false, text });
+      toast.error("Unable to save company information", text);
     } finally {
       profileLock.current = false;
       brandLock.current = false;
@@ -164,8 +190,12 @@ export function CompanyInfoSettings({
       await changeMyPassword({ data: { current: pw.current, password: pw.next } });
       setPw({ current: "", next: "", confirm: "" });
       setPwNote({ ok: true, text: PASSWORD_SAVE_OK });
+      setSavedFlash(true);
+      toast.success("Password updated");
     } catch (err) {
-      setPwNote({ ok: false, text: companySaveError(err) });
+      const text = companySaveError(err);
+      setPwNote({ ok: false, text });
+      toast.error("Unable to update password", text);
     } finally {
       pwLock.current = false;
       setPwBusy(false);
@@ -173,6 +203,74 @@ export function CompanyInfoSettings({
   }
 
   const contactBusy = profileBusy || brandBusy;
+  const formDirty =
+    companyProfileDirty(form, savedForm) || companyBrandDirty(brand, savedBrand) || passwordDirty || brandingDirty || etimsDirty;
+  const dirtyRef = useRef(false);
+  dirtyRef.current = formDirty;
+
+  const blocker = useBlocker({
+    shouldBlockFn: () => dirtyRef.current,
+    enableBeforeUnload: () => dirtyRef.current,
+    withResolver: true,
+  });
+
+  useEffect(() => {
+    if (!savedFlash) return;
+    const timer = window.setTimeout(() => setSavedFlash(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [savedFlash]);
+
+  useEffect(() => {
+    if (blocker.status !== "blocked" || askingLeave.current) return;
+    askingLeave.current = true;
+    void askConfirm({
+      title: "Discard unsaved changes?",
+      description: "Company settings have unsaved changes.",
+      confirmLabel: "Leave without saving",
+      cancelLabel: "Stay",
+      variant: "warning",
+    }).then((ok) => {
+      askingLeave.current = false;
+      if (ok) blocker.proceed();
+      else blocker.reset();
+    });
+  }, [blocker]);
+
+  function discardSection() {
+    if (section === "basic") setForm({ ...form, name: savedForm.name });
+    if (section === "contact") {
+      setForm({ ...form, supportEmail: savedForm.supportEmail, supportPhone: savedForm.supportPhone });
+      setBrand({ ...brand, address: savedBrand.address, website: savedBrand.website });
+    }
+    if (section === "legal") {
+      setBrand({
+        ...brand,
+        tax_pin: savedBrand.tax_pin,
+        bank_name: savedBrand.bank_name,
+        bank_account: savedBrand.bank_account,
+        bank_branch: savedBrand.bank_branch,
+        invoice_notes: savedBrand.invoice_notes,
+        invoice_footer: savedBrand.invoice_footer,
+        brand_color: savedBrand.brand_color,
+      });
+    }
+    if (section === "additional") {
+      setForm({ ...form, dateFormat: normalizeDateFormat(savedForm.dateFormat) });
+      setPw({ current: "", next: "", confirm: "" });
+    }
+  }
+
+  async function saveSection() {
+    if (section === "basic") await saveProfile("basic");
+    if (section === "contact") await saveContact();
+    if (section === "legal") await saveBrand();
+    if (section === "additional") {
+      if (form.dateFormat !== savedForm.dateFormat) await saveProfile("additional");
+      if (passwordDirty) await savePassword();
+    }
+  }
+
+  const barSaving = section === "legal" ? brandBusy : section === "contact" ? contactBusy : profileBusy || pwBusy;
 
   return (
     <div className="space-y-4">
@@ -364,7 +462,11 @@ export function CompanyInfoSettings({
         hidden={section !== "etims"}
         className={section === "etims" ? "rounded-xl border border-border bg-surface p-4 md:p-5" : "hidden"}
       >
-        {section === "etims" ? <EtimsSettings /> : null}
+        {etimsSeen ? (
+          <div hidden={section !== "etims"}>
+            <EtimsSettings onDirtyChange={setEtimsDirty} />
+          </div>
+        ) : null}
       </section>
 
       <section
@@ -444,6 +546,15 @@ export function CompanyInfoSettings({
           <SaveRow note={pwNote} busy={pwBusy} label="Update password" />
         </form>
       </section>
+      <StickySaveBar
+        dirty={section !== "branding" && section !== "etims" && dirty(section)}
+        saving={barSaving}
+        saved={savedFlash}
+        onDiscard={discardSection}
+        onSave={() => {
+          void saveSection();
+        }}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 import { Field, Input } from "@/components/ui/input";
 import {
   generateAcsCredentialsFn,
@@ -88,7 +89,7 @@ export function AcsCredentialsPanel({
   }
 
   async function generate(rotate: boolean) {
-    if (rotate && !window.confirm("Regenerate ACS credentials at the saved length? Usernames that are too long are replaced. Update the OLT TR-069 profile or ONUs will stop informing.")) {
+    if (rotate && !(await askConfirm({ title: "Regenerate ACS credentials?", description: "Usernames that are too long are replaced. Update the OLT TR-069 profile or ONUs will stop informing.", confirmLabel: "Regenerate", variant: "danger" }))) {
       return;
     }
     setBusy(true);
@@ -287,7 +288,7 @@ export function AcsCredentialsPanel({
             variant="secondary"
             disabled={busy}
             onClick={async () => {
-              if (!window.confirm("Reveal ACS and connection-request passwords for this ISP? This is audited.")) return;
+              if (!(await askConfirm({ title: "Reveal ACS passwords?", description: "This action is audited.", confirmLabel: "Reveal", variant: "warning" }))) return;
               setBusy(true);
               try {
                 const row = await revealAcsCredentialsFn();

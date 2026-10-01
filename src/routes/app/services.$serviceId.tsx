@@ -9,6 +9,7 @@ import { ReassignServiceDialog } from "@/components/isp/reassign-service-dialog"
 import { PppoeCredentialFields } from "@/components/isp/pppoe-credential-fields";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { accessMethodLabel, formatBytes, formatDate, formatDateTime, formatMac, remainingLabel } from "@/lib/isp/display";
@@ -345,7 +346,7 @@ function ServiceRecordPage() {
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  if (!window.confirm("Rotate the PPPoE password? The current password stops working immediately.")) return;
+                  if (!(await askConfirm({ title: "Rotate PPPoE password?", description: "The current password stops working immediately.", confirmLabel: "Rotate password", variant: "danger" }))) return;
                   const r = await rotateServiceSecret({ data: { id: s.id, confirm: true } });
                   setNote(`New PPPoE password for ${r.username}: ${r.password}`);
                 })

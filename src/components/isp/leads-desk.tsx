@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { DateYmdInput } from "@/components/isp/date-ymd-input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import {
@@ -91,7 +92,7 @@ function rowToInput(row: LeadRow): LeadInput {
   };
 }
 
-export function LeadsDesk() {
+export function LeadsDesk({ focusId }: { focusId?: string } = {}) {
   const [desk, setDesk] = useState<Desk | null>(null);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
@@ -118,6 +119,8 @@ export function LeadsDesk() {
   const [installAt, setInstallAt] = useState("");
   const [installTech, setInstallTech] = useState("");
   const [installNotes, setInstallNotes] = useState("");
+  const [coverageNotes, setCoverageNotes] = useState("");
+  const [lostReason, setLostReason] = useState("");
 
   async function load(nextPage = page) {
     setBusy(true);
@@ -137,20 +140,27 @@ export function LeadsDesk() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (focusId) void openLead(focusId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId]);
+
   function patch(partial: Partial<LeadInput>) {
     setForm((prev) => ({ ...prev, ...partial }));
     setDirty(true);
   }
 
   function closeForm(next: boolean) {
-    if (!next && dirty && !window.confirm("Discard unsaved lead changes?")) return;
-    setOpenForm(next);
-    if (!next) {
-      setDirty(false);
-      setEditing(null);
-      setForm(EMPTY);
-      setLocMsg("");
-    }
+    void (async () => {
+      if (!next && dirty && !(await askConfirm({ title: "Discard unsaved lead changes?", description: "The lead form has changes that have not been saved.", confirmLabel: "Discard", variant: "warning" }))) return;
+      setOpenForm(next);
+      if (!next) {
+        setDirty(false);
+        setEditing(null);
+        setForm(EMPTY);
+        setLocMsg("");
+      }
+    })();
   }
 
   function locate() {
@@ -199,6 +209,8 @@ export function LeadsDesk() {
       setInstallAt(localWhen(row.lead.scheduled_installation_at));
       setInstallTech(row.lead.assigned_technician || "");
       setInstallNotes(row.lead.installation_notes || "");
+      setCoverageNotes(row.lead.coverage_notes || "");
+      setLostReason(row.lead.lost_reason || "");
     } catch (err) {
       setNote(err instanceof Error ? err.message : "Could not open the lead");
     } finally {
@@ -351,7 +363,12 @@ export function LeadsDesk() {
             ))}
           </tbody>
         </table>
-        {desk && desk.rows.length === 0 ? <p className="px-3 py-6 text-sm text-muted">No leads yet.</p> : null}
+        {desk && desk.rows.length === 0 ? (
+          <div className="px-4 py-8">
+            <p className="font-medium">No leads yet</p>
+            <p className="mt-1 max-w-md text-sm text-muted">Capture enquiries and convert qualified leads into customers after installation.</p>
+          </div>
+        ) : null}
       </div>
 
       <div className="space-y-2 md:hidden">
@@ -552,12 +569,14 @@ export function LeadsDesk() {
                 <div className="flex flex-wrap gap-2">
                   {COVERAGE_STATUSES.map((s) => (
                     <Button key={s} size="sm" variant={detail.lead.coverage_status === s ? "default" : "secondary"} disabled={busy} onClick={async () => {
-                      const notes = window.prompt("Coverage notes", detail.lead.coverage_notes) ?? detail.lead.coverage_notes;
-                      await recordCoverageFn({ data: { id: detail.lead.id, coverage_status: s, coverage_notes: notes } });
+                      await recordCoverageFn({ data: { id: detail.lead.id, coverage_status: s, coverage_notes: coverageNotes } });
                       await refreshDetail(detail.lead.id);
                     }}>{leadStatusLabel(s)}</Button>
                   ))}
                 </div>
+                <Field label="Coverage notes">
+                  <Textarea value={coverageNotes} onChange={(e) => setCoverageNotes(e.target.value)} />
+                </Field>
               </Block>
             ) : null}
             {can?.installation ? (
@@ -613,12 +632,19 @@ export function LeadsDesk() {
               <Block title="Status">
                 <Select value={detail.lead.status} onChange={async (e) => {
                   const next = e.target.value;
-                  const lost = next === "lost" || next === "not_interested" || next === "outside_coverage" ? window.prompt("Reason", detail.lead.lost_reason) || "" : "";
-                  await setLeadStatusFn({ data: { id: detail.lead.id, status: next, lost_reason: lost } });
+                  const needsReason = next === "lost" || next === "not_interested" || next === "outside_coverage";
+                  if (needsReason && !lostReason.trim()) {
+                    setNote("Add a reason before marking the lead lost, not interested, or outside coverage.");
+                    return;
+                  }
+                  await setLeadStatusFn({ data: { id: detail.lead.id, status: next, lost_reason: needsReason ? lostReason.trim() : lostReason } });
                   await refreshDetail(detail.lead.id);
                 }}>
                   {LEAD_STATUSES.filter((s) => s !== "converted").map((s) => <option key={s} value={s}>{leadStatusLabel(s)}</option>)}
                 </Select>
+                <Field label="Reason">
+                  <Input value={lostReason} onChange={(e) => setLostReason(e.target.value)} placeholder="Required when the lead is lost" />
+                </Field>
               </Block>
             ) : null}
             {can?.assign || can?.update ? (
@@ -666,7 +692,7 @@ export function LeadsDesk() {
             ) : null}
             {can?.remove && detail.lead.conversion_status !== "converted" ? (
               <Button variant="ghost" disabled={busy} onClick={async () => {
-                if (!window.confirm("Archive this lead? It will leave the active list.")) return;
+                if (!(await askConfirm({ title: "Archive this lead?", description: "It will leave the active list. The record is kept.", confirmLabel: "Archive lead", variant: "danger" }))) return;
                 await archiveLeadFn({ data: { id: detail.lead.id } });
                 setDetail(null);
                 await load(page);

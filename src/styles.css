@@ -657,3 +657,41 @@ details > summary::-webkit-details-marker {
     display: none;
   }
 }
+
+.table-view[data-density="compact"] :is(th, td) {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
+.table-view[data-density="dense"] :is(th, td) {
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
+  font-size: 0.8125rem;
+}
+
+.table-view[data-hide~="email"] [data-col="email"],
+.table-view[data-hide~="address"] [data-col="address"],
+.table-view[data-hide~="created"] [data-col="created"],
+.table-view[data-hide~="phone"] [data-col="phone"],
+.table-view[data-hide~="package"] [data-col="package"],
+.table-view[data-hide~="type"] [data-col="type"],
+.table-view[data-hide~="status"] [data-col="status"],
+.table-view[data-hide~="expiry"] [data-col="expiry"],
+.table-view[data-hide~="activity"] [data-col="activity"],
+.table-view[data-hide~="outstanding"] [data-col="outstanding"],
+.table-view[data-hide~="access"] [data-col="access"],
+.table-view[data-hide~="identity"] [data-col="identity"],
+.table-view[data-hide~="location"] [data-col="location"],
+.table-view[data-hide~="priority"] [data-col="priority"],
+.table-view[data-hide~="assigned"] [data-col="assigned"],
+.table-view[data-hide~="updated"] [data-col="updated"],
+.table-view[data-hide~="category"] [data-col="category"],
+.table-view[data-hide~="service"] [data-col="service"],
+.table-view[data-hide~="due"] [data-col="due"],
+.table-view[data-hide~="total"] [data-col="total"],
+.table-view[data-hide~="remaining"] [data-col="remaining"],
+.table-view[data-hide~="provider"] [data-col="provider"],
+.table-view[data-hide~="paid"] [data-col="paid"],
+.table-view[data-hide~="amount"] [data-col="amount"] {
+  display: none;
+}

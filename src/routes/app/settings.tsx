@@ -1,6 +1,7 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, redirect, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { APP_NAME, ROS_WG_INTERFACE } from "@/lib/brand";
 import { DEFAULT_DATE_FORMAT, formatDate, normalizeDateFormat, setActiveDateFormat, type DateFormatId } from "@/lib/isp/display";
@@ -35,21 +36,34 @@ import {
   PARTIAL_SAVE_OK,
   STAFF_SAVE_FAIL,
 } from "@/lib/isp/settings-feedback";
-import { parseSettingsSearch, SETTINGS_PAGES, type SettingsPageId } from "@/lib/isp/settings-nav";
+import { parseSettingsSearch, sectionForPage, settingsPageFromPath, SETTINGS_PAGES, type SettingsPageId } from "@/lib/isp/settings-nav";
 import { vpsInstallCommand, vpsUpdateCommand } from "@/lib/isp/vps-publish";
 import { kes } from "@/lib/utils";
 import type { Workspace } from "@/lib/isp/types";
 
 export const Route = createFileRoute("/app/settings")({
   validateSearch: (search: Record<string, unknown>) => parseSettingsSearch(search),
+  beforeLoad: ({ location, search }) => {
+    if (location.pathname !== "/app/settings") return;
+    const parsed = parseSettingsSearch(search as Record<string, unknown>);
+    throw redirect({
+      to: "/app/settings/$page",
+      params: { page: parsed.tab || "general" },
+      search: parsed.section ? { section: parsed.section } : {},
+      replace: true,
+    });
+  },
   component: SettingsPage,
 });
 
 function SettingsPage() {
-  const navigate = Route.useNavigate();
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const rawSearch = useRouterState({ select: (s) => s.location.search }) as Record<string, unknown>;
   const search = Route.useSearch();
-  const tab: SettingsPageId = search.tab ?? "general";
-  const section = search.section;
+  const pathPage = settingsPageFromPath(pathname);
+  const tab: SettingsPageId = pathPage ?? search.tab ?? "general";
+  const section = pathPage ? sectionForPage(tab, rawSearch.section) : search.section;
   const [ws, setWs] = useState<Workspace | null>(null);
   const [form, setForm] = useState({
     name: "",
@@ -241,7 +255,12 @@ function SettingsPage() {
   }
 
   function openPage(next: SettingsPageId, nextSection?: string) {
-    void navigate({ search: { tab: next, section: nextSection }, replace: true });
+    void navigate({
+      to: "/app/settings/$page",
+      params: { page: next },
+      search: nextSection ? { section: nextSection } : {},
+      replace: true,
+    });
     setSaved(null);
     setHubNote(null);
     setGraceNote(null);
@@ -418,7 +437,7 @@ function SettingsPage() {
               type="button"
               variant="secondary"
               onClick={async () => {
-                if (!window.confirm("Rotate the hub keypair? Every router enroll script must be copied again.")) return;
+                if (!(await askConfirm({ title: "Rotate the hub keypair?", description: "Every router enroll script must be copied again.", confirmLabel: "Rotate keypair", variant: "danger" }))) return;
                 setHubNote(null);
                 setHubBusy(true);
                 try {
@@ -1110,6 +1129,7 @@ function SettingsPage() {
           </div>
         </div>
       ) : null}
+      <Outlet />
     </div>
   );
 }

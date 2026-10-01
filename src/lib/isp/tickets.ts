@@ -2,6 +2,7 @@ import { nid } from "../utils.ts";
 import { likeNeedle } from "./customer-desk-format.ts";
 import { last9Phone } from "./customer-portal-format.ts";
 import { emit } from "./events";
+import { hasPermission } from "./rbac";
 import { normalizeTicketListQuery, type TicketListQuery } from "./ticket-list-format.ts";
 import { canTechnicianSet, dueAt, parseTechnicianCommand, TICKET_STATUSES, type TicketStatus } from "./ticket-workflow";
 
@@ -396,4 +397,109 @@ export async function openStaffTicket(
     service_id: serviceId || null,
     assigned_to: assigned,
   });
+}
+
+export const TICKET_PRIORITY_OPTIONS = [
+  { id: "low", label: "Low" },
+  { id: "normal", label: "Medium" },
+  { id: "high", label: "High" },
+  { id: "urgent", label: "Critical" },
+] as const;
+
+export type TicketBulkOp = "assign" | "priority" | "status" | "close";
+
+/** Status changes are the only bulk action a technician may run, and only on their own tickets. */
+export function ticketBulkAllowed(role: string, op: TicketBulkOp) {
+  if (op === "status" && role === "technician") return hasPermission(role, "jobs.update");
+  return hasPermission(role, "tickets.manage");
+}
+
+export type TicketBulkFailure = { id: string; error: string };
+
+export type TicketBulkResult = {
+  updated: string[];
+  failed: TicketBulkFailure[];
+};
+
+export function summarizeTicketBulk(result: Pick<TicketBulkResult, "updated" | "failed">) {
+  const ok = result.updated.length;
+  const bad = result.failed.length;
+  const okLine = `${ok} ticket${ok === 1 ? "" : "s"} updated successfully`;
+  if (!bad) return okLine;
+  const badLine = `${bad} ticket${bad === 1 ? "" : "s"} could not be updated`;
+  return `${okLine}. ${badLine}`;
+}
+
+export async function getTicketRow(sql: Sql, tenantId: string, ticketId: string) {
+  const id = String(ticketId || "").trim();
+  if (!id) return null;
+  const [row] = await sql<TicketListItem>`
+    select t.id, t.customer_id, c.name as customer_name,
+           coalesce(c.phone,'') as customer_phone,
+           coalesce(c.account_number,'') as customer_account,
+           t.title, t.category, t.priority, t.status,
+           coalesce(t.assigned_to,'') as assigned_to,
+           t.service_id,
+           t.created_at::text as created_at,
+           greatest(
+             t.created_at,
+             coalesce((select max(cm.created_at) from ticket_comments cm where cm.ticket_id = t.id and cm.tenant_id = t.tenant_id), t.created_at)
+           )::text as updated_at
+    from tickets t
+    left join customers c on c.id = t.customer_id and c.tenant_id = t.tenant_id
+    where t.id = ${id} and t.tenant_id = ${tenantId}`;
+  return row || null;
+}
+
+export async function bulkUpdateTickets(
+  sql: Sql,
+  tenantId: string,
+  actorId: string,
+  ids: string[],
+  op: TicketBulkOp,
+  value: string,
+  opts?: { technicianUserId?: string },
+): Promise<TicketBulkResult> {
+  const unique = [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!unique.length) throw new Error("Select at least one ticket");
+  if (unique.length > 100) throw new Error("Select at most 100 tickets");
+  const tech = opts?.technicianUserId || "";
+  const assignTo = op === "assign" ? value.trim() : "";
+  const priority = op === "priority" ? value.trim() : "";
+  const status = op === "close" ? "closed" : op === "status" ? value.trim() : "";
+  if (op === "assign") {
+    if (!assignTo) throw new Error("Choose someone to assign");
+    const [member] = await sql<{ user_id: string }>`
+      select user_id from tenant_members where tenant_id = ${tenantId} and user_id = ${assignTo}`;
+    if (!member) throw new Error("Assignee is not on this network");
+  }
+  if (op === "priority" && !(TICKET_PRIORITIES as readonly string[]).includes(priority)) {
+    throw new Error("Unknown priority");
+  }
+  if ((op === "status" || op === "close") && !(TICKET_STATUSES as readonly string[]).includes(status)) {
+    throw new Error("Unknown ticket status");
+  }
+  const updated: string[] = [];
+  const failed: TicketBulkFailure[] = [];
+  for (const id of unique) {
+    try {
+      if (op === "assign") {
+        await assignTicket(sql, tenantId, id, assignTo);
+      } else if (op === "priority") {
+        const [row] = await sql<{ id: string; assigned_to: string }>`
+          select id, coalesce(assigned_to,'') as assigned_to from tickets where id = ${id} and tenant_id = ${tenantId}`;
+        if (!row) throw new Error("Ticket not found");
+        if (tech && row.assigned_to && row.assigned_to !== tech) throw new Error("Not assigned to you");
+        await sql`update tickets set priority = ${priority} where id = ${id} and tenant_id = ${tenantId}`;
+      } else {
+        await changeTicketStatus(sql, tenantId, id, status, { technicianUserId: tech });
+      }
+      await sql`insert into audit_logs (id, tenant_id, user_id, action, entity_type, entity_id, details)
+        values (${nid("aud")}, ${tenantId}, ${actorId}, ${`ticket.bulk_${op}`}, 'ticket', ${id}, ${JSON.stringify({ op, value: assignTo || priority || status })})`;
+      updated.push(id);
+    } catch (err) {
+      failed.push({ id, error: err instanceof Error ? err.message : "Could not update this ticket" });
+    }
+  }
+  return { updated, failed };
 }

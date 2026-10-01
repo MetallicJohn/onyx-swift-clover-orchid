@@ -41,3 +41,24 @@ export function nextTicketSearch(current: Partial<TicketListQuery>, patch: Parti
     page: keepPage ? (patch.page ?? current.page ?? 1) : 1,
   });
 }
+
+function chipLabel(value: string) {
+  return value.replaceAll("_", " ");
+}
+
+/** Active ticket filters, excluding the default open queue. */
+export function ticketListChips(
+  query: ReturnType<typeof normalizeTicketListQuery>,
+  assignedLabel = "",
+): { id: string; label: string }[] {
+  const chips: { id: string; label: string }[] = [];
+  if (query.status !== "open") chips.push({ id: "status", label: `Status: ${chipLabel(query.status)}` });
+  if (query.priority !== "all") chips.push({ id: "priority", label: `Priority: ${chipLabel(query.priority)}` });
+  if (query.category !== "all") chips.push({ id: "category", label: `Category: ${chipLabel(query.category)}` });
+  if (query.assignedTo !== "all") {
+    const who = query.assignedTo === "unassigned" ? "Unassigned" : assignedLabel || "Staff";
+    chips.push({ id: "assigned", label: `Assigned: ${who}` });
+  }
+  if (query.q.length >= 2) chips.push({ id: "q", label: `Search: ${query.q}` });
+  return chips;
+}

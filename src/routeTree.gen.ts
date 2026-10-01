@@ -81,9 +81,12 @@ import { Route as ApiTicketsLiveRouteImport } from './routes/api/tickets/live'
 import { Route as ApiV1HealthRouteImport } from './routes/api/v1/health'
 import { Route as ApiV1ReadyRouteImport } from './routes/api/v1/ready'
 import { Route as AppCustomersCustomerIdRouteImport } from './routes/app/customers.$customerId'
+import { Route as AppLeadsLeadIdRouteImport } from './routes/app/leads.$leadId'
 import { Route as AppProfileSecurityRouteImport } from './routes/app/profile.security'
 import { Route as AppRoutersRouterIdRouteImport } from './routes/app/routers.$routerId'
 import { Route as AppServicesServiceIdRouteImport } from './routes/app/services.$serviceId'
+import { Route as AppSettingsPageRouteImport } from './routes/app/settings.$page'
+import { Route as AppTicketsTicketIdRouteImport } from './routes/app/tickets.$ticketId'
 import { Route as PlatformSettingsSmsRouteImport } from './routes/platform/settings.sms'
 import { Route as PlatformTenantsTenantIdRouteImport } from './routes/platform/tenants.$tenantId'
 import { Route as PlatformUsersUserIdRouteImport } from './routes/platform/users.$userId'
@@ -103,6 +106,8 @@ import { Route as ApiV1PortalActionRouteImport } from './routes/api/v1/portal/$a
 import { Route as ApiWebhooksKopokopoSlugRouteImport } from './routes/api/webhooks/kopokopo/$slug'
 import { Route as ApiWebhooksMpesaSlugRouteImport } from './routes/api/webhooks/mpesa/$slug'
 import { Route as ApiWebhooksWhatsappSlugRouteImport } from './routes/api/webhooks/whatsapp/$slug'
+import { Route as AppBillingInvoicesInvoiceIdRouteImport } from './routes/app/billing.invoices.$invoiceId'
+import { Route as AppBillingPaymentsPaymentIdRouteImport } from './routes/app/billing.payments.$paymentId'
 import { Route as ApiV1HotspotHtmlFileRouteImport } from './routes/api/v1/hotspot/html.$file'
 import { Route as ApiV1RadiusActionSlugRouteImport } from './routes/api/v1/radius/$action.$slug'
 import { Route as ApiVpnRoutersTokenBootstrapDotrscRouteImport } from './routes/api/vpn/routers/$token/bootstrap[.]rsc'
@@ -467,6 +472,11 @@ const AppCustomersCustomerIdRoute = AppCustomersCustomerIdRouteImport.update({
   path: '/$customerId',
   getParentRoute: () => AppCustomersRoute,
 } as any)
+const AppLeadsLeadIdRoute = AppLeadsLeadIdRouteImport.update({
+  id: '/$leadId',
+  path: '/$leadId',
+  getParentRoute: () => AppLeadsRoute,
+} as any)
 const AppProfileSecurityRoute = AppProfileSecurityRouteImport.update({
   id: '/security',
   path: '/security',
@@ -481,6 +491,16 @@ const AppServicesServiceIdRoute = AppServicesServiceIdRouteImport.update({
   id: '/$serviceId',
   path: '/$serviceId',
   getParentRoute: () => AppServicesRoute,
+} as any)
+const AppSettingsPageRoute = AppSettingsPageRouteImport.update({
+  id: '/$page',
+  path: '/$page',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppTicketsTicketIdRoute = AppTicketsTicketIdRouteImport.update({
+  id: '/$ticketId',
+  path: '/$ticketId',
+  getParentRoute: () => AppTicketsRoute,
 } as any)
 const PlatformSettingsSmsRoute = PlatformSettingsSmsRouteImport.update({
   id: '/sms',
@@ -581,6 +601,18 @@ const ApiWebhooksWhatsappSlugRoute = ApiWebhooksWhatsappSlugRouteImport.update({
   path: '/api/webhooks/whatsapp/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppBillingInvoicesInvoiceIdRoute =
+  AppBillingInvoicesInvoiceIdRouteImport.update({
+    id: '/invoices/$invoiceId',
+    path: '/invoices/$invoiceId',
+    getParentRoute: () => AppBillingRoute,
+  } as any)
+const AppBillingPaymentsPaymentIdRoute =
+  AppBillingPaymentsPaymentIdRouteImport.update({
+    id: '/payments/$paymentId',
+    path: '/payments/$paymentId',
+    getParentRoute: () => AppBillingRoute,
+  } as any)
 const ApiV1HotspotHtmlFileRoute = ApiV1HotspotHtmlFileRouteImport.update({
   id: '/api/v1/hotspot/html/$file',
   path: '/api/v1/hotspot/html/$file',
@@ -617,12 +649,12 @@ export interface FileRoutesByFullPath {
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
-  '/app/billing': typeof AppBillingRoute
+  '/app/billing': typeof AppBillingRouteWithChildren
   '/app/customers': typeof AppCustomersRouteWithChildren
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
   '/app/import': typeof AppImportRoute
-  '/app/leads': typeof AppLeadsRoute
+  '/app/leads': typeof AppLeadsRouteWithChildren
   '/app/notifications': typeof AppNotificationsRoute
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
@@ -632,9 +664,9 @@ export interface FileRoutesByFullPath {
   '/app/reports': typeof AppReportsRoute
   '/app/routers': typeof AppRoutersRouteWithChildren
   '/app/services': typeof AppServicesRouteWithChildren
-  '/app/settings': typeof AppSettingsRoute
+  '/app/settings': typeof AppSettingsRouteWithChildren
   '/app/statements': typeof AppStatementsRoute
-  '/app/tickets': typeof AppTicketsRoute
+  '/app/tickets': typeof AppTicketsRouteWithChildren
   '/platform/activity': typeof PlatformActivityRoute
   '/platform/domains': typeof PlatformDomainsRoute
   '/platform/infrastructure': typeof PlatformInfrastructureRoute
@@ -670,9 +702,12 @@ export interface FileRoutesByFullPath {
   '/api/v1/health': typeof ApiV1HealthRoute
   '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/app/leads/$leadId': typeof AppLeadsLeadIdRoute
   '/app/profile/security': typeof AppProfileSecurityRoute
   '/app/routers/$routerId': typeof AppRoutersRouterIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
+  '/app/settings/$page': typeof AppSettingsPageRoute
+  '/app/tickets/$ticketId': typeof AppTicketsTicketIdRoute
   '/platform/settings/sms': typeof PlatformSettingsSmsRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/platform/users/$userId': typeof PlatformUsersUserIdRoute
@@ -692,6 +727,8 @@ export interface FileRoutesByFullPath {
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
   '/api/webhooks/whatsapp/$slug': typeof ApiWebhooksWhatsappSlugRoute
+  '/app/billing/invoices/$invoiceId': typeof AppBillingInvoicesInvoiceIdRoute
+  '/app/billing/payments/$paymentId': typeof AppBillingPaymentsPaymentIdRoute
   '/api/routers/$id/': typeof ApiRoutersIdIndexRoute
   '/api/v1/hotspot/html/$file': typeof ApiV1HotspotHtmlFileRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
@@ -712,12 +749,12 @@ export interface FileRoutesByTo {
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
-  '/app/billing': typeof AppBillingRoute
+  '/app/billing': typeof AppBillingRouteWithChildren
   '/app/customers': typeof AppCustomersRouteWithChildren
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
   '/app/import': typeof AppImportRoute
-  '/app/leads': typeof AppLeadsRoute
+  '/app/leads': typeof AppLeadsRouteWithChildren
   '/app/notifications': typeof AppNotificationsRoute
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
@@ -727,9 +764,9 @@ export interface FileRoutesByTo {
   '/app/reports': typeof AppReportsRoute
   '/app/routers': typeof AppRoutersRouteWithChildren
   '/app/services': typeof AppServicesRouteWithChildren
-  '/app/settings': typeof AppSettingsRoute
+  '/app/settings': typeof AppSettingsRouteWithChildren
   '/app/statements': typeof AppStatementsRoute
-  '/app/tickets': typeof AppTicketsRoute
+  '/app/tickets': typeof AppTicketsRouteWithChildren
   '/platform/activity': typeof PlatformActivityRoute
   '/platform/domains': typeof PlatformDomainsRoute
   '/platform/infrastructure': typeof PlatformInfrastructureRoute
@@ -765,9 +802,12 @@ export interface FileRoutesByTo {
   '/api/v1/health': typeof ApiV1HealthRoute
   '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/app/leads/$leadId': typeof AppLeadsLeadIdRoute
   '/app/profile/security': typeof AppProfileSecurityRoute
   '/app/routers/$routerId': typeof AppRoutersRouterIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
+  '/app/settings/$page': typeof AppSettingsPageRoute
+  '/app/tickets/$ticketId': typeof AppTicketsTicketIdRoute
   '/platform/settings/sms': typeof PlatformSettingsSmsRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/platform/users/$userId': typeof PlatformUsersUserIdRoute
@@ -787,6 +827,8 @@ export interface FileRoutesByTo {
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
   '/api/webhooks/whatsapp/$slug': typeof ApiWebhooksWhatsappSlugRoute
+  '/app/billing/invoices/$invoiceId': typeof AppBillingInvoicesInvoiceIdRoute
+  '/app/billing/payments/$paymentId': typeof AppBillingPaymentsPaymentIdRoute
   '/api/routers/$id': typeof ApiRoutersIdIndexRoute
   '/api/v1/hotspot/html/$file': typeof ApiV1HotspotHtmlFileRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
@@ -812,12 +854,12 @@ export interface FileRoutesById {
   '/app/acs': typeof AppAcsRoute
   '/app/admin': typeof AppAdminRoute
   '/app/ai': typeof AppAiRoute
-  '/app/billing': typeof AppBillingRoute
+  '/app/billing': typeof AppBillingRouteWithChildren
   '/app/customers': typeof AppCustomersRouteWithChildren
   '/app/field': typeof AppFieldRoute
   '/app/hotspot': typeof AppHotspotRoute
   '/app/import': typeof AppImportRoute
-  '/app/leads': typeof AppLeadsRoute
+  '/app/leads': typeof AppLeadsRouteWithChildren
   '/app/notifications': typeof AppNotificationsRoute
   '/app/packages': typeof AppPackagesRoute
   '/app/partners': typeof AppPartnersRoute
@@ -827,9 +869,9 @@ export interface FileRoutesById {
   '/app/reports': typeof AppReportsRoute
   '/app/routers': typeof AppRoutersRouteWithChildren
   '/app/services': typeof AppServicesRouteWithChildren
-  '/app/settings': typeof AppSettingsRoute
+  '/app/settings': typeof AppSettingsRouteWithChildren
   '/app/statements': typeof AppStatementsRoute
-  '/app/tickets': typeof AppTicketsRoute
+  '/app/tickets': typeof AppTicketsRouteWithChildren
   '/platform/activity': typeof PlatformActivityRoute
   '/platform/domains': typeof PlatformDomainsRoute
   '/platform/infrastructure': typeof PlatformInfrastructureRoute
@@ -865,9 +907,12 @@ export interface FileRoutesById {
   '/api/v1/health': typeof ApiV1HealthRoute
   '/api/v1/ready': typeof ApiV1ReadyRoute
   '/app/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/app/leads/$leadId': typeof AppLeadsLeadIdRoute
   '/app/profile/security': typeof AppProfileSecurityRoute
   '/app/routers/$routerId': typeof AppRoutersRouterIdRoute
   '/app/services/$serviceId': typeof AppServicesServiceIdRoute
+  '/app/settings/$page': typeof AppSettingsPageRoute
+  '/app/tickets/$ticketId': typeof AppTicketsTicketIdRoute
   '/platform/settings/sms': typeof PlatformSettingsSmsRoute
   '/platform/tenants/$tenantId': typeof PlatformTenantsTenantIdRoute
   '/platform/users/$userId': typeof PlatformUsersUserIdRoute
@@ -887,6 +932,8 @@ export interface FileRoutesById {
   '/api/webhooks/kopokopo/$slug': typeof ApiWebhooksKopokopoSlugRoute
   '/api/webhooks/mpesa/$slug': typeof ApiWebhooksMpesaSlugRoute
   '/api/webhooks/whatsapp/$slug': typeof ApiWebhooksWhatsappSlugRoute
+  '/app/billing/invoices/$invoiceId': typeof AppBillingInvoicesInvoiceIdRoute
+  '/app/billing/payments/$paymentId': typeof AppBillingPaymentsPaymentIdRoute
   '/api/routers/$id/': typeof ApiRoutersIdIndexRoute
   '/api/v1/hotspot/html/$file': typeof ApiV1HotspotHtmlFileRoute
   '/api/v1/radius/$action/$slug': typeof ApiV1RadiusActionSlugRoute
@@ -966,9 +1013,12 @@ export interface FileRouteTypes {
     | '/api/v1/health'
     | '/api/v1/ready'
     | '/app/customers/$customerId'
+    | '/app/leads/$leadId'
     | '/app/profile/security'
     | '/app/routers/$routerId'
     | '/app/services/$serviceId'
+    | '/app/settings/$page'
+    | '/app/tickets/$ticketId'
     | '/platform/settings/sms'
     | '/platform/tenants/$tenantId'
     | '/platform/users/$userId'
@@ -988,6 +1038,8 @@ export interface FileRouteTypes {
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
     | '/api/webhooks/whatsapp/$slug'
+    | '/app/billing/invoices/$invoiceId'
+    | '/app/billing/payments/$paymentId'
     | '/api/routers/$id/'
     | '/api/v1/hotspot/html/$file'
     | '/api/v1/radius/$action/$slug'
@@ -1061,9 +1113,12 @@ export interface FileRouteTypes {
     | '/api/v1/health'
     | '/api/v1/ready'
     | '/app/customers/$customerId'
+    | '/app/leads/$leadId'
     | '/app/profile/security'
     | '/app/routers/$routerId'
     | '/app/services/$serviceId'
+    | '/app/settings/$page'
+    | '/app/tickets/$ticketId'
     | '/platform/settings/sms'
     | '/platform/tenants/$tenantId'
     | '/platform/users/$userId'
@@ -1083,6 +1138,8 @@ export interface FileRouteTypes {
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
     | '/api/webhooks/whatsapp/$slug'
+    | '/app/billing/invoices/$invoiceId'
+    | '/app/billing/payments/$paymentId'
     | '/api/routers/$id'
     | '/api/v1/hotspot/html/$file'
     | '/api/v1/radius/$action/$slug'
@@ -1160,9 +1217,12 @@ export interface FileRouteTypes {
     | '/api/v1/health'
     | '/api/v1/ready'
     | '/app/customers/$customerId'
+    | '/app/leads/$leadId'
     | '/app/profile/security'
     | '/app/routers/$routerId'
     | '/app/services/$serviceId'
+    | '/app/settings/$page'
+    | '/app/tickets/$ticketId'
     | '/platform/settings/sms'
     | '/platform/tenants/$tenantId'
     | '/platform/users/$userId'
@@ -1182,6 +1242,8 @@ export interface FileRouteTypes {
     | '/api/webhooks/kopokopo/$slug'
     | '/api/webhooks/mpesa/$slug'
     | '/api/webhooks/whatsapp/$slug'
+    | '/app/billing/invoices/$invoiceId'
+    | '/app/billing/payments/$paymentId'
     | '/api/routers/$id/'
     | '/api/v1/hotspot/html/$file'
     | '/api/v1/radius/$action/$slug'
@@ -1745,6 +1807,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCustomersCustomerIdRouteImport
       parentRoute: typeof AppCustomersRoute
     }
+    '/app/leads/$leadId': {
+      id: '/app/leads/$leadId'
+      path: '/$leadId'
+      fullPath: '/app/leads/$leadId'
+      preLoaderRoute: typeof AppLeadsLeadIdRouteImport
+      parentRoute: typeof AppLeadsRoute
+    }
     '/app/profile/security': {
       id: '/app/profile/security'
       path: '/security'
@@ -1765,6 +1834,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/services/$serviceId'
       preLoaderRoute: typeof AppServicesServiceIdRouteImport
       parentRoute: typeof AppServicesRoute
+    }
+    '/app/settings/$page': {
+      id: '/app/settings/$page'
+      path: '/$page'
+      fullPath: '/app/settings/$page'
+      preLoaderRoute: typeof AppSettingsPageRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/app/tickets/$ticketId': {
+      id: '/app/tickets/$ticketId'
+      path: '/$ticketId'
+      fullPath: '/app/tickets/$ticketId'
+      preLoaderRoute: typeof AppTicketsTicketIdRouteImport
+      parentRoute: typeof AppTicketsRoute
     }
     '/platform/settings/sms': {
       id: '/platform/settings/sms'
@@ -1899,6 +1982,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWebhooksWhatsappSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app/billing/invoices/$invoiceId': {
+      id: '/app/billing/invoices/$invoiceId'
+      path: '/invoices/$invoiceId'
+      fullPath: '/app/billing/invoices/$invoiceId'
+      preLoaderRoute: typeof AppBillingInvoicesInvoiceIdRouteImport
+      parentRoute: typeof AppBillingRoute
+    }
+    '/app/billing/payments/$paymentId': {
+      id: '/app/billing/payments/$paymentId'
+      path: '/payments/$paymentId'
+      fullPath: '/app/billing/payments/$paymentId'
+      preLoaderRoute: typeof AppBillingPaymentsPaymentIdRouteImport
+      parentRoute: typeof AppBillingRoute
+    }
     '/api/v1/hotspot/html/$file': {
       id: '/api/v1/hotspot/html/$file'
       path: '/api/v1/hotspot/html/$file'
@@ -1923,6 +2020,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppBillingRouteChildren {
+  AppBillingInvoicesInvoiceIdRoute: typeof AppBillingInvoicesInvoiceIdRoute
+  AppBillingPaymentsPaymentIdRoute: typeof AppBillingPaymentsPaymentIdRoute
+}
+
+const AppBillingRouteChildren: AppBillingRouteChildren = {
+  AppBillingInvoicesInvoiceIdRoute: AppBillingInvoicesInvoiceIdRoute,
+  AppBillingPaymentsPaymentIdRoute: AppBillingPaymentsPaymentIdRoute,
+}
+
+const AppBillingRouteWithChildren = AppBillingRoute._addFileChildren(
+  AppBillingRouteChildren,
+)
+
 interface AppCustomersRouteChildren {
   AppCustomersCustomerIdRoute: typeof AppCustomersCustomerIdRoute
 }
@@ -1933,6 +2044,18 @@ const AppCustomersRouteChildren: AppCustomersRouteChildren = {
 
 const AppCustomersRouteWithChildren = AppCustomersRoute._addFileChildren(
   AppCustomersRouteChildren,
+)
+
+interface AppLeadsRouteChildren {
+  AppLeadsLeadIdRoute: typeof AppLeadsLeadIdRoute
+}
+
+const AppLeadsRouteChildren: AppLeadsRouteChildren = {
+  AppLeadsLeadIdRoute: AppLeadsLeadIdRoute,
+}
+
+const AppLeadsRouteWithChildren = AppLeadsRoute._addFileChildren(
+  AppLeadsRouteChildren,
 )
 
 interface AppProfileRouteChildren {
@@ -1971,16 +2094,40 @@ const AppServicesRouteWithChildren = AppServicesRoute._addFileChildren(
   AppServicesRouteChildren,
 )
 
+interface AppSettingsRouteChildren {
+  AppSettingsPageRoute: typeof AppSettingsPageRoute
+}
+
+const AppSettingsRouteChildren: AppSettingsRouteChildren = {
+  AppSettingsPageRoute: AppSettingsPageRoute,
+}
+
+const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
+  AppSettingsRouteChildren,
+)
+
+interface AppTicketsRouteChildren {
+  AppTicketsTicketIdRoute: typeof AppTicketsTicketIdRoute
+}
+
+const AppTicketsRouteChildren: AppTicketsRouteChildren = {
+  AppTicketsTicketIdRoute: AppTicketsTicketIdRoute,
+}
+
+const AppTicketsRouteWithChildren = AppTicketsRoute._addFileChildren(
+  AppTicketsRouteChildren,
+)
+
 interface AppRouteChildren {
   AppAcsRoute: typeof AppAcsRoute
   AppAdminRoute: typeof AppAdminRoute
   AppAiRoute: typeof AppAiRoute
-  AppBillingRoute: typeof AppBillingRoute
+  AppBillingRoute: typeof AppBillingRouteWithChildren
   AppCustomersRoute: typeof AppCustomersRouteWithChildren
   AppFieldRoute: typeof AppFieldRoute
   AppHotspotRoute: typeof AppHotspotRoute
   AppImportRoute: typeof AppImportRoute
-  AppLeadsRoute: typeof AppLeadsRoute
+  AppLeadsRoute: typeof AppLeadsRouteWithChildren
   AppNotificationsRoute: typeof AppNotificationsRoute
   AppPackagesRoute: typeof AppPackagesRoute
   AppPartnersRoute: typeof AppPartnersRoute
@@ -1990,9 +2137,9 @@ interface AppRouteChildren {
   AppReportsRoute: typeof AppReportsRoute
   AppRoutersRoute: typeof AppRoutersRouteWithChildren
   AppServicesRoute: typeof AppServicesRouteWithChildren
-  AppSettingsRoute: typeof AppSettingsRoute
+  AppSettingsRoute: typeof AppSettingsRouteWithChildren
   AppStatementsRoute: typeof AppStatementsRoute
-  AppTicketsRoute: typeof AppTicketsRoute
+  AppTicketsRoute: typeof AppTicketsRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
 }
 
@@ -2000,12 +2147,12 @@ const AppRouteChildren: AppRouteChildren = {
   AppAcsRoute: AppAcsRoute,
   AppAdminRoute: AppAdminRoute,
   AppAiRoute: AppAiRoute,
-  AppBillingRoute: AppBillingRoute,
+  AppBillingRoute: AppBillingRouteWithChildren,
   AppCustomersRoute: AppCustomersRouteWithChildren,
   AppFieldRoute: AppFieldRoute,
   AppHotspotRoute: AppHotspotRoute,
   AppImportRoute: AppImportRoute,
-  AppLeadsRoute: AppLeadsRoute,
+  AppLeadsRoute: AppLeadsRouteWithChildren,
   AppNotificationsRoute: AppNotificationsRoute,
   AppPackagesRoute: AppPackagesRoute,
   AppPartnersRoute: AppPartnersRoute,
@@ -2015,9 +2162,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppReportsRoute: AppReportsRoute,
   AppRoutersRoute: AppRoutersRouteWithChildren,
   AppServicesRoute: AppServicesRouteWithChildren,
-  AppSettingsRoute: AppSettingsRoute,
+  AppSettingsRoute: AppSettingsRouteWithChildren,
   AppStatementsRoute: AppStatementsRoute,
-  AppTicketsRoute: AppTicketsRoute,
+  AppTicketsRoute: AppTicketsRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
 }
 

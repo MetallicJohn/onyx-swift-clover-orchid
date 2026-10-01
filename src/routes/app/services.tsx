@@ -20,10 +20,15 @@ import { OnboardWizard } from "@/components/isp/onboard-wizard";
 import { PppoeCredentialFields } from "@/components/isp/pppoe-credential-fields";
 import { ReassignServiceDialog } from "@/components/isp/reassign-service-dialog";
 import { Button } from "@/components/ui/button";
+import { ColumnVisibility } from "@/components/ui/column-visibility";
+import { askConfirm } from "@/components/ui/confirm-dialog";
+import { RowDensity } from "@/components/ui/row-density";
+import { SavedViews, type ViewSnapshot } from "@/components/ui/saved-views";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { uniqueSmsRecipients } from "@/lib/isp/customer-desk-format";
 import { hasPermission } from "@/lib/isp/rbac";
+import type { ViewDensity } from "@/lib/isp/saved-views";
 import { extendGraceFn, grantGraceFn, revokeGraceFn } from "@/lib/isp/server-grace";
 import { setServiceExpiryFn } from "@/lib/isp/server-expiry";
 import { queryServicesDeskFn } from "@/lib/isp/server-desk";
@@ -189,6 +194,8 @@ function ServicesPage() {
   const [edit, setEdit] = useState({ username: "", password: "", static_ip: "", mac_address: "", notes: "" });
   const [editPassLoaded, setEditPassLoaded] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [density, setDensity] = useState<ViewDensity>("comfortable");
+  const [hiddenCols, setHiddenCols] = useState<string[]>([]);
   const [bulk, setBulk] = useState<"sms" | "package" | "grace" | null>(null);
   const [bulkPkg, setBulkPkg] = useState("");
   const [bulkBody, setBulkBody] = useState("");
@@ -368,10 +375,11 @@ function ServicesPage() {
       void disconnectService({ data: { id: s.id } }).then(() => setSecretNote(`Disconnect queued for ${s.identity}`));
     },
     onRotate: (s) => {
-      if (!window.confirm("Rotate the PPPoE password? The current password stops working immediately.")) return;
-      void rotateServiceSecret({ data: { id: s.id, confirm: true } }).then((r) => {
+      void (async () => {
+        if (!(await askConfirm({ title: "Rotate PPPoE password?", description: "The current password stops working immediately.", confirmLabel: "Rotate password", variant: "danger" }))) return;
+        const r = await rotateServiceSecret({ data: { id: s.id, confirm: true } });
         setSecretNote(`New PPPoE password for ${r.username}: ${r.password}`);
-      });
+      })();
     },
     onReveal: (s) => {
       void revealPppoePasswordFn({ data: { id: s.id } }).then((r) => {
@@ -390,7 +398,7 @@ function ServicesPage() {
 
   async function setStatus(id: string, status: ServiceStatus) {
     const verb = status === "suspended" ? "Suspend" : "Restore";
-    if (!window.confirm(`${verb} this service?`)) return;
+    if (!(await askConfirm({ title: `${verb} this service?`, description: `${verb} this service? Access changes immediately.`, confirmLabel: verb, variant: status === "suspended" ? "danger" : "warning" }))) return;
     await setServiceStatus({ data: { id, status } });
     await loadDesk(filters);
   }
@@ -447,7 +455,7 @@ function ServicesPage() {
       if (bulk === "sms") {
         const ids = smsPlan.recipients.map((r) => r.id);
         if (!ids.length) throw new Error("None of the selected services have a valid customer mobile.");
-        if (!window.confirm(`Queue SMS for ${ids.length} customer${ids.length === 1 ? "" : "s"}? ${smsPlan.skipped.length} skipped.`)) {
+        if (!(await askConfirm({ title: "Queue SMS?", description: `Queue SMS for ${ids.length} customer${ids.length === 1 ? "" : "s"}? ${smsPlan.skipped.length} skipped.`, confirmLabel: "Queue SMS", variant: "warning" }))) {
           setBusy(false);
           return;
         }
@@ -457,7 +465,7 @@ function ServicesPage() {
         setBulkNote(`SMS queued for ${res.sms} · failed ${res.failed}`);
       } else if (bulk === "package") {
         if (!bulkPkg) throw new Error("Choose a package");
-        if (!window.confirm(`Change package on ${selectedRows.length} service${selectedRows.length === 1 ? "" : "s"}? Invoices are not created.`)) {
+        if (!(await askConfirm({ title: "Change package?", description: `Change package on ${selectedRows.length} service${selectedRows.length === 1 ? "" : "s"}? Invoices are not created.`, confirmLabel: "Change package", variant: "warning" }))) {
           setBusy(false);
           return;
         }
@@ -466,7 +474,7 @@ function ServicesPage() {
       } else if (bulk === "grace") {
         const targets = selectedRows.filter((s) => s.status !== "terminated" && !s.grace_active);
         if (!targets.length) throw new Error("None of the selected services can receive Grace Period.");
-        if (!window.confirm(`Grant Grace Period to ${targets.length} service${targets.length === 1 ? "" : "s"}?`)) {
+        if (!(await askConfirm({ title: "Grant Grace Period?", description: `Grant Grace Period to ${targets.length} service${targets.length === 1 ? "" : "s"}?`, confirmLabel: "Grant Grace Period", variant: "warning" }))) {
           setBusy(false);
           return;
         }
@@ -581,6 +589,38 @@ function ServicesPage() {
         />
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <SavedViews
+          page="services"
+          current={{ filters: filters as unknown as Record<string, unknown>, columns: hiddenCols, density, sort: { key: filters.sort, dir: filters.dir } }}
+          onApply={(next: ViewSnapshot) => {
+            if (next.density) setDensity(next.density);
+            if (next.columns) setHiddenCols(next.columns);
+            const sort = next.sort || {};
+            patchSearch({
+              ...(next.filters as Partial<typeof filters>),
+              ...(typeof sort.key === "string" ? { sort: sort.key as typeof filters.sort } : {}),
+              ...(sort.dir === "asc" || sort.dir === "desc" ? { dir: sort.dir } : {}),
+            });
+          }}
+        />
+        <ColumnVisibility
+          columns={[
+            { id: "customer", label: "Customer", locked: true },
+            { id: "service", label: "Account", locked: true },
+            { id: "access", label: "Access" },
+            { id: "package", label: "Package" },
+            { id: "identity", label: "Identity" },
+            { id: "location", label: "Location" },
+            { id: "status", label: "Status" },
+            { id: "expiry", label: "Expiry" },
+            { id: "outstanding", label: "Outstanding" },
+          ]}
+          hidden={hiddenCols}
+          onChange={setHiddenCols}
+        />
+        <RowDensity value={density} onChange={setDensity} />
+      </div>
       <ServiceFilterBar
         filters={filters}
         packages={desk?.packages ?? []}
@@ -607,8 +647,8 @@ function ServicesPage() {
                 onClick={() => {
                   const n = selectedRows.filter((s) => s.status === "active" || s.status === "grace").length;
                   if (!n) return;
-                  if (!window.confirm(`Suspend ${n} service${n === 1 ? "" : "s"}?`)) return;
                   void (async () => {
+                    if (!(await askConfirm({ title: "Suspend services?", description: `Suspend ${n} service${n === 1 ? "" : "s"}?`, confirmLabel: "Suspend", variant: "danger" }))) return;
                     setBusy(true);
                     try {
                       for (const s of selectedRows) {
@@ -629,8 +669,8 @@ function ServicesPage() {
                 onClick={() => {
                   const n = selectedRows.filter((s) => s.status === "suspended").length;
                   if (!n) return;
-                  if (!window.confirm(`Restore ${n} service${n === 1 ? "" : "s"}?`)) return;
                   void (async () => {
+                    if (!(await askConfirm({ title: "Restore services?", description: `Restore ${n} service${n === 1 ? "" : "s"}?`, confirmLabel: "Restore", variant: "warning" }))) return;
                     setBusy(true);
                     try {
                       for (const s of selectedRows) {
@@ -664,8 +704,8 @@ function ServicesPage() {
                 onClick={() => {
                   const targets = selectedRows.filter((s) => s.access_method === "pppoe" && (s.status === "pending" || /fail|retry|error/i.test(s.provision_overall)));
                   if (!targets.length) return;
-                  if (!window.confirm(`Retry provisioning on ${targets.length} PPPoE line${targets.length === 1 ? "" : "s"}?`)) return;
                   void (async () => {
+                    if (!(await askConfirm({ title: "Retry provisioning?", description: `Retry provisioning on ${targets.length} PPPoE line${targets.length === 1 ? "" : "s"}?`, confirmLabel: "Retry", variant: "warning" }))) return;
                     setBusy(true);
                     try {
                       for (const s of targets) await retryPppoeProvisionFn({ data: { id: s.id } });
@@ -753,7 +793,11 @@ function ServicesPage() {
       {empty ? (
         <div className="rounded-xl border border-border bg-surface p-8 text-center">
           <p className="text-sm text-muted">
-            {noneYet ? "No services yet." : noSearch ? "No search results." : "No results for the selected filters."}
+            {noneYet
+              ? "No services yet. Add a service when a customer is ready to go online."
+              : noSearch
+                ? "No services match this search."
+                : "No services match these filters."}
           </p>
           <div className="mt-3 flex flex-wrap justify-center gap-2">
             {noneYet && canManage ? <Button onClick={() => setOnboardOpen(true)}>Add service</Button> : null}
@@ -792,6 +836,8 @@ function ServicesPage() {
             sort={filters.sort}
             dir={filters.dir}
             onSort={onSort}
+            density={density}
+            hiddenColumns={hiddenCols}
           />
           <ServiceCards
             rows={rows}

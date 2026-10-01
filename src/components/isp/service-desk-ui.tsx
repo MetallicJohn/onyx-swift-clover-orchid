@@ -24,6 +24,7 @@ import { Select } from "@/components/ui/input";
 import { TablePad, VirtualTableFrame } from "@/components/ui/virtual-scroller";
 import { useTableVirtualizer } from "@/components/ui/use-virtual-scroller";
 import { accessMethodLabel, formatDate, formatMac, remainingLabel } from "@/lib/isp/display";
+import type { ViewDensity } from "@/lib/isp/saved-views";
 import {
   activeServiceFilterCount,
   serviceDeskFilterChips,
@@ -494,7 +495,7 @@ function SortHead({
 }) {
   const active = sort === id;
   return (
-    <th className={cn("px-3 py-2 font-medium", className)}>
+    <th className={cn("px-3 py-2 font-medium", className)} data-col={id}>
       <button
         type="button"
         onClick={() => onSort(id)}
@@ -510,7 +511,7 @@ function SortHead({
 function StatusCell({ s }: { s: ServiceDeskRow }) {
   const reason = suspendReasonLabel(s.suspend_reason);
   return (
-    <td className="px-3 py-2">
+    <td className="px-3 py-2" data-col="status">
       <div className="flex flex-wrap items-center gap-1">
         <Badge tone={statusTone(s.display_status)}>{serviceStatusLabel(s.display_status)}</Badge>
       </div>
@@ -534,6 +535,8 @@ export function ServiceTable({
   sort,
   dir,
   onSort,
+  density = "comfortable",
+  hiddenColumns = [],
 }: {
   rows: ServiceDeskRow[];
   selected: Set<string>;
@@ -546,10 +549,14 @@ export function ServiceTable({
   sort: ServiceDeskSort;
   dir: "asc" | "desc";
   onSort: (id: ServiceDeskSort) => void;
+  density?: ViewDensity;
+  hiddenColumns?: string[];
 }) {
-  const { parentRef, virtualizer, rows: vis, padTop, padBottom } = useTableVirtualizer(rows.length, 56);
+  const estimate = density === "dense" ? 40 : density === "compact" ? 48 : 56;
+  const { parentRef, virtualizer, rows: vis, padTop, padBottom } = useTableVirtualizer(rows.length, estimate);
   return (
-    <VirtualTableFrame parentRef={parentRef} className="hidden rounded-xl bg-surface shadow-card md:block">
+    <div className="table-view hidden md:block" data-density={density} data-hide={hiddenColumns.join(" ")}>
+    <VirtualTableFrame parentRef={parentRef} className="rounded-xl bg-surface shadow-card">
       <table className="w-full min-w-[72rem] text-left text-sm">
         <thead className="sticky top-0 z-10 bg-surface text-xs text-muted">
           <tr>
@@ -562,7 +569,7 @@ export function ServiceTable({
             <SortHead label="Service Account Number" id="service" sort={sort} dir={dir} onSort={onSort} />
             <SortHead label="Access" id="access" sort={sort} dir={dir} onSort={onSort} />
             <SortHead label="Package" id="package" sort={sort} dir={dir} onSort={onSort} />
-            <th className="px-3 py-2 font-medium">Identity</th>
+            <th className="px-3 py-2 font-medium" data-col="identity">Identity</th>
             <SortHead label="Location" id="location" sort={sort} dir={dir} onSort={onSort} />
             <SortHead label="Status" id="status" sort={sort} dir={dir} onSort={onSort} />
             <SortHead label="Expiry" id="expiry" sort={sort} dir={dir} onSort={onSort} />
@@ -597,7 +604,7 @@ export function ServiceTable({
                     />
                   ) : null}
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-3 py-2" data-col="customer">
                   <div className="min-w-0">
                     <Link
                       to="/app/customers/$customerId"
@@ -610,29 +617,29 @@ export function ServiceTable({
                     <div className="text-xs text-muted">{s.customer_phone || "No phone"}</div>
                   </div>
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-3 py-2" data-col="service">
                   <a href={serviceRecordPath(s.id)} className="font-mono text-xs hover:text-accent hover:underline" title={s.account_number || s.id}>
                     {s.account_number || "—"}
                   </a>
                   <div className="text-xs text-muted">{s.router_name || s.package_name}</div>
                 </td>
-                <td className="px-3 py-2 text-muted">
+                <td className="px-3 py-2 text-muted" data-col="access">
                   <div>{accessMethodLabel(s.access_method)}</div>
                   <div className="text-xs">{speedLabel(s.download_mbps, s.upload_mbps)}</div>
                 </td>
-                <td className="max-w-36 truncate px-3 py-2" title={s.package_name}>
+                <td className="max-w-36 truncate px-3 py-2" data-col="package" title={s.package_name}>
                   {s.package_name}
                 </td>
-                <td className="px-3 py-2 font-mono text-xs" title={s.identity}>
+                <td className="px-3 py-2 font-mono text-xs" data-col="identity" title={s.identity}>
                   <div className="truncate">{s.identity}</div>
                   <div className="text-muted">{sessionLabel(s.session_online, s.last_activity)}</div>
                 </td>
-                <td className="max-w-32 truncate px-3 py-2 text-muted" title={s.location || s.pool_name}>
+                <td className="max-w-32 truncate px-3 py-2 text-muted" data-col="location" title={s.location || s.pool_name}>
                   {s.location || s.pool_name || "—"}
                 </td>
                 <StatusCell s={s} />
-                <td className="whitespace-nowrap px-3 py-2">{formatDate(s.access_until || s.period_end)}</td>
-                <td className="px-3 py-2 font-mono tabular-nums">
+                <td className="whitespace-nowrap px-3 py-2" data-col="expiry">{formatDate(s.access_until || s.period_end)}</td>
+                <td className="px-3 py-2 font-mono tabular-nums" data-col="outstanding">
                   <span className={s.overdue ? "text-danger" : undefined}>{kes(s.balance_kes)}</span>
                 </td>
                 <td className="px-2 py-1 text-right">
@@ -645,6 +652,7 @@ export function ServiceTable({
         </tbody>
       </table>
     </VirtualTableFrame>
+    </div>
   );
 }
 

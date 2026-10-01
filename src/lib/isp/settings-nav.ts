@@ -65,3 +65,17 @@ export function parseSettingsSearch(search: Record<string, unknown>): SettingsSe
   const section = wanted && options.includes(wanted) ? wanted : options[0];
   return { tab: mapped.tab, section };
 }
+
+export function sectionForPage(tab: SettingsPageId, raw: unknown) {
+  const options = PAGE_SECTIONS[tab];
+  if (!options) return undefined;
+  const wanted = typeof raw === "string" ? raw : undefined;
+  return wanted && options.includes(wanted) ? wanted : options[0];
+}
+
+/** `/app/settings/payments` → `payments`. Unknown segments are ignored. */
+export function settingsPageFromPath(pathname: string): SettingsPageId | null {
+  const parts = pathname.split("/").filter(Boolean);
+  if (parts[0] !== "app" || parts[1] !== "settings" || !parts[2]) return null;
+  return isSettingsPage(parts[2]) ? parts[2] : null;
+}

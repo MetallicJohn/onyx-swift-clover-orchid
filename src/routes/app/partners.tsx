@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input, Select } from "@/components/ui/input";
 import { addReferral, addReseller, listPartners } from "@/lib/isp/server-ops";
 import { linkReseller, redeemPoints } from "@/lib/isp/server-more";
@@ -67,7 +68,11 @@ function PartnersPage() {
               </div>
             </li>
           ))}
-          {data.loyalty.length === 0 ? <li className="px-4 py-6 text-sm text-muted">Points appear after confirmed payments.</li> : null}
+          {data.loyalty.length === 0 ? (
+            <li className="bg-surface px-4">
+              <EmptyState title="No loyalty points yet" description="Points appear after a confirmed payment on a customer account." />
+            </li>
+          ) : null}
         </ul>
       ) : null}
 
@@ -100,6 +105,11 @@ function PartnersPage() {
             <Button type="submit">Log referral</Button>
           </form>
           <ul className="space-y-2">
+            {data.referrals.length === 0 ? (
+              <li>
+                <EmptyState title="No referrals yet" description="Log a referral when an existing customer brings someone new." />
+              </li>
+            ) : null}
             {data.referrals.map((r) => (
               <li key={r.id} className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3">
                 <div>
@@ -167,6 +177,9 @@ function PartnersPage() {
             </div>
           </form>
           <div className="grid gap-3 md:grid-cols-2">
+            {data.resellers.length === 0 ? (
+              <EmptyState title="No resellers yet" description="Add a reseller when a partner sells connections for this network." />
+            ) : null}
             {data.resellers.map((r) => (
               <article key={r.id} className="rounded-xl border border-border bg-surface p-4">
                 <div className="font-medium">{r.name}</div>

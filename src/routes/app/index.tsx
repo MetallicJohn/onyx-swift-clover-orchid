@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   Activity,
   ArrowDownRight,
@@ -11,6 +11,10 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { NeedsAttention } from "@/components/ui/needs-attention";
+import { SetupChecklist } from "@/components/ui/setup-checklist";
 import { getDashboard } from "@/lib/isp/server";
 import { formatDate } from "@/lib/isp/display";
 import type { DashboardData } from "@/lib/isp/types";
@@ -73,14 +77,14 @@ function churnTone(band: string) {
   return "ok" as const;
 }
 
-function CardHead({ title, to, link }: { title: string; to?: string; link?: string }) {
+function CardHead({ title, to, link }: { title: string; to?: "/app/customers" | "/app/billing" | "/app/services" | "/app/tickets" | "/app/routers"; link?: string }) {
   return (
     <div className="mb-5 flex items-start justify-between gap-3">
       <h2 className="text-base font-medium tracking-tight">{title}</h2>
       {to && link ? (
-        <a href={to} className="min-h-11 text-sm text-accent hover:underline">
+        <Link to={to} className="min-h-11 text-sm text-accent hover:underline">
           {link}
-        </a>
+        </Link>
       ) : null}
     </div>
   );
@@ -158,18 +162,36 @@ function RevenueChart({ days }: { days: DashboardData["revenueDays"] }) {
 
 function Overview() {
   const [data, setData] = useState<DashboardData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    let cancel = false;
+    setError(false);
     getDashboard()
-      .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
-  }, []);
+      .then((next) => {
+        if (!cancel) setData(next);
+      })
+      .catch(() => {
+        if (!cancel) setError(true);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [reloadKey]);
 
   if (error) {
     return (
       <Card>
-        <p className="text-danger">{error}</p>
+        <EmptyState
+          title="Something went wrong"
+          description="We couldn't load the dashboard."
+          action={
+            <Button type="button" onClick={() => setReloadKey((n) => n + 1)}>
+              Try again
+            </Button>
+          }
+        />
       </Card>
     );
   }
@@ -188,6 +210,28 @@ function Overview() {
         </h1>
         <p className="text-sm text-subtle">Collections, access, and network for today.</p>
       </div>
+
+      <NeedsAttention
+        items={[
+          { id: "overdue", count: t.overdueInvoices, label: "Overdue invoices", to: "/app/billing", tone: t.overdueInvoices > 10 ? "critical" : "warning" },
+          { id: "due", count: t.renewalsToday, label: "Services due soon", to: "/app/services", search: { expiring: true }, tone: "attention" },
+          { id: "offline", count: Math.max(0, t.routersTotal - t.routersOnline), label: "Routers offline", to: "/app/routers", tone: "critical" },
+          { id: "leads", count: data.leads.followups, label: "Leads awaiting follow-up", to: "/app/leads", tone: "attention" },
+          { id: "install", count: data.leads.installationPending, label: "Installations in progress", to: "/app/leads", tone: "normal" },
+          { id: "tickets", count: t.urgentTickets, label: "High-priority tickets", to: "/app/tickets", search: { priority: "high" }, tone: "warning" },
+          { id: "suspended", count: t.suspended, label: "Suspended services", to: "/app/services", search: { status: "suspended" }, tone: "attention" },
+        ]}
+      />
+
+      <SetupChecklist
+        steps={[
+          { id: "profile", label: "ISP profile", done: Boolean(data.workspace.tenantName), to: "/app/settings" },
+          { id: "router", label: "Connect first router", done: t.routersTotal > 0, to: "/app/routers" },
+          { id: "customer", label: "Add first customer", done: t.customers > 0, to: "/app/customers" },
+          { id: "billing", label: "Record a payment", done: t.revenueMonth > 0 || t.paymentsTodayCount > 0, to: "/app/billing" },
+          { id: "sms", label: "Review notifications", done: t.noticesToday > 0, to: "/app/notifications" },
+        ]}
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <Kpi
@@ -236,14 +280,14 @@ function Overview() {
           icon={Radio}
           tone={t.atRiskHigh > 0 ? "danger" : t.atRiskMedium > 0 ? "warn" : "ok"}
         />
-        <a href="/app/leads" className="block">
+        <Link to="/app/leads" className="block">
           <Kpi
             label="Leads"
             value={String(data.leads.total)}
             hint={`${data.leads.fresh} new · ${data.leads.conversionRate}% converted. Not included in customer count.`}
             icon={UserPlus}
           />
-        </a>
+        </Link>
       </div>
 
       <Card>
@@ -252,9 +296,9 @@ function Overview() {
             <h2 className="text-base font-medium tracking-tight">Revenue, last 14 days</h2>
             <p className="mt-1 text-sm text-muted">{kes(monthTotal)} confirmed in this window</p>
           </div>
-          <a href="/app/billing" className="min-h-11 text-sm text-accent hover:underline">
+          <Link to="/app/billing" className="min-h-11 text-sm text-accent hover:underline">
             Billing
-          </a>
+          </Link>
         </div>
         {data.revenueDays.every((d) => d.amount === 0) ? <Empty text="No confirmed payments in the last two weeks." /> : <RevenueChart days={data.revenueDays} />}
       </Card>

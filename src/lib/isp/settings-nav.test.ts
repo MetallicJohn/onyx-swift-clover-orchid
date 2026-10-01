@@ -12,7 +12,7 @@ import {
   safeSettingsError,
   SETTINGS_GATEWAYS,
 } from "./settings-feedback.ts";
-import { parseSettingsSearch, SETTINGS_PAGES } from "./settings-nav.ts";
+import { parseSettingsSearch, sectionForPage, settingsPageFromPath, SETTINGS_PAGES } from "./settings-nav.ts";
 
 const emptyMpesa = {
   clientId: "",
@@ -42,6 +42,12 @@ test("settings pages group existing areas and keep legacy links", () => {
   assert.equal(parseSettingsSearch({ tab: "payments", section: "partial" }).section, "partial");
   assert.equal(parseSettingsSearch({ tab: "nope" }).tab, "general");
   assert.equal(parseSettingsSearch({ tab: "notifications", section: "grace" }).section, undefined);
+  assert.equal(settingsPageFromPath("/app/settings/payments"), "payments");
+  assert.equal(settingsPageFromPath("/app/settings"), null);
+  assert.equal(settingsPageFromPath("/app/settings/nope"), null);
+  assert.equal(sectionForPage("payments", "grace"), "grace");
+  assert.equal(sectionForPage("payments", "nope"), "gateways");
+  assert.equal(sectionForPage("staff", "hub"), undefined);
 });
 
 test("gateway status follows a real test, not saved credentials", () => {

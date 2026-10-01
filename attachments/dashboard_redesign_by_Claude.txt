@@ -1,0 +1,1688 @@
+
+# IMPLEMENTATION PROMPT — PRODUCTION ISP DASHBOARD V2
+
+You are working on the existing multi-tenant ISP Management SaaS application.
+
+Implement a **production-ready Dashboard V2** that replaces the current dashboard with an operational dashboard designed for ISP owners, support staff, technicians and administrators.
+
+The uploaded `isp_dashboard_redesign_mockup.html` is the **visual and interaction reference** for the dashboard. Use its hierarchy, density, spacing, status treatment, light/dark behavior and general visual language as the design direction, but implement the dashboard using the application's existing production component system, routing, authentication, RBAC, database and APIs.
+
+## 1. IMPORTANT IMPLEMENTATION RULES
+
+- Do NOT rebuild the application.
+- Do NOT remove working modules.
+- Do NOT replace the existing authentication system.
+- Do NOT create fake/demo-only dashboard data.
+- Do NOT hard-code the mockup values.
+- Use real tenant-scoped database/API data.
+- Preserve existing multi-tenancy.
+- Respect the active tenant context.
+- Respect RBAC.
+- Reuse existing components wherever practical.
+- Do not introduce a second UI framework unnecessarily.
+- Do not create a second dashboard implementation beside the existing one.
+- Do not use localStorage as the source of dashboard data.
+- Dashboard queries must be tenant-isolated.
+- Dashboard must remain performant with thousands of customers/services and large transaction histories.
+- Do not execute expensive unbounded queries on every refresh.
+- Use appropriate aggregation queries, indexes and caching where required.
+- All monetary values must use the application's existing financial/ledger conventions.
+- All dates/times must respect the tenant's configured timezone.
+- All customer data must respect existing privacy/permission rules.
+
+The objective is an **operational command center**, not a collection of decorative statistics.
+
+---
+
+# 2. DASHBOARD INFORMATION HIERARCHY
+
+The dashboard must follow this order:
+
+1. Header
+2. Needs Attention
+3. Four headline metrics
+4. Revenue + Network
+5. Work Queue
+6. Live Activity
+
+On mobile:
+
+1. Header
+2. Needs Attention
+3. 2×2 KPI grid
+4. Work Queue
+5. Revenue
+6. Network
+7. Live Activity
+
+The work queue should receive higher visual priority than secondary analytics on mobile.
+
+---
+
+# 3. HEADER
+
+Create a compact dashboard header.
+
+Display:
+
+- Current date
+- Time-aware greeting
+- Signed-in user's first/display name
+- Period selector
+- Last updated state
+
+Example:
+
+`Thursday, 1 Oct`
+
+`Good afternoon, Wanjiru`
+
+IMPORTANT:
+
+The greeting must use the **authenticated person's name**, not the tenant/company name.
+
+Do not display:
+
+`Good afternoon, IMANI NETWORKS`
+
+Display:
+
+`Good afternoon, Wanjiru`
+
+## Period selector
+
+Implement:
+
+- Today
+- 7d
+- 30d
+
+The selected period must control:
+
+- KPI comparison context
+- Revenue chart range
+- Revenue comparison period
+- Appropriate dashboard activity aggregation
+
+Persist the selected period only as a UI preference if appropriate; it must not become tenant data.
+
+Use accessible segmented-control semantics.
+
+Keyboard navigation must work.
+
+Changing the period must:
+
+- update the selected state immediately
+- preserve layout
+- show loading/skeleton state where necessary
+- avoid flashing unrelated dashboard sections
+- maintain URL/query state if the application's routing architecture supports it
+
+---
+
+# 4. NEEDS ATTENTION STRIP
+
+This is the highest-priority dashboard component.
+
+It should contain ONLY actionable problems or risks.
+
+Potential categories:
+
+### Routers offline
+
+Show:
+
+- number offline
+- relevant router/location names
+- offline duration when useful
+
+Example:
+
+`2 routers offline`
+`Kileleshwa, Ruaka`
+
+Clicking the chip must navigate to the router/network page with the correct filter already applied.
+
+Example conceptual route:
+
+`/routers?status=offline`
+
+Do not simply navigate to the unfiltered router list.
+
+---
+
+### Overdue invoices
+
+Show:
+
+- overdue invoice count
+- total overdue amount
+
+Example:
+
+`14 overdue`
+`KES 86,400`
+
+Clicking it should open Billing/Invoices already filtered to overdue invoices.
+
+---
+
+### Urgent/past-SLA tickets
+
+Show:
+
+- urgent ticket count
+- past-SLA count where applicable
+
+Clicking should open Ticket Desk with the relevant filters.
+
+---
+
+### High churn risk
+
+Show:
+
+- high-risk customer count
+- appropriate action context
+
+Example:
+
+`9 high churn risk`
+`Contact today`
+
+Clicking should open the relevant customer/churn-risk view.
+
+---
+
+## Healthy state
+
+If there is nothing requiring attention:
+
+DO NOT show four empty chips.
+
+Collapse the entire section into one compact healthy state:
+
+`✓ All clear`
+
+Optionally show:
+
+`No urgent operational issues`
+
+This should be visually quiet.
+
+---
+
+## Attention priority
+
+Sort attention categories by operational severity.
+
+Suggested priority:
+
+1. Critical network outages
+2. Past-SLA/urgent tickets
+3. Severe billing exposure
+4. High churn risk
+
+Do not create arbitrary numerical severity scores in the UI.
+
+---
+
+# 5. FOUR HEADLINE METRICS
+
+Display exactly four primary KPI cards:
+
+### 1. Collected today
+
+Display:
+
+- amount collected
+- comparison
+
+Example:
+
+`KES 48,200`
+
+`+12% vs previous comparable period`
+
+For Today, compare against the appropriate previous comparable day.
+
+For 7d, compare against the preceding 7-day period.
+
+For 30d, compare against the preceding 30-day period.
+
+---
+
+### 2. Active subscribers
+
+Display:
+
+- current active subscriber/service population
+- period comparison
+
+Example:
+
+`1,284`
+
+`+18 vs previous period`
+
+Define "active subscriber" consistently with the existing service lifecycle rules.
+
+Do not count:
+
+- leads
+- cancelled services
+- expired/inactive services where business rules classify them inactive
+- duplicate customer records
+
+---
+
+### 3. Online now
+
+Display:
+
+- current online subscriber/session count
+- percentage of active subscribers where meaningful
+
+Example:
+
+`932`
+
+`72% of active`
+
+This metric represents current network/session state rather than a historical period total.
+
+It may therefore remain real-time even when 7d/30d is selected.
+
+---
+
+### 4. Outstanding
+
+Display:
+
+- outstanding receivable amount
+- comparison against previous period where meaningful
+
+Example:
+
+`KES 212k`
+
+`+4% vs previous period`
+
+Use the application's authoritative invoice/ledger state.
+
+Do not derive outstanding simply by summing arbitrary invoice rows without respecting:
+
+- payments
+- allocations
+- credit notes
+- cancellations
+- write-offs
+- adjustments
+
+---
+
+## KPI design rules
+
+Remove decorative oversized KPI icons.
+
+Use:
+
+- compact typography
+- strong number
+- short label
+- one comparison line
+
+Cards must be clickable.
+
+Clicking a KPI must lead to the relevant detailed page.
+
+Examples:
+
+Collected → Payments/Billing
+
+Active subscribers → Services/Customers
+
+Online now → Online sessions/network view
+
+Outstanding → Overdue/outstanding invoices
+
+Use router-aware navigation APIs.
+
+Do NOT use raw:
+
+`<a href="">`
+
+where the application uses client-side routing.
+
+---
+
+# 6. REVENUE ANALYTICS
+
+Replace the hand-built/mock SVG bar chart with a real chart component already supported by the application.
+
+If no chart library exists, introduce a lightweight production-appropriate chart library rather than building a fragile custom chart.
+
+The chart must support:
+
+- Today
+- 7d
+- 30d
+- hover tooltip
+- exact values
+- X-axis labels
+- Y-axis labels
+- accessible chart labeling
+- responsive resizing
+- light mode
+- dark mode
+
+---
+
+## Current-period vs previous-period
+
+Display the current period against the immediately preceding comparable period.
+
+Example:
+
+Current:
+
+`1–7 Oct`
+
+Previous:
+
+`24–30 Sep`
+
+The comparison must use the same number of days.
+
+For Today:
+
+compare the appropriate comparable previous day.
+
+For 7d:
+
+compare previous 7 days.
+
+For 30d:
+
+compare previous 30 days.
+
+Do not compare arbitrary calendar ranges.
+
+---
+
+## Revenue chart
+
+The chart should communicate:
+
+- current-period revenue
+- previous-period revenue
+- trend difference
+
+Use a visually distinguishable current period and previous period.
+
+Do not rely solely on color.
+
+The legend must be understandable in both light and dark modes.
+
+---
+
+# 7. PAYMENT METHOD SPLIT
+
+Show revenue/payment-method composition alongside the revenue chart.
+
+At minimum support:
+
+- M-Pesa
+- Cash
+- Bank
+
+The architecture must allow additional payment methods later.
+
+Example:
+
+`M-Pesa 81%`
+`Cash 12%`
+`Bank 7%`
+
+These percentages must be calculated from actual successful/posted payments for the selected period.
+
+Do not include:
+
+- failed transactions
+- pending STK requests
+- reversed payments
+- duplicate callbacks
+- unconfirmed payments
+
+Use the authoritative payment/ledger state.
+
+---
+
+# 8. NETWORK PANEL
+
+Replace the current equal-sized router cards/grid with a compact operational list.
+
+Sort routers by severity:
+
+1. Offline
+2. Critical/high resource utilization
+3. Warning
+4. Healthy
+
+A healthy router should occupy minimal space.
+
+Each row should show:
+
+- status dot
+- router name
+- location/POP where available
+- CPU utilization
+- offline duration if offline
+- optional memory/session information when useful
+
+Example:
+
+`● Kileleshwa`
+`Offline 14m`
+
+`● Ruaka edge`
+`CPU 88%`
+
+`● Karen POP`
+`CPU 54%`
+
+`● Westlands core`
+`CPU 31%`
+
+The uploaded mockup follows this compact network-list approach rather than equal dashboard cards.
+
+---
+
+## Router status
+
+Use the application's actual router monitoring state.
+
+Do not infer "online" merely because a router record exists.
+
+Where router monitoring data has a timestamp, calculate offline duration from the last successful heartbeat/check.
+
+If monitoring data is unavailable, show an explicit state such as:
+
+`Status unavailable`
+
+rather than falsely displaying healthy.
+
+---
+
+## Router navigation
+
+Clicking a router opens its existing detail page.
+
+Use client-side routing.
+
+---
+
+# 9. WORK QUEUE
+
+Combine operational tasks from:
+
+- renewals
+- overdue accounts
+- tickets
+- churn-risk actions
+- provisioning
+- installation tasks where applicable
+
+Do NOT create several independent lists.
+
+Create one unified:
+
+`Work queue`
+
+Each row must contain:
+
+- subject/customer
+- context
+- due/urgency
+- next action
+- action button
+
+Example:
+
+`Mercy Atieno`
+`Home 10 Mbps · expires today`
+`Remind`
+
+Another:
+
+`Brightpath School`
+`INV-0412 · 5 days overdue`
+`Send SMS`
+
+Another:
+
+`Ken Otieno`
+`Ticket · no internet, Ruaka`
+`Assign`
+
+The uploaded mockup establishes this operational "Work queue" concept with explicit next actions.
+
+---
+
+# 10. WORK QUEUE ACTIONS
+
+Actions must be real application actions.
+
+Examples:
+
+### Remind
+
+Open the existing customer communication flow or appropriate confirmation dialog.
+
+Do not directly send an SMS without confirmation if existing permission/business rules require confirmation.
+
+### Send SMS
+
+Use the existing SMS service abstraction.
+
+Show:
+
+- confirmation
+- recipient
+- message/template
+- sending state
+- success/failure toast
+
+### Assign
+
+Open the existing assignment dialog.
+
+Allow assignment to appropriate staff/technician.
+
+After successful action:
+
+- update the queue
+- show success toast
+- avoid full-page reload
+
+---
+
+# 11. WORK QUEUE DATA
+
+The queue must be generated from actual outstanding work.
+
+Potential sources:
+
+- services expiring soon
+- overdue invoices
+- urgent tickets
+- past-SLA tickets
+- high churn-risk customers
+- pending installations
+- failed provisioning jobs
+- offline network incidents
+
+Do not simply show the last three database records.
+
+Rank tasks by:
+
+- urgency
+- SLA
+- financial/customer impact
+- age
+- role relevance
+
+The exact ranking should be deterministic and documented.
+
+---
+
+# 12. ROLE-BASED DASHBOARD
+
+The dashboard layout must respect RBAC.
+
+Do not create separate dashboards as separate pages.
+
+Create a common dashboard shell with role-aware sections/order.
+
+## Owner / Administrator
+
+Prioritize:
+
+1. Needs attention
+2. Revenue
+3. Active subscribers
+4. Outstanding
+5. Churn risk
+6. Network
+7. Work queue
+8. Activity
+
+The owner should see financial information only if permitted by RBAC.
+
+---
+
+## Support agent
+
+Prioritize:
+
+1. Needs attention
+2. Urgent tickets
+3. Offline routers
+4. Work queue
+5. Customer/service issues
+6. Activity
+
+Hide or reduce financial metrics if the role does not have permission.
+
+Do NOT leak revenue/outstanding amounts through hidden-but-rendered HTML.
+
+---
+
+## Technician
+
+Prioritize:
+
+1. Needs attention
+2. Offline routers
+3. Assigned work
+4. Field jobs
+5. Network status
+6. Relevant activity
+
+Do not expose financial information if the technician lacks permission.
+
+---
+
+## RBAC implementation
+
+Use the application's existing `rbac` system.
+
+Do not hard-code roles throughout dashboard components.
+
+Create a dashboard configuration/visibility layer, for example:
+
+- section visibility
+- section order
+- KPI visibility
+- permitted actions
+
+The backend must enforce permissions as well.
+
+Frontend hiding is NOT authorization.
+
+---
+
+# 13. NEW TENANT SETUP CHECKLIST
+
+A new tenant should not see a meaningless empty dashboard.
+
+Until the tenant has the necessary foundations, show a setup checklist at the top.
+
+Possible checks:
+
+- Company profile configured
+- Payment gateway configured
+- At least one package/product created
+- At least one router/network device connected
+- First customer created
+- Payment method configured
+
+Show:
+
+`Get your ISP ready`
+
+with progress such as:
+
+`3 of 6 complete`
+
+Each checklist item should have:
+
+- status
+- explanation
+- next action
+- button/link to the appropriate configuration page
+
+Examples:
+
+`Connect a payment gateway`
+`Configure M-Pesa or another payment method`
+`Configure payment methods`
+
+`Add your first router`
+`Connect a MikroTik/router to begin network monitoring`
+
+`Create your first package`
+`Define the services you sell`
+
+`Add your first customer`
+
+---
+
+## Checklist behavior
+
+Once all foundational checks are complete:
+
+- automatically hide the checklist
+- never permanently block the dashboard
+- allow access to setup/configuration from Settings later
+
+Do not count leads as customers for the "first customer" check.
+
+---
+
+# 14. EMPTY STATES
+
+Every dashboard section must have a real empty state.
+
+Examples:
+
+### No attention items
+
+`All clear`
+`No urgent operational issues.`
+
+### No revenue
+
+`No payments recorded for this period.`
+
+Action:
+
+`View payments`
+
+### No routers
+
+`No routers connected yet.`
+
+Action:
+
+`Add router`
+
+### No work
+
+`Nothing needs your attention right now.`
+
+### No activity
+
+`No recent activity.`
+
+Action where relevant:
+
+`View activity`
+
+Empty states must provide useful next steps.
+
+Do not use:
+
+`No data`
+
+as the only message.
+
+---
+
+# 15. LOADING STATES
+
+Implement dashboard skeletons matching the final layout.
+
+Do NOT show a full-page spinner for routine refreshes.
+
+Skeleton areas:
+
+- header state
+- attention strip
+- KPI cards
+- revenue chart
+- network rows
+- work queue rows
+- activity rows
+
+The layout dimensions should remain stable during loading.
+
+Avoid layout shifts.
+
+---
+
+# 16. AUTO REFRESH
+
+Implement quiet dashboard refresh.
+
+Default:
+
+`30–60 seconds`
+
+Prefer approximately 60 seconds for expensive aggregate queries unless real-time network/session data requires a shorter polling interval.
+
+Separate fast-changing data from slower aggregates.
+
+For example:
+
+### Fast
+
+- online sessions
+- router health
+
+### Medium
+
+- attention counts
+- work queue
+
+### Slow
+
+- revenue aggregates
+- payment method breakdown
+- historical comparisons
+
+Do not reload the entire page.
+
+---
+
+## Updated indicator
+
+Show:
+
+`Updated just now`
+
+Then:
+
+`Updated 1m ago`
+
+etc.
+
+When refresh occurs:
+
+- preserve scroll position
+- preserve selected period
+- preserve expanded/collapsed state
+- preserve user interaction
+- do not flash skeletons over already-rendered data unless the data is unavailable
+
+---
+
+# 17. REFRESH ERROR HANDLING
+
+If a background refresh fails:
+
+Do not destroy the currently displayed data.
+
+Show a subtle state:
+
+`Couldn't refresh`
+
+with:
+
+`Retry`
+
+Keep the previous successful data visible.
+
+Do not turn the dashboard into an error page because one polling request failed.
+
+---
+
+# 18. MOBILE DESIGN
+
+Responsive behavior is mandatory.
+
+For mobile:
+
+### First
+
+Needs Attention
+
+### Second
+
+2×2 KPI grid
+
+### Third
+
+Work Queue
+
+### Fourth
+
+Revenue
+
+### Fifth
+
+Network
+
+### Sixth
+
+Live Activity
+
+Secondary sections may be collapsible.
+
+Work Queue should remain immediately accessible because technicians/support staff may use the dashboard on phones.
+
+---
+
+## Mobile interactions
+
+Ensure:
+
+- touch targets ≥ appropriate accessibility minimum
+- no horizontal page overflow
+- KPI values don't clip
+- chart remains readable
+- work queue actions remain easy to tap
+- attention chips wrap naturally
+- router rows remain compact
+- bottom navigation remains compatible with the dashboard
+
+---
+
+# 19. DESKTOP LAYOUT
+
+Use a compact grid.
+
+Suggested conceptual structure:
+
+HEADER
+
+ATTENTION
+
+4 KPI CARDS
+
+┌──────────────────────────────┬────────────────────┐
+│                              │                    │
+│ Revenue / comparison chart   │ Network             │
+│ + payment split              │ router list         │
+│                              │                    │
+└──────────────────────────────┴────────────────────┘
+
+┌──────────────────────────────┬────────────────────┐
+│ Work queue                   │ Live activity       │
+│                              │                    │
+└──────────────────────────────┴────────────────────┘
+
+Do not make every section equal height.
+
+The dashboard should prioritize operational information density.
+
+---
+
+# 20. DESIGN LANGUAGE
+
+Use the uploaded mockup as the reference for:
+
+- compact cards
+- subtle borders
+- restrained shadows
+- typography hierarchy
+- status colors
+- compact list rows
+- light/dark mode
+- attention chips
+- spacing
+- focus states
+
+The mockup uses a compact card/list treatment, status tokens and dedicated chart/status color tokens.
+
+However:
+
+DO NOT copy the HTML mockup literally.
+
+Translate the design into the existing application's reusable React/component architecture.
+
+Avoid excessive:
+
+- rounded cards
+- decorative icons
+- gradients
+- oversized padding
+- unnecessary illustrations
+
+The dashboard should feel like professional ISP operations software.
+
+---
+
+# 21. DARK MODE
+
+Dashboard must support existing application dark mode.
+
+All:
+
+- cards
+- borders
+- text
+- status indicators
+- charts
+- tooltips
+- empty states
+- skeletons
+
+must remain readable.
+
+Do not hard-code colors that break dark mode.
+
+Use the application's design tokens.
+
+The reference mockup contains explicit light/dark surface, text, status and chart token definitions.
+
+---
+
+# 22. ACCESSIBILITY
+
+Implement:
+
+- semantic headings
+- keyboard navigation
+- visible focus states
+- accessible segmented period control
+- accessible KPI links/buttons
+- accessible chart label
+- screen-reader labels for status indicators
+- no information communicated by color alone
+- sufficient contrast
+- reduced-motion support
+- accessible loading states
+- accessible empty states
+
+Do not make entire cards clickable if that causes poor keyboard behavior.
+
+Use proper buttons/links according to action type.
+
+---
+
+# 23. DASHBOARD API ARCHITECTURE
+
+Do not make the frontend issue dozens of independent queries on initial load.
+
+Create a dashboard data layer.
+
+Conceptually:
+
+`GET /api/v1/dashboard?period=today`
+
+or equivalent server-function architecture already used by the application.
+
+Return structured data such as:
+
+```ts
+{
+  period,
+  generatedAt,
+
+  attention: {
+    routersOffline,
+    overdueInvoices,
+    urgentTickets,
+    pastSlaTickets,
+    highChurnRisk
+  },
+
+  metrics: {
+    collected,
+    collectedComparison,
+    activeSubscribers,
+    activeSubscribersComparison,
+    onlineNow,
+    onlinePercentage,
+    outstanding,
+    outstandingComparison
+  },
+
+  revenue: {
+    currentPeriod,
+    previousPeriod,
+    series,
+    paymentMethods
+  },
+
+  network: [],
+
+  workQueue: [],
+
+  activity: [],
+
+  setup: {
+    required,
+    completed,
+    items
+  }
+}
+```
+
+Adapt this to the project's actual API architecture rather than blindly creating this exact endpoint.
+
+---
+
+# 24. QUERY PERFORMANCE
+
+Dashboard queries must be production-safe.
+
+Review existing indexes for:
+
+- tenant_id
+- invoice status
+- invoice due date
+- payment posted date
+- payment status
+- service status
+- service expiry
+- router status/heartbeat
+- ticket priority/status/SLA
+- churn-risk state
+- activity timestamps
+
+Avoid:
+
+- N+1 customer queries
+- querying all payments and calculating aggregates in JavaScript
+- querying all customers to count active subscribers
+- querying all tickets and filtering in React
+
+Perform aggregation in the database.
+
+Use pagination/limits for lists.
+
+---
+
+# 25. CACHING
+
+Where appropriate:
+
+Cache expensive historical dashboard aggregates for a short period.
+
+Do not cache:
+
+- tenant data across tenants
+- permission-sensitive data without tenant/user isolation
+- real-time router/session state longer than acceptable
+
+Cache keys must include:
+
+- tenant ID
+- relevant user/role scope where necessary
+- period
+- dashboard version/data version if required
+
+---
+
+# 26. TENANT ISOLATION
+
+Every dashboard query must explicitly respect active tenant context.
+
+Never use:
+
+- first tenant
+- global customer count
+- global invoice aggregation
+- global router query
+
+If PostgreSQL RLS has been implemented, ensure dashboard queries work correctly with RLS.
+
+---
+
+# 27. FINANCIAL DATA CORRECTNESS
+
+Dashboard financial figures must use authoritative financial records.
+
+Collected revenue must reconcile with:
+
+- posted/confirmed payments
+- payment allocations
+- reversals
+- refunds
+- credit adjustments
+
+Do not count M-Pesa STK initiation as collected revenue.
+
+Do not count pending payments.
+
+This dashboard must not introduce a second financial calculation model.
+
+---
+
+# 28. ONLINE SESSION CORRECTNESS
+
+"Online now" must come from the application's actual network/session source.
+
+Potential sources include:
+
+- RADIUS active sessions
+- MikroTik active PPPoE sessions
+- Hotspot active sessions
+- other supported access technologies
+
+Do not simply use:
+
+`active customers`
+
+as:
+
+`online now`.
+
+Where multiple access technologies exist, aggregate them without double-counting.
+
+---
+
+# 29. ACTIVITY FEED
+
+Place Live Activity at the bottom.
+
+Show time-ordered events such as:
+
+- payment received
+- service provisioned
+- router alert
+- customer created
+- ticket created
+- provisioning event
+- important system event
+
+Each item:
+
+- timestamp
+- event type
+- concise description
+
+Example:
+
+`KES 2,500 from Peter Mwangi`
+`2m`
+
+`New service provisioned`
+`6m`
+
+`Router alert: Ruaka edge`
+`9m`
+
+Do not turn this into a complete audit-log browser.
+
+Provide:
+
+`View all activity`
+
+when appropriate.
+
+---
+
+# 30. ACTIVITY DATA
+
+Use an event/activity source already present in the system.
+
+If an event system exists, consume it.
+
+Do not duplicate every business record into a new activity table unless necessary.
+
+If a new dashboard activity projection is required, document:
+
+- event source
+- retention
+- tenant isolation
+- indexing
+- event types
+
+---
+
+# 31. NO DECORATIVE DUPLICATION
+
+Remove/demote dashboard items that duplicate existing pages.
+
+Do NOT add separate dashboard cards for:
+
+- Leads
+- Customers
+- New connections
+- Packages
+- Tickets
+- Services
+
+unless they represent an actionable exception.
+
+The dashboard should answer:
+
+**What needs my attention?**
+
+**How is the business performing?**
+
+**What should I do next?**
+
+**Is the network healthy?**
+
+Not:
+
+**How many pages/modules exist?**
+
+---
+
+# 32. ACTION SAFETY
+
+Dashboard actions must use existing shared UI patterns.
+
+Use:
+
+- shared ConfirmDialog
+- toast notifications
+- async loading states
+- error states
+- permission checks
+
+Do NOT use:
+
+- `window.confirm()`
+- `window.prompt()`
+- browser alert dialogs
+
+For destructive/important operations:
+
+1. Open ConfirmDialog.
+2. Keep it open while the action executes.
+3. Show loading state.
+4. Disable conflicting actions.
+5. On success, close dialog and show toast.
+6. On failure, keep dialog open and show the error.
+
+---
+
+# 33. ROUTING
+
+All dashboard navigation must use the application's routing system.
+
+Attention filters should preserve filters in URL/query parameters.
+
+KPI links should open the appropriate filtered page.
+
+Router links should open router detail.
+
+Work queue actions should open the relevant workflow or execute the action directly.
+
+Do not cause full browser reloads.
+
+---
+
+# 34. REAL DATA FALLBACKS
+
+If a particular data source is not yet implemented:
+
+DO NOT fabricate production values.
+
+Instead show a truthful state:
+
+`Network monitoring unavailable`
+
+or:
+
+`Revenue data unavailable`
+
+and provide a relevant configuration/action link.
+
+Demo seed data may only be used in explicit development/demo environments.
+
+Never allow demo values into production.
+
+---
+
+# 35. TESTING
+
+Create/update tests for:
+
+### Tenant isolation
+
+Tenant A cannot see Tenant B dashboard data.
+
+### RBAC
+
+Owner sees authorized financial metrics.
+
+Support agent cannot receive unauthorized financial data through API responses.
+
+Technician receives only authorized network/work information.
+
+### KPI correctness
+
+Collected amount.
+
+Active subscribers.
+
+Online sessions.
+
+Outstanding.
+
+### Period comparisons
+
+Today.
+
+7d.
+
+30d.
+
+Previous comparable period.
+
+### Revenue
+
+Current period.
+
+Previous period.
+
+Payment method split.
+
+M-Pesa.
+
+Cash.
+
+Bank.
+
+### Attention
+
+Offline routers.
+
+Overdue invoices.
+
+Urgent tickets.
+
+Past SLA.
+
+High churn risk.
+
+All-clear state.
+
+### Work queue
+
+Correct tasks.
+
+Correct ordering.
+
+Correct actions.
+
+Permission checks.
+
+### Auto refresh
+
+Data refreshes without page reload.
+
+Scroll position remains stable.
+
+### Failure
+
+Failed polling does not erase existing data.
+
+### Mobile
+
+Responsive layout.
+
+### Accessibility
+
+Keyboard navigation.
+
+ARIA labels.
+
+Focus states.
+
+### Empty state
+
+No customers.
+
+No payments.
+
+No routers.
+
+No tickets.
+
+No work.
+
+### Setup checklist
+
+New tenant.
+
+Partially configured tenant.
+
+Fully configured tenant.
+
+### Performance
+
+Large tenant dataset.
+
+Thousands of customers.
+
+Thousands of services.
+
+Large invoice/payment history.
+
+Large ticket history.
+
+---
+
+# 36. ACCEPTANCE CRITERIA
+
+The implementation is complete only when:
+
+- Dashboard greets the signed-in person by name.
+- Today/7d/30d changes dashboard period context.
+- Needs Attention is the first operational section.
+- Attention chips are actionable and filtered.
+- Healthy state collapses to All clear.
+- Exactly four primary KPI cards are displayed.
+- KPI values are real and tenant-scoped.
+- KPI comparisons use appropriate previous periods.
+- Revenue uses a proper interactive chart.
+- Previous period is visible.
+- Payment method split includes M-Pesa, Cash and Bank.
+- Network is a compact worst-first router list.
+- Offline duration is shown where available.
+- Work queue combines actionable tasks.
+- Work queue actions work without leaving the dashboard unnecessarily.
+- Live activity is secondary and appears lower on the page.
+- Role-based visibility/order works through RBAC.
+- Unauthorized financial data is not returned to unauthorized users.
+- New tenants receive a useful setup checklist.
+- Empty states contain next actions.
+- Skeletons match the final layout.
+- Background refresh works without layout jumps.
+- Last-updated state is visible.
+- Mobile order prioritizes work queue.
+- Light/dark mode works.
+- Keyboard/accessibility requirements pass.
+- No hard-coded production dashboard numbers remain.
+- No `window.confirm()` or `window.prompt()` is introduced.
+- No raw `<a href>` navigation is used where SPA routing is required.
+- Existing working application features remain intact.
+- Existing authentication, tenant context and RBAC remain intact.
+- Typecheck passes.
+- Lint passes.
+- Tests pass.
+- Production build passes.
+
+---
+
+# 37. IMPLEMENTATION WORKFLOW
+
+Before modifying code:
+
+1. Inspect the existing dashboard implementation.
+2. Identify existing dashboard queries/data loaders.
+3. Identify existing customer/service/invoice/payment/ticket/router/session models.
+4. Identify existing RBAC helpers.
+5. Identify existing routing system.
+6. Identify existing chart library, if any.
+7. Identify existing design-system components.
+8. Identify existing toast/ConfirmDialog components.
+9. Identify existing tenant-context implementation.
+10. Reuse existing infrastructure wherever possible.
+
+Then implement:
+
+### Phase A
+Dashboard shell and period state.
+
+### Phase B
+Needs Attention.
+
+### Phase C
+Four KPIs.
+
+### Phase D
+Revenue chart and payment split.
+
+### Phase E
+Network panel.
+
+### Phase F
+Work Queue.
+
+### Phase G
+Live Activity.
+
+### Phase H
+Role-based dashboard configuration.
+
+### Phase I
+Tenant setup checklist.
+
+### Phase J
+Loading/empty/error states.
+
+### Phase K
+Auto-refresh.
+
+### Phase L
+Responsive/mobile behavior.
+
+### Phase M
+Accessibility and dark-mode refinement.
+
+### Phase N
+Performance optimization.
+
+### Phase O
+Tests and production verification.
+
+Do not stop at a visual mockup.
+
+All dashboard sections must be wired to real application data.
+
+---
+
+# 38. FINAL QUALITY CHECK
+
+After implementation, inspect the dashboard as:
+
+1. Owner
+2. Support agent
+3. Technician
+4. New tenant
+5. Tenant with no routers
+6. Tenant with overdue invoices
+7. Tenant with network outage
+8. Tenant with no work
+9. Mobile viewport
+10. Dark mode
+
+Verify that each experience presents the right information without leaking unauthorized data.
+
+The final dashboard should feel like an **ISP operations command center**, not a generic SaaS analytics dashboard.
+
+Do not add more KPIs simply because data is available.
+
+The dashboard's purpose is prioritization, operational awareness and immediate action.
+
+STOP only after implementation, testing, typechecking, linting and production-build verification are complete. Then provide a concise implementation summary listing:
+
+- files changed
+- database/API changes
+- dashboard queries added/changed
+- RBAC changes
+- tests added
+- performance considerations
+- any genuinely blocked integration
+- verification results
+
+Do not claim completion for functionality that remains mocked or incomplete.

@@ -1,18 +1,22 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   BarChart3,
+  Bell,
   Boxes,
   CreditCard,
+  FileText,
   Handshake,
   Import,
   LayoutDashboard,
   Menu,
   Radio,
+  RadioTower,
   Router,
   Settings,
   Sparkles,
   Ticket,
   Trash2,
+  UserPlus,
   Users,
   Wifi,
   Wrench,
@@ -22,6 +26,9 @@ import {
 } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { BrandMark } from "@/components/isp/brand-mark";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
+import { CommandPalette } from "@/components/ui/command-palette";
+import { MobileBottomNav } from "@/components/ui/mobile-nav";
 import { SidebarCollapseButton, SidebarNav, useSidebarCollapsed, type SidebarNavItem } from "@/components/sidebar-nav";
 import { UserButton } from "@/lib/auth/gates";
 import { hasGateSessionMarker } from "@/lib/auth/gate-session-marker";
@@ -29,32 +36,53 @@ import { APP_NAME } from "@/lib/brand";
 import { canAccessAppPath, ROLE_GUIDE } from "@/lib/isp/rbac";
 import { endSaasSupport, getMyEntitlements } from "@/lib/isp/server-platform";
 
-const NAV: SidebarNavItem[] = [
-  { to: "/app", label: "Overview", icon: LayoutDashboard },
+const GROUPS: { label: string; items: SidebarNavItem[] }[] = [
+  { label: "Overview", items: [{ to: "/app", label: "Dashboard", icon: LayoutDashboard }] },
   {
-    to: "/app/customers",
-    label: "Customers",
-    icon: Users,
-    children: [
-      { to: "/app/customers", label: "Customers" },
-      { to: "/app/leads", label: "Leads" },
+    label: "CRM",
+    items: [
+      { to: "/app/customers", label: "Customers", icon: Users },
+      { to: "/app/leads", label: "Leads", icon: UserPlus },
+      { to: "/app/tickets", label: "Tickets", icon: Ticket },
     ],
   },
-  { to: "/app/packages", label: "Packages", icon: Boxes },
-  { to: "/app/services", label: "Services", icon: Wifi },
-  { to: "/app/radius", label: "RADIUS", icon: Radio },
-  { to: "/app/hotspot", label: "Hotspot", icon: Wifi },
-  { to: "/app/billing", label: "Billing", icon: CreditCard },
-  { to: "/app/reports", label: "Insights", icon: BarChart3 },
-  { to: "/app/statements", label: "Statements", icon: CreditCard },
-  { to: "/app/routers", label: "Routers", icon: Router },
-  { to: "/app/acs", label: "Devices", icon: Activity },
-  { to: "/app/ai", label: "AI MikroTik", icon: Sparkles },
-  { to: "/app/field", label: "Field", icon: Wrench },
-  { to: "/app/tickets", label: "Tickets", icon: Ticket },
-  { to: "/app/partners", label: "Partners", icon: Handshake },
-  { to: "/app/import", label: "Import", icon: Import },
-  { to: "/app/settings", label: "Settings", icon: Settings },
+  {
+    label: "Network",
+    items: [
+      { to: "/app/routers", label: "Routers", icon: Router },
+      { to: "/app/acs", label: "Devices", icon: Activity },
+      { to: "/app/radius", label: "RADIUS", icon: Radio },
+      { to: "/app/ai", label: "AI MikroTik", icon: Sparkles },
+    ],
+  },
+  {
+    label: "Services",
+    items: [
+      { to: "/app/packages", label: "Packages", icon: Boxes },
+      { to: "/app/services", label: "Services", icon: Wifi },
+      { to: "/app/hotspot", label: "Hotspot", icon: RadioTower },
+    ],
+  },
+  {
+    label: "Billing",
+    items: [
+      { to: "/app/billing", label: "Invoices", icon: CreditCard },
+      { to: "/app/statements", label: "Statements", icon: FileText },
+      { to: "/app/reports", label: "Reports", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "Communications",
+    items: [{ to: "/app/notifications", label: "Notifications", icon: Bell }],
+  },
+  {
+    label: "Field",
+    items: [
+      { to: "/app/field", label: "Field", icon: Wrench },
+      { to: "/app/partners", label: "Partners", icon: Handshake },
+      { to: "/app/import", label: "Import", icon: Import },
+    ],
+  },
 ];
 
 const RECYCLE_BIN: SidebarNavItem = { to: "/app/recycle-bin", label: "Recycle Bin", icon: Trash2 };
@@ -108,19 +136,15 @@ export function AppShell({
     "/app/partners": "reseller",
     "/app/reports": "reports",
   };
-  const visible = NAV.flatMap((item) => {
-    const feat = featureNav[item.to];
-    if (feat && Object.keys(features).length > 0 && !features[feat]) return [];
-    const children = (item.children || []).filter((child) => canAccessAppPath(role, child.to));
-    const self = canAccessAppPath(role, item.to);
-    if (!self && children.length === 0) return [];
-    if (!self) {
-      const first = children[0];
-      if (!first) return [];
-      return [{ ...item, to: first.to, label: first.label, children: children.length > 1 ? children : undefined }];
-    }
-    return [{ ...item, children: children.length > 1 ? children : undefined }];
-  });
+  const groups = GROUPS.map((group) => {
+    const items = group.items.flatMap((item) => {
+      const feat = featureNav[item.to];
+      if (feat && Object.keys(features).length > 0 && !features[feat]) return [];
+      if (!canAccessAppPath(role, item.to)) return [];
+      return [item];
+    });
+    return { ...group, items };
+  }).filter((group) => group.items.length > 0);
   const allowed = canAccessAppPath(role, pathname);
   const showRecycleBin = canAccessAppPath(role, RECYCLE_BIN.to);
   const roleLabel = ROLE_GUIDE.find((row) => row.role === role)?.label || role?.replaceAll("_", " ");
@@ -158,10 +182,15 @@ export function AppShell({
           </div>
         ) : null}
         <div className="app-nav-scroll">
-          <SidebarNav items={visible} pathname={pathname} root="/app" collapsed={collapsed} />
+          {groups.map((group) => (
+            <SidebarNav key={group.label} label={group.label} items={group.items} pathname={pathname} root="/app" collapsed={collapsed} />
+          ))}
         </div>
         <div className="app-nav-foot">
           {showRecycleBin ? <SidebarNav items={[RECYCLE_BIN]} pathname={pathname} root="/app" collapsed={collapsed} /> : null}
+          {canAccessAppPath(role, "/app/settings") ? (
+            <SidebarNav items={[{ to: "/app/settings", label: "Settings", icon: Settings }]} pathname={pathname} root="/app" collapsed={collapsed} />
+          ) : null}
           {platformAdmin ? (
             <Link
               to="/platform"
@@ -192,7 +221,18 @@ export function AppShell({
               </button>
             </div>
             <div className="app-nav-scroll">
-              <SidebarNav items={visible} pathname={pathname} root="/app" onNavigate={() => setOpen(false)} />
+            <div className="app-nav-scroll">
+              {groups.map((group) => (
+                <SidebarNav
+                  key={group.label}
+                  label={group.label}
+                  items={group.items}
+                  pathname={pathname}
+                  root="/app"
+                  onNavigate={() => setOpen(false)}
+                />
+              ))}
+            </div>
             </div>
             {showRecycleBin ? (
               <div className="app-nav-foot">
@@ -232,13 +272,14 @@ export function AppShell({
           </div>
         ) : null}
         <header className="app-topbar">
-          <button className="app-topbar-menu" onClick={() => setOpen(true)} aria-label="Open menu">
+          <button className="app-topbar-menu md:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
             <Menu className="size-5" />
           </button>
-          <div className="app-topbar-title">Operations</div>
-          <div className="flex min-w-0 items-center gap-3">
+          <Breadcrumbs pathname={pathname} />
+          <div className="ml-auto flex min-w-0 items-center gap-2">
+            <CommandPalette />
             {accountEmail ? (
-              <span className="hidden min-w-0 truncate text-xs text-muted md:inline">
+              <span className="hidden min-w-0 truncate text-xs text-muted lg:inline">
                 {accountEmail}
                 {roleLabel ? ` · ${roleLabel}` : ""}
                 {accountLabel ? ` · ${accountLabel}` : ""}
@@ -255,7 +296,7 @@ export function AppShell({
             <UserButton />
           </div>
         </header>
-        <main className="p-4 md:p-6">
+        <main className="p-4 pb-24 md:p-6">
           {allowed ? (
             <Outlet />
           ) : (
@@ -273,6 +314,7 @@ export function AppShell({
             </div>
           )}
         </main>
+        <MobileBottomNav onMore={() => setOpen(true)} />
       </div>
     </div>
   );

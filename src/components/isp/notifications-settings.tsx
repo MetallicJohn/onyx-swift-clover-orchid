@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input, Textarea } from "@/components/ui/input";
 import { SaveButton, SettingsStatus, SettingsSubnav, type SettingsNote } from "@/components/isp/settings-ui";
 import { NOTIFY_SAVE_FAIL, NOTIFY_SAVE_OK, safeSettingsError } from "@/lib/isp/settings-feedback";
@@ -123,7 +124,9 @@ export function NotificationsSettings() {
 
       {tab === "log" ? (
         <ul className="space-y-3">
-          {logs.length === 0 ? <p className="text-sm text-muted">No messages yet. Issue an invoice or run the cycle.</p> : null}
+          {logs.length === 0 ? (
+            <EmptyState title="No messages yet" description="Issue an invoice or run the billing cycle to see delivery here." />
+          ) : null}
           {logs.map((n) => (
             <li key={n.id} className="rounded-xl border border-border bg-surface p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -236,7 +239,9 @@ export function NotificationsSettings() {
         </div>
       ) : (
         <ul className="space-y-3">
-          {inbox.length === 0 ? <p className="text-sm text-muted">No in-app messages yet.</p> : null}
+          {inbox.length === 0 ? (
+            <EmptyState title="No in-app messages yet" description="Messages sent to staff in this workspace will show up here." />
+          ) : null}
           {inbox.map((n) => (
             <li key={n.id} className="rounded-xl border border-border bg-surface p-4">
               <div className="font-medium">{n.subject}</div>

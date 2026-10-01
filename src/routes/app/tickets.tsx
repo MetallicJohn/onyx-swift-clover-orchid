@@ -1,18 +1,27 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Plus, Search } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { TicketLive } from "@/components/isp/ticket-live";
 import { Badge } from "@/components/ui/badge";
+import { BulkActionBar } from "@/components/ui/bulk-action-bar";
 import { Button } from "@/components/ui/button";
+import { ColumnVisibility } from "@/components/ui/column-visibility";
+import { askConfirm } from "@/components/ui/confirm-dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterChips } from "@/components/ui/filter-chips";
+import { RowDensity } from "@/components/ui/row-density";
+import { SavedViews, type ViewSnapshot } from "@/components/ui/saved-views";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { accessMethodLabel, formatRelativeTime } from "@/lib/isp/display";
+import type { ViewDensity } from "@/lib/isp/saved-views";
 import { searchOnboardCustomersFn } from "@/lib/isp/server-onboard";
-import { assignOpenTicket, commentOpenTicket, listTicketStaff } from "@/lib/isp/server-more";
+import { assignOpenTicket, bulkUpdateTicketsFn, commentOpenTicket, getTicketFn, listTicketStaff } from "@/lib/isp/server-more";
 import { createTicket, listTickets, setTicketStatus, ticketCustomerServices } from "@/lib/isp/server";
 import { hasPermission } from "@/lib/isp/rbac";
-import { nextTicketSearch, normalizeTicketListQuery, type TicketListQuery } from "@/lib/isp/ticket-list-format";
-import type { TicketCustomerService, TicketListItem } from "@/lib/isp/tickets";
+import { nextTicketSearch, normalizeTicketListQuery, ticketListChips, type TicketListQuery } from "@/lib/isp/ticket-list-format";
+import { summarizeTicketBulk, TICKET_PRIORITY_OPTIONS, type TicketListItem } from "@/lib/isp/tickets";
+import type { TicketCustomerService } from "@/lib/isp/tickets";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/tickets")({
@@ -51,12 +60,7 @@ const CREATE_CATEGORIES = [
   { id: "install", label: "Installation" },
 ] as const;
 const FILTER_CATEGORIES = [...CREATE_CATEGORIES, { id: "support", label: "Support" }, { id: "field", label: "Field" }] as const;
-const PRIORITIES = [
-  { id: "low", label: "Low" },
-  { id: "normal", label: "Normal" },
-  { id: "high", label: "High" },
-  { id: "urgent", label: "Urgent" },
-] as const;
+const PRIORITIES = TICKET_PRIORITY_OPTIONS;
 const STATUS_OPTIONS = [
   { id: "open", label: "Open" },
   { id: "all", label: "All statuses" },
@@ -227,6 +231,26 @@ function TicketSkeleton() {
 function TicketsPage() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
+  return (
+    <TicketsDesk
+      search={search}
+      onSearch={(next) => {
+        void navigate({ search: next, replace: true });
+      }}
+    />
+  );
+}
+
+export function TicketsDesk({
+  openId,
+  search,
+  onSearch,
+}: {
+  openId?: string;
+  search: TicketSearch;
+  onSearch: (next: TicketSearch) => void;
+}) {
+  const recordNavigate = useNavigate();
   const query = normalizeTicketListQuery(queryFromSearch(search));
   const [q, setQ] = useState(search.q || "");
   const [data, setData] = useState<ListData | null>(null);
@@ -245,6 +269,12 @@ function TicketsPage() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [picked, setPicked] = useState<CustomerHit | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [density, setDensity] = useState<ViewDensity>("comfortable");
+  const [hiddenCols, setHiddenCols] = useState<string[]>([]);
+  const [bulkWho, setBulkWho] = useState("");
+  const [bulkPriority, setBulkPriority] = useState("normal");
+  const [bulkStatus, setBulkStatus] = useState("assigned");
   const [services, setServices] = useState<TicketCustomerService[]>([]);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("performance");
@@ -268,7 +298,7 @@ function TicketsPage() {
 
   function write(patch: Partial<TicketListQuery>, keepPage = false) {
     const next = nextTicketSearch(query, patch, keepPage);
-    void navigate({ search: toSearch(next), replace: true });
+    onSearch(toSearch(next));
   }
 
   useEffect(() => {
@@ -282,10 +312,10 @@ function TicketsPage() {
       const nextQ = typed.length >= 2 ? typed : "";
       if (nextQ === (search.q || "")) return;
       const next = nextTicketSearch(queryFromSearch(search), { q: nextQ });
-      void navigate({ search: toSearch(next), replace: true });
+      onSearch(toSearch(next));
     }, 300);
     return () => window.clearTimeout(handle);
-  }, [q, search, navigate]);
+  }, [q, search, onSearch]);
 
   useEffect(() => {
     let cancel = false;
@@ -324,6 +354,68 @@ function TicketsPage() {
       cancel = true;
     };
   }, [query.q, query.status, query.priority, query.category, query.assignedTo, query.page, query.pageSize, tick]);
+
+  useEffect(() => {
+    if (!openId) return;
+    let cancel = false;
+    getTicketFn({ data: { id: openId } })
+      .then((res) => {
+        if (!cancel) setActive(res.ticket);
+      })
+      .catch((err) => {
+        if (!cancel) setActionError(messageOf(err, "Could not open the ticket"));
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [openId]);
+
+  const visibleIds = data?.items.map((ticket) => ticket.id) || [];
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+
+  function toggleOne(id: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (allSelected) {
+        for (const id of visibleIds) next.delete(id);
+      } else {
+        for (const id of visibleIds) next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function openRecord(ticket: TicketListItem) {
+    setActionError("");
+    setUpdating(false);
+    setComment("");
+    setActive(ticket);
+    if (openId === ticket.id) return;
+    void recordNavigate({ to: "/app/tickets/$ticketId", params: { ticketId: ticket.id } });
+  }
+
+  async function runBulk(op: "assign" | "priority" | "status" | "close", value: string) {
+    const ids = [...selected];
+    if (!ids.length) return;
+    const result = await bulkUpdateTicketsFn({ data: { ids, op, value } });
+    const summary = summarizeTicketBulk(result);
+    setNotice(summary);
+    setTick((n) => n + 1);
+    if (result.failed.length) {
+      const detail = result.failed.map((row) => `${row.id}: ${row.error}`).join("; ");
+      throw new Error(`${summary}. ${detail}`);
+    }
+    setSelected(new Set());
+  }
 
   useEffect(() => {
     if (!createOpen || picked) return;
@@ -527,40 +619,187 @@ function TicketsPage() {
           ))}
         </Select>
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <SavedViews
+          page="tickets"
+          current={{ filters: query as unknown as Record<string, unknown>, columns: hiddenCols, density }}
+          onApply={(next: ViewSnapshot) => {
+            const applied = next.filters as Partial<TicketListQuery>;
+            setQ(typeof applied.q === "string" ? applied.q : "");
+            if (next.density) setDensity(next.density);
+            if (next.columns) setHiddenCols(next.columns);
+            write(applied);
+          }}
+        />
+        <ColumnVisibility
+          columns={[
+            { id: "ticket", label: "Ticket", locked: true },
+            { id: "customer", label: "Customer", locked: true },
+            { id: "subject", label: "Subject", locked: true },
+            { id: "priority", label: "Priority" },
+            { id: "status", label: "Status" },
+            { id: "assigned", label: "Assigned" },
+            { id: "updated", label: "Updated" },
+            { id: "category", label: "Category" },
+          ]}
+          hidden={hiddenCols}
+          onChange={setHiddenCols}
+        />
+        <RowDensity value={density} onChange={setDensity} />
+      </div>
+      <FilterChips
+        chips={ticketListChips(query, query.assignedTo === "all" ? "" : staffName(query.assignedTo === "unassigned" ? undefined : query.assignedTo))}
+        onRemove={(id) => {
+          if (id === "status") write({ status: "open" });
+          if (id === "priority") write({ priority: "all" });
+          if (id === "category") write({ category: "all" });
+          if (id === "assigned") write({ assignedTo: "all" });
+          if (id === "q") {
+            setQ("");
+            write({ q: "" });
+          }
+        }}
+        onClearAll={() => {
+          setQ("");
+          write({ status: "open", q: "", priority: "all", category: "all", assignedTo: "all" });
+        }}
+      />
+
+      {canUpdate && selected.size ? (
+        <BulkActionBar count={selected.size} noun="ticket" onClear={() => setSelected(new Set())}>
+          {canAssign ? (
+            <>
+              <Select aria-label="Bulk assign" className="h-9 w-40" value={bulkWho} onChange={(e) => setBulkWho(e.target.value)}>
+                <option value="">Assign to</option>
+                {staff.map((member) => (
+                  <option key={member.user_id} value={member.user_id}>
+                    {member.name}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={!bulkWho}
+                onClick={() =>
+                  void askConfirm({
+                    title: `Assign ${selected.size} tickets?`,
+                    description: "The selected tickets will be assigned to this person.",
+                    confirmLabel: "Assign",
+                    pendingLabel: "Assigning...",
+                    action: () => runBulk("assign", bulkWho),
+                  })
+                }
+              >
+                Assign
+              </Button>
+            </>
+          ) : null}
+          {canAssign ? (
+            <>
+              <Select aria-label="Bulk priority" className="h-9 w-36" value={bulkPriority} onChange={(e) => setBulkPriority(e.target.value)}>
+                {PRIORITIES.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() =>
+                  void askConfirm({
+                    title: `Change priority on ${selected.size} tickets?`,
+                    confirmLabel: "Change priority",
+                    pendingLabel: "Updating...",
+                    action: () => runBulk("priority", bulkPriority),
+                  })
+                }
+              >
+                Priority
+              </Button>
+            </>
+          ) : null}
+          <Select aria-label="Bulk status" className="h-9 w-40" value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)}>
+            {STATUSES.map((id) => (
+              <option key={id} value={id}>
+                {labelize(id)}
+              </option>
+            ))}
+          </Select>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() =>
+              void askConfirm({
+                title: `Change status on ${selected.size} tickets?`,
+                confirmLabel: "Change status",
+                pendingLabel: "Updating...",
+                action: () => runBulk("status", bulkStatus),
+              })
+            }
+          >
+            Status
+          </Button>
+          {canAssign ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              onClick={() =>
+                void askConfirm({
+                  title: `Close ${selected.size} tickets?`,
+                  description: "This will mark the selected tickets as closed.",
+                  confirmLabel: "Close",
+                  pendingLabel: "Closing...",
+                  variant: "danger",
+                  action: () => runBulk("close", "closed"),
+                })
+              }
+            >
+              Close
+            </Button>
+          ) : null}
+        </BulkActionBar>
+      ) : null}
 
       {loading && !data ? <TicketSkeleton /> : null}
       {data && data.counts.all === 0 ? (
-        <div className="rounded-xl border border-border bg-surface px-4 py-10 text-center">
-          <h2 className="font-medium">No tickets yet</h2>
-          <p className="mt-1 text-sm text-muted">Create a ticket to start managing customer support requests.</p>
-          {canCreate ? (
-            <Button type="button" className="mt-4" onClick={openCreate}>
-              Create ticket
-            </Button>
-          ) : null}
-        </div>
+        <EmptyState
+          title="No tickets yet"
+          description="Create a ticket to start managing customer support requests."
+          action={
+            canCreate ? (
+              <Button type="button" onClick={openCreate}>
+                Create ticket
+              </Button>
+            ) : null
+          }
+        />
       ) : null}
       {data && data.counts.all > 0 && data.items.length === 0 ? (
-        <div className="rounded-xl border border-border bg-surface px-4 py-10 text-center">
-          <h2 className="font-medium">No tickets found</h2>
-          <p className="mt-1 text-sm text-muted">There are no tickets matching your current filters.</p>
-        </div>
+        <EmptyState title="No tickets found" description="There are no tickets matching your current filters." />
       ) : null}
 
       {data && data.items.length > 0 ? (
-        <div className={cn(loading && "opacity-70")} aria-busy={loading}>
+        <div className={cn("table-view", loading && "opacity-70")} data-density={density} data-hide={hiddenCols.join(" ")} aria-busy={loading}>
           <ul className="space-y-2 md:hidden">
             {data.items.map((ticket) => (
-              <li key={ticket.id}>
+              <li key={ticket.id} className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-4 size-4"
+                  checked={selected.has(ticket.id)}
+                  aria-label={`Select ${ticket.title}`}
+                  onChange={() => toggleOne(ticket.id)}
+                />
                 <button
                   type="button"
                   className="w-full rounded-xl border border-border bg-surface p-4 text-left"
-                  onClick={() => {
-                    setActionError("");
-                    setUpdating(false);
-                    setComment("");
-                    setActive(ticket);
-                  }}
+                  onClick={() => openRecord(ticket)}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="break-all font-mono text-xs text-muted">{ticket.id}</span>
@@ -585,13 +824,17 @@ function TicketsPage() {
             <table className="w-full text-left text-sm">
               <thead className="text-xs text-muted">
                 <tr className="border-b border-border">
-                  <th className="px-4 py-3 font-medium">Ticket</th>
-                  <th className="px-4 py-3 font-medium">Customer</th>
-                  <th className="px-4 py-3 font-medium">Subject</th>
-                  <th className="hidden px-4 py-3 font-medium lg:table-cell">Priority</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="hidden px-4 py-3 font-medium xl:table-cell">Assigned</th>
-                  <th className="hidden px-4 py-3 font-medium lg:table-cell">Updated</th>
+                  <th className="px-4 py-3 font-medium">
+                    <input type="checkbox" className="size-4" checked={allSelected} onChange={toggleAll} aria-label="Select all visible tickets" />
+                  </th>
+                  <th className="px-4 py-3 font-medium" data-col="ticket">Ticket</th>
+                  <th className="px-4 py-3 font-medium" data-col="customer">Customer</th>
+                  <th className="px-4 py-3 font-medium" data-col="subject">Subject</th>
+                  <th className="hidden px-4 py-3 font-medium lg:table-cell" data-col="priority">Priority</th>
+                  <th className="px-4 py-3 font-medium" data-col="status">Status</th>
+                  <th className="hidden px-4 py-3 font-medium xl:table-cell" data-col="assigned">Assigned</th>
+                  <th className="hidden px-4 py-3 font-medium lg:table-cell" data-col="category">Category</th>
+                  <th className="hidden px-4 py-3 font-medium lg:table-cell" data-col="updated">Updated</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -600,33 +843,38 @@ function TicketsPage() {
                     key={ticket.id}
                     tabIndex={0}
                     className="cursor-pointer align-top hover:bg-accent/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40"
-                    onClick={() => {
-                      setActionError("");
-                      setUpdating(false);
-                      setComment("");
-                      setActive(ticket);
-                    }}
+                    onClick={() => openRecord(ticket)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        setActive(ticket);
+                        openRecord(ticket);
                       }
                     }}
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-muted">{ticket.id}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        className="size-4"
+                        checked={selected.has(ticket.id)}
+                        aria-label={`Select ${ticket.title}`}
+                        onChange={() => toggleOne(ticket.id)}
+                      />
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted" data-col="ticket">{ticket.id}</td>
+                    <td className="px-4 py-3" data-col="customer">
                       <div>{ticket.customer_name || "No customer"}</div>
                       {ticket.customer_account ? <div className="text-xs text-muted">{ticket.customer_account}</div> : null}
                     </td>
-                    <td className="px-4 py-3 font-medium">{ticket.title}</td>
-                    <td className="hidden px-4 py-3 lg:table-cell">
-                      <Badge tone={ticketPriorityTone(ticket.priority)}>{ticket.priority}</Badge>
+                    <td className="px-4 py-3 font-medium" data-col="subject">{ticket.title}</td>
+                    <td className="hidden px-4 py-3 lg:table-cell" data-col="priority">
+                      <Badge tone={ticketPriorityTone(ticket.priority)}>{PRIORITIES.find((row) => row.id === ticket.priority)?.label || ticket.priority}</Badge>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" data-col="status">
                       <Badge tone={ticketStatusTone(ticket.status)}>{labelize(ticket.status)}</Badge>
                     </td>
-                    <td className="hidden px-4 py-3 text-muted xl:table-cell">{staffName(ticket.assigned_to)}</td>
-                    <td className="hidden px-4 py-3 text-muted lg:table-cell">{formatRelativeTime(ticket.updated_at)}</td>
+                    <td className="hidden px-4 py-3 text-muted xl:table-cell" data-col="assigned">{staffName(ticket.assigned_to)}</td>
+                    <td className="hidden px-4 py-3 text-muted lg:table-cell" data-col="category">{labelize(ticket.category)}</td>
+                    <td className="hidden px-4 py-3 text-muted lg:table-cell" data-col="updated">{formatRelativeTime(ticket.updated_at)}</td>
                   </tr>
                 ))}
               </tbody>

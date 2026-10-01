@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
+import { ConfirmProvider } from "@/components/ui/confirm-dialog";
+import { ToastProvider } from "@/components/ui/toast";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { APP_NAME } from "@/lib/brand";
@@ -58,7 +60,11 @@ export const Route = createRootRoute({
       <body>
         <PreviewHostBridge />
         <AuthProvider>
-          <Outlet />
+          <ToastProvider>
+            <ConfirmProvider>
+              <Outlet />
+            </ConfirmProvider>
+          </ToastProvider>
         </AuthProvider>
         <Scripts />
       </body>

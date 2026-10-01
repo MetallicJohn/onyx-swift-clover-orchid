@@ -474,7 +474,7 @@ export function AcsDeviceDetails({
               <p className="text-sm font-medium">Factory reset</p>
               <p className="mt-1 text-xs text-muted">Type {ACS_FACTORY_RESET_PHRASE} and confirm. This is not marked successful until the device reports back.</p>
               <Field label="Confirmation phrase">
-                <Input value={resetPhrase} onChange={(e) => setResetPhrase(e.target.value)} placeholder={ACS_FACTORY_RESET_PHRASE} />
+                <Input value={resetPhrase} disabled={busy} onChange={(e) => setResetPhrase(e.target.value)} placeholder={ACS_FACTORY_RESET_PHRASE} />
               </Field>
               <label className="mt-2 flex min-h-11 items-center gap-2 text-sm">
                 <input type="checkbox" className="size-4" checked={resetConfirm} onChange={(e) => setResetConfirm(e.target.checked)} />
@@ -492,7 +492,7 @@ export function AcsDeviceDetails({
                   }, "Factory reset queued")
                 }
               >
-                Factory reset
+                {busy ? "Resetting..." : "Factory reset"}
               </Button>
             </div>
           ) : null}

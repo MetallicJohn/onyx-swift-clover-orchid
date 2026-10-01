@@ -1,0 +1,1275 @@
+# UI/UX IMPROVEMENT & CONSISTENCY MILESTONE
+
+## Objective
+
+Improve the UI/UX of the existing ISP SaaS application to make it feel like a polished, professional, production-grade ISP management platform.
+
+This is a **UI/UX refinement milestone**, not a backend rewrite.
+
+Do NOT rebuild working business functionality.
+
+Do NOT change existing database/business rules unless required to support the UI improvements.
+
+Preserve:
+
+- Existing authentication
+- Active tenant context
+- RBAC
+- Customer/service relationships
+- Billing logic
+- Payment logic
+- MikroTik functionality
+- Router Agent
+- Notifications
+- Tickets
+- Existing migrations
+- Existing API/server functions
+
+Use the existing design system, components, Tailwind conventions, icons, routing architecture and UI patterns wherever possible.
+
+The goal is to make the entire application feel **consistent, fast, intuitive and professional**.
+
+---
+
+# 1. TOASTS + SHARED CONFIRMDIALOG
+
+## 1.1 Shared Toast system
+
+Create or standardize a global toast/notification system.
+
+Use it consistently for:
+
+### Success
+
+```text
+Customer created successfully
+Lead converted successfully
+Payment recorded successfully
+Router connected
+Settings saved
+```
+
+### Error
+
+```text
+Unable to save customer
+Payment could not be processed
+Router connection failed
+```
+
+### Warning
+
+```text
+This router has not checked in recently
+This customer has an overdue invoice
+```
+
+### Informational
+
+```text
+Configuration queued for deployment
+Report generation started
+```
+
+Toasts must:
+
+- Be non-blocking
+- Have accessible announcements
+- Automatically dismiss where appropriate
+- Allow manual dismissal
+- Avoid duplicate messages
+- Use consistent positioning
+- Work on mobile
+
+Do not create separate toast implementations for individual modules.
+
+Create one reusable mechanism.
+
+---
+
+# 1.2 Replace native confirm()
+
+Search the entire repository for:
+
+```text
+confirm(
+window.confirm(
+```
+
+Replace native browser confirmation dialogs with a shared:
+
+```text
+ConfirmDialog
+```
+
+component.
+
+Examples:
+
+```text
+Delete customer?
+Suspend service?
+Delete router?
+Remove IP pool?
+Cancel invoice?
+Convert lead?
+Disable package?
+```
+
+The dialog must support:
+
+```text
+title
+description
+confirmLabel
+cancelLabel
+variant
+loading
+```
+
+Variants:
+
+```text
+default
+danger
+warning
+```
+
+Example:
+
+```text
+Confirm customer deletion
+
+This action cannot be undone. The customer's services and
+associated records may also be affected.
+
+Cancel       Delete Customer
+```
+
+For destructive actions, the confirm button must clearly communicate the action.
+
+Never rely solely on color.
+
+---
+
+# 2. SIDEBAR INFORMATION ARCHITECTURE
+
+Refine the main sidebar.
+
+The sidebar should group related functionality rather than presenting a long flat list.
+
+Recommended structure:
+
+```text
+Overview
+  Dashboard
+
+CRM
+  Customers
+  Leads
+  Tickets
+
+Network
+  Routers
+  Network Sites
+  IPAM
+  RADIUS
+  Sessions
+  Network Agents
+  Monitoring
+
+Services
+  Packages
+  Services
+  PPPoE
+  Static IP
+  Hotspot
+  Fibre / GPON
+
+Billing
+  Invoices
+  Payments
+  Statements
+  Transactions
+
+Communications
+  SMS
+  WhatsApp
+  Notifications
+
+Field Operations
+  Installations
+  Technicians
+  Jobs
+
+Reports
+  Revenue
+  Customers
+  Network
+  Sales
+
+Settings
+```
+
+Only include modules that actually exist.
+
+Do not create dead navigation links.
+
+---
+
+# 2.1 Distinct icons
+
+Every sidebar item should have a meaningful, distinct icon.
+
+Do not reuse the same generic icon repeatedly.
+
+Use the application's existing icon library.
+
+Examples:
+
+```text
+Dashboard → LayoutDashboard
+Customers → Users
+Leads → UserPlus
+Routers → Router
+IPAM → Network
+Billing → Receipt
+Payments → CreditCard
+Tickets → Ticket
+Settings → Settings
+```
+
+Icons should support recognition but never replace accessible text labels on desktop navigation.
+
+---
+
+# 2.2 Sidebar behavior
+
+Desktop:
+
+- Collapsible
+- Persist collapsed/expanded state
+- Clear active state
+- Group labels
+- Tooltips when collapsed
+
+Mobile:
+
+- Do not show the entire desktop sidebar permanently
+- Use mobile navigation/drawer behavior
+
+---
+
+# 3. TOPBAR
+
+Improve the top navigation bar.
+
+Include:
+
+```text
+Breadcrumb
+Global Search / Command Palette
+Notifications
+Active Tenant
+User menu
+```
+
+Example:
+
+```text
+Customers / Leads / LD-00124
+```
+
+Breadcrumbs must use application routing.
+
+Do not manually construct fake navigation.
+
+---
+
+# 3.1 Breadcrumbs
+
+Create a reusable breadcrumb component.
+
+Example:
+
+```text
+Customers
+  /
+Leads
+  /
+Lead #LD-00124
+```
+
+Clickable parent levels should use the framework's router.
+
+Do NOT use:
+
+```html
+<a href="/customers">
+```
+
+for internal application navigation.
+
+Use the framework's:
+
+```text
+<Link>
+```
+
+or equivalent router navigation component.
+
+---
+
+# 3.2 Global search / command palette
+
+Implement a global command/search experience.
+
+Keyboard shortcut:
+
+```text
+Ctrl + K
+```
+
+Mac:
+
+```text
+⌘ + K
+```
+
+Search should eventually support:
+
+```text
+Customers
+Leads
+Services
+Invoices
+Payments
+Routers
+Tickets
+```
+
+Initial implementation may search the most important entities only.
+
+Results should be grouped:
+
+```text
+Customers
+  John Kamau
+  Jane Wanjiku
+
+Leads
+  LD-00125
+
+Invoices
+  INV-2026-00451
+
+Routers
+  Nanyuki POP
+```
+
+Selecting a result navigates directly to the relevant record.
+
+Use proper internal router navigation.
+
+Do not load the entire database into the browser.
+
+Implement server-side search/API calls where required.
+
+---
+
+# 4. DASHBOARD — NEEDS ATTENTION
+
+Add a prominent but compact:
+
+```text
+Needs attention
+```
+
+section on the main dashboard.
+
+This should surface actionable issues rather than merely statistics.
+
+Examples:
+
+```text
+23 overdue invoices
+8 services expiring today
+4 routers offline
+12 leads awaiting follow-up
+3 installations scheduled today
+7 open high-priority tickets
+```
+
+Each KPI/card must be clickable.
+
+Example:
+
+```text
+[ 23 ]
+Overdue invoices
+View invoices →
+```
+
+Clicking should navigate directly to the filtered relevant page.
+
+Use:
+
+```text
+<Link>
+```
+
+for internal navigation.
+
+Do not use:
+
+```html
+<a href="">
+```
+
+for internal routes.
+
+---
+
+# 4.1 KPI behavior
+
+KPI cards should clearly communicate:
+
+- Number
+- Label
+- Severity
+- Optional trend
+- Action
+
+Avoid excessive visual decoration.
+
+Do not make every card visually alarming.
+
+Use severity only when meaningful:
+
+```text
+Normal
+Attention
+Warning
+Critical
+```
+
+---
+
+# 5. CUSTOMERS — BULK ACTIONS
+
+Improve the Customers page first, then use the same pattern elsewhere.
+
+When selecting customers, show a contextual bulk-action bar.
+
+Example:
+
+```text
+5 customers selected
+
+Suspend
+Activate
+Send SMS
+Send WhatsApp
+Assign
+Export
+More
+```
+
+The bar should appear only when rows are selected.
+
+On mobile, adapt it to a bottom/action-sheet pattern.
+
+---
+
+# 5.1 Bulk actions must be safe
+
+For destructive or service-impacting actions:
+
+```text
+Suspend 25 services?
+```
+
+show the shared `ConfirmDialog`.
+
+Bulk actions must:
+
+- Respect RBAC
+- Respect tenant isolation
+- Validate selected records
+- Report partial failures
+- Never silently fail
+
+Example result:
+
+```text
+23 customers updated successfully
+2 customers could not be updated
+```
+
+Allow the user to inspect failures.
+
+---
+
+# 6. FILTER CHIPS
+
+Replace overly complicated filter interfaces with clear active filter chips.
+
+Example:
+
+```text
+Status: Active ×
+Package: 10 Mbps ×
+Area: Nanyuki ×
+Balance: Overdue ×
+```
+
+Include:
+
+```text
+Clear all
+```
+
+when filters are active.
+
+Filters should persist during navigation where appropriate.
+
+---
+
+# 6.1 Saved Views
+
+Allow users to save commonly used filter configurations.
+
+Example:
+
+```text
+My Views
+
+Overdue Customers
+New Customers This Month
+Customers Expiring This Week
+Inactive Customers
+Nanyuki 10Mbps Customers
+```
+
+A saved view should store:
+
+```text
+name
+filters
+sort
+columns
+visibility
+owner
+```
+
+Support:
+
+```text
+Personal
+Shared with team
+```
+
+if the existing RBAC architecture supports it.
+
+Do not create duplicate filter implementations for every page.
+
+Build reusable:
+
+```text
+DataTable
+FilterBar
+FilterChip
+SavedViewSelector
+BulkActionBar
+```
+
+components.
+
+---
+
+# 7. ROLL THE CUSTOMER PATTERN OUT
+
+After Customers is completed, apply the same UX pattern to:
+
+## Services
+
+Support:
+
+- Search
+- Filters
+- Filter chips
+- Saved views
+- Bulk actions
+- Clear selection
+- Pagination
+- Consistent empty states
+
+Potential bulk actions:
+
+```text
+Activate
+Suspend
+Restore
+Change package
+Assign
+Export
+```
+
+Service-impacting operations require confirmation.
+
+---
+
+## Billing
+
+Apply the pattern to:
+
+```text
+Invoices
+Payments
+Statements
+Transactions
+```
+
+Potential filters:
+
+```text
+Status
+Payment method
+Date
+Customer
+Amount
+Overdue
+```
+
+Bulk actions must be carefully permission controlled.
+
+---
+
+## Tickets
+
+Support:
+
+```text
+Status
+Priority
+Technician
+Category
+Customer
+Date
+```
+
+Bulk actions:
+
+```text
+Assign
+Change priority
+Change status
+Close
+```
+
+Do not allow bulk closure without appropriate permissions.
+
+---
+
+# 8. SETTINGS — SPLIT INTO SUB-ROUTES
+
+The Settings page should not become a huge single-page form.
+
+Create logical sub-routes.
+
+Recommended structure:
+
+```text
+Settings
+├── General
+├── Branding
+├── Users & Roles
+├── Billing
+├── Payments
+├── Notifications
+├── Communications
+├── Network
+├── Integrations
+├── Security
+└── Subscription
+```
+
+Only create routes for settings that actually exist.
+
+Each settings area should have its own route and page.
+
+Example:
+
+```text
+/settings/general
+/settings/branding
+/settings/users
+/settings/billing
+/settings/network
+```
+
+Use nested routing where appropriate.
+
+---
+
+# 8.1 Sticky Save Bar
+
+For settings pages with unsaved changes, show a sticky bottom save bar:
+
+```text
+Unsaved changes
+
+[Discard]    [Save changes]
+```
+
+The bar should appear only when the form is dirty.
+
+Save button states:
+
+```text
+Save changes
+Saving...
+Saved
+```
+
+After successful save:
+
+```text
+Settings saved successfully
+```
+
+Use the global toast system.
+
+If navigating away with unsaved changes, warn the user appropriately.
+
+Do not use native `confirm()`.
+
+---
+
+# 9. MOBILE EXPERIENCE
+
+The application must not simply shrink the desktop UI.
+
+Create a deliberate mobile experience.
+
+## Mobile bottom navigation
+
+Use a mobile bottom navigation bar for the most important sections.
+
+Example:
+
+```text
+Home
+Customers
+Network
+Billing
+More
+```
+
+The exact sections should reflect the application's actual navigation.
+
+Do not put every module in the bottom navigation.
+
+Use:
+
+```text
+More
+```
+
+for secondary modules.
+
+---
+
+# 9.1 Mobile actions
+
+Important actions must remain easily accessible.
+
+Examples:
+
+```text
+Add Customer
+Add Lead
+Record Payment
+Create Ticket
+```
+
+Use floating/action buttons where appropriate.
+
+Do not allow important actions to disappear inside deep menus.
+
+---
+
+# 10. EMPTY STATES
+
+Replace generic empty tables with useful empty states.
+
+Bad:
+
+```text
+No data
+```
+
+Better:
+
+```text
+No customers yet
+
+Customers added to your ISP account will appear here.
+
+[Add Customer]
+```
+
+For Leads:
+
+```text
+No leads yet
+
+Capture enquiries and turn qualified leads into customers.
+
+[Add Lead]
+```
+
+For Routers:
+
+```text
+No routers connected
+
+Connect your first MikroTik router to begin monitoring
+and provisioning your network.
+
+[Add Router]
+```
+
+Empty states should include:
+
+- Icon/illustration
+- Explanation
+- Primary action
+- Optional secondary action
+
+Do not use excessive illustrations.
+
+---
+
+# 11. SETUP CHECKLIST
+
+For a newly created ISP tenant, show a setup checklist.
+
+Example:
+
+```text
+Complete your ISP setup
+
+✓ ISP profile
+✓ Add first package
+○ Connect first router
+○ Configure payment method
+○ Configure SMS
+○ Configure WhatsApp
+○ Add first customer
+○ Configure billing
+```
+
+Display progress:
+
+```text
+4 of 8 completed
+```
+
+Allow clicking each task to navigate directly to the relevant page.
+
+The checklist should disappear or become dismissible after setup completion.
+
+Do not show onboarding tasks that are irrelevant to the tenant's enabled features.
+
+---
+
+# 12. ACCESSIBILITY / CONTRAST PASS
+
+Perform a full accessibility pass.
+
+Check:
+
+- Text contrast
+- Button contrast
+- Disabled states
+- Focus states
+- Keyboard navigation
+- Form labels
+- Error messages
+- Dialog accessibility
+- Table accessibility
+- Navigation landmarks
+- Screen-reader announcements
+- Toast announcements
+
+Use semantic HTML.
+
+Ensure:
+
+```text
+buttons are buttons
+links are links
+inputs have labels
+dialogs have accessible names
+```
+
+Do not use clickable `<div>` elements where buttons/links are appropriate.
+
+---
+
+# 12.1 ARIA
+
+Add ARIA only where necessary.
+
+Examples:
+
+```text
+aria-label
+aria-current
+aria-expanded
+aria-controls
+aria-describedby
+role="dialog"
+role="status"
+aria-live
+```
+
+Do not add redundant ARIA to semantic HTML.
+
+---
+
+# 12.2 Keyboard navigation
+
+Verify:
+
+```text
+Tab
+Shift + Tab
+Enter
+Space
+Escape
+Arrow keys
+Ctrl + K
+```
+
+Important workflows must be usable without a mouse.
+
+Dialogs:
+
+```text
+Escape → close
+Tab → remains within dialog
+Enter → confirm where appropriate
+```
+
+---
+
+# 13. VISUAL CONSISTENCY
+
+Standardize:
+
+- Page headers
+- Page descriptions
+- Buttons
+- Icon buttons
+- Cards
+- Tables
+- Filters
+- Dialogs
+- Forms
+- Empty states
+- Loading states
+- Error states
+- Toasts
+
+Avoid every module looking like it was built independently.
+
+Create reusable primitives where duplication exists.
+
+---
+
+# 14. LOADING STATES
+
+Replace abrupt blank screens with appropriate loading states.
+
+Use:
+
+```text
+Skeletons
+Spinners
+Progress indicators
+```
+
+depending on context.
+
+Examples:
+
+Customer table:
+
+```text
+████████████
+████████
+██████████
+```
+
+Button:
+
+```text
+Saving...
+```
+
+Do not block the entire page unnecessarily for small operations.
+
+---
+
+# 15. ERROR STATES
+
+Create consistent error UI.
+
+Example:
+
+```text
+Something went wrong
+
+We couldn't load your customers.
+
+[Try again]
+```
+
+Do not expose raw:
+
+```text
+SQL errors
+stack traces
+provider credentials
+internal exceptions
+```
+
+to users.
+
+Log technical details server-side using the existing observability/audit architecture.
+
+---
+
+# 16. PERFORMANCE
+
+UI improvements must not introduce unnecessary database/API calls.
+
+Pay particular attention to:
+
+- Global search
+- Dashboard KPIs
+- Tables
+- Saved views
+- Filter changes
+- Mobile navigation
+
+Use debouncing for search.
+
+Use pagination/server-side filtering for large ISP datasets.
+
+Do not fetch thousands of customers simply to filter them in the browser.
+
+---
+
+# 17. INTERNAL NAVIGATION
+
+Search the repository for internal:
+
+```html
+<a href="/...">
+```
+
+and replace with the application's proper router `<Link>` where applicable.
+
+Do NOT blindly replace:
+
+- External URLs
+- Downloads
+- mailto:
+- tel:
+- webhook URLs
+- API URLs
+
+Only internal application navigation should use the router.
+
+---
+
+# 18. COMPONENT ARCHITECTURE
+
+Before creating new components, inspect existing components.
+
+Reuse or extend existing primitives.
+
+Expected reusable components may include:
+
+```text
+ToastProvider
+Toast
+ConfirmDialog
+Breadcrumbs
+CommandPalette
+Sidebar
+MobileBottomNav
+NeedsAttention
+KpiCard
+FilterBar
+FilterChip
+SavedViews
+BulkActionBar
+DataTable
+EmptyState
+SetupChecklist
+StickySaveBar
+```
+
+Do not duplicate components with slightly different names.
+
+---
+
+# 19. Testing
+
+Add/update tests for:
+
+### ConfirmDialog
+
+- Opens
+- Cancels
+- Confirms
+- Loading state
+- Keyboard behavior
+
+### Toasts
+
+- Success
+- Error
+- Dismiss
+- Accessibility announcement
+
+### Navigation
+
+- Breadcrumbs
+- Internal Link navigation
+- Command palette
+
+### Customers
+
+- Filters
+- Filter chips
+- Saved views
+- Bulk selection
+- Bulk actions
+
+### Settings
+
+- Dirty state
+- Save
+- Discard
+- Sticky save bar
+
+### Mobile
+
+- Bottom navigation
+- Responsive layouts
+
+### Accessibility
+
+Run the project's available accessibility/lint tooling.
+
+---
+
+# 20. Regression protection
+
+Do not break existing functionality.
+
+After the UI work, run:
+
+```text
+npm run typecheck
+npm run lint
+npm test
+```
+
+If the project has additional validation commands, run those too.
+
+Fix all regressions caused by this milestone.
+
+---
+
+# 21. Definition of Done
+
+This milestone is complete only when:
+
+- [ ] Global toast system implemented
+- [ ] Native confirm() removed from application UI
+- [ ] Shared ConfirmDialog implemented
+- [ ] Sidebar reorganized
+- [ ] Distinct icons implemented
+- [ ] Breadcrumbs implemented
+- [ ] Global search/command palette implemented
+- [ ] Dashboard Needs Attention strip implemented
+- [ ] Internal navigation uses router Link
+- [ ] Customers bulk actions implemented
+- [ ] Customers filter chips implemented
+- [ ] Customers saved views implemented
+- [ ] Pattern applied to Services
+- [ ] Pattern applied to Billing
+- [ ] Pattern applied to Tickets
+- [ ] Settings split into sub-routes
+- [ ] Sticky save bar implemented
+- [ ] Mobile bottom navigation implemented
+- [ ] Rich empty states implemented
+- [ ] Setup checklist implemented
+- [ ] Contrast reviewed
+- [ ] ARIA/accessibility reviewed
+- [ ] Keyboard navigation verified
+- [ ] Loading/error states standardized
+- [ ] No duplicate UI primitives introduced
+- [ ] Typecheck passes
+- [ ] Lint passes
+- [ ] Tests pass
+- [ ] Existing ISP functionality remains intact
+
+---
+
+# IMPORTANT IMPLEMENTATION RULE
+
+Do this as a **progressive UI modernization**, not a visual rewrite.
+
+First inspect the existing UI/component architecture.
+
+Then:
+
+1. Identify existing reusable components.
+2. Consolidate duplicates.
+3. Build the shared primitives.
+4. Apply them to Dashboard.
+5. Apply them to Customers.
+6. Roll them out to Services, Billing and Tickets.
+7. Refactor Settings.
+8. Complete mobile improvements.
+9. Perform accessibility pass.
+10. Run the complete test suite.
+
+Do not change backend business logic merely to make the UI work.
+
+Do not introduce mock data.
+
+Do not remove existing functionality.
+
+Do not create placeholder navigation routes.
+
+At the end, report:
+
+- Components created
+- Components consolidated
+- Routes changed
+- Pages modernized
+- Accessibility improvements
+- Mobile improvements
+- Tests run
+- Test results
+- Any remaining UI inconsistencies
+
+STOP after completing this milestone and wait for the next instruction.

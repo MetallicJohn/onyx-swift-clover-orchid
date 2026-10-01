@@ -4,6 +4,9 @@ import { ThemePreview } from "@/components/isp/theme-preview";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
+import { StickySaveBar } from "@/components/ui/sticky-save-bar";
+import { useToast } from "@/components/ui/toast";
+import { useUnsavedGuard } from "@/components/ui/unsaved-guard";
 import { getTenantTheme, saveTenantThemeFn } from "@/lib/isp/server-theme";
 import { MAX_FAVICON_BYTES, MAX_LOGO_BYTES, parseDataImage } from "@/lib/theme/assets";
 import { normalizeHex } from "@/lib/theme/contrast";
@@ -166,6 +169,8 @@ export function AppearanceSettings({
   );
   const dirty = isThemeDirty(draft, saved);
   const saveLock = useRef(false);
+  const toast = useToast();
+  useUnsavedGuard(!embedded && dirty, "Branding has unsaved changes. Leave without saving?");
 
   useEffect(() => {
     onDirtyChange?.(dirty);
@@ -364,18 +369,44 @@ export function AppearanceSettings({
       </div>
 
       {err ? <p className="text-sm text-danger">{err}</p> : null}
-      {ok ? <p className="text-sm text-ok">{ok}</p> : null}
 
       <div className="flex flex-wrap gap-2">
         <Button
-          disabled={!canManage || busy || !dirty}
-          aria-busy={busy}
-          onClick={async () => {
-            if (saveLock.current) return;
-            saveLock.current = true;
-            setBusy(true);
-            setErr(null);
-            setOk(null);
+          type="button"
+          variant="ghost"
+          onClick={() =>
+            setPatch({
+              preset: DEFAULT_PRESET,
+              appearance: DEFAULT_APPEARANCE,
+              font: DEFAULT_FONT,
+              primary: "",
+              secondary: "",
+              accent: "",
+            })
+          }
+        >
+          Reset palette
+        </Button>
+        {!canManage ? <p className="self-center text-sm text-muted">Only an owner or admin can save branding.</p> : null}
+      </div>
+      <StickySaveBar
+        dirty={dirty}
+        saving={busy}
+        saved={Boolean(ok) && !dirty}
+        onDiscard={() => {
+          dirtyRef.current = false;
+          setDraft(saved);
+          apply(saved, ispName);
+          setOk(null);
+          setErr(null);
+        }}
+        onSave={() => {
+          if (!canManage || saveLock.current) return;
+          saveLock.current = true;
+          setBusy(true);
+          setErr(null);
+          setOk(null);
+          void (async () => {
             try {
               const row = await saveTenantThemeFn({
                 data: {
@@ -400,48 +431,17 @@ export function AppearanceSettings({
               setDraft(next);
               apply(next, ispName);
               setOk(savedMessage);
+              toast.success("Branding saved");
             } catch (e) {
               setErr(e instanceof Error ? e.message : "Could not save appearance");
+              toast.error("Could not save branding", e instanceof Error ? e.message : undefined);
             } finally {
               saveLock.current = false;
               setBusy(false);
             }
-          }}
-        >
-          {busy ? "Saving…" : "Save appearance"}
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={!dirty}
-          onClick={() => {
-            dirtyRef.current = false;
-            setDraft(saved);
-            apply(saved, ispName);
-            setOk(null);
-            setErr(null);
-          }}
-        >
-          Revert
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() =>
-            setPatch({
-              preset: DEFAULT_PRESET,
-              appearance: DEFAULT_APPEARANCE,
-              font: DEFAULT_FONT,
-              primary: "",
-              secondary: "",
-              accent: "",
-            })
-          }
-        >
-          Reset palette
-        </Button>
-        {!canManage ? <p className="self-center text-sm text-muted">Only an owner or admin can save branding.</p> : null}
-      </div>
+          })();
+        }}
+      />
     </div>
   );
 }

@@ -261,7 +261,7 @@ function HotspotVouchers() {
               {pageRows.length === 0 ? (
                 <tr>
                   <td className="px-4 py-6 text-muted" colSpan={6}>
-                    No vouchers yet.
+                    No vouchers yet. Generate a voucher when a customer needs hotspot access.
                   </td>
                 </tr>
               ) : (

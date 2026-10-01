@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { SettingsCheck } from "@/components/isp/settings-ui";
 import {
@@ -321,8 +322,10 @@ export function AccountNumberSettings() {
         className="space-y-4"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!window.confirm("Save this format for future account numbers? Existing numbers stay as they are.")) return;
-          void save();
+          void (async () => {
+            if (!(await askConfirm({ title: "Save account number format?", description: "Existing numbers stay as they are. New numbers use this format.", confirmLabel: "Save format" }))) return;
+            void save();
+          })();
         }}
       >
         <section className="grid max-w-3xl gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-2">
@@ -590,7 +593,7 @@ export function AccountNumberSettings() {
             variant="ghost"
             disabled={busy}
             onClick={async () => {
-              if (!window.confirm("Restore the default format? Existing numbers stay as they are.")) return;
+              if (!(await askConfirm({ title: "Restore the default format?", description: "Existing numbers stay as they are.", confirmLabel: "Restore default", variant: "warning" }))) return;
               setBusy(true);
               setError(null);
               try {

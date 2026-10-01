@@ -1,11 +1,16 @@
 import type { ReactNode } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { Search, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { InvoicePreview } from "@/components/isp/document-preview";
 import { PdfActions } from "@/components/isp/pdf-actions";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ColumnVisibility } from "@/components/ui/column-visibility";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterChips } from "@/components/ui/filter-chips";
+import { RowDensity } from "@/components/ui/row-density";
+import { SavedViews, type ViewSnapshot } from "@/components/ui/saved-views";
 import { Dialog } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { DateYmdInput } from "@/components/isp/date-ymd-input";
@@ -15,6 +20,7 @@ import { downloadPdf, printPdf, viewPdf } from "@/lib/isp/pdf-client";
 import { emailInvoicePdf, getInvoiceDocument, getInvoicePdf } from "@/lib/isp/server-docs";
 import { createInvoice, listBilling, recordPayment, runAutomatedBilling, saveBillingSettings } from "@/lib/isp/server";
 import { hasPermission } from "@/lib/isp/rbac";
+import type { ViewDensity } from "@/lib/isp/saved-views";
 import { confirmStk, sendStk } from "@/lib/isp/server-ops";
 import type { InvoiceRow, PaymentRow } from "@/lib/isp/types";
 import { cn, kes } from "@/lib/utils";
@@ -36,6 +42,29 @@ type Line = { description: string; quantity: number; unit_kes: number; package_i
 
 type CustomerHit = { id: string; name: string; phone: string; account_number: string };
 
+const INVOICE_COLUMNS = [
+  { id: "number", label: "Number", locked: true },
+  { id: "customer", label: "Customer", locked: true },
+  { id: "service", label: "Service" },
+  { id: "total", label: "Total" },
+  { id: "remaining", label: "Remaining" },
+  { id: "due", label: "Due" },
+  { id: "status", label: "Status" },
+];
+
+const PAYMENT_COLUMNS = [
+  { id: "reference", label: "Reference", locked: true },
+  { id: "customer", label: "Customer", locked: true },
+  { id: "provider", label: "Provider" },
+  { id: "amount", label: "Amount" },
+  { id: "paid", label: "Paid" },
+  { id: "status", label: "Status" },
+];
+
+function stringList(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => String(item || "")).filter(Boolean) : [];
+}
+
 type InvoiceDetail = InvoiceDocument;
 
 function defaultDue() {
@@ -53,6 +82,9 @@ function BillingPage() {
   const [totals, setTotals] = useState({ outstanding: 0, overdue: 0, collected: 0, open: 0 });
   const [aging, setAging] = useState<Record<string, { count: number; amount: number }>>({});
   const [tab, setTab] = useState<"invoices" | "payments">("invoices");
+  const [density, setDensity] = useState<ViewDensity>("comfortable");
+  const [invoiceHidden, setInvoiceHidden] = useState<string[]>([]);
+  const [paymentHidden, setPaymentHidden] = useState<string[]>([]);
   const [filter, setFilter] = useState("open");
   const [query, setQuery] = useState("");
   const [form, setForm] = useState({ customer_id: "", due_date: "", notes: "" });
@@ -606,19 +638,60 @@ function BillingPage() {
           ) : null}
         </div>
       </div>
+      <FilterChips
+        chips={[
+          ...(tab === "invoices" && filter !== "open" ? [{ id: "status", label: `Status: ${filter}` }] : []),
+          ...(query.trim() ? [{ id: "q", label: `Search: ${query.trim()}` }] : []),
+        ]}
+        onRemove={(id) => {
+          if (id === "status") setFilter("open");
+          if (id === "q") setQuery("");
+        }}
+        onClearAll={() => {
+          setFilter("open");
+          setQuery("");
+        }}
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <SavedViews
+          resource="billing"
+          current={{
+            filters: { tab, filter, q: query, invoiceHidden, paymentHidden },
+            columns: tab === "invoices" ? invoiceHidden : paymentHidden,
+            density,
+          }}
+          onApply={(next: ViewSnapshot) => {
+            const applied = next.filters;
+            if (applied.tab === "invoices" || applied.tab === "payments") setTab(applied.tab);
+            if (typeof applied.filter === "string") setFilter(applied.filter);
+            if (typeof applied.q === "string") setQuery(applied.q);
+            setInvoiceHidden(Array.isArray(applied.invoiceHidden) ? stringList(applied.invoiceHidden) : next.columns || []);
+            setPaymentHidden(stringList(applied.paymentHidden));
+            if (next.density) setDensity(next.density);
+          }}
+        />
+        <ColumnVisibility
+          columns={tab === "invoices" ? INVOICE_COLUMNS : PAYMENT_COLUMNS}
+          hidden={tab === "invoices" ? invoiceHidden : paymentHidden}
+          onChange={tab === "invoices" ? setInvoiceHidden : setPaymentHidden}
+        />
+        <RowDensity value={density} onChange={setDensity} />
+      </div>
 
       {tab === "invoices" ? (
         <Table
+          density={density}
+          hidden={invoiceHidden}
+          columns={INVOICE_COLUMNS}
           empty={
             invoices.length === 0
-              ? "No invoices yet. Issue an invoice for a customer service."
+              ? "No invoices yet. Issue an invoice when a customer needs to pay for a service."
               : query.trim()
                 ? `No invoices match “${query.trim()}”.`
-                : "Nothing in this view."
+                : "No invoices match this status."
           }
-          headers={["Number", "Customer", "Service", "Total", "Remaining", "Due", "Status"]}
           rows={visible.map((i) => [
-            <button key={i.id} type="button" className="text-left font-mono text-accent hover:underline" onClick={() => openInvoice(i.id)}>
+            <Link key={i.id} to="/app/billing/invoices/$invoiceId" params={{ invoiceId: i.id }} className="text-left font-mono text-accent hover:underline">
               {i.number}
               {i.etims_status === "submitted" && i.etims_rcpt_no ? (
                 <span className="mt-0.5 block text-xs font-sans text-muted">KRA {i.etims_rcpt_no}</span>
@@ -626,7 +699,7 @@ function BillingPage() {
               {i.etims_status === "failed" || i.etims_status === "rejected" ? (
                 <span className="mt-0.5 block text-xs font-sans text-danger">eTIMS {i.etims_status}</span>
               ) : null}
-            </button>,
+            </Link>,
             i.customer_name,
             i.service_account || i.service_name || "—",
             kes(i.amount_kes),
@@ -639,14 +712,14 @@ function BillingPage() {
         />
       ) : (
         <Table
+          density={density}
+          hidden={paymentHidden}
+          columns={PAYMENT_COLUMNS}
           empty={
             payments.length === 0
-              ? "No payments recorded yet."
-              : query.trim()
-                ? `No payments match “${query.trim()}”.`
-                : "Nothing in this view."
+              ? "No payments recorded yet. Confirmed M-Pesa and cash payments show up here."
+              : `No payments match “${query.trim()}”.`
           }
-          headers={["Reference", "Customer", "Provider", "Amount", "Paid", "Status"]}
           rows={visiblePayments.map((p) => [
             p.reference,
             p.customer_name,
@@ -910,15 +983,27 @@ function InvoicePanel({
   );
 }
 
-function Table({ headers, rows, empty }: { headers: string[]; rows: ReactNode[][]; empty?: string }) {
+function Table({
+  columns,
+  rows,
+  empty,
+  density,
+  hidden,
+}: {
+  columns: { id: string; label: string; locked?: boolean }[];
+  rows: ReactNode[][];
+  empty?: string;
+  density: ViewDensity;
+  hidden: string[];
+}) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border print:hidden">
+    <div className="table-view overflow-x-auto rounded-xl border border-border print:hidden" data-density={density} data-hide={hidden.join(" ")}>
       <table className="w-full min-w-[36rem] text-left text-sm">
         <thead className="bg-surface text-xs text-muted">
           <tr>
-            {headers.map((h) => (
-              <th key={h} className="px-4 py-3 font-medium">
-                {h}
+            {columns.map((column) => (
+              <th key={column.id} className="px-4 py-3 font-medium" data-col={column.id}>
+                {column.label}
               </th>
             ))}
           </tr>
@@ -926,16 +1011,19 @@ function Table({ headers, rows, empty }: { headers: string[]; rows: ReactNode[][
         <tbody className="divide-y divide-border">
           {rows.length === 0 ? (
             <tr>
-              <td className="px-4 py-8 text-muted" colSpan={headers.length}>
-                {empty || "Nothing in this view."}
+              <td className="px-4 py-4" colSpan={columns.length}>
+                <EmptyState
+                  title={empty?.split(". ")[0] || "Nothing in this view"}
+                  description={empty?.includes(". ") ? empty.slice(empty.indexOf(". ") + 2) : undefined}
+                />
               </td>
             </tr>
           ) : (
-            rows.map((r, i) => (
+            rows.map((row, i) => (
               <tr key={i}>
-                {r.map((c, j) => (
-                  <td key={j} className="px-4 py-3">
-                    {c}
+                {row.map((cell, j) => (
+                  <td key={columns[j]?.id || j} className="px-4 py-3" data-col={columns[j]?.id}>
+                    {cell}
                   </td>
                 ))}
               </tr>

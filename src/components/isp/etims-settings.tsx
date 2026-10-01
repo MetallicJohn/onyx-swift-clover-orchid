@@ -4,7 +4,10 @@ import { Input, Select } from "@/components/ui/input";
 import { etimsHealth, type EtimsEnvironment } from "@/lib/isp/etims-format";
 import { getEtimsSettings, initializeEtimsFn, retryEtimsInvoiceFn, saveEtimsSettingsFn, testEtimsFn } from "@/lib/isp/server-etims";
 import { cn } from "@/lib/utils";
-import { SaveButton, SettingsCheck, SettingsField, SettingsStatus, type SettingsNote } from "@/components/isp/settings-ui";
+import { SettingsCheck, SettingsField, SettingsStatus, type SettingsNote } from "@/components/isp/settings-ui";
+import { StickySaveBar } from "@/components/ui/sticky-save-bar";
+import { useToast } from "@/components/ui/toast";
+import { useUnsavedGuard } from "@/components/ui/unsaved-guard";
 
 type View = Awaited<ReturnType<typeof getEtimsSettings>>;
 type MapRow = View["maps"][number];
@@ -47,9 +50,31 @@ function ago(iso: string | null) {
   return new Date(iso).toLocaleDateString("en-KE", { timeZone: "Africa/Nairobi" });
 }
 
-export function EtimsSettings() {
+function etimsFields(view: View) {
+  return {
+    enabled: view.enabled,
+    environment: view.environment,
+    kraPin: view.kraPin,
+    branchId: view.branchId,
+    deviceSerial: view.deviceSerial,
+    defaultItemCd: view.defaultItemCd,
+    defaultItemClsCd: view.defaultItemClsCd,
+    defaultTaxTyCd: view.defaultTaxTyCd,
+    defaultQtyUnitCd: view.defaultQtyUnitCd,
+    defaultPkgUnitCd: view.defaultPkgUnitCd,
+    maps: view.maps,
+  };
+}
+
+function etimsFingerprint(view: View) {
+  return JSON.stringify(etimsFields(view));
+}
+
+export function EtimsSettings({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void } = {}) {
+  const toast = useToast();
   const [view, setView] = useState<View>(EMPTY);
   const [savedEnv, setSavedEnv] = useState<EtimsEnvironment>("sandbox");
+  const [baseline, setBaseline] = useState("");
   const [confirmProduction, setConfirmProduction] = useState(false);
   const [forceInit, setForceInit] = useState(false);
   const [note, setNote] = useState<SettingsNote>(null);
@@ -62,6 +87,7 @@ export function EtimsSettings() {
     setSavedEnv(next.environment);
     setConfirmProduction(false);
     setForceInit(false);
+    setBaseline(etimsFingerprint(next));
   }
 
   useEffect(() => {
@@ -82,6 +108,11 @@ export function EtimsSettings() {
   }, []);
 
   const needsConfirm = view.environment === "production" && savedEnv !== "production";
+  const dirty = loaded && baseline !== "" && etimsFingerprint(view) !== baseline;
+  useUnsavedGuard(dirty, "eTIMS settings have unsaved changes. Leave without saving?");
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
   const health = etimsHealth(view);
   const dot =
     health.tone === "ok" ? "bg-ok" : health.tone === "warn" ? "bg-warn" : health.tone === "danger" ? "bg-danger" : "bg-muted";
@@ -112,8 +143,10 @@ export function EtimsSettings() {
       });
       apply(next);
       setNote({ ok: true, text: "eTIMS settings saved" });
+      toast.success("eTIMS settings saved");
     } catch (err) {
       setNote({ ok: false, text: err instanceof Error ? err.message : "Could not save eTIMS settings" });
+      toast.error("Could not save eTIMS", err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(false);
     }
@@ -290,9 +323,18 @@ export function EtimsSettings() {
       ) : null}
 
       <SettingsStatus note={note} />
-      <div className="flex flex-wrap gap-2">
-        <SaveButton busy={busy} label="Save eTIMS" />
-      </div>
+      <StickySaveBar
+        dirty={dirty}
+        saving={busy}
+        saved={note?.ok === true && !dirty}
+        onDiscard={() => {
+          if (!baseline) return;
+          const saved = JSON.parse(baseline) as ReturnType<typeof etimsFields>;
+          setView((current) => ({ ...current, ...saved, maps: saved.maps }));
+          setConfirmProduction(false);
+        }}
+        onSave={() => void save()}
+      />
 
       <div className="grid gap-3 rounded-lg border border-border p-3">
         <p className="text-sm">

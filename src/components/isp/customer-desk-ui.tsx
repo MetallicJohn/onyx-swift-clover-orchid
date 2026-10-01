@@ -23,6 +23,7 @@ import {
 import { Select } from "@/components/ui/input";
 import { TablePad, VirtualTableFrame } from "@/components/ui/virtual-scroller";
 import { useTableVirtualizer } from "@/components/ui/use-virtual-scroller";
+import type { ViewDensity } from "@/lib/isp/saved-views";
 import {
   accountStateLabel,
   activeDeskFilterCount,
@@ -455,6 +456,8 @@ export function DeskTable({
   onPreview,
   perms,
   actions,
+  density = "comfortable",
+  hiddenColumns = [],
 }: {
   rows: DeskCustomer[];
   selected: Set<string>;
@@ -464,10 +467,14 @@ export function DeskTable({
   onPreview: (c: DeskCustomer) => void;
   perms: DeskPerms;
   actions: DeskActions;
+  density?: ViewDensity;
+  hiddenColumns?: string[];
 }) {
-  const { parentRef, virtualizer, rows: vis, padTop, padBottom } = useTableVirtualizer(rows.length, 56);
+  const estimate = density === "dense" ? 40 : density === "compact" ? 48 : 56;
+  const { parentRef, virtualizer, rows: vis, padTop, padBottom } = useTableVirtualizer(rows.length, estimate);
   return (
-    <VirtualTableFrame parentRef={parentRef} className="hidden rounded-xl bg-surface shadow-card md:block">
+    <div className="table-view hidden md:block" data-density={density} data-hide={hiddenColumns.join(" ")}>
+    <VirtualTableFrame parentRef={parentRef} className="rounded-xl bg-surface shadow-card">
       <table className="w-full min-w-[64rem] text-left text-sm">
         <thead className="sticky top-0 z-10 bg-surface text-xs text-muted">
           <tr>
@@ -476,15 +483,18 @@ export function DeskTable({
                 <input type="checkbox" className="size-4" checked={allSelected} onChange={onToggleAll} aria-label="Select all on this page" />
               ) : null}
             </th>
-            <th className="px-3 py-2 font-medium">ID</th>
-            <th className="px-3 py-2 font-medium">Customer</th>
-            <th className="px-3 py-2 font-medium">Phone</th>
-            <th className="px-3 py-2 font-medium">Package</th>
-            <th className="px-3 py-2 font-medium">Type</th>
-            <th className="px-3 py-2 font-medium">Status</th>
-            <th className="px-3 py-2 font-medium">Expiry</th>
-            <th className="px-3 py-2 font-medium">Last activity</th>
-            <th className="px-3 py-2 font-medium">Outstanding</th>
+            <th className="px-3 py-2 font-medium" data-col="id">ID</th>
+            <th className="px-3 py-2 font-medium" data-col="customer">Customer</th>
+            <th className="px-3 py-2 font-medium" data-col="phone">Phone</th>
+            <th className="px-3 py-2 font-medium" data-col="package">Package</th>
+            <th className="px-3 py-2 font-medium" data-col="type">Type</th>
+            <th className="px-3 py-2 font-medium" data-col="status">Status</th>
+            <th className="px-3 py-2 font-medium" data-col="expiry">Expiry</th>
+            <th className="px-3 py-2 font-medium" data-col="activity">Last activity</th>
+            <th className="px-3 py-2 font-medium" data-col="outstanding">Outstanding</th>
+            <th className="px-3 py-2 font-medium" data-col="email">Email</th>
+            <th className="px-3 py-2 font-medium" data-col="address">Address</th>
+            <th className="px-3 py-2 font-medium" data-col="created">Created</th>
             <th className="px-2 py-2" />
           </tr>
         </thead>
@@ -515,8 +525,8 @@ export function DeskTable({
                     />
                   ) : null}
                 </td>
-                <td className="px-3 py-2 font-mono text-xs">{c.account_number || "—"}</td>
-                <td className="px-3 py-2">
+                <td className="px-3 py-2 font-mono text-xs" data-col="id">{c.account_number || "—"}</td>
+                <td className="px-3 py-2" data-col="customer">
                   <div className="flex items-center gap-2.5">
                     <Avatar name={c.name} />
                     <div className="min-w-0">
@@ -534,34 +544,38 @@ export function DeskTable({
                     </div>
                   </div>
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-3 py-2" data-col="phone">
                   <div>{c.phone || "No phone"}</div>
                   <div className="text-xs text-muted">{c.email || "No email"}</div>
                 </td>
-                <td className="px-3 py-2">{c.package_summary}</td>
-                <td className="px-3 py-2 text-muted">{c.access_methods.map(accessMethodLabel).join(" · ") || "—"}</td>
-                <td className="px-3 py-2">
+                <td className="px-3 py-2" data-col="package">{c.package_summary}</td>
+                <td className="px-3 py-2 text-muted" data-col="type">{c.access_methods.map(accessMethodLabel).join(" · ") || "—"}</td>
+                <td className="px-3 py-2" data-col="status">
                   <div className="flex flex-wrap gap-1">
                     <Badge tone={statusTone(c.account_state)}>{accountLabel(c.account_state)}</Badge>
                     {c.line_status !== "none" ? <Badge tone={statusTone(c.line_status)}>{lineLabel(c.line_status)}</Badge> : null}
                   </div>
                   <div className="mt-0.5 text-xs text-subtle">{c.service_status_summary}</div>
                 </td>
-                <td className="whitespace-nowrap px-3 py-2">{formatDate(c.next_expiry)}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-muted">{c.last_activity ? formatShortDateTime(c.last_activity) : "—"}</td>
-                <td className="px-3 py-2 font-mono tabular-nums">
+                <td className="whitespace-nowrap px-3 py-2" data-col="expiry">{formatDate(c.next_expiry)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-muted" data-col="activity">{c.last_activity ? formatShortDateTime(c.last_activity) : "—"}</td>
+                <td className="px-3 py-2 font-mono tabular-nums" data-col="outstanding">
                   <span className={c.overdue ? "text-danger" : undefined}>{kes(c.balance_kes)}</span>
                 </td>
+                <td className="px-3 py-2 text-muted" data-col="email">{c.email || "—"}</td>
+                <td className="max-w-48 truncate px-3 py-2 text-muted" data-col="address">{c.address || "—"}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-muted" data-col="created">{formatDate(c.created_at)}</td>
                 <td className="px-2 py-1 text-right">
                   <CustomerActions c={c} perms={perms} actions={actions} />
                 </td>
               </tr>
             );
           })}
-          <TablePad height={padBottom} colSpan={11} />
+          <TablePad height={padBottom} colSpan={14} />
         </tbody>
       </table>
     </VirtualTableFrame>
+    </div>
   );
 }
 

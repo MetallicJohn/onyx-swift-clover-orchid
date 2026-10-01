@@ -7,7 +7,7 @@ import { assertPermission } from "./rbac";
 import { attachCustomerReseller } from "./resellers";
 import { assertFeature } from "./plans";
 import { applySaasPayment, createSaasStkIntent, loadPlanDesk, requestPlanChange, type PlanCode } from "./saas";
-import { assignTicket, commentTicket, listStaff } from "./tickets";
+import { assignTicket, bulkUpdateTickets, commentTicket, getTicketRow, listStaff, ticketBulkAllowed, type TicketBulkOp } from "./tickets";
 import { loadAudit, loadReports, loadStatement } from "./reports";
 import { assignIncomingPayments, listIncomingPayments } from "./incoming-payments";
 import { addBranch, addMemberByEmail, listBranches, setMemberRole } from "./members";
@@ -43,6 +43,34 @@ export const listTicketStaff = createServerFn({ method: "GET" })
     const { sql, tenantId, role } = await requireWs(context.userId);
     assertPermission(role, "tickets.read");
     return { staff: await listStaff(sql, tenantId) };
+  });
+
+export const getTicketFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { id?: string }) => ({ id: String(d?.id || "") }))
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    assertPermission(role, "tickets.read");
+    const ticket = await getTicketRow(sql, tenantId, data.id);
+    if (!ticket) throw new Error("Ticket not found");
+    return { ticket };
+  });
+
+export const bulkUpdateTicketsFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((d: { ids?: string[]; op?: TicketBulkOp; value?: string }) => ({
+    ids: Array.isArray(d?.ids) ? d.ids.map((id) => String(id || "")).slice(0, 100) : [],
+    op: (d?.op || "status") as TicketBulkOp,
+    value: String(d?.value || ""),
+  }))
+  .handler(async ({ context, data }) => {
+    const { sql, tenantId, role } = await requireWs(context.userId);
+    const technician = role === "technician";
+    if (!ticketBulkAllowed(role, data.op)) throw new Error("Forbidden");
+    if (!["assign", "priority", "status", "close"].includes(data.op)) throw new Error("Unknown ticket action");
+    return bulkUpdateTickets(sql, tenantId, context.userId, data.ids, data.op, data.value, {
+      technicianUserId: technician ? context.userId : "",
+    });
   });
 
 export const queueCpeTask = createServerFn({ method: "POST" })

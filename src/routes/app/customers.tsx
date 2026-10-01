@@ -19,7 +19,12 @@ import { OnboardWizard } from "@/components/isp/onboard-wizard";
 import { TagPicker } from "@/components/isp/tag-picker";
 import { TrafficDrawer } from "@/components/isp/traffic-drawer";
 import { Button } from "@/components/ui/button";
+import { ColumnVisibility } from "@/components/ui/column-visibility";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 import { Dialog } from "@/components/ui/dialog";
+import { RowDensity } from "@/components/ui/row-density";
+import { SavedViews, type ViewSnapshot } from "@/components/ui/saved-views";
+import { useToast } from "@/components/ui/toast";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import {
   EMPTY_DESK_FILTERS,
@@ -29,6 +34,7 @@ import {
   type DeskFilters,
 } from "@/lib/isp/customer-desk-format";
 import { hasPermission } from "@/lib/isp/rbac";
+import type { ViewDensity } from "@/lib/isp/saved-views";
 import { queryCustomersDeskFn } from "@/lib/isp/server-desk";
 import { deleteCustomerFn, getCustomerFn } from "@/lib/isp/server-lifecycle";
 import { createCustomer, exportCustomersCsv, setServiceStatus, updateCustomer } from "@/lib/isp/server";
@@ -153,6 +159,7 @@ function CustomersRoute() {
 
 function CustomersPage() {
   const navigate = Route.useNavigate();
+  const toast = useToast();
   const search = Route.useSearch();
   const filters = useMemo(() => searchToFilters(search), [search]);
   const tab: PageTab = search.tab === "communications" ? "communications" : "customers";
@@ -169,6 +176,8 @@ function CustomersPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [density, setDensity] = useState<ViewDensity>("comfortable");
+  const [hiddenCols, setHiddenCols] = useState<string[]>(["email", "address", "created"]);
   const [bulk, setBulk] = useState<"tags-add" | "tags-remove" | "sms" | "notify" | null>(null);
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [bulkSubject, setBulkSubject] = useState("");
@@ -363,13 +372,13 @@ function CustomersPage() {
     const ids = status === "suspended" ? c.live_service_ids : c.suspended_service_ids;
     if (!ids.length) return;
     const verb = status === "suspended" ? "Suspend" : "Restore";
-    if (!window.confirm(`${verb} ${ids.length} service${ids.length === 1 ? "" : "s"} for ${c.name}?`)) return;
+    if (!(await askConfirm({ title: `${verb} services?`, description: `${verb} ${ids.length} service${ids.length === 1 ? "" : "s"} for ${c.name}?`, confirmLabel: verb, variant: status === "suspended" ? "danger" : "warning" }))) return;
     setBusy(true);
     try {
       for (const id of ids) await setServiceStatus({ data: { id, status } });
       await loadDesk(filters);
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Could not update services");
+      toast.error("Unable to update services", err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(false);
     }
@@ -388,7 +397,7 @@ function CustomersPage() {
       } else if (bulk === "sms" || bulk === "notify") {
         const ids = bulk === "sms" ? smsPlan.recipients.map((r) => r.id) : selectedRows.map((c) => c.id);
         if (bulk === "sms" && !ids.length) throw new Error("None of the selected customers have a valid mobile number.");
-        if (bulk === "sms" && !window.confirm(`Queue SMS for ${ids.length} recipient${ids.length === 1 ? "" : "s"}? ${smsPlan.skipped.length} skipped.`)) {
+        if (bulk === "sms" && !(await askConfirm({ title: "Queue SMS?", description: `Queue SMS for ${ids.length} recipient${ids.length === 1 ? "" : "s"}? ${smsPlan.skipped.length} skipped.`, confirmLabel: "Queue SMS", variant: "warning" }))) {
           setBusy(false);
           return;
         }
@@ -559,6 +568,31 @@ function CustomersPage() {
             />
           </div>
 
+          <div className="flex flex-wrap items-center gap-2">
+            <SavedViews
+              page="customers"
+              current={{ filters: filters as unknown as Record<string, unknown>, columns: hiddenCols, density }}
+              onApply={(next: ViewSnapshot) => {
+                if (next.density) setDensity(next.density);
+                if (next.columns) setHiddenCols(next.columns);
+                patchSearch(next.filters as Partial<typeof filters>);
+              }}
+            />
+            <ColumnVisibility
+              columns={[
+                { id: "customer", label: "Customer", locked: true },
+                { id: "phone", label: "Phone" },
+                { id: "package", label: "Package" },
+                { id: "status", label: "Status" },
+                { id: "email", label: "Email" },
+                { id: "address", label: "Address" },
+                { id: "created", label: "Created" },
+              ]}
+              hidden={hiddenCols}
+              onChange={setHiddenCols}
+            />
+            <RowDensity value={density} onChange={setDensity} />
+          </div>
           <DeskFilterBar
             filters={filters}
             packages={desk?.packages ?? []}
@@ -601,14 +635,17 @@ function CustomersPage() {
                       onClick={() => {
                         const n = selectedRows.reduce((sum, c) => sum + c.live_service_ids.length, 0);
                         if (!n) return;
-                        if (!window.confirm(`Suspend ${n} live service${n === 1 ? "" : "s"} on ${selectedRows.length} customers?`)) return;
                         void (async () => {
+                          if (!(await askConfirm({ title: "Suspend services?", description: `Suspend ${n} live service${n === 1 ? "" : "s"} on ${selectedRows.length} customers?`, confirmLabel: "Suspend", variant: "danger" }))) return;
                           setBusy(true);
                           try {
                             for (const c of selectedRows) {
                               for (const id of c.live_service_ids) await setServiceStatus({ data: { id, status: "suspended" } });
                             }
                             await loadDesk(filters);
+                            toast.success("Services suspended");
+                          } catch (err) {
+                            toast.error("Unable to suspend services", err instanceof Error ? err.message : undefined);
                           } finally {
                             setBusy(false);
                           }
@@ -787,6 +824,8 @@ function CustomersPage() {
                     setSelected(next);
                   }
                 }}
+                density={density}
+                hiddenColumns={hiddenCols}
                 onPreview={setPreviewFor}
                 perms={perms}
                 actions={actions}

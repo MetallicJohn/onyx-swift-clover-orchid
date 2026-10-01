@@ -5,6 +5,7 @@ import { AcsAssignDialog } from "@/components/isp/acs-assign-dialog";
 import { AcsDeviceDetails } from "@/components/isp/acs-device-details";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -348,8 +349,18 @@ export function AcsDeviceDesk() {
                     {can.reboot ? (
                       <DropdownMenuItem
                         onSelect={() => {
-                          if (!window.confirm("Reboot this device? Access drops until it comes back.")) return;
-                          void run(() => rebootAcsDeviceFn({ data: { id: row.id, confirm: true } }), "Reboot queued");
+                          const serial = row.serial || "this CPE";
+                          void askConfirm({
+                            title: "Reboot this device?",
+                            description: `${serial} will drop access until it comes back.`,
+                            confirmLabel: "Reboot device",
+                            pendingLabel: "Rebooting...",
+                            variant: "danger",
+                            action: async () => {
+                              await rebootAcsDeviceFn({ data: { id: row.id, confirm: true } });
+                              setNote("Reboot queued");
+                            },
+                          });
                         }}
                       >
                         Reboot device
@@ -359,9 +370,19 @@ export function AcsDeviceDesk() {
                       <DropdownMenuItem
                         danger
                         onSelect={() => {
-                          const phrase = window.prompt(`Type RESET to factory-reset ${row.serial}`) || "";
-                          if (phrase.trim().toUpperCase() !== "RESET") return;
-                          void run(() => factoryResetAcsDeviceFn({ data: { id: row.id, confirm: true, phrase } }), "Factory reset queued");
+                          const serial = row.serial;
+                          void askConfirm({
+                            title: "Factory reset CPE",
+                            description: `This will reset ${serial || "the selected CPE"} to factory defaults.`,
+                            confirmLabel: "Reset device",
+                            pendingLabel: "Resetting...",
+                            variant: "danger",
+                            confirmPhrase: "RESET",
+                            action: async () => {
+                              await factoryResetAcsDeviceFn({ data: { id: row.id, confirm: true, phrase: "RESET" } });
+                              setNote("Factory reset queued");
+                            },
+                          });
                         }}
                       >
                         Factory reset
@@ -382,8 +403,17 @@ export function AcsDeviceDesk() {
                     {can.assign && row.service_id ? (
                       <DropdownMenuItem
                         onSelect={() => {
-                          if (!window.confirm("Unassign this device from its service?")) return;
-                          void run(() => unassignAcsDeviceFn({ data: { id: row.id, confirm: true } }), "Device unassigned");
+                          void askConfirm({
+                            title: "Unassign this device?",
+                            description: "The device will no longer be tied to its service.",
+                            confirmLabel: "Unassign",
+                            pendingLabel: "Unassigning...",
+                            variant: "warning",
+                            action: async () => {
+                              await unassignAcsDeviceFn({ data: { id: row.id, confirm: true } });
+                              setNote("Device unassigned");
+                            },
+                          });
                         }}
                       >
                         Unassign device

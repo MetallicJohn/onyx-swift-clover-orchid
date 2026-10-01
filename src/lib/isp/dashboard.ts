@@ -177,6 +177,11 @@ export async function loadDashboard(sql: Sql, workspace: Workspace): Promise<Das
     from leads where tenant_id = ${tid} and archived_at is null`;
   const leadTotal = leadRow?.total ?? 0;
   const leadConverted = leadRow?.converted ?? 0;
+  const [attention] = await sql<{ overdue: number; urgent: number }>`
+    select
+      (select count(*)::int from invoices where tenant_id = ${tid} and status = 'overdue') as overdue,
+      (select count(*)::int from tickets where tenant_id = ${tid} and status not in ('resolved', 'closed') and priority in ('high', 'urgent')) as urgent
+  `;
 
   return {
     workspace,
@@ -202,6 +207,8 @@ export async function loadDashboard(sql: Sql, workspace: Workspace): Promise<Das
       renewalsToday: (renewSoon?.n ?? 0) + (dueSoon?.n ?? 0),
       atRiskHigh,
       atRiskMedium,
+      overdueInvoices: attention?.overdue ?? 0,
+      urgentTickets: attention?.urgent ?? 0,
     },
     leads: {
       total: leadTotal,
