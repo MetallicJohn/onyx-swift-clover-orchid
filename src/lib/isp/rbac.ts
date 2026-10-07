@@ -78,6 +78,10 @@ export const PERMISSIONS = [
   "leads.installation",
   "leads.convert",
   "leads.export",
+  "billing.api_payments.view",
+  "billing.api_payments.match",
+  "billing.api_payments.retry",
+  "billing.api_payments.export",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number] | "*";
@@ -112,6 +116,10 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "account_numbers.view",
     "leads.view",
     "leads.export",
+    "billing.api_payments.view",
+    "billing.api_payments.match",
+    "billing.api_payments.retry",
+    "billing.api_payments.export",
   ],
   customer_care: [
     "customers.read",
@@ -153,6 +161,8 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "leads.assign",
     "leads.coverage",
     "leads.export",
+    "billing.api_payments.view",
+    "billing.api_payments.match",
   ],
   network_engineer: [
     "customers.read",
@@ -231,6 +241,7 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "billing.business_credit.view",
     "account_numbers.view",
     "leads.view",
+    "billing.api_payments.view",
   ],
 };
 
@@ -279,6 +290,7 @@ const PAGE_PERMISSIONS: { prefix: string; permission: Permission }[] = [
   { prefix: "/app/services", permission: "services.read" },
   { prefix: "/app/radius", permission: "radius.manage" },
   { prefix: "/app/hotspot", permission: "radius.manage" },
+  { prefix: "/app/api-payments", permission: "payments.read" },
   { prefix: "/app/billing", permission: "invoices.read" },
   { prefix: "/app/reports", permission: "invoices.read" },
   { prefix: "/app/statements", permission: "invoices.read" },

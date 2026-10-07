@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { remainingKes, statusAfterPayment } from "./billing.ts";
 import { resolveAccountNumber } from "./document-format.ts";
 import { emit } from "./events.ts";
@@ -90,6 +91,17 @@ function digits(value: string) {
 
 function refKey(value: string) {
   return (value || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+}
+
+function payloadHash(payload: unknown) {
+  return createHash("sha256").update(JSON.stringify(payload ?? {})).digest("hex");
+}
+
+function reversalSource(hit: IncomingHit) {
+  const body = hit.payload && typeof hit.payload === "object" ? (hit.payload as Record<string, unknown>) : {};
+  const type = `${body.TransactionType || ""} ${hit.channel}`.toLowerCase();
+  if (!/reversal|refund/.test(type)) return null;
+  return String(body.OriginalTransactionID || body.originalTransactionId || body.ReversalOf || "").trim();
 }
 
 export async function matchIncomingCustomer(
@@ -200,7 +212,7 @@ export async function creditCustomerPayment(
   const [cus] = await sql<{ id: string }>`
     select id from customers where id = ${opts.customerId} and tenant_id = ${opts.tenantId} and deleted_at is null`;
   if (!cus) throw new Error("Customer not found");
-  let serviceId = opts.serviceId || "";
+  const serviceId = opts.serviceId || "";
   if (serviceId) {
     const [svc] = await sql<{ id: string; deleted_at: string | null }>`
       select id, deleted_at::text as deleted_at from services
@@ -278,11 +290,24 @@ export async function ingestIncomingPayment(
     select id, status from incoming_payments where tenant_id = ${tenant.id} and trans_id = ${hit.transId}`;
   if (existing) return { id: existing.id, status: existing.status, created: false };
   const id = nid("inp");
-  await sql`insert into incoming_payments
-    (id, tenant_id, provider, channel, trans_id, bill_ref, msisdn, payer_name, amount_kes, shortcode, trans_time, status, payload)
-    values (${id}, ${tenant.id}, ${hit.provider}, ${hit.channel}, ${hit.transId}, ${hit.billRef}, ${hit.msisdn},
-      ${hit.payerName}, ${hit.amountKes}, ${hit.shortcode}, ${hit.transTime}::timestamptz, 'unmatched',
-      ${JSON.stringify(hit.payload).slice(0, 8000)})`;
+  const reversal = reversalSource(hit);
+  const status = reversal ? "reversed" : "unmatched";
+  const normalized = refKey(hit.billRef);
+  try {
+    await sql`insert into incoming_payments
+      (id, tenant_id, provider, channel, trans_id, bill_ref, normalized_bill_ref, msisdn, payer_name, amount_kes, shortcode, trans_time, status, payload, payload_hash, currency, reversal_of, match_method)
+      values (${id}, ${tenant.id}, ${hit.provider}, ${hit.channel}, ${hit.transId}, ${hit.billRef}, ${normalized}, ${hit.msisdn},
+        ${hit.payerName}, ${hit.amountKes}, ${hit.shortcode}, ${hit.transTime}::timestamptz, ${status},
+        ${JSON.stringify(hit.payload).slice(0, 8000)}, ${payloadHash(hit.payload)}, 'KES', ${reversal || ""}, '')`;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!/unique|duplicate/i.test(message)) throw err;
+    const [row] = await sql<{ id: string; status: string }>`
+      select id, status from incoming_payments where tenant_id = ${tenant.id} and trans_id = ${hit.transId}`;
+    if (row) return { id: row.id, status: row.status, created: false };
+    throw err;
+  }
+  if (reversal) return { id, status: "reversed" as const, created: true };
   if (opts.autoMatch === false) return { id, status: "unmatched" as const, created: true };
   const match = await matchIncomingCustomer(sql, tenant.id, hit);
   if (!match.customerId) {
@@ -305,12 +330,15 @@ export async function ingestIncomingPayment(
     });
     await sql`update incoming_payments set status = 'matched', customer_id = ${match.customerId},
       service_id = ${match.serviceId || null},
-      payment_id = ${pay.id}, match_reason = ${match.reason} where id = ${id}`;
+      payment_id = ${pay.id}, match_reason = ${match.reason}, match_method = ${match.reason},
+      failure_reason = '', processed_at = now(), processed_by = '' where id = ${id}`;
     return { id, status: "matched" as const, created: true };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    await sql`update incoming_payments set match_reason = ${reason} where id = ${id}`;
-    return { id, status: "unmatched" as const, created: true };
+    await sql`update incoming_payments set status = 'processing_failed', customer_id = ${match.customerId},
+      service_id = ${match.serviceId || null}, match_reason = ${match.reason}, match_method = ${match.reason},
+      failure_reason = ${reason.slice(0, 400)} where id = ${id}`;
+    return { id, status: "processing_failed" as const, created: true };
   }
 }
 
@@ -349,24 +377,55 @@ export async function assignIncomingPayments(
       amount_kes: number;
       provider: string;
       status: string;
-    }>`select id, trans_id, amount_kes, provider, status from incoming_payments
+      bill_ref: string;
+    }>`select id, trans_id, amount_kes, provider, status, bill_ref from incoming_payments
        where id = ${id} and tenant_id = ${opts.tenantId}`;
     if (!row) throw new Error("Incoming payment not found");
-    if (row.status !== "unmatched") continue;
-    const pay = await creditCustomerPayment(sql, {
-      tenantId: opts.tenantId,
-      ispName: opts.ispName,
-      customerId: opts.customerId,
-      serviceId: serviceId || undefined,
-      reference: row.trans_id,
-      amountKes: row.amount_kes,
-      provider: row.provider,
-      invoiceId: opts.invoiceId,
-    });
+    if (row.status !== "unmatched" && row.status !== "processing_failed") continue;
+    let pay: { id: string };
+    try {
+      pay = await creditCustomerPayment(sql, {
+        tenantId: opts.tenantId,
+        ispName: opts.ispName,
+        customerId: opts.customerId,
+        serviceId: serviceId || undefined,
+        reference: row.trans_id,
+        amountKes: row.amount_kes,
+        provider: row.provider,
+        invoiceId: opts.invoiceId,
+      });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      const [known] = await sql<{ id: string }>`
+        select id from customers where id = ${opts.customerId} and tenant_id = ${opts.tenantId} and deleted_at is null`;
+      await sql`update incoming_payments set status = 'processing_failed',
+        customer_id = ${known ? opts.customerId : null},
+        service_id = ${known ? serviceId || null : null},
+        invoice_id = ${opts.invoiceId || null}, match_reason = 'manual',
+        match_method = 'manual', failure_reason = ${reason.slice(0, 400)},
+        assigned_by = ${opts.userId}, assigned_at = now() where id = ${row.id}`;
+      throw new Error(reason);
+    }
+    const [account] = await sql<{ name: string; account_number: string }>`
+      select c.name, coalesce(nullif(s.account_number,''), c.account_number, '') as account_number
+      from customers c
+      left join services s on s.id = ${serviceId || null} and s.tenant_id = c.tenant_id
+      where c.id = ${opts.customerId} and c.tenant_id = ${opts.tenantId}`;
     await sql`update incoming_payments set status = 'assigned', customer_id = ${opts.customerId},
       service_id = ${serviceId || null},
       invoice_id = ${opts.invoiceId || null}, payment_id = ${pay.id}, match_reason = 'manual',
-      assigned_by = ${opts.userId}, assigned_at = now() where id = ${row.id}`;
+      match_method = 'manual', failure_reason = '',
+      assigned_by = ${opts.userId}, assigned_at = now(), processed_at = now(), processed_by = ${opts.userId}
+      where id = ${row.id}`;
+    await sql`insert into audit_logs (id, tenant_id, user_id, action, entity_type, entity_id, details)
+      values (${nid("aud")}, ${opts.tenantId}, ${opts.userId}, 'api_payment.matched', 'incoming_payment', ${row.id},
+        ${JSON.stringify({
+          transaction: row.trans_id,
+          original_account: row.bill_ref,
+          matched_account: account?.account_number || "",
+          customer: account?.name || "",
+          amount_kes: row.amount_kes,
+        }).slice(0, 4000)})`;
     assigned.push(row.id);
   }
   return { assigned: assigned.length };

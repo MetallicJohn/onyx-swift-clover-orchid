@@ -58,6 +58,13 @@ export function defaultSettingsSection(tab: SettingsPageId) {
 export function parseSettingsSearch(search: Record<string, unknown>): SettingsSearch {
   const rawTab = typeof search.tab === "string" ? search.tab : "";
   const rawSection = typeof search.section === "string" ? search.section : undefined;
+  // `/app/settings/customers?section=numbers` has no tab. The parent route still
+  // validates search first and must not rewrite that section back to Company.
+  if (!rawTab) {
+    if (rawSection && LEGACY[rawSection]) return LEGACY[rawSection];
+    if (rawSection) return { section: rawSection };
+    return { tab: "general", section: "company" };
+  }
   const mapped = LEGACY[rawTab] ?? { tab: "general" as const, section: "company" };
   const options = PAGE_SECTIONS[mapped.tab];
   if (!options) return { tab: mapped.tab };

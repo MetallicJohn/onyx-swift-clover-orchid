@@ -76,6 +76,7 @@ const CRUMB_LABELS: Record<string, string> = {
   services: "Services",
   hotspot: "Hotspot",
   billing: "Billing",
+  "api-payments": "API Payments",
   statements: "Statements",
   reports: "Reports",
   routers: "Routers",

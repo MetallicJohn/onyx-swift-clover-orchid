@@ -1,0 +1,1490 @@
+# Add Billing → API Payments
+
+Implement a production-ready **API Payments** module under the existing **Billing** section of the ISP Management System.
+
+This module is the central reconciliation interface for all payments received through configured payment APIs, including but not limited to:
+
+- M-Pesa PayBill
+- M-Pesa Till
+- Other configured mobile-money payment APIs
+- Future payment providers that submit transactions through the platform's payment ingestion API
+
+Do not rebuild or remove existing billing/payment functionality. Integrate this feature into the existing architecture, database, payment engine, tenant isolation, RBAC, audit logging, notifications, invoices, customer accounts and service lifecycle.
+
+---
+
+## 1. Navigation
+
+Under:
+
+**Billing**
+
+add:
+
+**API Payments**
+
+Example:
+
+```text
+Billing
+├── Overview
+├── Invoices
+├── Payments
+├── API Payments
+├── Statements
+└── ...
+```
+
+API Payments must be a distinct page from manually recorded payments.
+
+The page represents **raw/received API payment transactions plus their reconciliation status**.
+
+---
+
+# 2. Purpose
+
+The system must capture every valid payment transaction received through configured payment APIs.
+
+Each transaction must initially be classified as either:
+
+### Matched
+
+The account/reference supplied by the customer matches an existing customer account/service/account identifier.
+
+Display the account in **green**.
+
+### Unmatched
+
+The account/reference supplied by the customer does not currently match a known customer account.
+
+Display the original account exactly as received from the payment provider, but in **red**.
+
+Example:
+
+```text
+Transaction Code   Account        Amount
+QWE123456789       IMANI1024      KES 2,000
+QWE123456790       0722123456     KES 1,500
+QWE123456791       IMANI-1058     KES 3,000
+```
+
+If `IMANI1024` matches a customer:
+
+```text
+IMANI1024
+```
+
+is displayed in green.
+
+If `0722123456` does not match:
+
+```text
+0722123456
+```
+
+is displayed in red and is clickable.
+
+---
+
+# 3. API Payment Record
+
+Create/use a proper tenant-scoped payment ingestion record.
+
+Do not rely only on the existing finalized payment table.
+
+The API payment record must preserve the original transaction received from the provider.
+
+Recommended fields:
+
+```text
+id
+tenant_id
+
+provider
+provider_transaction_id
+transaction_code
+
+payment_method
+payment_channel
+
+received_at
+
+transaction_date
+transaction_time
+
+payer_name
+payer_phone
+
+raw_account_reference
+normalized_account_reference
+
+amount
+currency
+
+matched
+matched_customer_id
+matched_service_id
+
+match_method
+match_confidence
+
+status
+
+processed_at
+processed_by
+
+final_payment_id
+final_invoice_id
+
+failure_reason
+
+raw_payload
+payload_hash
+
+created_at
+updated_at
+```
+
+Use the existing project's naming conventions if equivalent fields already exist.
+
+---
+
+# 4. Preserve Original Provider Data
+
+This is important.
+
+Never overwrite the original account/reference received from the payment provider.
+
+For example, if the customer typed:
+
+```text
+imni-1024
+```
+
+store that exact original value.
+
+You may additionally store:
+
+```text
+normalized_account_reference
+```
+
+for matching.
+
+The UI should continue displaying the customer's/provider's original value.
+
+This gives the ISP a reliable audit trail.
+
+---
+
+# 5. Automatic Account Matching
+
+When an API payment arrives:
+
+1. Validate the provider payload.
+2. Verify the transaction according to the existing payment-provider integration.
+3. Validate amount/currency.
+4. Check transaction idempotency.
+5. Normalize the supplied account/reference.
+6. Search the tenant's valid customer account identifiers.
+7. Determine whether it matches an existing customer/service/account.
+8. If matched:
+   - mark the API payment as matched
+   - identify the customer
+   - identify the appropriate account/service/invoice
+   - pass the payment into the normal payment-processing pipeline
+9. If unmatched:
+   - retain the payment as an unmatched API payment
+   - do NOT lose the payment
+   - do NOT falsely assign it
+   - do NOT finalize it against another customer
+
+---
+
+# 6. Matching Rules
+
+Use the existing customer/account architecture.
+
+The matching engine should support the identifiers already used by the system, such as:
+
+- Customer account number
+- Service account
+- PPPoE username where applicable
+- Customer number
+- Phone number where explicitly supported
+- Other configured payment account identifiers
+
+Do not blindly match arbitrary fields.
+
+Matching must be deterministic and tenant-scoped.
+
+Example:
+
+```text
+Provider account:
+IMANI1024
+
+Customer account:
+IMANI1024
+
+Result:
+MATCHED
+```
+
+Another:
+
+```text
+Provider account:
+IMANI-1024
+
+Customer account:
+IMANI1024
+
+Result:
+UNMATCHED
+```
+
+unless the system's normalization rules explicitly determine that these are equivalent.
+
+---
+
+# 7. Unmatched Payment Workflow
+
+Unmatched accounts must be highly visible.
+
+Example row:
+
+```text
+02 Oct 2026  09:42
+John Kamau
+TXN928374
+0722123456
+KES 2,000
+UNMATCHED
+```
+
+The account/reference:
+
+```text
+0722123456
+```
+
+must be:
+
+- red
+- clickable
+- visually identifiable as requiring action
+
+Clicking it opens a reconciliation dialog.
+
+---
+
+# 8. Match Payment Dialog
+
+Create a proper reusable modal/dialog.
+
+Title:
+
+**Match Payment**
+
+Show the original transaction information:
+
+```text
+Transaction
+TXN928374
+
+Date
+02 Oct 2026, 09:42
+
+Payer
+John Kamau
+
+Phone
+0722123456
+
+Original Account
+0722123456
+
+Amount
+KES 2,000
+```
+
+Then provide:
+
+### Account search
+
+```text
+Enter correct customer account
+[________________________]
+```
+
+Search should support:
+
+- account number
+- customer name
+- phone number
+- service identifier
+- PPPoE username where applicable
+
+Show matching customers/services in a selectable result list.
+
+Example:
+
+```text
+IMANI1024
+John Kamau
+0722 123 456
+Active • 10 Mbps
+
+IMANI1088
+John Kamau
+0711 222 333
+Active • 15 Mbps
+```
+
+Require the user to explicitly select the intended account.
+
+Do not automatically select a potentially ambiguous customer.
+
+---
+
+# 9. Confirmation Before Matching
+
+After selecting the account, show a confirmation section:
+
+```text
+Match payment to:
+
+John Kamau
+Account: IMANI1024
+Service: Home Internet 10 Mbps
+
+Amount: KES 2,000
+
+Original account:
+0722123456
+```
+
+Button:
+
+**Match & Process Payment**
+
+Secondary:
+
+**Cancel**
+
+Use the project's shared ConfirmDialog/modal pattern.
+
+Do not use:
+
+```javascript
+window.confirm()
+window.prompt()
+```
+
+---
+
+# 10. Match & Process Payment
+
+When the user confirms:
+
+The system must execute the **same normal payment-processing pipeline used for automatically matched payments**.
+
+Do not create a separate simplified payment path.
+
+The processing flow should handle existing billing logic, including where applicable:
+
+1. Match customer.
+2. Match service.
+3. Match invoice/account balance.
+4. Create/finalize the payment.
+5. Update invoice/payment status.
+6. Update customer account balance.
+7. Apply payment allocation.
+8. Apply service renewal/payment rules.
+9. Apply grace-period/service-lifecycle rules.
+10. Trigger provisioning/reactivation where applicable.
+11. Generate statement/ledger entries.
+12. Generate applicable notifications.
+13. Create audit entries.
+14. Mark API payment as processed.
+
+The exact existing business rules must remain authoritative.
+
+---
+
+# 11. Critical Financial Safety
+
+Matching must be transactional.
+
+Do not mark the API payment as processed until the complete downstream payment transaction succeeds.
+
+Use database transactions.
+
+If processing fails:
+
+```text
+API Payment
+↓
+MATCHED
+↓
+PROCESSING FAILED
+```
+
+rather than incorrectly reporting success.
+
+Display the failure reason.
+
+Allow an authorized user to retry processing without creating a duplicate payment.
+
+---
+
+# 12. Idempotency
+
+API payment ingestion must be idempotent.
+
+The same provider transaction must never create two finalized payments.
+
+Use a unique constraint based on the provider's transaction identifier, appropriately scoped to the provider/tenant.
+
+Example:
+
+```text
+tenant_id
+provider
+provider_transaction_id
+```
+
+or another provider-safe unique combination.
+
+If the provider sends the same transaction again:
+
+- do not create another payment
+- do not duplicate ledger entries
+- do not renew the service twice
+- do not send duplicate payment notifications
+
+---
+
+# 13. API Payments Table
+
+Build a polished, compact, production-grade data table.
+
+Columns:
+
+| Column | Description |
+|---|---|
+| Date & Time | Provider transaction date/time |
+| Name | Payer name |
+| Transaction Code | Provider transaction reference |
+| Account | Original account/reference |
+| Amount | Transaction amount |
+| Payment Method | PayBill, Till, etc. |
+| Status | Matched/Unmatched/Processed/Failed |
+| Customer | Matched customer where available |
+| Actions | Match/View/etc. |
+
+Keep the table compact.
+
+Use the existing project's DataTable components where available.
+
+---
+
+# 14. Account Colour Rules
+
+### Matched
+
+Account displayed in green.
+
+Example:
+
+```text
+IMANI1024
+```
+
+green.
+
+### Unmatched
+
+Account displayed in red.
+
+Example:
+
+```text
+0722123456
+```
+
+red and clickable.
+
+### Matched but processing failed
+
+Use an appropriate warning/error state rather than green.
+
+Do not imply that a payment was successfully processed when only account matching succeeded.
+
+---
+
+# 15. Statuses
+
+Use clear lifecycle statuses.
+
+Recommended:
+
+```text
+UNMATCHED
+MATCHED
+PROCESSING
+PROCESSED
+PROCESSING_FAILED
+DUPLICATE
+REVERSED
+```
+
+Only implement statuses relevant to the existing provider architecture, but preserve enough state to distinguish:
+
+- received
+- matched
+- processed
+- failed
+- duplicate/reversal
+
+---
+
+# 16. Filters
+
+Provide powerful filters above the table.
+
+Filters:
+
+### Date
+
+```text
+Today
+Yesterday
+This Week
+This Month
+Custom Range
+```
+
+### Status
+
+```text
+All
+Unmatched
+Matched
+Processed
+Processing Failed
+```
+
+### Payment Method
+
+Dynamic list based on configured API methods:
+
+```text
+All
+M-Pesa PayBill
+M-Pesa Till
+...
+```
+
+### Search
+
+Search:
+
+- transaction code
+- account
+- customer name
+- phone
+- amount
+
+Search must be server-side for large datasets.
+
+---
+
+# 17. Pagination
+
+The table must be properly server-side paginated.
+
+Do NOT load every payment into the browser.
+
+Support:
+
+```text
+25
+50
+100
+250
+```
+
+rows per page, according to existing table conventions.
+
+Show:
+
+```text
+Showing 1–50 of 4,827 payments
+```
+
+Provide:
+
+- previous
+- next
+- page number navigation where appropriate
+
+Preserve filters/search when changing pages.
+
+---
+
+# 18. Daily / Weekly / Monthly Comparison
+
+At the top of API Payments, show compact summary cards.
+
+Example:
+
+### Today
+
+```text
+KES 48,200
+124 transactions
+```
+
+### This Week
+
+```text
+KES 312,400
+824 transactions
+```
+
+### This Month
+
+```text
+KES 1,284,600
+3,421 transactions
+```
+
+Each should include a comparison against the previous equivalent period.
+
+Examples:
+
+```text
+Today
+KES 48,200
+↑ 12.4% vs previous day
+```
+
+```text
+This Week
+KES 312,400
+↑ 8.1% vs previous week
+```
+
+```text
+This Month
+KES 1.28M
+↓ 3.4% vs previous month
+```
+
+Do not hard-code these values.
+
+Calculate them from real tenant-scoped payment data.
+
+---
+
+# 19. Reconciliation Summary
+
+Also show:
+
+```text
+Total Received
+Matched
+Unmatched
+Processed
+Processing Failed
+```
+
+Example:
+
+```text
+Received             KES 612,400
+Matched              KES 594,200
+Unmatched            KES 18,200
+Processed            KES 590,200
+Processing Failed    KES 4,000
+```
+
+Amounts must reconcile correctly.
+
+Do not count an unmatched payment as a successfully processed customer payment.
+
+---
+
+# 20. Unmatched Summary
+
+Make unmatched payments immediately visible.
+
+Example:
+
+```text
+Unmatched
+17 payments
+KES 18,200
+```
+
+Clicking this summary should filter the table to:
+
+```text
+status = UNMATCHED
+```
+
+---
+
+# 21. Payment Method Support
+
+Do not hard-code PayBill/Till as the only possible methods.
+
+Build this around the existing payment-provider/payment-method configuration.
+
+For example:
+
+```text
+Payment Provider
+    └── API Payment Method
+          ├── M-Pesa PayBill
+          ├── M-Pesa Till
+          ├── Bank API
+          └── Future Provider
+```
+
+The API Payments page should automatically display transactions from configured API payment methods.
+
+---
+
+# 22. Provider Metadata
+
+Where available, retain:
+
+```text
+Provider
+PayBill/Till number
+Transaction code
+Provider timestamp
+Payer name
+Payer phone
+Account/reference
+Amount
+Currency
+Raw provider payload
+```
+
+Raw provider payload must be protected and only visible to appropriately authorized administrators.
+
+Never expose provider secrets.
+
+---
+
+# 23. API Ingestion Architecture
+
+Use the existing payment integration architecture.
+
+Recommended flow:
+
+```text
+Payment Provider
+       ↓
+Webhook/API Receiver
+       ↓
+Signature / Authentication Validation
+       ↓
+Payload Validation
+       ↓
+Idempotency Check
+       ↓
+API Payment Record
+       ↓
+Account Matching Engine
+       ↓
+ ┌───────────────┐
+ │               │
+MATCHED       UNMATCHED
+ │               │
+ ↓               ↓
+Normal        Reconciliation
+Payment       Queue
+Pipeline          │
+                  ↓
+             User Matches
+                  │
+                  ↓
+             Normal Payment
+                Pipeline
+```
+
+Do not process payment business logic directly inside the webhook request if the existing architecture supports asynchronous jobs.
+
+Use a reliable job/worker mechanism where appropriate.
+
+---
+
+# 24. Automatic Matching Improvements
+
+Create a reusable matching service rather than putting matching logic inside the UI.
+
+Example conceptual API/service:
+
+```text
+matchApiPayment(paymentId)
+```
+
+and:
+
+```text
+manuallyMatchApiPayment(paymentId, customer/service/account)
+```
+
+The matching service must return a structured result:
+
+```text
+matched
+customer
+service
+matchMethod
+confidence
+reason
+```
+
+This allows future support for more sophisticated matching rules without rewriting the UI.
+
+---
+
+# 25. Manual Matching Audit Trail
+
+Whenever a user manually matches a payment, record:
+
+```text
+payment
+original account
+matched account
+customer
+service
+user
+timestamp
+reason
+```
+
+Example audit event:
+
+```text
+API payment manually matched
+
+Transaction: QWE123456789
+Original account: 0722123456
+Matched account: IMANI1024
+Customer: John Kamau
+Amount: KES 2,000
+User: Jane Wanjiku
+Date: 02 Oct 2026 10:42
+```
+
+Do not allow the original value to disappear.
+
+---
+
+# 26. Permissions / RBAC
+
+Respect the existing RBAC system.
+
+Suggested permissions:
+
+```text
+billing.api_payments.view
+billing.api_payments.match
+billing.api_payments.process
+billing.api_payments.retry
+billing.api_payments.export
+```
+
+An ordinary support user may be allowed to view and match.
+
+Only authorized billing/finance/admin roles should be able to perform sensitive reconciliation or retry operations, according to existing RBAC policy.
+
+Never bypass backend authorization just because a UI button is hidden.
+
+---
+
+# 27. Tenant Isolation
+
+All API payment records and queries must be strictly tenant-scoped.
+
+A user from Tenant A must never see:
+
+- Tenant B API payments
+- Tenant B transaction codes
+- Tenant B customer accounts
+- Tenant B payment summaries
+
+Apply tenant isolation at the backend/data layer, not only through frontend filters.
+
+Use the project's established Active Tenant Context and RLS strategy where already implemented.
+
+---
+
+# 28. Customer Account Matching UI
+
+When searching for a correct account, display enough information to prevent accidental matching:
+
+```text
+Account
+Customer
+Phone
+Service
+Package
+Status
+Expiry
+```
+
+Example:
+
+```text
+IMANI1024
+John Kamau
+0722 123 456
+Home Internet
+10 Mbps
+Active
+Expires 05 Oct 2026
+```
+
+If multiple accounts match the search, require explicit selection.
+
+---
+
+# 29. Account Search
+
+The match dialog should not require the user to know the exact account number.
+
+Support:
+
+```text
+Account number
+Customer name
+Phone number
+PPPoE username
+Service identifier
+```
+
+Use debounced server-side search.
+
+Do not retrieve the entire customer database to the browser.
+
+---
+
+# 30. Existing Payment Pipeline
+
+This requirement is critical:
+
+**Do not duplicate payment processing logic.**
+
+Find the existing authoritative payment-processing service/function.
+
+The automatic API-payment path and manual-match path must both eventually call the same payment-processing service.
+
+Conceptually:
+
+```text
+Automatic match
+      ↓
+processPayment(payment)
+
+Manual match
+      ↓
+processPayment(payment)
+```
+
+There must be one authoritative business process for applying a payment.
+
+---
+
+# 31. Invoices and Account Allocation
+
+After matching:
+
+Use the existing billing allocation rules.
+
+Depending on the project's current implementation, payment may be allocated to:
+
+1. Outstanding invoice
+2. Customer account balance
+3. Renewal invoice
+4. Other supported billing allocation
+
+Do not invent a second allocation system specifically for API Payments.
+
+The API Payments page is an ingestion/reconciliation interface, not a replacement for Billing's accounting engine.
+
+---
+
+# 32. Service Processing
+
+Once a payment has been successfully processed:
+
+The customer's existing service rules must execute normally.
+
+For example:
+
+```text
+Payment
+ ↓
+Invoice/account updated
+ ↓
+Service renewed/reactivated
+ ↓
+Expiry updated
+ ↓
+Provisioning triggered if required
+ ↓
+Customer notification
+```
+
+This must use the existing service lifecycle implementation.
+
+Do not simply change an expiry date directly from the API Payments page.
+
+---
+
+# 33. Notifications
+
+Use the existing notification engine.
+
+Where the normal payment flow sends:
+
+- SMS
+- WhatsApp
+- Email
+- receipt
+
+the manually matched payment must follow the same notification rules.
+
+Avoid duplicate notifications if the payment was previously partially processed.
+
+---
+
+# 34. Reversals
+
+If the provider later sends a reversal/refund event:
+
+The system must not simply delete the original payment.
+
+Create/process a proper reversal according to the existing financial architecture.
+
+The API payment record should retain the original transaction and reversal relationship.
+
+---
+
+# 35. Export
+
+Provide an export action subject to permission.
+
+Allow filtered export of API payments.
+
+Fields:
+
+```text
+Date
+Time
+Provider
+Payment Method
+Transaction Code
+Payer Name
+Phone
+Original Account
+Matched Account
+Customer
+Amount
+Status
+Processed At
+```
+
+Exports must respect:
+
+- tenant isolation
+- current filters
+- permissions
+
+For large datasets, generate the export asynchronously rather than blocking the browser.
+
+---
+
+# 36. Performance
+
+This page may eventually contain hundreds of thousands or millions of payment records.
+
+Design accordingly.
+
+Requirements:
+
+- server-side pagination
+- indexed transaction code
+- indexed tenant_id
+- indexed received_at
+- indexed status
+- indexed normalized account reference
+- indexed customer_id
+- indexed provider
+- indexed payment method
+- efficient aggregate queries
+- avoid N+1 customer queries
+- avoid loading raw payloads in normal table queries
+
+Summary cards should use optimized aggregate queries or suitable caching.
+
+---
+
+# 37. UI States
+
+Implement:
+
+### Loading
+
+Use skeleton rows matching the actual table layout.
+
+### Empty
+
+If no API payments exist:
+
+```text
+No API payments yet
+
+Payments received through configured payment APIs
+will appear here.
+
+Configure a payment API to get started.
+```
+
+Use an appropriate action linking to payment method configuration.
+
+### No search results
+
+```text
+No payments match your filters.
+
+Clear filters
+```
+
+### Error
+
+Provide a useful error state and retry action.
+
+---
+
+# 38. Responsive Design
+
+Desktop:
+
+```text
+Summary cards
+↓
+Filters
+↓
+Payment table
+```
+
+Mobile:
+
+```text
+Summary cards
+↓
+Filters
+↓
+Payment cards/table
+```
+
+Do not simply shrink desktop content until it becomes unusable.
+
+The match dialog must work properly on mobile.
+
+---
+
+# 39. Real-Time / Refresh
+
+API Payments should update when new transactions arrive.
+
+Use the project's existing real-time/event infrastructure where available.
+
+Otherwise provide efficient polling.
+
+Target:
+
+```text
+30–60 seconds
+```
+
+Show:
+
+```text
+Updated just now
+```
+
+Do not cause the table to jump back to page 1 unnecessarily when refreshing.
+
+Preserve:
+
+- filters
+- search
+- pagination where possible
+- selected view
+
+---
+
+# 40. Security
+
+Do not expose:
+
+- provider API secrets
+- webhook secrets
+- credentials
+- signing keys
+- internal authentication tokens
+
+Raw payload viewing must be permission-controlled.
+
+Sensitive payload fields should be redacted where appropriate.
+
+Validate all provider callbacks.
+
+Never trust the account/reference or amount simply because it came from a webhook.
+
+---
+
+# 41. Database Migration
+
+Implement proper versioned database migrations.
+
+Do NOT use runtime schema creation such as:
+
+```text
+CREATE TABLE IF NOT EXISTS
+```
+
+inside application request paths.
+
+Add all required tables, indexes, constraints and relationships through the project's migration system.
+
+---
+
+# 42. Testing
+
+Add automated tests covering:
+
+### Ingestion
+
+- valid API payment
+- invalid payload
+- invalid signature
+- duplicate transaction
+- malformed amount
+- malformed account
+
+### Matching
+
+- exact account match
+- normalized match
+- no match
+- multiple possible matches
+- tenant isolation
+
+### Manual reconciliation
+
+- unmatched payment opens dialog
+- account search
+- correct customer selection
+- match confirmation
+- payment processed
+- invoice updated
+- service updated
+- notification triggered where applicable
+
+### Failure handling
+
+- processing failure
+- retry
+- no duplicate payment
+- no duplicate service renewal
+- no duplicate notification
+
+### Security
+
+- tenant isolation
+- RBAC
+- unauthorized matching
+- raw payload protection
+
+### Financial correctness
+
+Verify that:
+
+```text
+API payment received
+≠
+Revenue/payment finalized
+```
+
+until the authoritative payment-processing pipeline succeeds.
+
+---
+
+# 43. Typecheck Baseline
+
+Run the complete project typecheck after implementation.
+
+There are currently exactly two known pre-existing typecheck errors outside this work:
+
+```text
+overlay-dial.mjs
+router-health.ts
+```
+
+Dashboard/API Payments work must introduce:
+
+```text
+0 new typecheck errors
+```
+
+Do not:
+
+- modify unrelated files just to clean the baseline errors
+- suppress new errors
+- add @ts-ignore
+- add @ts-nocheck
+- weaken TypeScript configuration
+- use unsafe casts solely to bypass errors
+
+Expected final report:
+
+```text
+Typecheck: PASS
+
+Pre-existing errors:
+- overlay-dial.mjs
+- router-health.ts
+
+New errors introduced by API Payments:
+0
+```
+
+If either baseline error changes because of a genuine dependency or shared-code change required by this feature, investigate and report it explicitly.
+
+---
+
+# 44. Acceptance Criteria
+
+The feature is complete only when all of the following work:
+
+- Billing has an **API Payments** page.
+- API payments from configured payment methods appear automatically.
+- PayBill/Till are supported through the existing payment-provider architecture.
+- Date and time are displayed.
+- Payer name is displayed.
+- Transaction code is displayed.
+- Original account/reference is displayed.
+- Amount is displayed.
+- Payment method/provider is displayed.
+- Matched accounts are green.
+- Unmatched accounts are red.
+- Unmatched accounts are clickable.
+- Clicking an unmatched account opens the match dialog.
+- User can search for the correct customer/account.
+- User can explicitly select the correct account.
+- User can confirm **Match & Process Payment**.
+- Matching invokes the existing authoritative payment-processing pipeline.
+- Invoice/account allocation works normally.
+- Service renewal/reactivation works normally.
+- Notifications follow normal payment rules.
+- No duplicate payment can be created.
+- Manual matching is audited.
+- Original provider account/reference is preserved.
+- Failed processing does not falsely mark the payment as successfully processed.
+- Daily totals work.
+- Weekly totals work.
+- Monthly totals work.
+- Previous-period comparisons work.
+- Filters work.
+- Search works.
+- Server-side pagination works.
+- Export works where authorized.
+- Tenant isolation works.
+- RBAC works.
+- Loading/empty/error states work.
+- Mobile layout works.
+- Dark mode works.
+- No native `window.confirm()` or `window.prompt()` is introduced.
+- Existing billing functionality remains intact.
+- Full tests pass.
+- Lint passes.
+- Build passes.
+- No new typecheck errors are introduced.
+
+---
+
+# 45. Final Implementation Rule
+
+Do not treat this as a visual-only page.
+
+**API Payments is a financial reconciliation subsystem.**
+
+The implementation must connect:
+
+```text
+Payment API
+      ↓
+API Payment Record
+      ↓
+Automatic Account Matching
+      ↓
+Matched / Unmatched
+      ↓
+Manual Reconciliation
+      ↓
+Authoritative Payment Processing
+      ↓
+Invoice / Ledger
+      ↓
+Service Lifecycle
+      ↓
+Provisioning
+      ↓
+Notifications
+      ↓
+Audit
+```
+
+Use the existing project's architecture wherever functionality already exists.
+
+Do not create duplicate billing, invoice, payment, service-renewal or notification logic merely to make the page work.
+
+Before finishing, inspect the existing payment-processing implementation and explicitly reuse the authoritative payment pipeline.
+
+Then run:
+
+```text
+typecheck
+lint
+tests
+production build
+```
+
+Report:
+
+1. Files created/modified
+2. Database migrations
+3. API endpoints/services
+4. Matching logic
+5. Payment-processing integration
+6. RBAC permissions
+7. Audit events
+8. Tests added
+9. Typecheck result
+10. Lint result
+11. Test result
+12. Build result
+13. Any remaining blockers
+
+Stop after this milestone and wait for the next instruction.

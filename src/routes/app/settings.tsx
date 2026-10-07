@@ -36,10 +36,16 @@ import {
   PARTIAL_SAVE_OK,
   STAFF_SAVE_FAIL,
 } from "@/lib/isp/settings-feedback";
-import { parseSettingsSearch, sectionForPage, settingsPageFromPath, SETTINGS_PAGES, type SettingsPageId } from "@/lib/isp/settings-nav";
+import { parseSettingsSearch, sectionForPage, settingsPageFromPath, SETTINGS_PAGES, isSettingsPage, type SettingsPageId } from "@/lib/isp/settings-nav";
 import { vpsInstallCommand, vpsUpdateCommand } from "@/lib/isp/vps-publish";
 import { kes } from "@/lib/utils";
 import type { Workspace } from "@/lib/isp/types";
+
+function readSettingsSection(search: { section?: unknown }, searchStr: string) {
+  if (typeof search?.section === "string") return search.section;
+  const params = new URLSearchParams(searchStr.startsWith("?") ? searchStr.slice(1) : searchStr);
+  return params.get("section") || "";
+}
 
 export const Route = createFileRoute("/app/settings")({
   validateSearch: (search: Record<string, unknown>) => parseSettingsSearch(search),
@@ -59,11 +65,16 @@ export const Route = createFileRoute("/app/settings")({
 function SettingsPage() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const rawSearch = useRouterState({ select: (s) => s.location.search }) as Record<string, unknown>;
+  const searchStr = useRouterState({ select: (s) => s.location.searchStr });
+  const rawSearch = useRouterState({ select: (s) => s.location.search }) as { section?: unknown };
   const search = Route.useSearch();
   const pathPage = settingsPageFromPath(pathname);
-  const tab: SettingsPageId = pathPage ?? search.tab ?? "general";
-  const section = pathPage ? sectionForPage(tab, rawSearch.section) : search.section;
+  const tabFromSearch = search.tab && isSettingsPage(search.tab) ? search.tab : undefined;
+  const tab: SettingsPageId = pathPage ?? tabFromSearch ?? "general";
+  const rawSection = readSettingsSection(rawSearch, searchStr);
+  const section = pathPage ? sectionForPage(tab, rawSection) : search.section;
+  const [customerPick, setCustomerPick] = useState<"ids" | "numbers" | "tags" | null>(null);
+  const customerSection = customerPick ?? (rawSection === "numbers" || rawSection === "tags" ? rawSection : "ids");
   const [ws, setWs] = useState<Workspace | null>(null);
   const [form, setForm] = useState({
     name: "",
@@ -248,6 +259,12 @@ function SettingsPage() {
   useEffect(() => {
     load().catch(console.error);
   }, []);
+
+  useEffect(() => {
+    if (tab !== "customers" || rawSection === "ids" || rawSection === "numbers" || rawSection === "tags") {
+      setCustomerPick(null);
+    }
+  }, [tab, rawSection]);
 
   function editGrace(next: GracePolicy) {
     graceDirty.current = true;
@@ -1110,23 +1127,20 @@ function SettingsPage() {
         <div className="space-y-4">
           <SettingsSubnav
             label="Customers"
-            value={section === "numbers" || section === "tags" ? section : "ids"}
-            onChange={(id) => openPage("customers", id)}
+            value={customerSection}
+            onChange={(id) => {
+              setCustomerPick(id);
+              openPage("customers", id);
+            }}
             tabs={[
               { id: "ids", label: "ID Settings" },
               { id: "numbers", label: "Account numbers" },
               { id: "tags", label: "Customer tags" },
             ]}
           />
-          <div hidden={section === "numbers" || section === "tags"} className={section === "numbers" || section === "tags" ? "hidden" : undefined}>
-            <CustomerIdSettings />
-          </div>
-          <div hidden={section !== "numbers"} className={section === "numbers" ? undefined : "hidden"}>
-            <AccountNumberSettings />
-          </div>
-          <div hidden={section !== "tags"} className={section === "tags" ? undefined : "hidden"}>
-            <CustomerTagsSettings />
-          </div>
+          {customerSection === "numbers" ? <AccountNumberSettings /> : null}
+          {customerSection === "tags" ? <CustomerTagsSettings /> : null}
+          {customerSection === "ids" ? <CustomerIdSettings /> : null}
         </div>
       ) : null}
       <Outlet />

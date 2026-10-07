@@ -67,6 +67,7 @@ const GROUPS: { label: string; items: SidebarNavItem[] }[] = [
     label: "Billing",
     items: [
       { to: "/app/billing", label: "Invoices", icon: CreditCard },
+      { to: "/app/api-payments", label: "API Payments", icon: CreditCard },
       { to: "/app/statements", label: "Statements", icon: FileText },
       { to: "/app/reports", label: "Reports", icon: BarChart3 },
     ],

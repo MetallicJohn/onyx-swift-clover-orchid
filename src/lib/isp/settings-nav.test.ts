@@ -39,6 +39,13 @@ test("settings pages group existing areas and keep legacy links", () => {
   assert.equal(parseSettingsSearch({ tab: "accounts" }).section, "ids");
   assert.equal(parseSettingsSearch({ tab: "numbers" }).section, "numbers");
   assert.equal(parseSettingsSearch({ tab: "customers" }).section, "ids");
+  assert.equal(parseSettingsSearch({ section: "numbers" }).tab, "customers");
+  assert.equal(parseSettingsSearch({ section: "numbers" }).section, "numbers");
+  assert.equal(parseSettingsSearch({ section: "tags" }).tab, "customers");
+  assert.equal(parseSettingsSearch({ section: "tags" }).section, "tags");
+  assert.equal(parseSettingsSearch({ section: "ids" }).section, "ids");
+  assert.equal(parseSettingsSearch({ section: "grace" }).tab, "payments");
+  assert.equal(parseSettingsSearch({ section: "appearance" }).section, "appearance");
   assert.equal(parseSettingsSearch({ tab: "payments", section: "partial" }).section, "partial");
   assert.equal(parseSettingsSearch({ tab: "nope" }).tab, "general");
   assert.equal(parseSettingsSearch({ tab: "notifications", section: "grace" }).section, undefined);
