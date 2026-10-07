@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import { askConfirm } from "@/components/ui/confirm-dialog";
 import { Field } from "@/components/ui/input";
@@ -16,6 +16,29 @@ import { askRouterOs } from "@/lib/isp/server-more";
 import { queueRouterCommand } from "@/lib/isp/server-mikrotik";
 
 export const Route = createFileRoute("/app/ai")({ component: AiPage });
+
+const actionButton: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "100%",
+  minHeight: 48,
+  padding: "0 16px",
+  borderRadius: 8,
+  border: "1px solid #4aa8a0",
+  background: "#4aa8a0",
+  color: "#061014",
+  fontWeight: 600,
+  fontSize: 15,
+  cursor: "pointer",
+};
+
+const quietButton: CSSProperties = {
+  ...actionButton,
+  background: "#172028",
+  color: "#e8eef4",
+  border: "1px solid #4aa8a0",
+};
 
 const QUICK = [
   ["Diagnose router", "Diagnose this router"],
@@ -70,6 +93,58 @@ function AiPage() {
   const router = desk?.routers.find((row) => row.id === routerId) || null;
   const visiblePlans = plans.filter((plan) => plan.routerId === routerId);
 
+  async function enableAssistant() {
+    if (!router) {
+      setError("Select a router first. If the list is empty, add one under Network → Routers.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await setMikrotikAssistantEnabledFn({ data: { router_id: router.id, enabled: !router.ai_enabled } });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update AI policy");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function allowWrites() {
+    if (!router) {
+      setError("Select a router first. If the list is empty, add one under Network → Routers.");
+      return;
+    }
+    if (!router.ai_write_enabled) {
+      const ok = await askConfirm({
+        title: "Allow approved writes on this router?",
+        description: `Chat still cannot change ${router.name}. Only a reviewed plan can be applied, and only after you type the router name. Safe Mode is not available on the overlay API.`,
+        confirmLabel: "Allow approved writes",
+        pendingLabel: "Saving…",
+        variant: "warning",
+        confirmPhrase: router.name,
+        action: async () => {
+          if (!router.ai_enabled) {
+            await setMikrotikAssistantEnabledFn({ data: { router_id: router.id, enabled: true } });
+          }
+          await setMikrotikAssistantWriteFn({ data: { router_id: router.id, enabled: true } });
+        },
+      });
+      if (ok) await load();
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await setMikrotikAssistantWriteFn({ data: { router_id: router.id, enabled: false } });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update AI policy");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function approve(plan: PlanCard) {
     if (!router) return;
     const needsWrite = !router.ai_write_enabled || !router.ai_enabled;
@@ -123,7 +198,11 @@ function AiPage() {
 
   async function ask(text: string) {
     const question = text.trim();
-    if (!routerId || question.length < 3 || busy) return;
+    if (!routerId) {
+      setError("Select a router first. If the list is empty, add one under Network → Routers.");
+      return;
+    }
+    if (question.length < 3 || busy) return;
     setBusy(true);
     setError("");
     setTurns((prev) => [...prev, { role: "user", body: question }]);
@@ -161,75 +240,51 @@ function AiPage() {
 
       {error ? <p className="text-sm text-danger">{error}</p> : null}
 
-      <section className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-4">
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={!router || busy || desk?.canEnable === false}
-          onClick={async () => {
-            if (!router) return;
-            setBusy(true);
-            try {
-              await setMikrotikAssistantEnabledFn({ data: { router_id: router.id, enabled: !router.ai_enabled } });
-              await load();
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Could not update AI policy");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
+      <section
+        className="space-y-3 rounded-xl border border-border bg-surface p-4"
+        style={{ position: "sticky", top: 64, zIndex: 15 }}
+      >
+        <h2 className="text-base font-semibold">Review network change</h2>
+        <p className="text-sm text-muted">
+          These controls stay on this page. Nothing is sent to the router until Approve & Apply confirms the exact commands.
+        </p>
+        <button type="button" style={actionButton} onClick={() => void enableAssistant()}>
           {router?.ai_enabled ? "Disable assistant" : "Enable assistant"}
-        </Button>
-        <Button
+        </button>
+        <button type="button" style={actionButton} onClick={() => void allowWrites()}>
+          {router?.ai_write_enabled ? "Stop approved writes" : "Allow approved writes"}
+        </button>
+        <button type="button" style={quietButton} onClick={() => void ask("Make WAN2 preferred between 7pm and 11pm.")}>
+          Draft change plan
+        </button>
+        <button
           type="button"
-          variant="secondary"
-          disabled={!router || busy || desk?.canEnable === false}
-          onClick={async () => {
-            if (!router) return;
-            if (!router.ai_write_enabled) {
-              const ok = await askConfirm({
-                title: "Allow approved writes on this router?",
-                description: `Chat still cannot change ${router.name}. Only a reviewed plan can be applied, and only after you type the router name. Safe Mode is not available on the overlay API.`,
-                confirmLabel: "Allow approved writes",
-                pendingLabel: "Saving…",
-                variant: "warning",
-                confirmPhrase: router.name,
-                action: async () => {
-                  if (!router.ai_enabled) {
-                    await setMikrotikAssistantEnabledFn({ data: { router_id: router.id, enabled: true } });
-                  }
-                  await setMikrotikAssistantWriteFn({ data: { router_id: router.id, enabled: true } });
-                },
-              });
-              if (ok) await load();
+          style={actionButton}
+          onClick={() => {
+            const plan = visiblePlans.find((item) => item.state === "AWAITING_APPROVAL" && item.executable);
+            if (!plan) {
+              setError("Draft change plan first. Approve & Apply appears on the plan and also stays on this card.");
               return;
             }
-            setBusy(true);
-            try {
-              await setMikrotikAssistantWriteFn({ data: { router_id: router.id, enabled: false } });
-              await load();
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Could not update AI policy");
-            } finally {
-              setBusy(false);
-            }
+            void approve(plan);
           }}
         >
-          {router?.ai_write_enabled ? "Stop approved writes" : "Allow approved writes"}
-        </Button>
-        <Button
+          Approve & Apply
+        </button>
+        <button
           type="button"
-          disabled={!routerId || busy || desk?.canPlan === false}
-          onClick={() => void ask("Make WAN2 preferred between 7pm and 11pm.")}
+          style={quietButton}
+          onClick={() => {
+            const plan = visiblePlans.find((item) => item.state === "AWAITING_APPROVAL");
+            if (!plan) {
+              setError("There is no plan to cancel.");
+              return;
+            }
+            void cancel(plan);
+          }}
         >
-          Draft change plan
-        </Button>
-        <p className="w-full text-xs text-muted">
-          {desk?.canEnable === false
-            ? "Your role can ask questions. Enabling writes and approving plans needs a network engineer or an owner."
-            : "The buttons above open the review. Allow approved writes asks you to type the router name. Draft change plan builds the WAN preference plan, then Approve & Apply is on that plan."}
-        </p>
+          Cancel plan
+        </button>
       </section>
 
       <section className="grid gap-3 rounded-xl border border-border bg-surface p-4 md:grid-cols-[1fr_auto_auto]">
