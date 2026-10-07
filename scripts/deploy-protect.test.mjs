@@ -26,6 +26,9 @@ test("VPS update never destroys volumes and requires a verified backup on existi
   assert.match(update, /scan_pending_migrations/);
   assert.match(update, /compare_count_files/);
   assert.match(update, /genieacs-init is one-shot/);
+  assert.match(update, /no space left on device/);
+  assert.match(update, /\.deploy-incomplete/);
+  assert.doesNotMatch(uncommented(update), /volume prune/);
   assert.match(update, /--profile init run/);
   const health = read("deploy/vps/healthcheck.sh");
   assert.match(health, /ispsolutions_pgdata/);

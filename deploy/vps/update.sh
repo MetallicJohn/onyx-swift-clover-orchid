@@ -122,8 +122,12 @@ if [[ "$APPLY" -ne 1 ]]; then
 fi
 
 if [[ "$BEFORE" == "$REMOTE" && "$FORCE" -ne 1 ]]; then
-  echo "[ispsolutions] already at $BEFORE"
-  exit 0
+  if [[ -f "$INSTALL_DIR/.deploy-incomplete" && "$(cat "$INSTALL_DIR/.deploy-incomplete")" == "$REMOTE" ]]; then
+    echo "[ispsolutions] $REMOTE was checked out but the images did not replace the running containers — rebuilding"
+  else
+    echo "[ispsolutions] already at $BEFORE"
+    exit 0
+  fi
 fi
 
 PROJECT=ispsolutions
@@ -202,12 +206,24 @@ write_deploy_meta "$DEPLOY_REPORT" \
 echo "[ispsolutions] building $SHORT (compose up -d --build, never destroy named volumes)"
 # genieacs-init used to be part of this `up`. It is one-shot (restart: "no")
 # and Compose often exits 1 after a green "[+] up N/N" once that container
-# exits. Long-running services still have to be running or this rolls back.
+# exits. A disk-full image export is not that case: the old containers stay
+# up and must not be reported as a successful publish.
 set +e
-protect_compose up -d --build
-compose_rc=$?
+compose_log="$(mktemp)"
+protect_compose up -d --build 2>&1 | tee "$compose_log"
+compose_rc=${PIPESTATUS[0]}
 set -e
 if [[ "$compose_rc" -ne 0 ]]; then
+  if grep -Eq "no space left on device|failed to solve|failed to extract layer" "$compose_log"; then
+    echo "$(git rev-parse HEAD)" > "$INSTALL_DIR/.deploy-incomplete"
+    rm -f "$compose_log"
+    echo "[ispsolutions] image export failed — the disk is full. Running containers were not replaced." >&2
+    echo "[ispsolutions] free Docker build cache only (do not prune volumes), then re-run this script." >&2
+    echo "  docker builder prune -af" >&2
+    echo "  docker image prune -f" >&2
+    echo "DEPLOYMENT FAILED / MANUAL REVIEW" | tee -a "$DEPLOY_REPORT"
+    exit 1
+  fi
   missing=""
   for svc in postgres redis web worker collector mongo genieacs caddy cwmp-edge overlay-dial freeradius; do
     if [[ -z "$(protect_compose ps -q "$svc" 2>/dev/null || true)" ]]; then
@@ -230,6 +246,7 @@ if [[ "$compose_rc" -ne 0 ]]; then
     exit 1
   fi
 fi
+rm -f "$compose_log"
 
 echo "[ispsolutions] applying GenieACS CWMP config"
 protect_compose --profile init run --rm --no-deps genieacs-init \
@@ -289,6 +306,7 @@ fi
 } | tee -a "$DEPLOY_REPORT"
 
 echo "[ispsolutions] published $SHORT"
+rm -f "$INSTALL_DIR/.deploy-incomplete"
 if [[ "$FROM_CI" == "1" ]]; then
   echo "[ispsolutions] deployed from CI"
 fi
