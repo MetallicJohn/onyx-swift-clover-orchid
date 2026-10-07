@@ -52,7 +52,7 @@ const GROUPS: { label: string; items: SidebarNavItem[] }[] = [
       { to: "/app/routers", label: "Routers", icon: Router },
       { to: "/app/acs", label: "Devices", icon: Activity },
       { to: "/app/radius", label: "RADIUS", icon: Radio },
-      { to: "/app/ai", label: "AI MikroTik", icon: Sparkles },
+      { to: "/app/ai", label: "MikroTik Assistant", icon: Sparkles },
     ],
   },
   {

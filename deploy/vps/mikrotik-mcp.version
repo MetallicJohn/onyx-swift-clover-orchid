@@ -1,0 +1,9 @@
+# Pinned MikroTik MCP engine. Do not float to :latest.
+# npm package inspected: @usex/mikrotik-mcp@6.4.0
+# Container tag confirmed in upstream docs: alimaster/mikrotik-mcp:6.3.0
+image=alimaster/mikrotik-mcp:6.3.0
+npm=@usex/mikrotik-mcp@6.4.0
+transport=streamable-http
+bind=private-docker-network-only
+dashboard=disabled
+credentials=not-mounted

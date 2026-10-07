@@ -82,7 +82,7 @@ const CRUMB_LABELS: Record<string, string> = {
   routers: "Routers",
   acs: "Devices",
   radius: "RADIUS",
-  ai: "AI MikroTik",
+  ai: "MikroTik Assistant",
   field: "Field",
   partners: "Partners",
   import: "Import",

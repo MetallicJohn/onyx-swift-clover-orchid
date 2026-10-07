@@ -62,6 +62,7 @@ services:
       ISPSOLUTIONS_BACKUP_DIR: /opt/ispsolutions/backups
       ISPSOLUTIONS_WG_DIR: /opt/ispsolutions/wg
       ISPSOLUTIONS_OVERLAY_DIAL: /opt/ispsolutions/wg/overlay-dial.sock
+      MIKROTIK_MCP_URL: http://mikrotik-mcp:8000/mcp
     volumes:
       - ../../backups:/opt/ispsolutions/backups
       - ../../wg:/opt/ispsolutions/wg
@@ -250,6 +251,16 @@ services:
     depends_on:
       - web
       - genieacs
+
+  # Private catalogue only. No host ports. No tenant credentials.
+  # Web does not wait on this container.
+  mikrotik-mcp:
+    image: alimaster/mikrotik-mcp:6.3.0
+    restart: unless-stopped
+    expose:
+      - "8000"
+    volumes:
+      - ./mikrotik-mcp/devices.json:/home/bun/.mikrotik-mcp/devices.json:ro
 
 volumes:
   # Production data. Never `docker compose down -v` on this stack.

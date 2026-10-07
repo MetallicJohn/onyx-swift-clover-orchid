@@ -82,6 +82,13 @@ export const PERMISSIONS = [
   "billing.api_payments.match",
   "billing.api_payments.retry",
   "billing.api_payments.export",
+  "network.ai.view",
+  "network.ai.chat",
+  "network.ai.diagnose",
+  "network.ai.plan",
+  "network.ai.approve",
+  "network.ai.execute",
+  "network.ai.rollback",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number] | "*";
@@ -207,6 +214,13 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "leads.view",
     "leads.coverage",
     "leads.installation",
+    "network.ai.view",
+    "network.ai.chat",
+    "network.ai.diagnose",
+    "network.ai.plan",
+    "network.ai.approve",
+    "network.ai.execute",
+    "network.ai.rollback",
   ],
   technician: [
     "tickets.assigned.read",
@@ -242,6 +256,9 @@ const ROLE_PERMS: Record<TenantRole, Permission[]> = {
     "account_numbers.view",
     "leads.view",
     "billing.api_payments.view",
+    "network.ai.view",
+    "network.ai.chat",
+    "network.ai.diagnose",
   ],
 };
 
@@ -296,7 +313,7 @@ const PAGE_PERMISSIONS: { prefix: string; permission: Permission }[] = [
   { prefix: "/app/statements", permission: "invoices.read" },
   { prefix: "/app/routers", permission: "routers.read" },
   { prefix: "/app/acs", permission: "acs.devices.view" },
-  { prefix: "/app/ai", permission: "routers.manage" },
+  { prefix: "/app/ai", permission: "network.ai.view" },
   { prefix: "/app/field", permission: "jobs.update" },
   { prefix: "/app/tickets", permission: "tickets.read" },
   { prefix: "/app/partners", permission: "settings.manage" },
