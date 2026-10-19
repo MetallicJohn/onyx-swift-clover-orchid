@@ -15,10 +15,8 @@
 	reverse_proxy web:3000
 }
 
-acs.{$ISPSOLUTIONS_DOMAIN} {
-	encode gzip zstd
-	reverse_proxy genieacs:3000
-}
+# GenieACS UI (:3000) and NBI (:7557) are not on this public proxy.
+# Devices are managed from the ISP Solutions app. CWMP stays on cwmp-edge.
 
 # TR-069 / CWMP is NOT terminated here. Each ISP gets a unique host port in 7551–7999
 # (cwmp-edge → genieacs:7547). HTTPS on those ports is optional: set ACS_TLS_CERT and

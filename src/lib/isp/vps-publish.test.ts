@@ -75,6 +75,11 @@ test("publish pack names docker compose, health, and WireGuard", () => {
   assert.match(compose, /genieacs-init/);
   assert.match(compose, /ACS_TLS_CERT/);
   assert.equal(compose.includes("7557:7557"), false);
+  const caddy = readFileSync(new URL("../../../deploy/vps/Caddyfile", import.meta.url), "utf8");
+  assert.doesNotMatch(caddy, /genieacs:3000/);
+  const split = readFileSync(new URL("../../../deploy/vps/compose.network-services.yml", import.meta.url), "utf8");
+  assert.match(split, /GENIEACS_NBI_BIND:-\s*127\.0\.0\.1/);
+  assert.doesNotMatch(split, /0\.0\.0\.0:7557/);
   assert.doesNotMatch(compose, /["']7547:7547["']/);
   const edge = readFileSync(new URL("../../../deploy/vps/cwmp-edge.mjs", import.meta.url), "utf8");
   assert.match(edge, /tls\.createServer/);

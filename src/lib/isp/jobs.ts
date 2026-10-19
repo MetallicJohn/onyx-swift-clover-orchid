@@ -166,6 +166,15 @@ async function lockKey(kind: string, tenantId: string, extra: string) {
   }
 }
 
+export function resolveJobTenant(job: { tenant_id?: string }, payload: Record<string, unknown>) {
+  const rowTenant = String(job.tenant_id || "");
+  const payloadTenant = String(payload.tenantId || "");
+  if (rowTenant && payloadTenant && rowTenant !== payloadTenant) {
+    throw new Error("Job tenant does not match the queued payload");
+  }
+  return rowTenant || payloadTenant;
+}
+
 export async function executeJob(sql: Sql, job: JobRow) {
   let payload: Record<string, unknown> = {};
   try {
@@ -173,9 +182,15 @@ export async function executeJob(sql: Sql, job: JobRow) {
   } catch {
     payload = {};
   }
-  const tenantId = job.tenant_id || String(payload.tenantId || "");
-  if (tenantId) await applyRls(sql, { tenantId, bypass: false });
-  else await applyRls(sql, { bypass: true });
+  const tenantId = resolveJobTenant(job, payload);
+  if (tenantId) {
+    await applyRls(sql, { bypass: true });
+    const [tenant] = await sql.query<{ id: string }>(`select id from tenants where id = $1`, [tenantId]);
+    if (!tenant) throw new Error("Job tenant is not valid");
+    await applyRls(sql, { tenantId, bypass: false });
+  } else {
+    await applyRls(sql, { bypass: true });
+  }
 
   if (job.kind === "whatsapp.action") {
     if (!tenantId) throw new Error("whatsapp.action requires tenantId");

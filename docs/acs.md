@@ -1,6 +1,6 @@
 # ACS / GenieACS
 
-GenieACS is a **separate process** (CWMP :7547, NBI :7557, FS :7567, UI on `acs.<domain>`). ISP Solutions does not speak TR-069 itself.
+GenieACS is a **separate process** (CWMP :7547, NBI :7557, FS :7567). The admin UI is not on the public site. ISP Solutions does not speak TR-069 itself. Operators use the Devices page.
 
 ## What is real
 

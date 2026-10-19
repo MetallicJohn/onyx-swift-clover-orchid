@@ -94,22 +94,23 @@ export function actionsForDevice(
   }).filter((row) => perms(row.permission));
 }
 
-function assertNotSecret(details: Record<string, unknown>) {
-  const blob = JSON.stringify(details);
-  if (/passphrase|password|psk|wifi_key/i.test(blob) && /enc:v1:/.test(blob) === false) {
-    /* passwords must never appear in audit details */
-  }
-  return details;
+const SENSITIVE_KEY = /(password|passphrase|passwd|secret|psk|wifi_key|keypass|pass_ref)/i;
+
+/** Drop Wi-Fi, PPPoE, SIP, and ACS secrets before they reach an audit row or API payload. */
+export function sanitizeAuditDetails(details: Record<string, unknown>) {
+  return redactSensitive(details) as Record<string, unknown>;
 }
 
-export function sanitizeAuditDetails(details: Record<string, unknown>) {
+function redactSensitive(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactSensitive);
+  if (!value || typeof value !== "object") return value;
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(details)) {
-    if (/pass|secret|psk|keypass/i.test(k)) continue;
-    if (typeof v === "string" && v.startsWith("enc:v1:")) continue;
-    out[k] = v;
+  for (const [key, inner] of Object.entries(value as Record<string, unknown>)) {
+    if (SENSITIVE_KEY.test(key)) continue;
+    if (typeof inner === "string" && inner.startsWith("enc:v1:")) continue;
+    out[key] = redactSensitive(inner);
   }
-  return assertNotSecret(out);
+  return out;
 }
 
 async function insertTask(

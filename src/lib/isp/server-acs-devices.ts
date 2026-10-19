@@ -29,7 +29,12 @@ import {
 import { acsConnection } from "./acs";
 import { assertFeature } from "./plans";
 import { assertPermission, hasPermission, type Permission } from "./rbac";
+import { rateLimit } from "./rate-limit";
 import { requireWorkspace } from "./workspace";
+
+function clip(value: unknown, max: number) {
+  return String(value || "").slice(0, max);
+}
 
 async function writeAudit(
   sql: Awaited<ReturnType<typeof requireWorkspace>>["sql"],
@@ -140,7 +145,16 @@ export const addAcsDeviceFn = createServerFn({ method: "POST" })
     const { sql, tenantId, role } = await requireWorkspace(context.userId);
     assertPermission(role, "acs.devices.add");
     await assertFeature(sql, tenantId, "genieacs");
-    const out = await addManualAcsDevice(sql, tenantId, data);
+    const out = await addManualAcsDevice(sql, tenantId, {
+      serial: clip(data.serial, 128),
+      acs_device_id: clip(data.acs_device_id, 180),
+      manufacturer: clip(data.manufacturer, 80),
+      model: clip(data.model, 80),
+      oui: clip(data.oui, 16),
+      mac_address: clip(data.mac_address, 32),
+      device_type: clip(data.device_type, 32),
+      notes: clip(data.notes, 500),
+    });
     await writeAudit(sql, tenantId, context.userId, "acs.device.added", out.id, {
       serial: out.serial,
       source: "manual",
@@ -154,6 +168,8 @@ export const refreshAcsInventoryFn = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { sql, tenantId, role } = await requireWorkspace(context.userId);
     assertPermission(role, "acs.devices.view");
+    const limit = await rateLimit(`acs-inventory:${tenantId}`, 6, 60_000);
+    if (!limit.ok) throw new Error("Too many ACS inventory refreshes. Wait a minute.");
     return refreshAcsInventory(sql, tenantId);
   });
 
@@ -174,7 +190,7 @@ export const assignAcsDeviceFn = createServerFn({ method: "POST" })
       actorId: actor.id,
       actorLabel: actor.label,
       confirmMove: Boolean(data.confirm_move) || !isMove,
-      reason: data.reason,
+      reason: clip(data.reason, 500),
     });
     await writeAudit(
       sql,
