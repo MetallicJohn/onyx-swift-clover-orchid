@@ -135,6 +135,15 @@ function authHeaders(cfg: AcsNbiConfig): Record<string, string> {
 
 export const DEFAULT_GENIEACS_NBI_URL = "http://genieacs:7557";
 
+function isComposeNbi(url: string) {
+  try {
+    const u = new URL(url);
+    return u.hostname === "genieacs" && (u.port === "7557" || u.port === "");
+  } catch {
+    return false;
+  }
+}
+
 export function nbiOrigin(cfg: AcsNbiConfig) {
   return (cfg.nbiUrl || "").trim().replace(/\/+$/, "");
 }
@@ -191,10 +200,10 @@ export function describeNbiError(err: unknown, nbiUrl: string) {
   if (/ENOTFOUND|EAI_AGAIN/i.test(blob)) {
     return `Cannot resolve ${url}. On the VPS use http://genieacs:7557 — not localhost and not the public ACS URL.`;
   }
-  if (/ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|fetch failed/i.test(blob)) {
-    return `GenieACS NBI is not reachable at ${url}. Use http://genieacs:7557 on a single VPS (private API, port 7557).`;
-  }
-  if (!msg.trim() || msg === "fetch failed") {
+  if (/ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|fetch failed/i.test(blob) || !msg.trim() || msg === "fetch failed") {
+    if (isComposeNbi(url)) {
+      return `GenieACS NBI is not reachable at ${url}. That URL is correct for a single VPS. NBI is refusing the connection — recreate the genieacs container so it listens on 0.0.0.0:7557, then check docker compose logs genieacs.`;
+    }
     return `GenieACS NBI is not reachable at ${url}. Use http://genieacs:7557 on a single VPS (private API, port 7557).`;
   }
   return `GenieACS NBI error at ${url}: ${msg}`;

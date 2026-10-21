@@ -37,7 +37,7 @@ GenieACS 1.2 **NBI has no PUT /config**. Digest login is not written through por
 
 If UI write is unavailable, digest from `genieacs-init` stays in effect. That is expected on a single VPS after `update.sh`.
 
-GenieACS CWMP/NBI/FS/UI each run **one worker**. The image default (`0` = one process per CPU) SIGABRTs a pile of child processes on typical VPS sizes, and NBI never binds 7557. After recreate, `http://genieacs:7557` is the private NBI URL the console should save.
+GenieACS CWMP/NBI/FS/UI each run **one worker**. The image default (`0` = one process per CPU) SIGABRTs a pile of child processes on typical VPS sizes, and NBI never binds 7557. Compose also sets `GENIEACS_NBI_INTERFACE=0.0.0.0` (and the same for CWMP, FS, and UI). GenieACS otherwise binds `::`, and the web container then cannot open `http://genieacs:7557` over the Docker IPv4 network. After recreate, that URL is the private NBI address the console should save. Do not publish 7557 on the public host.
 
 Set the ACS public host (VPS IP or hostname) in System settings, or `ACS_PUBLIC_HOST` in `ispsolutions.env`. Each ISP then gets `http://<host>:<port>/`.
 

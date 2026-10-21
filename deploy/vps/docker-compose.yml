@@ -158,6 +158,12 @@ services:
       GENIEACS_NBI_WORKER_PROCESSES: "1"
       GENIEACS_FS_WORKER_PROCESSES: "1"
       GENIEACS_UI_WORKER_PROCESSES: "1"
+      # Default bind is IPv6 "::". Docker's IPv4 network then gets connection
+      # refused on genieacs:7557 even though the URL is correct.
+      GENIEACS_CWMP_INTERFACE: "0.0.0.0"
+      GENIEACS_NBI_INTERFACE: "0.0.0.0"
+      GENIEACS_FS_INTERFACE: "0.0.0.0"
+      GENIEACS_UI_INTERFACE: "0.0.0.0"
       ISPSOLUTIONS_INTERNAL_URL: ${ISPSOLUTIONS_INTERNAL_URL:-http://web:3000}
       ACS_EDGE_TOKEN: ${ACS_EDGE_TOKEN}
     volumes:

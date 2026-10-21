@@ -98,6 +98,7 @@ test("publish pack names docker compose, health, and WireGuard", () => {
   assert.match(init, /serviceFor/);
   assert.match(compose, /GENIEACS_CWMP_WORKER_PROCESSES: "1"/);
   assert.match(compose, /GENIEACS_NBI_WORKER_PROCESSES: "1"/);
+  assert.match(compose, /GENIEACS_NBI_INTERFACE: "0.0.0.0"/);
   assert.doesNotMatch(compose, /GENIEACS_DEBUG/);
   assert.match(install, /7551:7999\/tcp/);
   assert.match(install, /ACS_EDGE_TOKEN/);
