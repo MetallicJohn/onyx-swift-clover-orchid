@@ -257,6 +257,20 @@ test("Apply CWMP names missing cwmp keys when NBI has no PUT /config and sidecar
     assert.match(result.error, /NBI cannot write/);
     assert.match(result.error, /sidecar/);
     assert.match(describeCwmpApplyError(["cwmp.auth"]), /cwmp\.auth/);
+    assert.match(
+      describeCwmpApplyError(["provision", "cwmp.auth"], {
+        provision: { status: 0, text: "GenieACS NBI is not reachable at http://genieacs:7557." },
+        "cwmp.auth": { status: 0, text: "GenieACS NBI is not reachable at http://genieacs:7557." },
+      }),
+      /not reachable/,
+    );
+    assert.doesNotMatch(
+      describeCwmpApplyError(["provision", "cwmp.auth"], {
+        provision: { status: 0, text: "GenieACS NBI is not reachable at http://genieacs:7557." },
+        "cwmp.auth": { status: 0, text: "GenieACS NBI is not reachable at http://genieacs:7557." },
+      }),
+      /did not accept/,
+    );
     assert.equal(desiredCwmpValues({ acs_require_cpe_auth: true })["cwmp.auth"], CWMP_AUTH_DIGEST);
   } finally {
     if (prevJwt == null) delete process.env.GENIEACS_UI_JWT_SECRET;

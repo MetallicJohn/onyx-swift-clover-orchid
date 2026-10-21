@@ -61,16 +61,44 @@ export function desiredCwmpValues(plat: Pick<AcsPlatformSettings, "acs_require_c
   };
 }
 
-export function describeCwmpApplyError(missing: string[]) {
+export function describeCwmpApplyError(
+  missing: string[],
+  failures: Record<string, { status: number; text: string }> = {},
+) {
   if (!missing.length) return "";
+  const down = missing.filter((id) => {
+    const fail = failures[id];
+    return Boolean(fail && (fail.status === 0 || /not reachable|Cannot resolve|timed out/i.test(fail.text)));
+  });
+  if (down.length === missing.length) {
+    const detail = failures[down[0]]?.text || "GenieACS did not answer.";
+    return `${detail} CWMP settings were not written.`;
+  }
   const configKeys = missing.filter((id) => id.startsWith("cwmp."));
   const other = missing.filter((id) => !id.startsWith("cwmp."));
   const parts: string[] = [];
-  if (other.length) parts.push(`GenieACS did not accept: ${other.join(", ")}.`);
+  if (other.length) {
+    const detail = other
+      .map((id) => {
+        const fail = failures[id];
+        if (!fail || !fail.status) return id;
+        const snippet = fail.text.replace(/\s+/g, " ").trim().slice(0, 120);
+        return snippet ? `${id} (HTTP ${fail.status}: ${snippet})` : `${id} (HTTP ${fail.status})`;
+      })
+      .join(", ");
+    parts.push(`GenieACS did not accept: ${detail}.`);
+  }
   if (configKeys.length) {
-    parts.push(
-      `GenieACS NBI cannot write ${configKeys.join(", ")} — that collection is Mongo/UI, not NBI.`,
-    );
+    const uiStatus = configKeys.map((id) => failures[id]?.status || 0).find((status) => status > 0 && status !== 404);
+    if (uiStatus) {
+      parts.push(
+        `GenieACS UI rejected ${configKeys.join(", ")} (HTTP ${uiStatus}). NBI cannot write that collection — it is Mongo/UI only.`,
+      );
+    } else {
+      parts.push(
+        `GenieACS NBI cannot write ${configKeys.join(", ")} — that collection is Mongo/UI, not NBI.`,
+      );
+    }
   }
   parts.push("Digest auth still applies on the VPS from the ACS sidecar if it was written on deploy.");
   return parts.join(" ");
@@ -364,13 +392,15 @@ async function putCwmpConfig(
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify({ value: expression }),
       });
-      if (res.ok) return { ok: true as const, via: "ui" as const, status: res.status };
-      return { ok: false as const, via: "ui" as const, status: res.status };
-    } catch {
-      return { ok: false as const, via: "ui" as const, status: 0 };
+      const text = await res.text();
+      if (res.ok) return { ok: true as const, via: "ui" as const, status: res.status, text: "" };
+      return { ok: false as const, via: "ui" as const, status: res.status, text: text.slice(0, 180) };
+    } catch (err) {
+      const text = err instanceof Error ? err.message : String(err);
+      return { ok: false as const, via: "ui" as const, status: 0, text };
     }
   }
-  return { ok: false as const, via: "nbi" as const, status: 404 };
+  return { ok: false as const, via: "nbi" as const, status: 404, text: "" };
 }
 
 export async function applyGenieAcsSecurity(
@@ -382,49 +412,64 @@ export async function applyGenieAcsSecurity(
   if (!nbiOrigin(cfg)) return { ok: false, error: "GenieACS NBI URL is not set", steps: [] as string[], missing: [] as string[] };
   const plat = await loadAcsPlatformSettings(sql);
   const steps: string[] = [];
-  const provision = await nbiSafe(
-    cfg,
-    `/provisions/${LOCK_URL_PROVISION}`,
-    { method: "PUT", headers: { "content-type": "application/javascript" }, body: LOCK_URL_SCRIPT },
-    fetchImpl,
-  );
-  if (provision.ok) steps.push("provision");
-  const serviceProvision = await nbiSafe(
-    cfg,
-    `/provisions/${SERVICE_PROVISION}`,
-    { method: "PUT", headers: { "content-type": "application/javascript" }, body: SERVICE_PROVISION_SCRIPT },
-    fetchImpl,
-  );
-  if (serviceProvision.ok) steps.push("service-provision");
-  if (plat.acs_lock_url) {
-    const preset = await nbiSafe(
+  const failures: Record<string, { status: number; text: string }> = {};
+  const mark = (id: string, result: { ok: boolean; status: number; text?: string }) => {
+    if (result.ok) steps.push(id);
+    else failures[id] = { status: result.status, text: String(result.text || "").slice(0, 180) };
+  };
+  mark(
+    "provision",
+    await nbiSafe(
       cfg,
-      `/presets/${LOCK_URL_PRESET}`,
-      { method: "PUT", body: JSON.stringify(presetPayload(LOCK_URL_PROVISION, 1)) },
+      `/provisions/${LOCK_URL_PROVISION}`,
+      { method: "PUT", headers: { "content-type": "text/plain" }, body: LOCK_URL_SCRIPT },
       fetchImpl,
+    ),
+  );
+  mark(
+    "service-provision",
+    await nbiSafe(
+      cfg,
+      `/provisions/${SERVICE_PROVISION}`,
+      { method: "PUT", headers: { "content-type": "text/plain" }, body: SERVICE_PROVISION_SCRIPT },
+      fetchImpl,
+    ),
+  );
+  if (plat.acs_lock_url) {
+    mark(
+      "preset",
+      await nbiSafe(
+        cfg,
+        `/presets/${LOCK_URL_PRESET}`,
+        { method: "PUT", body: JSON.stringify(presetPayload(LOCK_URL_PROVISION, 1)) },
+        fetchImpl,
+      ),
     );
-    if (preset.ok) steps.push("preset");
   } else {
     const dropped = await nbiSafe(cfg, `/presets/${LOCK_URL_PRESET}`, { method: "DELETE" }, fetchImpl);
     if (dropped.ok || dropped.status === 404) steps.push("preset-off");
+    else failures["preset"] = { status: dropped.status, text: dropped.text.slice(0, 180) };
   }
   if (plat.acs_provision_service) {
-    const servicePreset = await nbiSafe(
-      cfg,
-      `/presets/${SERVICE_PRESET}`,
-      { method: "PUT", body: JSON.stringify(presetPayload(SERVICE_PROVISION, 0)) },
-      fetchImpl,
+    mark(
+      "service-preset",
+      await nbiSafe(
+        cfg,
+        `/presets/${SERVICE_PRESET}`,
+        { method: "PUT", body: JSON.stringify(presetPayload(SERVICE_PROVISION, 0)) },
+        fetchImpl,
+      ),
     );
-    if (servicePreset.ok) steps.push("service-preset");
   } else {
     const droppedService = await nbiSafe(cfg, `/presets/${SERVICE_PRESET}`, { method: "DELETE" }, fetchImpl);
     if (droppedService.ok || droppedService.status === 404) steps.push("service-preset-off");
+    else failures["service-preset"] = { status: droppedService.status, text: droppedService.text.slice(0, 180) };
   }
   const desired = desiredCwmpValues(plat);
-  const writes: Record<string, { ok: boolean }> = {};
   for (const [name, expression] of Object.entries(desired)) {
-    writes[name] = await putCwmpConfig(cfg, name, expression, fetchImpl);
-    if (writes[name]?.ok) steps.push(name);
+    const wrote = await putCwmpConfig(cfg, name, expression, fetchImpl);
+    if (wrote.ok) steps.push(name);
+    else failures[name] = { status: wrote.status, text: wrote.text };
   }
   const live = await loadGenieAcsCwmp({ nbi: cfg, fetchImpl });
   for (const [name, expression] of Object.entries(desired)) {
@@ -446,7 +491,7 @@ export async function applyGenieAcsSecurity(
     steps,
     missing,
     auth: steps.includes("cwmp.auth"),
-    error: ok ? "" : describeCwmpApplyError(missing),
+    error: ok ? "" : describeCwmpApplyError(missing, failures),
   };
 }
 
